@@ -106,7 +106,8 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 				phase := float32(0)
 				if spec.Waving {
 					animatePaint(p)
-					phase = float32(p.Now().UnixMilli()%1800) / 1800 * wavelength
+					// The wave travels from the handle back to the start.
+					phase = -float32(p.Now().UnixMilli()%1800) / 1800 * wavelength
 				}
 				var path ui.Path
 				first := true
