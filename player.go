@@ -146,7 +146,8 @@ func (a *app) playerBar(c *ui.Context) {
 	bar := ui.Row(c).Key("player").Absolute().Left(playerGutter).Right(playerGutter).Bottom(playerGutter).
 		Height(playerHeight).Padding(10, 20, 10, 12).Gap(16).AlignItems(ui.Center).
 		Radius(m3.ExtraLarge).Background(sc.SurfaceContainerHigh)
-	m3.Elevation(bar, 3)
+	// No shadow: the bar reads as lifted by its own colour, and every frame
+	// that redrew it paid for the blurred boxes of an elevation.
 	bar.Transition(ui.ElementTransition{
 		Enter: &ui.Motion{Y: 48}, Position: true, Duration: m3.SpatialDefault.Duration(), Ease: m3.SpatialDefault.Ease(),
 	})
