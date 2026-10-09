@@ -866,12 +866,7 @@ func extractMusicItems(root any) []MusicItem {
 				walk(child)
 			}
 		case map[string]any:
-			keys := make([]string, 0, len(node))
-			for key := range node {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
+			for _, key := range sortedKeys(node) {
 				child := node[key]
 				if key == "musicCardShelfRenderer" {
 					// A search's top result is a card, not a list entry.
@@ -1296,12 +1291,7 @@ func navigationID(value any) string {
 					return
 				}
 			}
-			keys := make([]string, 0, len(node))
-			for key := range node {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
+			for _, key := range sortedKeys(node) {
 				walk(node[key])
 			}
 		}

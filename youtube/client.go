@@ -129,12 +129,13 @@ type clientUserContext struct {
 	OnBehalfOfUser string `json:"onBehalfOfUser,omitempty"`
 }
 
+// context builds the request context shared by every InnerTube client. The
+// client-specific name and version are set by executeForClient, which knows
+// which client the request speaks as.
 func (c *Client) context() clientContext {
 	var ctx clientContext
 	ctx.Client.HL = c.language
 	ctx.Client.GL = c.country
-	ctx.Client.ClientName = defaultMusicContext
-	ctx.Client.ClientVersion = c.clientVersion
 	if c.cookieAuth == nil {
 		ctx.Client.VisitorData = c.visitorData
 	}
@@ -171,8 +172,6 @@ func (c *Client) executeForClient(ctx context.Context, endpoint string, payload 
 		clientName, clientID, clientVersion = defaultMusicContext, defaultMusicClientID, c.clientVersion
 	case webClient:
 		clientName, clientID, clientVersion = "WEB", "1", c.webClientVersion
-	default:
-		return nil, fmt.Errorf("youtube: unsupported InnerTube client %q", client)
 	}
 	requestContext := c.context()
 	requestContext.Client.ClientName = clientName
