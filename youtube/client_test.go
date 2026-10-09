@@ -956,3 +956,24 @@ func TestClientIsSafeForConcurrentUse(t *testing.T) {
 		t.Errorf("concurrent call failed: %v", err)
 	}
 }
+
+// TestBrowseResultReadsThePageHeading reads the name and the picture a page
+// puts over its content, from whichever header renderer carries them.
+func TestBrowseResultReadsThePageHeading(t *testing.T) {
+	raw := []byte(`{"header":{"musicImmersiveHeaderRenderer":{` +
+		`"title":{"runs":[{"text":"asu"}]},` +
+		`"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[` +
+		`{"url":"https://img.example/small","width":60,"height":60},` +
+		`{"url":"https://img.example/large","width":600,"height":600}]}}}}},` +
+		`"contents":{}}`)
+	result := browseResult(decodeResponse(raw))
+	if result.Title != "asu" || result.Thumbnail != "https://img.example/large" {
+		t.Errorf("heading = %q with %q, want asu with its largest thumbnail", result.Title, result.Thumbnail)
+	}
+
+	// A page that puts no heading over its content keeps none.
+	plain := browseResult(decodeResponse([]byte(`{"contents":{}}`)))
+	if plain.Title != "" || plain.Thumbnail != "" {
+		t.Errorf("a page without a header gave %q with %q", plain.Title, plain.Thumbnail)
+	}
+}

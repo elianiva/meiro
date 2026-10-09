@@ -261,6 +261,18 @@ func (a *app) fetch(load func(ctx context.Context, client *youtube.Client) (*you
 				a.feed.err = err.Error()
 				return
 			}
+			// A page over its own content takes the name and the picture from
+			// what it loaded; what the caller seeded is only what it had at
+			// hand when the page was opened.
+			if a.detail.kind != "" {
+				if result.Title != "" {
+					a.detail.title = result.Title
+				}
+				if result.Thumbnail != "" {
+					a.detail.art = result.Thumbnail
+				}
+				a.details[a.router.Path()] = a.detail
+			}
 			a.feed.sections = result.Sections
 			// Items are the page's songs, cards and rows all together, which
 			// its sections already hold; they are only a page by themselves
