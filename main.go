@@ -566,7 +566,7 @@ func (a *app) syncSystemMedia() {
 	case repeatQueue:
 		loopStatus = "Playlist"
 	}
-	a.systemMedia.Update(systemmedia.State{
+	if err := a.systemMedia.Update(systemmedia.State{
 		VideoID:     a.current.VideoID,
 		Title:       a.current.Title,
 		Artist:      a.current.Subtitle,
@@ -582,7 +582,13 @@ func (a *app) syncSystemMedia() {
 		CanPrevious: a.current.VideoID != "",
 		CanSeek:     a.total > 0 && a.player.Active(),
 		Shuffle:     a.shuffle,
-	})
+	}); err != nil {
+		log.Printf("system media controls unavailable: %v", err)
+		if closeErr := a.systemMedia.Close(); closeErr != nil {
+			log.Printf("close system media controls: %v", closeErr)
+		}
+		a.systemMedia = nil
+	}
 }
 
 // resolveTheme returns the theme to draw this frame with: the one the

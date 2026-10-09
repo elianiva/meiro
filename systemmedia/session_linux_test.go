@@ -3,6 +3,7 @@
 package systemmedia
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -63,7 +64,9 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 		CanPlay: true, CanPause: true, CanNext: true, CanPrevious: true,
 		CanSeek: true,
 	}
-	linux.Update(state)
+	if err := linux.Update(state); err != nil {
+		t.Fatal(err)
+	}
 
 	client, err := dbus.ConnectSessionBus()
 	if err != nil {
@@ -101,7 +104,9 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 		t.Errorf("MPRIS position = %d, err %v; want %d", position, err, int64(state.Position/time.Microsecond))
 	}
 	state.Position, state.Status = 20*time.Second, Paused
-	linux.Update(state)
+	if err := linux.Update(state); err != nil {
+		t.Fatal(err)
+	}
 	positionValue, err = object.GetProperty(playerInterface + ".Position")
 	if err != nil {
 		t.Fatal(err)
@@ -167,4 +172,37 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 	if !strings.Contains(xml, playerInterface) || !strings.Contains(xml, "SetPosition") {
 		t.Errorf("MPRIS introspection is missing player methods: %s", xml)
 	}
+}
+
+func TestMPRISSessionRecordsAnUpdateFailure(t *testing.T) {
+	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+		t.Skip("run under dbus-run-session to exercise the MPRIS D-Bus service")
+	}
+
+	session, err := New(Controls{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linux := session.(*linuxSession)
+	if err := linux.conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	first := linux.Update(State{Status: Playing})
+	if first == nil {
+		t.Fatal("Update succeeded after its D-Bus connection closed")
+	}
+	second := linux.Update(State{Status: Paused})
+	if !errors.Is(second, first) {
+		t.Fatalf("second Update error = %v, want the stored failure %v", second, first)
+	}
+}
+
+func TestMPRISSetPropertyDoesNotHideRuntimePanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("setProperty hid a runtime panic")
+		}
+	}()
+	(&linuxSession{}).setProperty("PlaybackStatus", string(Playing))
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ type linuxSession struct {
 	state    State
 	hasState bool
 	lastPos  time.Time
+	err      error
 }
 
 // New registers Meiro as an MPRIS player on the current user's D-Bus session.
@@ -168,7 +170,7 @@ func propertyMap(controls Controls) prop.Map {
 	}
 }
 
-func (s *linuxSession) Update(state State) {
+func (s *linuxSession) Update(state State) error {
 	if state.Status == "" {
 		state.Status = Stopped
 	}
@@ -177,23 +179,36 @@ func (s *linuxSession) Update(state State) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
 
 	statusChanged := !s.hasState || state.Status != s.state.Status
 	metadataChanged := !s.hasState || state.VideoID != s.state.VideoID || state.Title != s.state.Title || state.Artist != s.state.Artist || state.ArtworkURL != s.state.ArtworkURL || state.Duration != s.state.Duration
 	if statusChanged {
-		s.props.SetMust(playerInterface, "PlaybackStatus", string(state.Status))
+		if err := s.setProperty("PlaybackStatus", string(state.Status)); err != nil {
+			return s.fail(err)
+		}
 	}
 	if !s.hasState || state.LoopStatus != s.state.LoopStatus {
-		s.props.SetMust(playerInterface, "LoopStatus", state.LoopStatus)
+		if err := s.setProperty("LoopStatus", state.LoopStatus); err != nil {
+			return s.fail(err)
+		}
 	}
 	if metadataChanged {
-		s.props.SetMust(playerInterface, "Metadata", trackMetadata(state))
+		if err := s.setProperty("Metadata", trackMetadata(state)); err != nil {
+			return s.fail(err)
+		}
 	}
 	if !s.hasState || state.Volume != s.state.Volume {
-		s.props.SetMust(playerInterface, "Volume", state.Volume)
+		if err := s.setProperty("Volume", state.Volume); err != nil {
+			return s.fail(err)
+		}
 	}
 	if !s.hasState || state.Shuffle != s.state.Shuffle {
-		s.props.SetMust(playerInterface, "Shuffle", state.Shuffle)
+		if err := s.setProperty("Shuffle", state.Shuffle); err != nil {
+			return s.fail(err)
+		}
 	}
 	for property, value := range map[string]bool{
 		"CanGoNext":     state.CanNext,
@@ -203,16 +218,43 @@ func (s *linuxSession) Update(state State) {
 		"CanSeek":       state.CanSeek,
 	} {
 		if !s.hasState || propertyValue(s.state, property) != value {
-			s.props.SetMust(playerInterface, property, value)
+			if err := s.setProperty(property, value); err != nil {
+				return s.fail(err)
+			}
 		}
 	}
 	positionChangedWhilePaused := state.Status != Playing && state.Position != s.state.Position
 	if !s.hasState || statusChanged || positionChangedWhilePaused || durationDistance(state.Position, s.state.Position) > 3*time.Second || time.Since(s.lastPos) >= time.Second {
-		s.props.SetMust(playerInterface, "Position", int64(state.Position/time.Microsecond))
+		if err := s.setProperty("Position", int64(state.Position/time.Microsecond)); err != nil {
+			return s.fail(err)
+		}
 		s.lastPos = time.Now()
 	}
 	s.state = state
 	s.hasState = true
+	return nil
+}
+
+// setProperty turns prop.Properties.SetMust's documented error panic into a
+// normal update failure. Runtime and non-error panics still signal
+// programming bugs.
+func (s *linuxSession) setProperty(property string, value any) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			failure, ok := recovered.(error)
+			if _, isRuntimeError := failure.(runtime.Error); !ok || isRuntimeError {
+				panic(recovered)
+			}
+			err = fmt.Errorf("set MPRIS property %s: %w", property, failure)
+		}
+	}()
+	s.props.SetMust(playerInterface, property, value)
+	return nil
+}
+
+func (s *linuxSession) fail(err error) error {
+	s.err = err
+	return err
 }
 
 func propertyValue(state State, property string) bool {
