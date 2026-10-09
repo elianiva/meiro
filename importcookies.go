@@ -32,6 +32,9 @@ func importSources() []importSource {
 			return firstSession(ctx, browser.label, []string{browser.id}, ytDlpCookie)
 		}})
 	}
+	sources = append(sources, importSource{"Zen", "zen", func(ctx context.Context) (string, error) {
+		return firstSession(ctx, "Zen", zenBrowserProfiles(), ytDlpCookie)
+	}})
 	if home, err := os.UserHomeDir(); err == nil && runtime.GOOS == "darwin" {
 		dir := filepath.Join(home, "Library", "Application Support", "net.imput.helium")
 		if profiles := chromiumProfiles(dir); len(profiles) > 0 {
@@ -44,6 +47,55 @@ func importSources() []importSource {
 		}
 	}
 	return sources
+}
+
+// zenBrowserProfiles gives yt-dlp every Zen profile root it supports. Zen is
+// Firefox-based, but yt-dlp does not know its data locations itself.
+func zenBrowserProfiles() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	config, _ := os.UserConfigDir()
+	roots := zenProfileRoots(home, config, runtime.GOOS)
+	profiles := make([]string, 0, len(roots))
+	for _, root := range roots {
+		profiles = append(profiles, "firefox:"+root)
+	}
+	return profiles
+}
+
+// zenProfileRoots lists the data roots Zen uses on each desktop platform.
+func zenProfileRoots(home, config, goos string) []string {
+	var roots []string
+	switch goos {
+	case "linux":
+		roots = append(roots,
+			filepath.Join(home, ".zen"),
+			filepath.Join(home, ".var", "app", "app.zen_browser.zen", "zen"),
+		)
+	case "darwin":
+		roots = append(roots, filepath.Join(home, "Library", "Application Support", "zen"))
+	case "windows":
+	default:
+		roots = append(roots, filepath.Join(home, ".zen"))
+	}
+	if config != "" && goos != "darwin" {
+		roots = append(roots, filepath.Join(config, "zen"))
+	}
+	unique := make(map[string]struct{}, len(roots))
+	out := make([]string, 0, len(roots))
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		if _, ok := unique[root]; ok {
+			continue
+		}
+		unique[root] = struct{}{}
+		out = append(out, root)
+	}
+	return out
 }
 
 // chromiumProfiles returns the directories of the profiles in a Chromium

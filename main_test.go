@@ -907,6 +907,19 @@ func TestChromiumProfiles(t *testing.T) {
 	}
 }
 
+func TestZenProfileRoots(t *testing.T) {
+	home, config := "/home/mei", "/home/mei/.config"
+	got := zenProfileRoots(home, config, "linux")
+	want := []string{
+		filepath.Join(home, ".zen"),
+		filepath.Join(home, ".var", "app", "app.zen_browser.zen", "zen"),
+		filepath.Join(config, "zen"),
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("zenProfileRoots() = %q, want %q", got, want)
+	}
+}
+
 func TestSignInDialogOffersBrowsersInADropdown(t *testing.T) {
 	a := newTestApp()
 	tt := ui.NewTester(a.view, 1000, 700)
@@ -921,7 +934,7 @@ func TestSignInDialogOffersBrowsersInADropdown(t *testing.T) {
 	if err := tt.Click("Import from a browser"); err != nil {
 		t.Fatal(err)
 	}
-	for _, browser := range []string{"Chrome", "Safari", "Firefox", "Brave", "Edge"} {
+	for _, browser := range []string{"Chrome", "Safari", "Firefox", "Brave", "Edge", "Zen"} {
 		if !tt.HasText(browser) {
 			t.Errorf("the dropdown is missing %s: %q", browser, tt.Texts())
 		}
