@@ -118,6 +118,11 @@ type app struct {
 	rowsDirty bool
 	rowsKey   rowsKey
 	list      ui.ListState
+	// pageCache holds route data for MyGo history entries. It never owns UI
+	// elements, which only exist for one frame.
+	pageCache      map[string]*cachedPage
+	pageCacheOrder []string
+	pageLoadedAt   time.Time
 	// detail is the heading of the album, playlist or artist page shown,
 	// and details remembers one for each page the user opened, so going
 	// back to one finds its heading again.
@@ -229,6 +234,7 @@ func newApp() *app {
 		search:              searchState{},
 		details:             make(map[string]detail),
 		carousels:           make(map[string]*m3.CarouselState),
+		pageCache:           make(map[string]*cachedPage),
 		recommendationStart: -1,
 	}
 	a.volume = a.settings.Volume

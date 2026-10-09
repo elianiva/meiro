@@ -25,8 +25,8 @@ func (a *app) view(c *ui.Context) {
 	c.Root().Background(sc.SurfaceContainerLow)
 
 	if location := a.router.Location(); location != a.location {
-		a.location = location
 		a.onNavigate()
+		a.location = location
 	}
 	a.tick(c)
 	a.followArtwork()

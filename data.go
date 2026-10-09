@@ -110,18 +110,31 @@ func (r row) key() any {
 	return strconv.Itoa(int(r.kind)) + ":" + r.title
 }
 
-// onNavigate resets the page state and loads what the new location shows.
-// The heading is kept for an album, playlist or artist page, which the
-// action that opened it already described.
+// onNavigate restores a fresh route from the page cache, or loads it when it
+// is missing or stale. The heading is kept for an album, playlist or artist
+// page, which the action that opened it already described.
 func (a *app) onNavigate() {
+	a.cacheCurrentPage()
+	a.nextJob()
+	if a.cancel != nil {
+		a.cancel()
+		a.cancel = nil
+	}
+	location, path := a.router.Location(), a.router.Path()
+	page, cached := a.restorePage(location)
+	if cached && (path == "/search" || page.fresh(time.Now())) {
+		a.npOpen = false
+		return
+	}
 	a.feed = pageState{}
 	a.rows, a.playable = nil, nil
 	a.rowsDirty = true
+	a.pageLoadedAt = time.Time{}
 	// The list is shared by every page, so a new page starts at its top.
+	a.list = ui.ListState{}
 	a.list.ScrollTo(0, ui.Start)
 	a.npOpen = false
 
-	path := a.router.Path()
 	if path != "/search" {
 		a.cancelSuggestions()
 	}
@@ -213,11 +226,12 @@ func (a *app) fetch(load func(ctx context.Context, client *youtube.Client) (*you
 	a.feed.loading, a.feed.err = true, ""
 	a.rowsDirty = true
 	job := a.nextJob()
+	location := a.router.Location()
 	ctx := a.jobContext()
 	a.run(func() {
 		result, err := load(ctx, client)
 		a.update(func() {
-			if job != a.job {
+			if job != a.job || location != a.router.Location() {
 				return
 			}
 			a.rowsDirty = true
@@ -235,6 +249,7 @@ func (a *app) fetch(load func(ctx context.Context, client *youtube.Client) (*you
 				a.feed.items = result.Items
 			}
 			a.feed.more = result.ContinuationToken
+			a.pageLoadedAt = time.Now()
 		})
 	})
 }
@@ -651,5 +666,14 @@ func (a *app) retry() {
 		a.runSearch(a.search.submitted)
 		return
 	}
+	a.reloadPage()
+}
+
+// reloadPage bypasses the cached entry for the location the router shows.
+func (a *app) reloadPage() {
+	location := a.router.Location()
+	a.forgetPage(location)
+	a.location = ""
 	a.onNavigate()
+	a.location = location
 }

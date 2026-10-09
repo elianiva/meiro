@@ -115,6 +115,24 @@ func TestHomeListsSections(t *testing.T) {
 	}
 }
 
+func TestBackRestoresTheHomePageWithoutRefetching(t *testing.T) {
+	a := newTestApp()
+	tt := ui.NewTester(a.view, 1000, 300)
+	if err := tt.Click("Deep Focus"); err != nil {
+		t.Fatal(err)
+	}
+	// A Home fetch would fail now. Returning through router history must use
+	// the fresh route entry instead.
+	failed := youtube.NewClient(youtube.Options{APIKey: "test", HTTPClient: &http.Client{Transport: failingMusic{}}})
+	a.public, a.authed = failed, failed
+	if err := tt.Click("Back"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Quick picks") || tt.HasText("Something went wrong") {
+		t.Fatalf("Back did not restore cached Home data: %q", tt.Texts())
+	}
+}
+
 func TestCardShelfFetchesVisibleArtworkAndLoadsAsItScrolls(t *testing.T) {
 	a := newTestApp()
 	a.location = "/home"

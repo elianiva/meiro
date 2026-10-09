@@ -421,8 +421,9 @@ func (a *app) signOut() {
 // page is loaded at launch, before the saved sign-in is back, so it needs the
 // reload as much as the library does.
 func (a *app) onSignedIn() {
+	a.forgetPages()
 	if path := a.router.Path(); path != "/search" && path != "/settings" {
-		a.onNavigate()
+		a.reloadPage()
 	}
 }
 
