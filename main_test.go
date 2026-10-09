@@ -173,6 +173,55 @@ func TestAlbumCardMenuCopiesItsLinkWithoutOpeningTheCard(t *testing.T) {
 	}
 }
 
+// The secondary button opens the menu of a card and of a song row, as their
+// menu buttons do, without activating what was right-clicked.
+func TestRightClickOpensTheItemMenu(t *testing.T) {
+	a := newTestApp()
+	tt := ui.NewTester(a.view, 1180, 850)
+	card, ok := tt.Find("Deep Focus")
+	if !ok {
+		t.Fatalf("the home page has no card: %q", tt.Texts())
+	}
+	tt.Move(card.X+card.W/2, card.Y+card.H/2)
+	tt.Frame()
+	tt.RightClick("Deep Focus")
+	tt.Frame()
+	if !a.trackMenuOpen {
+		t.Fatal("a right-click on a card did not open its menu")
+	}
+	if !tt.HasText("Open album") {
+		t.Errorf("the card menu is missing its items: %q", tt.Texts())
+	}
+	if got := a.router.Path(); got != "/home" {
+		t.Fatalf("a right-click on a card activated it: route = %q", got)
+	}
+
+	b := newTestApp()
+	tb := ui.NewTester(b.view, 1180, 850)
+	if err := tb.Click("Deep Focus"); err != nil {
+		t.Fatal(err)
+	}
+	row, ok := tb.Find("Album Track One")
+	if !ok {
+		t.Fatalf("the album has no track row: %q", tb.Texts())
+	}
+	tb.Move(row.X+row.W/2, row.Y+row.H/2)
+	tb.Frame()
+	tb.RightClick("Album Track One")
+	tb.Frame()
+	if !b.trackMenuOpen {
+		t.Fatal("a right-click on a song row did not open its menu")
+	}
+	for _, label := range []string{"Play next", "Add to queue"} {
+		if !tb.HasText(label) {
+			t.Errorf("the song row menu is missing %q: %q", label, tb.Texts())
+		}
+	}
+	if b.current.VideoID != "" {
+		t.Errorf("a right-click on a song row started playback: %q", b.current.VideoID)
+	}
+}
+
 func TestPlaylistListsAndQueuesVideoEntries(t *testing.T) {
 	a := newTestApp()
 	path := "/playlist/VLPL_video"
