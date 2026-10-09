@@ -57,6 +57,17 @@ type BrowseResult struct {
 	ContinuationToken string         `json:"continuationToken,omitempty"`
 	// QueuePlaylistID is the playlist panel's ID, used to continue radio queues.
 	QueuePlaylistID string `json:"queuePlaylistId,omitempty"`
+	// Header is the page's own heading, which artist and album pages carry
+	// in a detail or immersive header renderer: its name, description
+	// subtitle, and thumbnail.
+	Header PageHeader `json:"header,omitempty"`
+}
+
+// PageHeader is a browse page's own heading.
+type PageHeader struct {
+	Title    string `json:"title,omitempty"`
+	Subtitle string `json:"subtitle,omitempty"`
+	Thumb    string `json:"thumb,omitempty"`
 }
 
 // MusicSection is a shelf or grid in a browse response. ContinuationToken can
@@ -646,7 +657,43 @@ func (c *Client) newBrowseResult(raw json.RawMessage) *BrowseResult {
 	return &BrowseResult{
 		Items: extractMusicItems(root), Sections: extractMusicSections(root),
 		ContinuationToken: continuationToken(root),
+		Header:            extractPageHeader(root),
 	}
+}
+
+// extractPageHeader reads a browse page's own heading out of the detail or
+// immersive header renderer the page carries, as artist and album pages do.
+func extractPageHeader(root any) PageHeader {
+	var header PageHeader
+	var walk func(any)
+	walk = func(value any) {
+		if header.Title != "" {
+			return
+		}
+		switch node := value.(type) {
+		case []any:
+			for _, child := range node {
+				walk(child)
+			}
+		case map[string]any:
+			for _, key := range sortedKeys(node) {
+				child, ok := node[key].(map[string]any)
+				if !ok {
+					continue
+				}
+				if key != "musicDetailHeaderRenderer" && key != "musicImmersiveHeaderRenderer" {
+					walk(child)
+					continue
+				}
+				header.Title = rendererText(child["title"])
+				header.Subtitle = rendererText(child["subtitle"])
+				header.Thumb = rendererThumbnail(child["thumbnail"])
+				return
+			}
+		}
+	}
+	walk(root)
+	return header
 }
 
 // newSearchResult reads a search response, as newBrowseResult does a browse.

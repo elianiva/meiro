@@ -66,6 +66,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = playlistResponse
 	case strings.Contains(asked, "MPREb_test"):
 		reply = albumResponse
+	case strings.Contains(asked, "UCartist"):
+		reply = artistResponse
 	case strings.Contains(asked, `"query"`):
 		searches.Add(1)
 		reply = searchResponse
@@ -646,6 +648,15 @@ func TestTrackMenuQueuesCopiesAndOpensTheArtist(t *testing.T) {
 	if got, want := a.router.Path(), "/artist/UCartist"; got != want {
 		t.Fatalf("Go to artist opened %q, want %q", got, want)
 	}
+	if a.detail.title != "Aurora Vale" || a.detail.art != "https://art.test/artist-large" {
+		t.Errorf("the artist page heading is %+v", a.detail)
+	}
+	if !tt.HasText("Aurora Vale") {
+		t.Errorf("the artist page does not show the artist name: %q", tt.Texts())
+	}
+	if _, source := a.playbackQueueOptions(0); source != "Aurora Vale" {
+		t.Errorf("the artist page queue source = %q, want %q", source, "Aurora Vale")
+	}
 }
 
 func TestEnqueueKeepsManualTracksBeforeRecommendations(t *testing.T) {
@@ -1048,6 +1059,22 @@ const suggestionsResponse = `{"contents":[{"searchSuggestionsSectionRenderer":{"
 	{"searchSuggestionRenderer":{"suggestion":{"runs":[{"text":"Yorushika"}]}}},
 	{"searchSuggestionRenderer":{"suggestion":{"runs":[{"text":"Yorushika songs"}]}}}
 ]}}]}`
+
+const artistResponse = `{"header":{"musicDetailHeaderRenderer":{
+	"title":{"simpleText":"Aurora Vale"},
+	"subtitle":{"runs":[{"text":"Artist"},{"text":" • "},{"text":"24 songs"}]},
+	"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://art.test/artist-small"},{"url":"https://art.test/artist-large"}]}}}
+}},"contents":{"singleColumnBrowseResults":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
+	{"musicShelfRenderer":{"title":{"simpleText":"Songs"},"contents":[
+		{"musicResponsiveListItemRenderer":{
+			"playlistItemData":{"videoId":"artist-song"},
+			"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Artist Song"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Aurora Vale"},{"text":" • "},{"text":"3:00"}]}}}
+			]
+		}}
+	]}}
+]}}}}]}}}`
 
 func TestCookieHeader(t *testing.T) {
 	const want = "SAPISID=abc; SID=def"

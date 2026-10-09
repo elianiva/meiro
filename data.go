@@ -225,6 +225,15 @@ func (a *app) fetch(load func(ctx context.Context, client *youtube.Client) (*you
 				return
 			}
 			a.feed.sections = result.Sections
+			// A page's own heading fills in what the action that opened it
+			// did not know, as a song's Go-to-artist does not carry the
+			// artist's name or picture.
+			if result.Header.Title != "" {
+				a.detail.title = result.Header.Title
+				a.detail.subtitle = result.Header.Subtitle
+				a.detail.art = result.Header.Thumb
+				a.details[a.router.Path()] = a.detail
+			}
 			// Items are the page's songs, cards and rows all together, which
 			// its sections already hold; they are only a page by themselves
 			// when it has no sections.
