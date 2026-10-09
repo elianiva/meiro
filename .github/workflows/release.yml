@@ -54,6 +54,12 @@ jobs:
       - name: Build
         run: go tool mygo build -platform "${{ matrix.target }}" -o dist
 
+      - name: Build Fedora package
+        if: matrix.platform == 'linux-amd64'
+        run: |
+          docker run --rm -e VERSION -v "$PWD:/src" -w /src fedora:latest \
+            bash -c 'dnf -y install rpm-build && scripts/package-rpm.sh "dist/${{ matrix.platform }}/meiro-${VERSION}-${{ matrix.platform }}.tar.gz" "dist/${{ matrix.platform }}/rpm"'
+
       - name: Collect the downloads
         run: |
           mkdir artifacts
@@ -63,7 +69,10 @@ jobs:
               dmg="$(find "dist/${{ matrix.platform }}" -maxdepth 1 -name '*.dmg')"
               cp "$dmg" "artifacts/Meiro-${VERSION}-macos-${arch}.dmg"
               ;;
-            linux-*)
+            linux-amd64)
+              cp dist/${{ matrix.platform }}/*.tar.gz dist/${{ matrix.platform }}/*.deb dist/${{ matrix.platform }}/rpm/*.rpm artifacts/
+              ;;
+            linux-arm64)
               cp dist/${{ matrix.platform }}/*.tar.gz dist/${{ matrix.platform }}/*.deb artifacts/
               ;;
           esac
