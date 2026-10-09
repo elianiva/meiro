@@ -65,9 +65,12 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 	frac = min(max(frac, 0), 1)
 	pressed := s.Pressed()
 	handleW := Animate(s, "handle", pick(pressed, float32(2), 4), SpatialFast)
+	// The wave travels only when the desktop wants the motion; Reduce Motion
+	// leaves the track flat.
+	waving := spec.Waving && !c.Preferences().ReduceMotion
 	amplitude := float32(0)
 	if spec.Wavy {
-		amplitude = Animate(s, "wave", pick(spec.Waving, float32(2.4), 0), SpatialDefault)
+		amplitude = Animate(s, "wave", pick(waving, float32(2.4), 0), SpatialDefault)
 	}
 	active, inactive, handle := sc.Primary, sc.SecondaryContainer, sc.Primary
 	if spec.Hue {
@@ -115,7 +118,7 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 			} else {
 				const wavelength = 30
 				phase := float32(0)
-				if spec.Waving {
+				if waving {
 					animatePaint(p)
 					// The wave travels from the handle back to the start.
 					phase = -float32(p.Now().UnixMilli()%1800) / 1800 * wavelength

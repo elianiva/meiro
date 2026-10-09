@@ -618,9 +618,16 @@ func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 	shown := *a.themeTo
 	shown.Scheme = a.themeFrom.Mix(a.themeTo.Scheme, 1-(1-k)*(1-k)*(1-k))
 	a.shown = &shown
-	c.AnimationFrame()
+	// Ask for the next step of the glide at the cadence of the other drawn
+	// animations rather than at the display's refresh rate, which is many
+	// times that on a high-refresh display and would rebuild the whole view
+	// each time for a colour a few percent along.
+	c.After(themeGlideStep)
 	return a.shown
 }
+
+// themeGlideStep is how often the theme glide moves, about 30 steps a second.
+const themeGlideStep = 33 * time.Millisecond
 
 // tick advances what the frame depends on: the player's position, the next
 // track when one ends, and the frame after this one.

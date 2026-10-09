@@ -95,18 +95,20 @@ func loadingIndicator(c *ui.Context, size float32, shape, disc ui.Color) ui.Elem
 }
 
 // Equalizer is three bars that dance while playing and rest as a flat line
-// while paused: the mark of the track that is playing.
+// while paused: the mark of the track that is playing. The desktop's
+// Reduce Motion leaves them resting rather than dancing.
 func Equalizer(c *ui.Context, size float32, playing bool, color ui.Color) ui.Element {
+	dancing := playing && !c.Preferences().ReduceMotion
 	e := ui.Box(c).Size(size, size).Shrink(0)
 	e.Draw(func(p *ui.Painter, r ui.Rect) {
-		if playing {
+		if dancing {
 			animatePaint(p)
 		}
 		now := float64(p.Now().UnixMilli()) / 1000
 		bar := r.W / 5
 		for i := 0; i < 3; i++ {
 			h := float32(0.2)
-			if playing {
+			if dancing {
 				h = float32(0.35 + 0.65*(0.5+0.5*math.Sin(now*(5+float64(i)*1.7)+float64(i)*1.9)))
 			}
 			bh := r.H * h
