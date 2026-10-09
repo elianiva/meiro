@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,14 +22,16 @@ import (
 func TestSearchUsesMusicContextAndMapsItems(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/youtubei/v1/search" {
-			t.Fatalf("request path = %q", r.URL.Path)
+			t.Errorf("request path = %q", r.URL.Path)
+			return
 		}
 		if r.URL.Query().Get("key") != "test-key" {
 			t.Errorf("API key = %q", r.URL.Query().Get("key"))
 		}
 		var request map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding request: %v", err)
+			return
 		}
 		if request["query"] != "ambient" || request["client"] != nil || request["isAudioOnly"] != true {
 			t.Errorf("request fields = %#v", request)
@@ -39,15 +42,18 @@ func TestSearchUsesMusicContextAndMapsItems(t *testing.T) {
 		}
 		encoded, ok := request["params"].(string)
 		if !ok {
-			t.Fatal("song search is missing filter params")
+			t.Errorf("song search is missing filter params")
+			return
 		}
 		decoded, err := url.QueryUnescape(encoded)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("unescaping search params: %v", err)
+			return
 		}
 		filter, err := base64.StdEncoding.DecodeString(decoded)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding search params: %v", err)
+			return
 		}
 		if len(filter) == 0 || filter[0] != 0x12 {
 			t.Errorf("search filter protobuf = %x", filter)
@@ -111,7 +117,8 @@ func TestContinueSearchSendsContinuationToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding request: %v", err)
+			return
 		}
 		if r.URL.Path != "/youtubei/v1/search" || request["continuation"] != "SEARCH_NEXT" || request["query"] != nil {
 			t.Errorf("continuation request path=%q body=%#v", r.URL.Path, request)
@@ -134,7 +141,8 @@ func TestGetAllLibraryLoadsEverySectionContinuation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding request: %v", err)
+			return
 		}
 		if request["browseId"] == "FEmusic_library_landing" {
 			_, _ = w.Write([]byte(`{"contents":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"title":{"simpleText":"Songs"},"contents":[{"musicResponsiveListItemRenderer":{"videoId":"saved-song","title":{"simpleText":"Saved song"}}}],"continuations":[{"nextContinuationData":{"continuation":"SONGS_NEXT"}}]}},{"gridRenderer":{"title":{"simpleText":"Playlists"},"items":[{"gridPlaylistRenderer":{"playlistId":"PL1","title":{"simpleText":"Saved playlist"}}}],"continuations":[{"nextContinuationData":{"continuation":"PLAYLISTS_NEXT"}}]}}]}}}`))
@@ -393,11 +401,13 @@ func TestUpNextKeepsPlaylistContextAndContinuesRadioQueue(t *testing.T) {
 	var nextRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/youtubei/v1/next" {
-			t.Fatalf("request path = %q, want /next", r.URL.Path)
+			t.Errorf("request path = %q, want /next", r.URL.Path)
+			return
 		}
 		var request map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding request: %v", err)
+			return
 		}
 		switch nextRequests.Add(1) {
 		case 1:
@@ -441,11 +451,13 @@ func TestGetUpNextResolvesAutomixPreview(t *testing.T) {
 	var nextRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/youtubei/v1/next" {
-			t.Fatalf("request path = %q, want /next", r.URL.Path)
+			t.Errorf("request path = %q, want /next", r.URL.Path)
+			return
 		}
 		var request map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding request: %v", err)
+			return
 		}
 		switch nextRequests.Add(1) {
 		case 1:
@@ -478,10 +490,12 @@ func TestGetAllPlaylistLoadsContinuationPages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding request: %v", err)
+			return
 		}
 		if r.URL.Path != "/youtubei/v1/browse" {
-			t.Fatalf("request path = %q, want /browse", r.URL.Path)
+			t.Errorf("request path = %q, want /browse", r.URL.Path)
+			return
 		}
 		if request["browseId"] == "VLPL123" {
 			_, _ = w.Write([]byte(`{"contents":{"musicPlaylistShelfRenderer":{"contents":[{"playlistVideoRenderer":{"videoId":"playlist-1","title":{"simpleText":"First song"}}}],"continuations":[{"nextContinuationData":{"continuation":"PLAYLIST_MORE"}}]}}}`))
@@ -511,7 +525,8 @@ func TestLyricsRelatedAndRecapUseReadOnlyEndpoints(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Errorf("decoding request: %v", err)
+			return
 		}
 		switch r.URL.Path {
 		case "/youtubei/v1/next":
@@ -562,7 +577,8 @@ func TestLyricsRelatedAndRecapUseReadOnlyEndpoints(t *testing.T) {
 func TestGetAccountDetailsReadsTheAccountMenu(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/youtubei/v1/account/account_menu" {
-			t.Fatalf("request path = %q", r.URL.Path)
+			t.Errorf("request path = %q", r.URL.Path)
+			return
 		}
 		if got := r.Header.Get("Authorization"); !strings.HasPrefix(got, "SAPISIDHASH ") {
 			t.Errorf("Authorization = %q", got)
@@ -734,5 +750,165 @@ func TestExtractMusicItemsKeepsASongListedTwice(t *testing.T) {
 	repeated := []byte(`{"contents":[` + entry("S1") + `,` + entry("S1") + `]}`)
 	if got := extractMusicItems(decodeResponse(repeated)); len(got) != 1 {
 		t.Errorf("a repeated entry gave %d items, want 1", len(got))
+	}
+}
+
+// TestCookieAuthAuthorizationMatchesAKnownDigest pins SAPISIDHASH to a digest
+// computed outside the client, so a change to the signed input or the hash
+// cannot pass by comparing the client's output with itself.
+func TestCookieAuthAuthorizationMatchesAKnownDigest(t *testing.T) {
+	auth, err := NewCookieAuth("SAPISID=secret", CookieOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := auth.authorization(time.Unix(1700000000, 0))
+	// sha1("1700000000 secret https://www.youtube.com")
+	const want = "SAPISIDHASH 1700000000_8826f35e8fadc232ceb4c889bdb7a3a586eb7379"
+	if got != want {
+		t.Errorf("authorization = %q, want %q", got, want)
+	}
+}
+
+// TestClientRejectsInvalidInputWithoutARequest covers the public input
+// contracts: each rejected call must fail before any network request.
+func TestClientRejectsInvalidInputWithoutARequest(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	auth, err := NewCookieAuth("SAPISID=secret", CookieOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := NewClient(Options{BaseURL: server.URL, APIKey: "key", CookieAuth: auth, AllowInsecureCookieAuth: true})
+	calls := map[string]func() error{
+		"blank search query": func() error { _, err := client.Search(context.Background(), "  ", SearchOptions{}); return err },
+		"unsupported search type": func() error {
+			_, err := client.Search(context.Background(), "a", SearchOptions{Type: SearchType("bogus")})
+			return err
+		},
+		"blank browse continuation": func() error { _, err := client.ContinueBrowse(context.Background(), " "); return err },
+		"blank search continuation": func() error { _, err := client.ContinueSearch(context.Background(), "\t"); return err },
+		"invalid artist ID":         func() error { _, err := client.GetArtist(context.Background(), "not-an-artist"); return err },
+		"invalid album ID":          func() error { _, err := client.GetAlbum(context.Background(), "not-an-album"); return err },
+		"blank playlist ID":         func() error { _, err := client.GetPlaylist(context.Background(), ""); return err },
+		"blank up-next video ID":    func() error { _, err := client.GetUpNext(context.Background(), UpNextOptions{}); return err },
+		"blank up-next token": func() error {
+			_, err := client.ContinueUpNext(context.Background(), UpNextOptions{VideoID: "v"}, " ")
+			return err
+		},
+		"blank lyrics video ID":  func() error { _, err := client.GetLyrics(context.Background(), " "); return err },
+		"blank related video ID": func() error { _, err := client.GetRelated(context.Background(), ""); return err },
+		"blank suggestion input": func() error { _, err := client.GetSearchSuggestions(context.Background(), " "); return err },
+	}
+	for name, call := range calls {
+		if err := call(); err == nil {
+			t.Errorf("%s: got nil error, want a validation error", name)
+		}
+	}
+	unauthenticated := NewClient(Options{BaseURL: server.URL, APIKey: "key"})
+	if _, err := unauthenticated.GetAccountDetails(context.Background()); err == nil {
+		t.Error("GetAccountDetails without cookie authentication returned no error")
+	}
+	if _, err := unauthenticated.GetAccounts(context.Background()); err == nil {
+		t.Error("GetAccounts without cookie authentication returned no error")
+	}
+	if requests.Load() != 0 {
+		t.Errorf("rejected input still sent %d requests", requests.Load())
+	}
+}
+
+// TestDrainBrowseStopsAtARepeatedToken pins the runaway guard: a page that hands
+// back a token already visited ends the walk instead of looping forever.
+func TestDrainBrowseStopsAtARepeatedToken(t *testing.T) {
+	var continuationRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decoding request: %v", err)
+			return
+		}
+		if request["continuation"] == "REPEAT" {
+			continuationRequests.Add(1)
+			_, _ = w.Write([]byte(`{"continuationContents":{"musicShelfContinuation":{"contents":[{"musicResponsiveListItemRenderer":{"videoId":"loop","title":{"simpleText":"Loop"}}}],"continuations":[{"nextContinuationData":{"continuation":"REPEAT"}}]}}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"contents":{"sectionListRenderer":{"contents":[]}},"continuations":[{"nextContinuationData":{"continuation":"REPEAT"}}]}`))
+	}))
+	defer server.Close()
+	client := NewClient(Options{BaseURL: server.URL, APIKey: "key"})
+	library, err := client.GetAllLibrary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continuationRequests.Load() != 1 {
+		t.Errorf("continuation requests = %d, want the repeated token to stop the walk after one page", continuationRequests.Load())
+	}
+	if len(library.Items) != 1 || library.Items[0].VideoID != "loop" {
+		t.Errorf("library items = %#v, want the single item once", library.Items)
+	}
+}
+
+// TestDrainBrowseStopsAfter1000Pages bounds a chain of fresh tokens so a broken
+// or hostile response cannot make the walk run forever.
+func TestDrainBrowseStopsAfter1000Pages(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decoding request: %v", err)
+			return
+		}
+		token, _ := request["continuation"].(string)
+		if token == "" {
+			_, _ = w.Write([]byte(`{"continuations":[{"nextContinuationData":{"continuation":"0"}}]}`))
+			return
+		}
+		page, err := strconv.Atoi(token)
+		if err != nil {
+			t.Errorf("unexpected continuation token %q", token)
+			return
+		}
+		requests.Add(1)
+		_, _ = w.Write([]byte(`{"continuations":[{"nextContinuationData":{"continuation":"` + strconv.Itoa(page+1) + `"}}]}`))
+	}))
+	defer server.Close()
+	client := NewClient(Options{BaseURL: server.URL, APIKey: "key"})
+	if _, err := client.GetAllLibrary(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded 1000 continuation pages") {
+		t.Fatalf("GetAllLibrary error = %v, want the runaway-continuation guard", err)
+	}
+	if requests.Load() != 1000 {
+		t.Errorf("continuation requests = %d, want the 1000 pages the guard allows", requests.Load())
+	}
+}
+
+// TestClientIsSafeForConcurrentUse runs one client from several goroutines. It
+// guards the read-only contract the race detector checks, not a return value.
+func TestClientIsSafeForConcurrentUse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"contents":{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"videoId":"concurrent","title":{"simpleText":"Concurrent"}}}]}}}`))
+	}))
+	defer server.Close()
+	client := NewClient(Options{BaseURL: server.URL, APIKey: "key"})
+	var group sync.WaitGroup
+	errs := make(chan error, 20)
+	for i := 0; i < 10; i++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			if _, err := client.GetHomeFeed(context.Background()); err != nil {
+				errs <- err
+			}
+			if _, err := client.Search(context.Background(), "concurrent", SearchOptions{Type: SearchSongs}); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	group.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent call failed: %v", err)
 	}
 }
