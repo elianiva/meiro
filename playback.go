@@ -274,6 +274,13 @@ func (a *app) stream(item youtube.MusicItem) {
 		if fromCache {
 			log.Printf("playback: audio cache hit video_id=%s", item.VideoID)
 			streamURL = cached
+			if total <= 0 {
+				// A track downloaded ahead of time was never resolved, so its
+				// length is written nowhere but the file itself.
+				probe, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				total = audioFileDuration(probe, cached)
+				cancel()
+			}
 		} else {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			streamURL, total, err = resolveStream(ctx, client, item, cookie)
@@ -513,6 +520,43 @@ func parseDuration(text string) time.Duration {
 		total = total*60 + time.Duration(value)*time.Second
 	}
 	return total
+}
+
+// audioFileDuration reads how long an audio file plays. The cached tracks
+// carry their length in their header, and ffmpeg is already at hand to decode
+// them, so it is asked to open the file: it prints the length it finds, and
+// fails for the output it was not given.
+func audioFileDuration(ctx context.Context, path string) time.Duration {
+	ffmpeg, err := toolPath("ffmpeg")
+	if err != nil {
+		return 0
+	}
+	output, _ := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-i", path).CombinedOutput()
+	return parseFFmpegDuration(string(output))
+}
+
+// parseFFmpegDuration reads the length out of what ffmpeg prints about a
+// file, in its "Duration: 00:03:00.62" line.
+func parseFFmpegDuration(output string) time.Duration {
+	for line := range strings.SplitSeq(output, "\n") {
+		value, ok := strings.CutPrefix(strings.TrimSpace(line), "Duration:")
+		if !ok {
+			continue
+		}
+		value, _, _ = strings.Cut(strings.TrimSpace(value), ",")
+		parts := strings.Split(strings.TrimSpace(value), ":")
+		if len(parts) != 3 {
+			return 0
+		}
+		hours, hourErr := strconv.ParseFloat(parts[0], 64)
+		minutes, minuteErr := strconv.ParseFloat(parts[1], 64)
+		seconds, secondErr := strconv.ParseFloat(parts[2], 64)
+		if hourErr != nil || minuteErr != nil || secondErr != nil {
+			return 0
+		}
+		return time.Duration((hours*3600 + minutes*60 + seconds) * float64(time.Second))
+	}
+	return 0
 }
 
 // advance plays the next track of the queue, waiting for recommendations at
