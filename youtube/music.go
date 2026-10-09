@@ -51,6 +51,10 @@ type SearchResult struct {
 // BrowseResult represents a Music browse page such as an artist, album,
 // playlist, home feed, explore page, library, or account settings.
 type BrowseResult struct {
+	// Title and Thumbnail are the page's own heading, the name and picture it
+	// puts over its content, as an artist's does.
+	Title             string         `json:"title,omitempty"`
+	Thumbnail         string         `json:"thumbnail,omitempty"`
 	Items             []MusicItem    `json:"items"`
 	Sections          []MusicSection `json:"sections,omitempty"`
 	ContinuationToken string         `json:"continuationToken,omitempty"`
@@ -58,10 +62,36 @@ type BrowseResult struct {
 	QueuePlaylistID string `json:"queuePlaylistId,omitempty"`
 }
 
+// pageHeading reads the heading an artist, album or playlist puts over its
+// content: the first header renderer with a name, and the picture in it. The
+// renderers differ by page, which is why the one with a name is taken rather
+// than a named one.
+func pageHeading(root any) (title, thumbnail string) {
+	object, ok := root.(*jsonObject)
+	if !ok {
+		return "", ""
+	}
+	header, ok := object.get("header").(*jsonObject)
+	if !ok {
+		return "", ""
+	}
+	for _, member := range header.members {
+		renderer, ok := member.value.(*jsonObject)
+		if !ok {
+			continue
+		}
+		if title := rendererText(renderer.get("title")); title != "" {
+			return title, rendererThumbnail(renderer.get("thumbnail"))
+		}
+	}
+	return "", ""
+}
+
 // MusicSection is a shelf or grid in a browse response. A continuation response
 // without an owning shelf is represented as a synthetic section with an empty
 // Title and its continuation renderer as Kind. ContinuationToken can be passed
 // to ContinueBrowse to load more items in that section.
+
 type MusicSection struct {
 	Title             string      `json:"title,omitempty"`
 	Kind              string      `json:"kind"`
@@ -659,7 +689,9 @@ func (c *Client) newBrowseResult(raw json.RawMessage) *BrowseResult {
 // and continuation.
 func browseResult(root any) *BrowseResult {
 	items, sections := browseParts(root, true)
+	title, thumbnail := pageHeading(root)
 	return &BrowseResult{
+		Title: title, Thumbnail: thumbnail,
 		Items: items, Sections: sections,
 		ContinuationToken: pageContinuationToken(root),
 	}
