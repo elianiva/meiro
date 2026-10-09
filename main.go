@@ -109,6 +109,12 @@ type app struct {
 	menuOpen      bool
 	trackMenuOpen bool
 	trackMenuKey  string
+	// trackMenuAt marks a menu the secondary button opened, whose anchor is
+	// the pointer rather than the item's menu button; trackMenuX and
+	// trackMenuY are where the pointer was, in the box of the item clicked.
+	trackMenuAt bool
+	trackMenuX  float32
+	trackMenuY  float32
 
 	// The full-screen player, and what its side panel shows.
 	npOpen      bool

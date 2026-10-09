@@ -214,28 +214,27 @@ func TestAlbumCardMenuCopiesItsLinkWithoutOpeningTheCard(t *testing.T) {
 	}
 }
 
-// The secondary button opens the menu of a card and of a song row, as their
-// menu buttons do, without activating what was right-clicked.
-func TestRightClickOpensTheItemMenu(t *testing.T) {
+// The secondary button opens the menu of a card and of a song row, at the
+// pointer, without activating what was right-clicked.
+func TestRightClickOpensTheItemMenuAtThePointer(t *testing.T) {
 	a := newTestApp()
 	tt := ui.NewTester(a.view, 1180, 850)
 	card, ok := tt.Find("Deep Focus")
 	if !ok {
 		t.Fatalf("the home page has no card: %q", tt.Texts())
 	}
-	tt.Move(card.X+card.W/2, card.Y+card.H/2)
+	x, y := card.X+card.W/2, card.Y+card.H/2
+	tt.Move(x, y)
 	tt.Frame()
-	tt.RightClick("Deep Focus")
+	tt.RightClickAt(x, y)
 	tt.Frame()
 	if !a.trackMenuOpen {
 		t.Fatal("a right-click on a card did not open its menu")
 	}
-	if !tt.HasText("Open album") {
-		t.Errorf("the card menu is missing its items: %q", tt.Texts())
-	}
 	if got := a.router.Path(); got != "/home" {
 		t.Fatalf("a right-click on a card activated it: route = %q", got)
 	}
+	checkMenuAt(t, tt, "Open album", x, y)
 
 	b := newTestApp()
 	tb := ui.NewTester(b.view, 1180, 850)
@@ -246,9 +245,11 @@ func TestRightClickOpensTheItemMenu(t *testing.T) {
 	if !ok {
 		t.Fatalf("the album has no track row: %q", tb.Texts())
 	}
-	tb.Move(row.X+row.W/2, row.Y+row.H/2)
+	// Where the row is, away from the menu button at its end.
+	rx, ry := row.X+200, row.Y+row.H/2
+	tb.Move(rx, ry)
 	tb.Frame()
-	tb.RightClick("Album Track One")
+	tb.RightClickAt(rx, ry)
 	tb.Frame()
 	if !b.trackMenuOpen {
 		t.Fatal("a right-click on a song row did not open its menu")
@@ -260,6 +261,23 @@ func TestRightClickOpensTheItemMenu(t *testing.T) {
 	}
 	if b.current.VideoID != "" {
 		t.Errorf("a right-click on a song row started playback: %q", b.current.VideoID)
+	}
+	checkMenuAt(t, tb, "Play next", rx, ry)
+}
+
+// checkMenuAt fails unless the menu's item named opened at the pointer, which
+// was at (x, y).
+func checkMenuAt(t *testing.T, tt *ui.Tester, item string, x, y float32) {
+	t.Helper()
+	r, ok := tt.Find(item)
+	if !ok {
+		t.Fatalf("the menu has no %q: %q", item, tt.Texts())
+	}
+	if r.X < x-24 || r.X > x+24 {
+		t.Errorf("the menu opened at x=%.0f, not at the pointer at x=%.0f", r.X, x)
+	}
+	if r.Y < y || r.Y > y+40 {
+		t.Errorf("the menu opened at y=%.0f, not below the pointer at y=%.0f", r.Y, y)
 	}
 }
 
