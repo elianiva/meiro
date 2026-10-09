@@ -39,18 +39,107 @@ func importSources() []importSource {
 			return firstSession(ctx, browser.label, browser.selectors(), ytDlpCookie)
 		}})
 	}
-	if home, err := os.UserHomeDir(); err == nil && runtime.GOOS == "darwin" {
-		dir := filepath.Join(home, "Library", "Application Support", "net.imput.helium")
-		if profiles := chromiumProfiles(dir); len(profiles) > 0 {
-			key := keychainKey{service: "Helium Storage Key", account: "Helium"}
-			sources = append(sources, importSource{"Helium", "helium", func(ctx context.Context) (string, error) {
-				return firstSession(ctx, "Helium", profiles, func(ctx context.Context, profile string) (string, error) {
-					return chromiumCookie(ctx, profile, key)
-				})
-			}})
-		}
+	if helium, ok := heliumSource(); ok {
+		sources = append(sources, helium)
 	}
 	return sources
+}
+
+// heliumSource offers Helium when one of its profiles is on this machine.
+// yt-dlp does not know it by name. On macOS Helium keeps its cookie key under
+// a name yt-dlp does not look under, so the app reads its database itself. On
+// Linux it keeps its key, and its profiles, the way Chromium does, so yt-dlp
+// reads them once it is told the profile and the keyring.
+func heliumSource() (importSource, bool) {
+	dir := heliumDir()
+	if dir == "" {
+		return importSource{}, false
+	}
+	profiles := chromiumProfiles(dir)
+	if len(profiles) == 0 {
+		return importSource{}, false
+	}
+	if runtime.GOOS == "darwin" {
+		key := keychainKey{service: "Helium Storage Key", account: "Helium"}
+		return importSource{"Helium", "helium", func(ctx context.Context) (string, error) {
+			return firstSession(ctx, "Helium", profiles, func(ctx context.Context, profile string) (string, error) {
+				return chromiumCookie(ctx, profile, key)
+			})
+		}}, true
+	}
+	selectors := profileSelectors(chromiumSpec("chromium", sessionKeyring()), profiles, false)
+	return importSource{"Helium", "helium", func(ctx context.Context) (string, error) {
+		return firstSession(ctx, "Helium", selectors, ytDlpCookie)
+	}}, true
+}
+
+// heliumDir is where Helium keeps its profiles, and the empty string on a
+// system it does not run on.
+func heliumDir() string {
+	switch runtime.GOOS {
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(home, "Library", "Application Support", "net.imput.helium")
+	case "linux":
+		config, err := os.UserConfigDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(config, "net.imput.helium")
+	}
+	return ""
+}
+
+// ytDlpKeyring names the keyring to tell yt-dlp to use, given the session's
+// environment, and is the empty string when yt-dlp's own choice is right.
+//
+// yt-dlp reads the desktop environment to find the keyring that holds a
+// Chromium browser's cookie key, and on a session it cannot place, a bare
+// Wayland compositor for one, it settles on plain text: it never looks in a
+// keyring, and reports that it could not decrypt the cookies. A browser on
+// such a session keeps that key in the Secret Service, which is what to name.
+// A KDE session keeps a wallet of its own, which yt-dlp does know how to open,
+// and it names it in more than one variable, so any of them leaves the choice
+// to yt-dlp.
+func ytDlpKeyring(env func(string) string) string {
+	if kdeSession(env) {
+		return ""
+	}
+	return "gnomekeyring"
+}
+
+// kdeSession reports whether the environment names a KDE session, by the signs
+// yt-dlp reads: KDE in XDG_CURRENT_DESKTOP, KDE_FULL_SESSION, or
+// DESKTOP_SESSION, with KDE_SESSION_VERSION telling its wallets apart.
+func kdeSession(env func(string) string) bool {
+	if env("KDE_FULL_SESSION") != "" || env("KDE_SESSION_VERSION") != "" {
+		return true
+	}
+	for _, part := range strings.Split(env("XDG_CURRENT_DESKTOP"), ":") {
+		if part == "KDE" {
+			return true
+		}
+	}
+	switch env("DESKTOP_SESSION") {
+	case "kde", "kde4", "kde-plasma", "plasma":
+		return true
+	}
+	return false
+}
+
+// sessionKeyring is ytDlpKeyring for the session this app runs in.
+func sessionKeyring() string { return ytDlpKeyring(os.Getenv) }
+
+// chromiumSpec names a Chromium browser for yt-dlp, with the keyring that
+// holds its cookie key.
+func chromiumSpec(id, keyring string) string {
+	if keyring == "" {
+		return id
+	}
+	return id + "+" + keyring
 }
 
 func browserImports() []browserImport {
@@ -67,11 +156,14 @@ func browserImports() []browserImport {
 func chromiumBrowserSelectors(browser string) []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return []string{browser}
+		return []string{chromiumSpec(browser, sessionKeyring())}
 	}
 	config, _ := os.UserConfigDir()
 	root := chromiumProfileRoot(browser, home, config, os.Getenv("LOCALAPPDATA"), runtime.GOOS)
-	return profileSelectors(browser, chromiumProfiles(root), true)
+	// yt-dlp does not find the key a Chromium browser encrypts its cookies
+	// with under its own default on Linux, so the keyring that holds it goes
+	// with the browser.
+	return profileSelectors(chromiumSpec(browser, sessionKeyring()), chromiumProfiles(root), true)
 }
 
 func firefoxBrowserSelectors() []string {
