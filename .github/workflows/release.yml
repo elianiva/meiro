@@ -36,9 +36,11 @@ jobs:
               echo "Manual retry for $tag."
             else
               echo "Manual run on ${{ github.ref_name }}: building without publishing."
-              echo "tag=" >> "$GITHUB_OUTPUT"
-              echo "version=0.0.0" >> "$GITHUB_OUTPUT"
-              echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+              {
+                echo "tag="
+                echo "version=0.0.0"
+                echo "sha=${{ github.sha }}"
+              } >> "$GITHUB_OUTPUT"
               exit 0
             fi
           else
@@ -48,9 +50,11 @@ jobs:
             v*) ;;
             *) echo "Not a version tag: $tag"; exit 1 ;;
           esac
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "sha=${{ github.sha }}"
+          } >> "$GITHUB_OUTPUT"
           echo "Releasing $tag"
       - uses: actions/checkout@v5
         with:
