@@ -53,9 +53,7 @@ type Player struct {
 	ffmpegPath string
 	lookErr    error
 
-	audioOnce sync.Once
-	audioCtx  *oto.Context
-	audioErr  error
+	audio *sharedAudio
 }
 
 // Option configures a Player.
@@ -70,10 +68,13 @@ func WithFFmpeg(path string) Option {
 // New creates a player that is not yet playing anything. It does not touch
 // the audio device or the file system.
 func New(options ...Option) *Player {
-	p := &Player{volume: 1}
+	p := &Player{volume: 1, audio: processAudio}
 	for _, option := range options {
 		option(p)
 	}
+	// Opening the device can take a long while; do it now, off the thread
+	// that will later press play.
+	go p.audio.context()
 	return p
 }
 
@@ -179,7 +180,11 @@ func (p *Player) Playing() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	s := p.session
-	return s != nil && !s.paused && !p.endedLocked(s)
+	if s == nil || s.paused || p.endedLocked(s) {
+		return false
+	}
+	// The lock is held; Err on oto objects does not take it.
+	return s.out == nil || s.out.Err() == nil
 }
 
 // Buffering reports whether the stream is playing but has not yet given any
@@ -238,6 +243,9 @@ func (p *Player) Failure() string {
 	if s == nil || stopped {
 		return ""
 	}
+	if err := p.audioFailure(s); err != nil {
+		return "audio device: " + err.Error()
+	}
 	select {
 	case <-s.done:
 	default:
@@ -280,7 +288,7 @@ func (p *Player) startLocked(url string, at time.Duration, paused bool) error {
 	if err != nil {
 		return err
 	}
-	audioCtx, err := p.audioContext()
+	audioCtx, err := p.audio.context()
 	if err != nil {
 		return err
 	}
@@ -303,7 +311,7 @@ func (p *Player) startLocked(url string, at time.Duration, paused bool) error {
 		source: newCountingReader(pipe),
 		offset: at, paused: paused, done: make(chan struct{}), quit: make(chan struct{}),
 	}
-	s.out = audioCtx.NewPlayer(s.source)
+	s.out = audioCtx.newPlayer(s.source)
 	s.out.SetVolume(p.volume)
 	if !paused {
 		s.out.Play()
@@ -400,21 +408,82 @@ func (p *Player) resolveFFmpeg() (string, error) {
 	return p.ffmpegPath, nil
 }
 
-// audioContext opens the audio device once, and reports why it could not.
-func (p *Player) audioContext() (*oto.Context, error) {
-	p.audioOnce.Do(func() {
-		ctx, _, err := oto.NewContext(&oto.NewContextOptions{
-			SampleRate:   sampleRate,
-			ChannelCount: channelCount,
-			Format:       oto.FormatSignedInt16LE,
-		})
+// output is the part of an oto player a session drives.
+type output interface {
+	Play()
+	Pause()
+	SetVolume(float64)
+	BufferedSize() int
+	IsPlaying() bool
+	PauseAndStopReading()
+	Err() error
+}
+
+// device is the process-wide audio context.
+type device interface {
+	newPlayer(io.Reader) output
+	Err() error
+}
+
+type otoDevice struct{ ctx *oto.Context }
+
+func (d otoDevice) newPlayer(r io.Reader) output { return d.ctx.NewPlayer(r) }
+func (d otoDevice) Err() error                   { return d.ctx.Err() }
+
+// sharedAudio opens an audio device once and remembers the outcome. Oto allows
+// one context per process and cannot retry a failed open, so a failure is
+// kept rather than hidden behind a second attempt that would only report
+// "context is already created".
+type sharedAudio struct {
+	open func() (device, error)
+	once sync.Once
+	dev  device
+	err  error
+}
+
+// processAudio is the context every Player shares.
+var processAudio = &sharedAudio{open: openOto}
+
+func openOto() (device, error) {
+	ctx, ready, err := oto.NewContext(&oto.NewContextOptions{
+		SampleRate:      sampleRate,
+		ChannelCount:    channelCount,
+		Format:          oto.FormatSignedInt16LE,
+		ApplicationName: "Meiro",
+	})
+	if err != nil {
+		return nil, err
+	}
+	<-ready
+	return otoDevice{ctx}, nil
+}
+
+// context opens the audio device on first use, and reports why it could not.
+func (a *sharedAudio) context() (device, error) {
+	a.once.Do(func() {
+		dev, err := a.open()
 		if err != nil {
-			p.audioErr = fmt.Errorf("player: open the audio device: %w", err)
+			a.err = fmt.Errorf("player: open the audio device: %w", err)
 			return
 		}
-		p.audioCtx = ctx
+		a.dev = dev
 	})
-	return p.audioCtx, p.audioErr
+	return a.dev, a.err
+}
+
+// audioFailure returns why the device or the session's output stopped working,
+// or nil. The caller must not hold p.mu.
+func (p *Player) audioFailure(s *session) error {
+	if s == nil || s.out == nil {
+		return nil
+	}
+	if err := s.out.Err(); err != nil {
+		return err
+	}
+	if dev, err := p.audio.context(); err == nil && dev != nil {
+		return dev.Err()
+	}
+	return nil
 }
 
 // session is one decode: a child ffmpeg, the pipe it writes PCM to, and the
@@ -425,7 +494,7 @@ type session struct {
 	pipe   io.ReadCloser
 	stderr *boundedBuffer
 	source *countingReader
-	out    *oto.Player
+	out    output
 	done   chan struct{}
 	// quit is closed when the app stops the decode.
 	quit chan struct{}

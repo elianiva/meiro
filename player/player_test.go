@@ -199,7 +199,7 @@ func TestStopDoesNotWaitForAStalledStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := New(WithFFmpeg(script))
-	if _, err := p.audioContext(); err != nil {
+	if _, err := p.audio.context(); err != nil {
 		t.Skipf("no audio device: %v", err)
 	}
 	if err := p.Play("http://example.invalid/stalled"); err != nil {
@@ -265,5 +265,76 @@ func TestIsHTTPRecognisesOnlyTheStreamingSchemes(t *testing.T) {
 		if got := isHTTP(test.rawURL); got != test.want {
 			t.Errorf("isHTTP(%q) = %v, want %v", test.rawURL, got, test.want)
 		}
+	}
+}
+
+type fakeOutput struct {
+	err     error
+	playing bool
+}
+
+func (f *fakeOutput) Play()                { f.playing = true }
+func (f *fakeOutput) Pause()               { f.playing = false }
+func (f *fakeOutput) SetVolume(float64)    {}
+func (f *fakeOutput) BufferedSize() int    { return 0 }
+func (f *fakeOutput) IsPlaying() bool      { return f.playing }
+func (f *fakeOutput) PauseAndStopReading() {}
+func (f *fakeOutput) Err() error           { return f.err }
+
+type fakeDevice struct{ err error }
+
+func (fakeDevice) newPlayer(io.Reader) output { return &fakeOutput{} }
+func (d fakeDevice) Err() error               { return d.err }
+
+func TestPlayersShareOneContext(t *testing.T) {
+	opened := 0
+	shared := &sharedAudio{open: func() (device, error) { opened++; return fakeDevice{}, nil }}
+	a, b := &Player{audio: shared}, &Player{audio: shared}
+	if _, err := a.audio.context(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.audio.context(); err != nil {
+		t.Fatal(err)
+	}
+	if opened != 1 {
+		t.Errorf("device opened %d times, want 1", opened)
+	}
+}
+
+func TestOpenErrorIsReportedAndKept(t *testing.T) {
+	opened := 0
+	shared := &sharedAudio{open: func() (device, error) { opened++; return nil, errors.New("no device") }}
+	p := &Player{audio: shared, ffmpegPath: "ffmpeg"}
+	p.lookOnce.Do(func() {})
+	for range 2 {
+		if err := p.Play("http://example.invalid/x"); err == nil {
+			t.Fatal("want an error when the device cannot open")
+		}
+	}
+	if opened != 1 {
+		t.Errorf("open attempted %d times, want 1", opened)
+	}
+}
+
+func TestOutputErrorBecomesFailure(t *testing.T) {
+	out := &fakeOutput{playing: true}
+	source := newCountingReader(strings.NewReader(""))
+	s := &session{source: source, stderr: &boundedBuffer{limit: 16}, done: make(chan struct{}), out: out}
+	p := &Player{session: s, audio: &sharedAudio{open: func() (device, error) { return fakeDevice{}, nil }}}
+	if got := p.Failure(); got != "" {
+		t.Fatalf("unexpected failure %q", got)
+	}
+	out.err = errors.New("device lost")
+	if got := p.Failure(); !strings.Contains(got, "device lost") {
+		t.Errorf("failure = %q, want the output error", got)
+	}
+	if p.Playing() {
+		t.Error("a player whose output failed must not report playing")
+	}
+
+	out.err = nil
+	p.audio = &sharedAudio{open: func() (device, error) { return fakeDevice{err: errors.New("ctx dead")}, nil }}
+	if got := p.Failure(); !strings.Contains(got, "ctx dead") {
+		t.Errorf("failure = %q, want the context error", got)
 	}
 }
