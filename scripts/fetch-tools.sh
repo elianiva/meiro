@@ -130,6 +130,27 @@ else
 	rm -rf "$out/bin/_internal" "$out/bin/yt-dlp"
 	cp -R "$work/yt-dlp/_internal" "$out/bin/_internal"
 	install -m 0755 "$work/yt-dlp/${ytdlp_asset%.zip}" "$out/bin/yt-dlp"
+	# The macOS zip flattens the versioned-framework symlinks of
+	# _internal/Python.framework into duplicate real files, which codesign
+	# rejects as an ambiguous bundle format. Restore the canonical layout
+	# so the build's nested signing accepts it.
+	fw="$out/bin/_internal/Python.framework"
+	if [[ -d "$fw" && -d "$fw/Versions/Current" && ! -L "$fw/Versions/Current" ]]; then
+		ver=""
+		for d in "$fw"/Versions/*/; do
+			b="$(basename "$d")"
+			[[ "$b" == "Current" ]] && continue
+			ver="$b"
+			break
+		done
+		if [[ -n "$ver" && -f "$fw/Versions/$ver/Python" ]]; then
+			rm -f "$fw/Python"
+			rm -rf "$fw/Resources" "$fw/Versions/Current"
+			ln -s "$ver" "$fw/Versions/Current"
+			ln -s "Versions/Current/Python" "$fw/Python"
+			ln -s "Versions/Current/Resources" "$fw/Resources"
+		fi
+	fi
 	printf '%s\n' "$expected" > "$out/bin/.yt-dlp.sha256"
 fi
 
