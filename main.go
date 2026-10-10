@@ -428,7 +428,13 @@ func (a *app) chooseAudioCacheDirectory() {
 			a.cacheDirectoryError = ""
 			a.saveSettings()
 			if previous != nil {
-				a.run(previous.close)
+				a.run(func() {
+					previous.close()
+					// The old location is app-owned and no longer used.
+					if previous.dir != cache.dir {
+						previous.purge()
+					}
+				})
 			}
 		})
 	})

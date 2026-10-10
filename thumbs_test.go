@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -597,5 +598,29 @@ func TestThumbCacheLimitsConcurrentDownloads(t *testing.T) {
 	waitFor(t, func() bool { cache.mu.Lock(); defer cache.mu.Unlock(); return len(cache.bitmaps) == covers })
 	if got := peak.Load(); got > thumbFetches {
 		t.Errorf("%d downloads ran together, want at most %d", got, thumbFetches)
+	}
+}
+
+func TestThumbEvictionKeepsIndexesConsistent(t *testing.T) {
+	cache := newThumbCache(func() {})
+	cache.synth = nil
+	for i := range 5 {
+		cache.store(fmt.Sprintf("https://x/%d=w64-h64", i), &thumb{bitmap: &ui.Bitmap{}, bytes: thumbBudget / 3})
+	}
+	if cache.recent.Len() != len(cache.bitmaps) || len(cache.bitmaps) != 3 {
+		t.Fatalf("list = %d, bitmaps = %d; want 3 each", cache.recent.Len(), len(cache.bitmaps))
+	}
+	if cache.held != 3*(thumbBudget/3) {
+		t.Errorf("held = %d, want %d", cache.held, 3*(thumbBudget/3))
+	}
+	if _, ok := cache.bitmaps["https://x/0=w64-h64"]; ok {
+		t.Error("oldest bitmap survived")
+	}
+	n := 0
+	for _, urls := range cache.sizes {
+		n += len(urls)
+	}
+	if n != 3 {
+		t.Errorf("size index has %d entries, want 3", n)
 	}
 }

@@ -7,9 +7,11 @@ import (
 	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -87,5 +89,27 @@ INSERT INTO cookies VALUES ('.google.com', 'SID', 'other', X'', 0);
 	}
 	if _, err := os.Stat(database + "-journal"); err == nil {
 		t.Error("the read left a journal in the browser's profile")
+	}
+}
+
+func TestCopyFileStreamsPrivately(t *testing.T) {
+	dir := t.TempDir()
+	src, dst := filepath.Join(dir, "src"), filepath.Join(dir, "dst")
+	if err := os.WriteFile(src, bytes.Repeat([]byte("ab"), 1<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFile(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := os.ReadFile(src)
+	got, _ := os.ReadFile(dst)
+	if !bytes.Equal(got, want) {
+		t.Error("copy differs from source")
+	}
+	if info, _ := os.Stat(dst); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
+	}
+	if err := copyFile(filepath.Join(dir, "missing"), filepath.Join(dir, "x")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing source error = %v, want ErrNotExist", err)
 	}
 }

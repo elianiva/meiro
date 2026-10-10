@@ -361,6 +361,45 @@ func (c *audioCache) removeFiles(paths []string) {
 	}
 }
 
+// purge deletes the files this cache owns, and then its directory when
+// nothing else is in it: downloaded audio named by key, and abandoned
+// temporary download folders. Anything else in the directory is left alone.
+// It is for a cache that has been replaced by one in another location, and
+// must run after close so no download is still writing.
+func (c *audioCache) purge() {
+	if c == nil {
+		return
+	}
+	entries, err := os.ReadDir(c.dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		path := filepath.Join(c.dir, entry.Name())
+		switch {
+		case entry.IsDir() && strings.HasPrefix(entry.Name(), ".audio-"):
+			removeAll(path)
+		case !entry.IsDir() && isAudioCacheFile(entry.Name()):
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Printf("removing old cached audio %s: %v", path, err)
+			}
+		}
+	}
+	// Remove fails on a directory that still holds the user's files.
+	_ = os.Remove(c.dir)
+}
+
+// isAudioCacheFile reports whether name is a file the cache itself writes: a
+// SHA-256 key followed by an audio extension.
+func isAudioCacheFile(name string) bool {
+	key, _, ok := strings.Cut(name, ".")
+	if !ok || len(key) != sha256.Size*2 || !audioCacheExtension(filepath.Ext(name)) {
+		return false
+	}
+	_, err := hex.DecodeString(key)
+	return err == nil
+}
+
 type audioCacheFile struct {
 	key  string
 	path string
@@ -377,16 +416,10 @@ func (c *audioCache) scanLocked() {
 		return
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !audioCacheExtension(filepath.Ext(entry.Name())) {
+		if entry.IsDir() || !isAudioCacheFile(entry.Name()) {
 			continue
 		}
-		key, _, ok := strings.Cut(entry.Name(), ".")
-		if !ok || len(key) != sha256.Size*2 {
-			continue
-		}
-		if _, err := hex.DecodeString(key); err != nil {
-			continue
-		}
+		key, _, _ := strings.Cut(entry.Name(), ".")
 		info, err := entry.Info()
 		if err != nil {
 			continue

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"container/list"
 	"errors"
 	"fmt"
 	"image"
@@ -68,6 +69,9 @@ type thumbCache struct {
 	cond    *sync.Cond
 	queue   map[string]thumbJob
 	bitmaps map[string]*thumb
+	// recent orders bitmaps from most to least recently drawn, so eviction
+	// takes the back instead of scanning every entry.
+	recent  *list.List
 	sources map[string]*thumbSource
 	// held and sourceHeld count their respective caches' bytes. tick orders
 	// bitmap touches and source-cache reads and writes for both LRUs. seq
@@ -158,6 +162,9 @@ func permanentFailure(err error) bool {
 // thumb is one cached bitmap, the colour taken from it, and what it costs.
 type thumb struct {
 	bitmap *ui.Bitmap
+	// url and element place the bitmap in thumbCache.recent.
+	url     string
+	element *list.Element
 	// colour is only taken from the picture when something asks for it, so
 	// covers never pay for a theme seed they will not use. colourReady
 	// separates "not taken yet" from "taken and found nothing".
@@ -189,6 +196,7 @@ func newThumbCache(notify func()) *thumbCache {
 		client:  &http.Client{Timeout: 30 * time.Second},
 		notify:  notify,
 		bitmaps: make(map[string]*thumb),
+		recent:  list.New(),
 		sources: make(map[string]*thumbSource),
 		queue:   make(map[string]thumbJob),
 		pending: make(map[string]bool),
@@ -284,6 +292,9 @@ func (t *thumbCache) retryDue(url string) bool {
 func (t *thumbCache) touch(entry *thumb) *ui.Bitmap {
 	t.tick++
 	entry.used = t.tick
+	if entry.element != nil {
+		t.recent.MoveToFront(entry.element)
+	}
 	return entry.bitmap
 }
 
@@ -387,7 +398,15 @@ func (t *thumbCache) download(url string) ([]byte, error) {
 		return nil, statusError{code: response.StatusCode}
 	}
 	// One byte more than the limit tells a picture that fits from one cut off.
-	data, err := io.ReadAll(io.LimitReader(response.Body, thumbLimit+1))
+	size := 512 << 10
+	if n := response.ContentLength; n > thumbLimit {
+		return nil, errTooLarge
+	} else if n > 0 {
+		size = int(n)
+	}
+	buffer := bytes.NewBuffer(make([]byte, 0, size+1))
+	_, err = io.Copy(buffer, io.LimitReader(response.Body, thumbLimit+1))
+	data := buffer.Bytes()
 	if err != nil {
 		return nil, err
 	}
@@ -496,6 +515,11 @@ func (t *thumbCache) storeSource(url string, data []byte) {
 // store keeps a bitmap that has landed, and drops the ones drawn least
 // recently while the cache is over its budget. The caller holds the lock.
 func (t *thumbCache) store(url string, entry *thumb) {
+	if old, ok := t.bitmaps[url]; ok {
+		t.forgetLocked(url, old)
+	}
+	entry.url = url
+	entry.element = t.recent.PushFront(entry)
 	t.bitmaps[url] = entry
 	t.touch(entry)
 	t.held += entry.bytes
@@ -509,21 +533,27 @@ func (t *thumbCache) store(url string, entry *thumb) {
 // evictLeastRecent drops the bitmap that went longest without being drawn,
 // other than keep, which has only just landed.
 func (t *thumbCache) evictLeastRecent(keep string) {
-	oldest, found := "", false
-	for url, entry := range t.bitmaps {
-		if url != keep && (!found || entry.used < t.bitmaps[oldest].used) {
-			oldest, found = url, true
+	for element := t.recent.Back(); element != nil; element = element.Prev() {
+		entry := element.Value.(*thumb)
+		if entry.url != keep {
+			t.forgetLocked(entry.url, entry)
+			return
 		}
 	}
-	if !found {
-		return
+}
+
+// forgetLocked removes a bitmap from every index. The caller holds the lock.
+func (t *thumbCache) forgetLocked(url string, entry *thumb) {
+	t.held -= entry.bytes
+	delete(t.bitmaps, url)
+	if entry.element != nil {
+		t.recent.Remove(entry.element)
+		entry.element = nil
 	}
-	t.held -= t.bitmaps[oldest].bytes
-	delete(t.bitmaps, oldest)
-	base := sizeless(oldest)
+	base := sizeless(url)
 	kept := t.sizes[base][:0]
 	for _, other := range t.sizes[base] {
-		if other != oldest {
+		if other != url {
 			kept = append(kept, other)
 		}
 	}

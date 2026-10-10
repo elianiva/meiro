@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elianiva/meiro/youtube"
@@ -450,6 +451,28 @@ func ytDlpStream(ctx context.Context, videoID, cookie string) (string, time.Dura
 // runtime already on PATH is the fallback for a checkout that has not fetched
 // the bundled tools yet.
 func ytDlpJSRuntimeArgs() (string, []string) {
+	jsRuntimeMu.Lock()
+	defer jsRuntimeMu.Unlock()
+	if jsRuntimeFound {
+		return jsRuntimeName, slices.Clone(jsRuntimeArgs)
+	}
+	name, args := lookupJSRuntime()
+	// Only a runtime that exists is remembered, so installing one later is
+	// noticed and a missing tool is still reported on every call.
+	if args != nil {
+		jsRuntimeFound, jsRuntimeName, jsRuntimeArgs = true, name, args
+	}
+	return name, slices.Clone(args)
+}
+
+var (
+	jsRuntimeMu    sync.Mutex
+	jsRuntimeFound bool
+	jsRuntimeName  string
+	jsRuntimeArgs  []string
+)
+
+func lookupJSRuntime() (string, []string) {
 	if path, err := toolPath("qjs"); err == nil {
 		return "quickjs", []string{"--js-runtimes", "quickjs:" + path}
 	}

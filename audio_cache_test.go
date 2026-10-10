@@ -738,3 +738,50 @@ func TestAudioCacheEvictionContinuesPastARemovalFailure(t *testing.T) {
 		t.Errorf("cache directory holds %d files after a failed removal", len(files))
 	}
 }
+
+func TestAudioCachePurgeRemovesOnlyOwnedFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Meiro Audio Cache")
+	cache, err := newAudioCache(dir, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := filepath.Join(dir, audioCacheKey("a")+".m4a")
+	temp := filepath.Join(dir, ".audio-123")
+	user := filepath.Join(dir, "notes.txt")
+	lookalike := filepath.Join(dir, "song.m4a")
+	for _, path := range []string{owned, filepath.Join(temp, "partial"), user, lookalike} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cache.close()
+	cache.purge()
+	for _, gone := range []string{owned, temp} {
+		if _, err := os.Stat(gone); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s still exists after purge", gone)
+		}
+	}
+	for _, kept := range []string{user, lookalike} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Errorf("purge removed %s: %v", kept, err)
+		}
+	}
+
+	// With nothing but owned files, the directory itself goes too.
+	empty := filepath.Join(t.TempDir(), "Meiro Audio Cache")
+	other, err := newAudioCache(empty, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(empty, audioCacheKey("b")+".mp3"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	other.close()
+	other.purge()
+	if _, err := os.Stat(empty); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("empty cache directory remains: %v", err)
+	}
+}
