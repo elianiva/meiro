@@ -152,8 +152,9 @@ const (
 	Monochrome
 )
 
-// Styles lists every style in the order a picker shows them.
-var Styles = []Style{TonalSpot, Vibrant, Expressive, Neutral, Monochrome}
+// Styles lists every style in the order a picker shows them. Each call returns
+// a fresh slice, so callers cannot change the collection.
+func Styles() []Style { return []Style{TonalSpot, Vibrant, Expressive, Neutral, Monochrome} }
 
 func (s Style) String() string {
 	switch s {

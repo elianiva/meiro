@@ -146,7 +146,7 @@ func fitLabel(c *ui.Context, role Role, label string, emphasized bool, size floa
 // colour and state layers follow the active theme. A pressed button squares
 // off along a spring; a selected toggle settles into the other shape.
 func Button(c *ui.Context, spec ButtonSpec) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	d := spec.Size.dims()
 	b := newButtonBase(c, spec.Key)
 	container, content, outline := containerColors(sc, spec.Kind, spec.Toggle, spec.Selected)
@@ -186,7 +186,7 @@ func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 		b.Border(1, outline)
 	}
 	if spec.Kind == Elevated && !spec.Disabled {
-		Elevation(b, 1)
+		Elevation(c, b, 1)
 	}
 	b.Children(func() {
 		if spec.Icon != nil {
@@ -238,7 +238,7 @@ const (
 
 // IconButton builds a round button holding one icon.
 func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	d := spec.Size.dims()
 	if spec.Dimension > 0 {
 		d = buttonDims{height: spec.Dimension, icon: spec.Dimension * 0.5, square: spec.Dimension * 0.34, pressed: spec.Dimension * 0.26}
@@ -334,7 +334,7 @@ const (
 // FAB builds a floating action button, or an extended one when it has a
 // label. It sits at elevation 3 and rises to 4 under the pointer.
 func FAB(c *ui.Context, spec FABSpec) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	b := newButtonBase(c, spec.Key)
 	var container, content ui.Color
 	switch spec.Tone {
@@ -370,9 +370,9 @@ func FAB(c *ui.Context, spec FABSpec) ui.Element {
 		b.PaddingX(16).Label(spec.Label)
 	}
 	if b.Hovered() {
-		Elevation(b, 4)
+		Elevation(c, b, 4)
 	} else {
-		Elevation(b, 3)
+		Elevation(c, b, 3)
 	}
 	b.Children(func() {
 		ui.Icon(c, spec.Icon).FontSize(icon).TextColor(content)
@@ -386,7 +386,7 @@ func FAB(c *ui.Context, spec FABSpec) ui.Element {
 // Chip builds a filter chip: outlined while off, tonal with a check when on.
 // It reports its click, so the caller owns the selection.
 func Chip(c *ui.Context, label string, selected bool, key any) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	b := newButtonBase(c, key)
 	container, content, outline := ui.Transparent, sc.OnSurfaceVariant, sc.OutlineVariant
 	if selected {
@@ -412,7 +412,7 @@ func Chip(c *ui.Context, label string, selected bool, key any) ui.Element {
 // neighbours square their inner corners, so the choice reads in shape first.
 // It reports whether the user changed the choice.
 func ButtonGroup(c *ui.Context, key any, selected *int, labels []string, icons []*ui.SVG) bool {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	group := ui.SegmentedBase(c.Key(key), selected, len(labels))
 	group.Track.Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
 		for i, label := range labels {

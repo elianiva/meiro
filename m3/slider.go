@@ -38,7 +38,7 @@ type SliderSpec struct {
 // part around a slim handle, which narrows as it is held. It reports changes
 // and presses through the returned element.
 func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	thick := spec.Thickness
 	if thick == 0 {
 		thick = 4

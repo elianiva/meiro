@@ -65,7 +65,7 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 // and goes flat when it stops. It follows the player until the user takes it,
 // and seeks when they let go. Times stand at both ends.
 func (a *app) scrubber(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	known := a.total > 0
 	total := a.total.Seconds()
 	if !known {
@@ -126,7 +126,7 @@ func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 // trackLine is the name of the current track over who made it, or the
 // reason it does not play.
 func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role) ui.Element {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	return ui.Column(c).Gap(1).MinWidth(0).Children(func() {
 		m3.EmphasizedText(c, title, a.current.Title).SingleLine().TextColor(sc.OnSurface)
 		line, colour := a.current.Subtitle, sc.OnSurfaceVariant
@@ -140,13 +140,13 @@ func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role) ui.Element {
 // playerBar is the floating player: what plays on the left, the transport and
 // the scrubber in the middle, volume and the full-screen player on the right.
 func (a *app) playerBar(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	w, _ := c.Size()
 	wide := w > 1180
 	bar := ui.Row(c).Key("player").Absolute().Left(playerGutter).Right(playerGutter).Bottom(playerGutter).
 		Height(playerHeight).Padding(10, 20, 10, 12).Gap(16).AlignItems(ui.Center).
 		Radius(m3.ExtraLarge).Background(sc.SurfaceContainerHigh)
-	m3.Elevation(bar, 3)
+	m3.Elevation(c, bar, 3)
 	bar.Transition(ui.ElementTransition{
 		Enter: &ui.Motion{Y: 48}, Position: true, Duration: m3.SpatialDefault.Duration(), Ease: m3.SpatialDefault.Ease(),
 	})
@@ -191,7 +191,7 @@ func (a *app) playerBar(c *ui.Context) {
 // nowPlaying is the full-screen player: the artwork large, the controls, and
 // beside them the queue or the lyrics. It slides up over the sheet.
 func (a *app) nowPlaying(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	w, h := c.Size()
 	wide := w > 1040
 	wash := sc.PrimaryContainer.Mix(sc.Surface, 0.3)
@@ -266,18 +266,18 @@ func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius fl
 			Icon: m3.IconMore, Label: "More options for " + a.current.Title, Key: key + "-button",
 		}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
 	})
-	m3.Elevation(artwork, 3)
+	m3.Elevation(c, artwork, 3)
 	if menuButton.Clicked() {
-		a.trackMenuKey, a.trackMenuOpen = key, true
+		a.menu.show(key, false, 0, 0)
 	}
-	if a.trackMenuKey == key {
+	if a.menu.owns(key) {
 		a.songMenu(c, menuButton, key, a.current)
 	}
 }
 
 // sidePanel holds the queue, lyrics and related songs under tabs, on a tonal card.
 func (a *app) sidePanel(c *ui.Context, wide bool) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	card := ui.Column(c).Key("np-side").Radius(m3.ExtraLarge).Background(sc.SurfaceContainerLow.Alpha(0.9)).Clip().
 		Padding(8, 0, 0).Gap(4)
 	if wide {
@@ -299,7 +299,7 @@ func (a *app) sidePanel(c *ui.Context, wide bool) {
 }
 
 func (a *app) nowPlayingTabs(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	labels := []string{"Up next", "Lyrics", "Related"}
 	ui.Row(c).Padding(12, 12, 8).Gap(4).Children(func() {
 		for index, label := range labels {
@@ -328,7 +328,7 @@ func (a *app) nowPlayingTabs(c *ui.Context) {
 
 // queueView lists the tracks of the queue, with the current one picked out.
 func (a *app) queueView(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	if a.queueSource != "" {
 		ui.Column(c).Padding(8, 16, 4).Gap(2).Children(func() {
 			m3.Text(c, m3.BodySmall, "Playing from").TextColor(sc.OnSurfaceVariant)
@@ -439,7 +439,7 @@ func (a *app) relatedView(c *ui.Context) {
 // lyricsView shows the lyrics of the track playing, loading them as the tab
 // opens.
 func (a *app) lyricsView(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	switch {
 	case a.lyrics.loading:
 		ui.Column(c).Grow(1).Center().Children(func() { m3.LoadingIndicator(c, 56, true) })

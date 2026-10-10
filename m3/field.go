@@ -28,7 +28,7 @@ type SearchResult struct {
 // SearchBar builds a pill-shaped search field. It never searches by itself:
 // typing only edits the text, and Submitted reports Enter.
 func SearchBar(c *ui.Context, spec SearchSpec) SearchResult {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	height := spec.Height
 	if height == 0 {
 		height = 56

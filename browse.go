@@ -135,7 +135,7 @@ func (a *app) carousel(key string) *m3.CarouselState {
 
 // sectionHeading names a section of a page, with arrows that page its shelf.
 func (a *app) sectionHeading(c *ui.Context, r row, paged, first bool) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	top := float32(28)
 	if first {
 		top = 4
@@ -267,7 +267,7 @@ func artRadius(item youtube.MusicItem, square float32) float32 {
 // card shows an album, a playlist, an artist or a song as artwork over its
 // name. A play button rises over the artwork under the pointer.
 func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, list string, position int, fetchArtwork bool) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	kind, _ := targetOf(item)
 	key := cardKey(item, list, position)
 	card := ui.ButtonBase(c.Key(key))
@@ -277,7 +277,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		Label(item.Title)
 	played, menuClicked := false, false
 	var menuButton, menuAnchor ui.Element
-	hasMenu := false
+	hasMenu, hasAnchor := false, false
 	card.Children(func() {
 		radius := artRadius(item, m3.LargeIncreased)
 		opening := a.opening == itemKey("open", item)+"\x00"+list+"#"+strconv.Itoa(position)
@@ -292,7 +292,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 				})
 				return
 			}
-			if hovered || card.FocusVisible() || a.trackMenuOpen && a.trackMenuKey == key+"-menu" {
+			if hovered || card.FocusVisible() || a.menu.opened(key+"-menu") {
 				if kind != "" {
 					menuButton = m3.IconButton(c, m3.IconButtonSpec{
 						Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
@@ -315,26 +315,18 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		}
 		// A menu the pointer opened points at the pointer; one the menu
 		// button opened points at the button.
-		if a.trackMenuAt && a.trackMenuKey == key+"-menu" {
-			menuAnchor = a.menuAnchor(c)
-		}
+		menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key+"-menu")
 	})
 	if hasMenu {
 		pointer := card.RightClicked() || menuButton.RightClicked()
-		if pointer {
-			a.trackMenuX, a.trackMenuY, _ = card.PointerPosition()
-		}
+		x, y, _ := card.PointerPosition()
 		if menuButton.Clicked() || pointer {
-			a.trackMenuKey, a.trackMenuOpen, a.trackMenuAt = key+"-menu", true, pointer
+			a.menu.show(key+"-menu", pointer, x, y)
 			menuClicked = true
 		}
 	}
-	if hasMenu && a.trackMenuKey == key+"-menu" {
-		anchor := menuButton
-		if a.trackMenuAt {
-			anchor = menuAnchor
-		}
-		a.cardMenu(c, anchor, key+"-menu", item, queue)
+	if hasMenu && a.menu.owns(key+"-menu") {
+		a.cardMenu(c, a.menu.anchor(menuButton, menuAnchor, hasAnchor), key+"-menu", item, queue)
 	}
 	switch {
 	case menuClicked:
@@ -351,15 +343,15 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 // queue and artist actions with song rows; other cards can open their page or
 // copy its link.
 func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtube.MusicItem, queue []youtube.MusicItem) {
-	if a.trackMenuKey != key {
+	if !a.menu.owns(key) {
 		return
 	}
 	if kind, _ := targetOf(item); kind == pageTrack {
 		a.songMenu(c, anchor, key, item)
 		return
 	}
-	m3.Menu(c, anchor, &a.trackMenuOpen, 232, func() {
-		close := func() { a.trackMenuOpen = false }
+	m3.Menu(c, anchor, &a.menu.open, 232, func() {
+		close := func() { a.menu.close() }
 		kind, id := targetOf(item)
 		label := ""
 		icon := m3.IconChevronRight
@@ -410,7 +402,7 @@ func songKey(item youtube.MusicItem, o songOptions) string {
 // name over details, and the length. The song playing is picked out in a
 // tonal container with dancing bars.
 func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, o songOptions) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	kind, _ := targetOf(item)
 	isSong := kind == pageTrack
 	playing := isSong && item.VideoID == a.current.VideoID
@@ -425,7 +417,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		container = sc.SecondaryContainer
 	}
 	var main, menuButton, menuAnchor ui.Element
-	hasMenu := false
+	hasMenu, hasAnchor := false, false
 	row.Children(func() {
 		main = ui.ButtonBase(c.Key(key + "-activate"))
 		hovered := row.Hovered()
@@ -486,11 +478,9 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			}
 			// A menu the pointer opened points at the pointer; one the menu
 			// button opened points at the button.
-			if a.trackMenuAt && a.trackMenuKey == key {
-				menuAnchor = a.menuAnchor(c)
-			}
+			menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key)
 		})
-		if isSong && (hovered || main.FocusVisible() || a.trackMenuOpen && a.trackMenuKey == key) {
+		if isSong && (hovered || main.FocusVisible() || a.menu.opened(key)) {
 			menuButton = m3.IconButton(c, m3.IconButtonSpec{
 				Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
 			})
@@ -499,19 +489,13 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	})
 	if hasMenu {
 		pointer := main.RightClicked() || menuButton.RightClicked()
-		if pointer {
-			a.trackMenuX, a.trackMenuY, _ = main.PointerPosition()
-		}
+		x, y, _ := main.PointerPosition()
 		if menuButton.Clicked() || pointer {
-			a.trackMenuKey, a.trackMenuOpen, a.trackMenuAt = key, true, pointer
+			a.menu.show(key, pointer, x, y)
 		}
 	}
-	if hasMenu && a.trackMenuKey == key {
-		anchor := menuButton
-		if a.trackMenuAt {
-			anchor = menuAnchor
-		}
-		a.songMenu(c, anchor, key, item)
+	if hasMenu && a.menu.owns(key) {
+		a.songMenu(c, a.menu.anchor(menuButton, menuAnchor, hasAnchor), key, item)
 	}
 	if main.Clicked() {
 		if o.directQueue {
@@ -529,20 +513,13 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	}
 }
 
-// menuAnchor is a box at where the pointer was, in the layout of the item a
-// menu was opened on, so that a menu the secondary button opened points at the
-// pointer rather than at the item's menu button.
-func (a *app) menuAnchor(c *ui.Context) ui.Element {
-	return ui.Box(c).Size(1, 1).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).Left(a.trackMenuX).Top(a.trackMenuY)
-}
-
 // songMenu offers local queue actions and read-only actions for a track.
 func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtube.MusicItem) {
-	if a.trackMenuKey != key {
+	if !a.menu.owns(key) {
 		return
 	}
-	m3.Menu(c, anchor, &a.trackMenuOpen, 232, func() {
-		close := func() { a.trackMenuOpen = false }
+	m3.Menu(c, anchor, &a.menu.open, 232, func() {
+		close := func() { a.menu.close() }
 		if artistID := artistID(item); artistID != "" {
 			if m3.MenuItem(c, "Go to artist", m3.IconPerson).Clicked() {
 				path := "/artist/" + url.PathEscape(artistID)
@@ -577,7 +554,7 @@ func artistID(item youtube.MusicItem) string {
 // hero is the heading of an album, a playlist or an artist: its artwork large
 // over a wash of the theme's colour, its name, and the buttons that play it.
 func (a *app) hero(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	d := a.detail
 	artRadius := m3.ExtraLargeInc
 	if d.kind == pageArtist {
@@ -586,7 +563,7 @@ func (a *app) hero(c *ui.Context) {
 	wash := sc.PrimaryContainer.Mix(sc.Surface, 0.45)
 	ui.Row(c).Padding(8, pageGutter, 28).Gap(28).AlignItems(ui.End).Gradient(wash, sc.Surface, 180).Children(func() {
 		art := m3.Art(c, a.thumbs.bitmap(d.art, 512), 220, artRadius)
-		m3.Elevation(art, 2)
+		m3.Elevation(c, art, 2)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 			if label := heroLabel(d.kind); label != "" {
 				m3.EmphasizedText(c, m3.LabelLarge, strings.ToUpper(label)).LetterSpacing(1.2).TextColor(sc.Primary)

@@ -145,11 +145,11 @@ func TestSnapshots(t *testing.T) {
 	track := a.feed.sections[0].Items[0]
 	track.BrowseID = "UCartist"
 	a.feed.sections[0].Items[0] = track
-	a.trackMenuKey = songKey(track, songOptions{list: "/home#0"})
-	a.trackMenuOpen = true
+	a.menu.key = songKey(track, songOptions{list: "/home#0"})
+	a.menu.open = true
 	tt.Frame()
 	save(t, tt, "track-menu")
-	a.trackMenuOpen, a.trackMenuKey = false, ""
+	a.menu = itemMenu{}
 	tt.Frame()
 	album := a.feed.sections[1].Items[0]
 	if r, ok := tt.Find(album.Title); ok {
@@ -163,7 +163,7 @@ func TestSnapshots(t *testing.T) {
 	} else {
 		t.Fatalf("listen-again card %q is not visible for its snapshot", album.Title)
 	}
-	a.trackMenuOpen, a.trackMenuKey = false, ""
+	a.menu = itemMenu{}
 	tt.Frame()
 	play(a)
 	tt.Frame()
@@ -237,11 +237,11 @@ func TestSnapshots(t *testing.T) {
 	a.npOpen = true
 	tt.Frame()
 	save(t, tt, "now-playing")
-	a.trackMenuKey = itemKey("now-playing-menu", a.current)
-	a.trackMenuOpen = true
+	a.menu.key = itemKey("now-playing-menu", a.current)
+	a.menu.open = true
 	tt.Frame()
 	save(t, tt, "now-playing-menu")
-	a.trackMenuOpen, a.trackMenuKey = false, ""
+	a.menu = itemMenu{}
 	tt.Frame()
 	a.current.Kind = "video"
 	tt.Frame()

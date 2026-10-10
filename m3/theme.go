@@ -15,7 +15,7 @@ package m3
 
 import (
 	"math"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -41,14 +41,19 @@ func (m Mode) String() string {
 	return "System"
 }
 
-// Modes lists every mode in the order a picker shows them.
-var Modes = []Mode{System, Light, Dark}
+// Modes lists every mode in the order a picker shows them. Each call returns
+// a fresh slice, so callers cannot change the collection.
+func Modes() []Mode { return []Mode{System, Light, Dark} }
 
 // Config is everything a theme derives from.
 type Config struct {
 	Seed  ui.Color
 	Style Style
 	Mode  Mode
+	// Font is the typeface of the whole interface, applied through MyGo's
+	// theme once it is registered with ui.RegisterFont; empty is the
+	// system's font.
+	Font string
 }
 
 // DefaultSeed is Material's baseline purple.
@@ -79,28 +84,32 @@ func New(cfg Config, systemDark bool) *Theme {
 	return &Theme{Config: cfg, Dark: dark, Palettes: p, Scheme: NewScheme(p, dark)}
 }
 
-// FontFamily is the typeface of the whole interface, applied through MyGo's
-// theme. Set it before the first frame, once the family is registered with
-// ui.RegisterFont; empty is the system's font.
-var FontFamily string
+var (
+	activeMu sync.RWMutex
+	active   = map[ui.Services]*Theme{}
+	baseline = sync.OnceValue(func() *Theme { return New(Config{}, false) })
+)
 
-var active atomic.Pointer[Theme]
-
-// Provide makes th the theme components draw with, and sets MyGo's theme from
-// it. Call it at the top of the view: a process has one active theme.
+// Provide makes th the theme components draw with in the window of c, and
+// sets MyGo's theme from it. Call it at the top of the view: a window has one
+// active theme, and windows do not share it.
 func Provide(c *ui.Context, th *Theme) {
-	active.Store(th)
+	activeMu.Lock()
+	active[c.Services()] = th
+	activeMu.Unlock()
 	c.SetTheme(th.UI(c.Theme()))
 }
 
-// Active returns the theme set by Provide, or the baseline one before any.
-func Active() *Theme {
-	if t := active.Load(); t != nil {
+// Of returns the theme set by Provide in the window of c, or the baseline one
+// before any.
+func Of(c *ui.Context) *Theme {
+	activeMu.RLock()
+	t := active[c.Services()]
+	activeMu.RUnlock()
+	if t != nil {
 		return t
 	}
-	t := New(Config{}, false)
-	active.CompareAndSwap(nil, t)
-	return t
+	return baseline()
 }
 
 // UI maps the scheme onto MyGo's own theme, so its widgets match.
@@ -129,7 +138,7 @@ func (t *Theme) UI(base *ui.Theme) *ui.Theme {
 	u.Radius = Medium
 	u.Spacing = 4
 	u.FontSize = 14
-	u.Font = FontFamily
+	u.Font = t.Font
 	return &u
 }
 
@@ -158,8 +167,8 @@ const (
 )
 
 // Elevation gives an element the shadow of a Material level, 0 to 5.
-func Elevation(e ui.Element, level int) ui.Element {
-	t := Active()
+func Elevation(c *ui.Context, e ui.Element, level int) ui.Element {
+	t := Of(c)
 	k := float32(1)
 	if t.Dark {
 		k = 1.6
@@ -285,10 +294,10 @@ func (r Role) Style(e ui.Element, emphasized bool) ui.Element {
 // Text shows text in a role of the type scale, in the colour of text on a
 // surface.
 func Text(c *ui.Context, r Role, s string) ui.Element {
-	return r.Style(ui.Text(c, s), false).TextColor(Active().Scheme.OnSurface)
+	return r.Style(ui.Text(c, s), false).TextColor(Of(c).Scheme.OnSurface)
 }
 
 // EmphasizedText is Text in the role's emphasised weight.
 func EmphasizedText(c *ui.Context, r Role, s string) ui.Element {
-	return r.Style(ui.Text(c, s), true).TextColor(Active().Scheme.OnSurface)
+	return r.Style(ui.Text(c, s), true).TextColor(Of(c).Scheme.OnSurface)
 }

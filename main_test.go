@@ -287,7 +287,7 @@ func TestRightClickOpensTheItemMenuAtThePointer(t *testing.T) {
 	tt.Frame()
 	tt.RightClickAt(x, y)
 	tt.Frame()
-	if !a.trackMenuOpen {
+	if !a.menu.open {
 		t.Fatal("a right-click on a card did not open its menu")
 	}
 	if got := a.router.Path(); got != "/home" {
@@ -310,7 +310,7 @@ func TestRightClickOpensTheItemMenuAtThePointer(t *testing.T) {
 	tb.Frame()
 	tb.RightClickAt(rx, ry)
 	tb.Frame()
-	if !b.trackMenuOpen {
+	if !b.menu.open {
 		t.Fatal("a right-click on a song row did not open its menu")
 	}
 	for _, label := range []string{"Play next", "Add to queue"} {
@@ -377,7 +377,7 @@ func TestQueueRowOpensOneMenuOverThePageBehind(t *testing.T) {
 	x, y := r.X-200, r.Y+r.H/2
 	tt.RightClickAt(x, y)
 	tt.Frame()
-	if !a.trackMenuOpen {
+	if !a.menu.open {
 		t.Fatal("a right-click on a queue row did not open its menu")
 	}
 	// One menu draws its items once as the item's label and once as its text,
@@ -834,8 +834,12 @@ func TestEveryPageDraws(t *testing.T) {
 func TestSettingsChangeTheTheme(t *testing.T) {
 	a := newTestApp()
 	a.router.Push("/settings")
-	tt := ui.NewTester(a.view, 1000, 900)
-	before := m3.Active().Scheme.Primary
+	var shown *m3.Theme
+	tt := ui.NewTester(func(c *ui.Context) {
+		a.view(c)
+		shown = m3.Of(c)
+	}, 1000, 900)
+	before := shown.Scheme.Primary
 	if err := tt.Click("Rose"); err != nil {
 		t.Fatal(err)
 	}
@@ -844,15 +848,15 @@ func TestSettingsChangeTheTheme(t *testing.T) {
 	}
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	tt.Frame()
-	if after := m3.Active().Scheme.Primary; after == before {
+	if after := shown.Scheme.Primary; after == before {
 		t.Errorf("the primary colour stayed %v after choosing a new seed", after)
 	}
 	if err := tt.Click("Dark"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !m3.Active().Dark || a.settings.Mode != "dark" {
-		t.Errorf("choosing Dark left dark=%v, mode=%q", m3.Active().Dark, a.settings.Mode)
+	if !shown.Dark || a.settings.Mode != "dark" {
+		t.Errorf("choosing Dark left dark=%v, mode=%q", shown.Dark, a.settings.Mode)
 	}
 	if err := tt.Click("Vibrant"); err != nil {
 		t.Fatal(err)

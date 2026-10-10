@@ -20,7 +20,7 @@ func pick[T any](b bool, yes, no T) T {
 // it is on, shrinks when it is off and swells while pressed, with a check
 // mark in the thumb when on. It toggles *on by itself.
 func Switch(c *ui.Context, on *bool, label string) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	s := ui.SwitchBase(c.Key("switch-"+label), on).Size(52, 32).Radius(Full).Label(label).
 		Cursor(ui.CursorPointer).Shrink(0)
 	v := *on
@@ -61,12 +61,12 @@ func Switch(c *ui.Context, on *bool, label string) ui.Element {
 // Dialog shows a Material dialog over a scrim while *open is true. build
 // fills the panel; a press on the scrim or Escape closes it.
 func Dialog(c *ui.Context, open *bool, width float32, build func()) {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
 		backdrop.Background(sc.Scrim.Alpha(0.4))
 		panel.Width(width).MaxWidthPercent(92).Padding(24).Gap(16).Radius(ExtraLarge).
 			Background(sc.SurfaceContainerHigh).TextColor(sc.OnSurface)
-		Elevation(panel, 3)
+		Elevation(c, panel, 3)
 		build()
 	})
 }
@@ -74,14 +74,14 @@ func Dialog(c *ui.Context, open *bool, width float32, build func()) {
 // Snackbars shows the window's toasts as Material snackbars along the bottom
 // of the window, lifted by inset DIPs to clear a player.
 func Snackbars(c *ui.Context, inset float32) {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	ui.ToastViewportBase(c, func(viewport ui.Element, toasts []ui.Toast) {
 		viewport.Padding(16, 16, 16+inset, 16).AlignItems(ui.Center).Gap(8)
 		for _, t := range toasts {
 			toast := ui.ToastBase(c, t)
 			toast.Root.Row().AlignItems(ui.Center).Gap(16).Padding(6, 8, 6, 16).MinHeight(48).MaxWidth(560).
 				Radius(Medium).Background(sc.InverseSurface).TextColor(sc.InverseOnSurface)
-			Elevation(toast.Root, 3)
+			Elevation(c, toast.Root, 3)
 			toast.Root.Transition(Move(SpatialFast))
 			toast.Root.Children(func() {
 				if t.Type == "error" {
@@ -107,18 +107,18 @@ func Snackbars(c *ui.Context, inset float32) {
 
 // Menu opens a Material menu below anchor while *open is true.
 func Menu(c *ui.Context, anchor ui.Element, open *bool, width float32, build func()) {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	ui.PopoverBase(c, anchor, open, func(panel ui.Element) {
 		panel.Width(width).Padding(8).Radius(Large).Margin(8, 0, 0, 0).Background(sc.SurfaceContainerHigh).
 			Gap(2).TextColor(sc.OnSurface)
-		Elevation(panel, 3)
+		Elevation(c, panel, 3)
 		build()
 	})
 }
 
 // MenuItem is one entry of a menu.
 func MenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	b := ui.ButtonBase(c.Key("menu-" + label))
 	b.Height(48).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(Medium).Cursor(ui.CursorPointer).Label(label).
 		Background(StateFill(ui.Transparent, sc.OnSurface, b.Hovered(), b.Pressed(), b.FocusVisible()))
@@ -136,7 +136,7 @@ func MenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
 //
 // Overlays are built on top of the picture, to put a control over it.
 func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	box := ui.Box(c).Radius(radius).Clip().Background(sc.SurfaceContainerHighest).Shrink(0)
 	if size > 0 {
 		box.Size(size, size)
@@ -158,7 +158,7 @@ func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()
 
 // VideoBadge marks artwork for a video that is being played as audio.
 func VideoBadge(c *ui.Context, artSize float32) {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	inset := min(max(artSize*0.08, 6), 24)
 	available := artSize - inset*2
 	fontSize := min(max(available/5.8, 6), 13)
@@ -175,7 +175,7 @@ func VideoBadge(c *ui.Context, artSize float32) {
 // Avatar shows a person's picture, or the first letter of their name on a
 // tonal disc.
 func Avatar(c *ui.Context, name string, pic *ui.Bitmap, size float32) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	disc := ui.Box(c).Size(size, size).Radius(Full).Clip().Background(sc.PrimaryContainer).Shrink(0)
 	disc.Children(func() {
 		if pic != nil {

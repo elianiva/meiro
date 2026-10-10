@@ -30,7 +30,7 @@ func TestAnimatedPaintIntervalCapsPlaybackAnimationRate(t *testing.T) {
 func TestSchemesKeepTheirContrast(t *testing.T) {
 	for hue := 0.0; hue < 360; hue += 20 {
 		seed := FromHue(hue)
-		for _, style := range Styles {
+		for _, style := range Styles() {
 			for _, dark := range []bool{false, true} {
 				s := NewScheme(NewPalettes(seed, style), dark)
 				pairs := []struct {

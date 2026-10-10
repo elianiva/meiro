@@ -70,10 +70,10 @@ func (s *settings) config() m3.Config {
 		mode = m3.Dark
 	}
 	style := m3.Style(s.Style)
-	if style < 0 || int(style) >= len(m3.Styles) {
+	if style < 0 || int(style) >= len(m3.Styles()) {
 		style = m3.TonalSpot
 	}
-	return m3.Config{Seed: seed, Mode: mode, Style: style}
+	return m3.Config{Seed: seed, Mode: mode, Style: style, Font: uiFont}
 }
 
 func (s *settings) setMode(mode m3.Mode) {

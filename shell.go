@@ -21,7 +21,7 @@ const (
 // under its top bar, and the player floating over the foot of the sheet.
 func (a *app) view(c *ui.Context) {
 	m3.Provide(c, a.resolveTheme(c))
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	c.Root().Background(sc.SurfaceContainerLow)
 
 	// The router also moves on its own, by the keyboard's back and forward
@@ -111,7 +111,7 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 // sheet is the rounded surface the pages live on. The player floats over its
 // foot, and the full-screen player covers it.
 func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	sheet := ui.Column(c).Key("sheet").Grow(1).MinHeight(0).Radius(m3.ExtraLarge).Clip().Background(sc.Surface)
 	sheet.Children(func() {
 		a.topBar(c, bar)
@@ -171,7 +171,7 @@ func (a *app) pageTitle(now time.Time) string {
 // topBar names the page, with a way back on the pages a click opened, and
 // the account at its end. It drags the window.
 func (a *app) topBar(c *ui.Context, bar ui.TitleBar) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	back := isDetail(a.router.Path())
 	padding := float32(pageGutter)
 	if back {
@@ -238,7 +238,7 @@ func (a *app) page(c *ui.Context) {
 // message shows a state in the middle of a page: a glyph in a tonal shape,
 // what happened, and a button when there is something to do about it.
 func (a *app) message(c *ui.Context, icon *ui.SVG, title, body, action string, run func()) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	ui.Column(c).FillWidth().Center().Gap(12).Padding(56, 32).Children(func() {
 		ui.Box(c).Size(96, 96).Radius(m3.ExtraLarge).Background(sc.SecondaryContainer).Center().Children(func() {
 			ui.Icon(c, icon).FontSize(40).TextColor(sc.OnSecondaryContainer)

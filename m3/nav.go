@@ -81,7 +81,7 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 }
 
 func navItem(c *ui.Context, item NavItem, selected, expanded bool, railWidth float32) bool {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	b := ui.ButtonBase(c.Key("nav-" + item.ID))
 	icon := item.Icon
 	if selected && item.Selected != nil {

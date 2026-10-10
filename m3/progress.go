@@ -34,7 +34,7 @@ var morphs = []morph{{0, 0}, {3, 0.17}, {4, 0.11}, {6, 0.11}, {8, 0.09}, {5, 0.1
 // shape that turns and morphs from one shape to the next while something
 // loads. Contained puts it in a tonal disc.
 func LoadingIndicator(c *ui.Context, size float32, contained bool) ui.Element {
-	sc := Active().Scheme
+	sc := Of(c).Scheme
 	if contained {
 		return loadingIndicator(c, size, sc.OnPrimaryContainer, sc.PrimaryContainer)
 	}

@@ -40,7 +40,7 @@ func (a *app) settingsPage(c *ui.Context) {
 
 // settingsCard is a tonal card that holds one group of settings.
 func (a *app) settingsCard(c *ui.Context, title string, icon *ui.SVG, build func()) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	ui.Column(c).Padding(24).Gap(22).Radius(m3.ExtraLarge).Background(sc.SurfaceContainerLow).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icon).FontSize(24).TextColor(sc.Primary)
@@ -52,7 +52,7 @@ func (a *app) settingsCard(c *ui.Context, title string, icon *ui.SVG, build func
 
 // settingLabel names a control, with what it does under it.
 func settingLabel(c *ui.Context, title, body string) ui.Element {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	return ui.Column(c).Gap(2).MinWidth(0).Children(func() {
 		m3.EmphasizedText(c, m3.TitleMedium, title)
 		if body != "" {
@@ -62,15 +62,15 @@ func settingLabel(c *ui.Context, title, body string) ui.Element {
 }
 
 func (a *app) appearanceCard(c *ui.Context) {
-	sc := m3.Active().Scheme
-	th := m3.Active()
+	sc := m3.Of(c).Scheme
+	th := m3.Of(c)
 	a.settingsCard(c, "Appearance", m3.IconPalette, func() {
 		// Light, dark, or whatever the desktop is.
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Theme", "Follow the desktop, or stay light or dark.").Grow(1)
 			mode := int(th.Mode)
 			if m3.ButtonGroup(c, "mode", &mode, []string{"System", "Light", "Dark"}, nil) {
-				a.settings.setMode(m3.Modes[mode])
+				a.settings.setMode(m3.Modes()[mode])
 				a.saveSettings()
 			}
 		})
@@ -102,7 +102,7 @@ func (a *app) appearanceCard(c *ui.Context) {
 		ui.Column(c).Gap(14).Children(func() {
 			settingLabel(c, "Palette", "How boldly the colour is used.")
 			ui.Row(c).Gap(12).Wrap().Children(func() {
-				for _, style := range m3.Styles {
+				for _, style := range m3.Styles() {
 					if a.styleTile(c, style) {
 						a.settings.Style = int(style)
 						a.saveSettings()
@@ -125,7 +125,7 @@ func (a *app) appearanceCard(c *ui.Context) {
 // playbackCacheCard controls the number of recently played songs kept on
 // disk for replay without another network stream.
 func (a *app) playbackCacheCard(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Playback cache", m3.IconMusicNote, func() {
 		ui.Column(c).Gap(12).Children(func() {
 			settingLabel(c, "Keep recent songs", "Enter any non-negative whole number and press Enter to apply. Set 0 to turn the cache off. Older songs are removed first; cached files are MP3s stored in a private Meiro cache folder.")
@@ -167,7 +167,7 @@ func (a *app) playbackCacheCard(c *ui.Context) {
 // swatch is one seed colour, drawn as the primary colour it would give. The
 // chosen one squares off and shows a check.
 func (a *app) swatch(c *ui.Context, name, hex string) bool {
-	th := m3.Active()
+	th := m3.Of(c)
 	sc := th.Scheme
 	seed, _ := parseSeed(hex)
 	fill, on := seed, ui.RGB(255, 255, 255)
@@ -190,7 +190,7 @@ func (a *app) swatch(c *ui.Context, name, hex string) bool {
 	}
 	if selected {
 		b.Border(3, sc.Surface)
-		m3.Elevation(b, 1)
+		m3.Elevation(c, b, 1)
 	}
 	b.Children(func() {
 		if selected {
@@ -204,7 +204,7 @@ func (a *app) swatch(c *ui.Context, name, hex string) bool {
 // light or dark appearance, reusing what it resolved until either changes.
 func (a *app) stylePreview(seed ui.Color, dark bool, style m3.Style) m3.Scheme {
 	if a.previews == nil || seed != a.previewSeed || dark != a.previewDark {
-		a.previews, a.previewSeed, a.previewDark = make(map[m3.Style]m3.Scheme, len(m3.Styles)), seed, dark
+		a.previews, a.previewSeed, a.previewDark = make(map[m3.Style]m3.Scheme, len(m3.Styles())), seed, dark
 	}
 	if preview, ok := a.previews[style]; ok {
 		return preview
@@ -216,7 +216,7 @@ func (a *app) stylePreview(seed ui.Color, dark bool, style m3.Style) m3.Scheme {
 
 // styleTile previews a palette style in the colours the seed would give it.
 func (a *app) styleTile(c *ui.Context, style m3.Style) bool {
-	th := m3.Active()
+	th := m3.Of(c)
 	sc := th.Scheme
 	preview := a.stylePreview(th.Seed, th.Dark, style)
 	selected := th.Style == style
@@ -247,7 +247,7 @@ func (a *app) styleTile(c *ui.Context, style m3.Style) bool {
 }
 
 func (a *app) accountCard(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Account", m3.IconPerson, func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			if a.signedIn {
@@ -279,7 +279,7 @@ func (a *app) accountCard(c *ui.Context) {
 }
 
 func (a *app) aboutCard(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Keyboard", m3.IconLyrics, func() {
 		ui.Column(c).Gap(10).Children(func() {
 			for _, k := range [][2]string{

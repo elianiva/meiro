@@ -5,8 +5,6 @@ import (
 	"log"
 
 	"github.com/egoist/mygo/ui"
-
-	"github.com/elianiva/meiro/m3"
 )
 
 // googleSans is Google Sans, the typeface of Material 3 Expressive, as one
@@ -20,11 +18,14 @@ var googleSans []byte
 // fontFamily is the name the font registers under.
 const fontFamily = "Google Sans"
 
+// uiFont is the typeface the theme asks for: empty until the font registers.
+var uiFont string
+
 func init() {
 	if err := ui.RegisterFont(googleSans, fontFamily); err != nil {
 		// The system font does the job, as it did before.
 		log.Printf("registering %s: %v", fontFamily, err)
 		return
 	}
-	m3.FontFamily = fontFamily
+	uiFont = fontFamily
 }

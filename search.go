@@ -109,7 +109,7 @@ func (a *app) suggestionList(c *ui.Context) {
 	if len(a.search.suggestions) == 0 || a.search.query == a.search.submitted {
 		return
 	}
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	ui.Column(c).Shrink(0).Children(func() {
 		for _, suggestion := range a.search.suggestions {
 			row := ui.ButtonBase(c.Key("suggestion-" + suggestion))
@@ -131,7 +131,7 @@ func (a *app) suggestionList(c *ui.Context) {
 // searchLanding is the page before the first search: the searches the user
 // made before, or an invitation to make one.
 func (a *app) searchLanding(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	if len(a.settings.Recent) == 0 {
 		ui.Column(c).Grow(1).Center().Children(func() {
 			a.message(c, m3.IconSearch, "Find your next favourite",

@@ -99,7 +99,7 @@ func TestThemeIsResolvedOnceUntilItsInputsChange(t *testing.T) {
 	var seen []*m3.Theme
 	tt := ui.NewTester(func(c *ui.Context) {
 		a.view(c)
-		seen = append(seen, m3.Active())
+		seen = append(seen, m3.Of(c))
 	}, 1000, 900)
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	seen = nil

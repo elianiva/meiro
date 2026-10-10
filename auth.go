@@ -432,7 +432,7 @@ func (a *app) signInDialog(c *ui.Context) {
 	if !a.signIn.open {
 		return
 	}
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	m3.Dialog(c, &a.signIn.open, 520, func() {
 		ui.Box(c).Size(56, 56).Radius(m3.Large).Background(sc.PrimaryContainer).Center().Children(func() {
 			ui.Icon(c, m3.IconLogin).FontSize(28).TextColor(sc.OnPrimaryContainer)
@@ -482,7 +482,7 @@ func (a *app) signInDialog(c *ui.Context) {
 // accountButton is the account's picture in the top bar, which opens a menu
 // of the account, the settings and the sign-in.
 func (a *app) accountButton(c *ui.Context) {
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	button := ui.ButtonBase(c.Key("account"))
 	button.Size(48, 48).Radius(m3.Full).Center().Cursor(ui.CursorPointer).Label("Account").Tooltip("Account")
 	if button.Hovered() || a.menuOpen {
@@ -541,7 +541,7 @@ func (a *app) channelItems(c *ui.Context) {
 	if len(a.accounts) < 2 {
 		return
 	}
-	sc := m3.Active().Scheme
+	sc := m3.Of(c).Scheme
 	m3.Text(c, m3.LabelMedium, "Channel").Padding(12, 12, 4).TextColor(sc.OnSurfaceVariant)
 	for _, channel := range a.accounts {
 		name := channel.Name
