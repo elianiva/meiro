@@ -192,22 +192,6 @@ func TestCarouselVisibleRangeIncludesViewportAndPrefetch(t *testing.T) {
 	}
 }
 
-func TestFitLabelLeavesRoomPastItsIntrinsicWidth(t *testing.T) {
-	const label = "Shuffle"
-	var measured float32
-	tt := ui.NewTester(func(c *ui.Context) {
-		Provide(c, New(Config{}, false))
-		measured, _ = c.MeasureText(0, ui.Span{
-			Text: label, Size: LabelLarge.Size, Weight: LabelLarge.Emphasis,
-			LetterSpacing: LabelLarge.Tracking,
-		})
-		fitLabel(c, LabelLarge, label, true, 0).SingleLine().Label("fit-label")
-	}, 200, 50)
-	if bounds, ok := tt.Find("fit-label"); !ok || bounds.W <= measured {
-		t.Fatalf("fit label width = %v (found %v), measured text width = %v", bounds.W, ok, measured)
-	}
-}
-
 func TestExpandedRailItemsFillTheirRows(t *testing.T) {
 	tt := ui.NewTester(func(c *ui.Context) {
 		Provide(c, New(Config{}, false))

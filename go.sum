@@ -2,8 +2,8 @@ github.com/ebitengine/oto/v3 v3.5.1 h1:7gL5DxxSQp8S1Me2jDSp+gSAyondYxpjM5RPBBqLT
 github.com/ebitengine/oto/v3 v3.5.1/go.mod h1:Elkm7yzTRns3w2efvibzVOoQ65YOwmec9a76dCiK10o=
 github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6XeQ/0=
 github.com/ebitengine/purego v0.11.1/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
-github.com/egoist/mygo v0.3.3 h1:ASPq7x9Qgda0bu9xLq2RRErbmjvCgXix9XCscEA4TaI=
-github.com/egoist/mygo v0.3.3/go.mod h1:1sRzZ6jEhKE7iuEQXjyoXDgxyxQ1uTgMHDcDKZvoDIU=
+github.com/egoist/mygo v0.3.7 h1:hT6jjSBRqtvl3b0zReFGdGjGaNfz1IqvhnrK+Vrje94=
+github.com/egoist/mygo v0.3.7/go.mod h1:1sRzZ6jEhKE7iuEQXjyoXDgxyxQ1uTgMHDcDKZvoDIU=
 github.com/go-macos/keychain v0.3.0 h1:s4uucWJajdy60M3OIw6fOvNgsD2ro2xLfllhnSWUaGY=
 github.com/go-macos/keychain v0.3.0/go.mod h1:LX6IfkOT541BqkrIvzagyDn3ze+VoiZraiP+YUpBHFQ=
 github.com/go-macos/objc v0.10.2 h1:WX8CsDT6SbDrIT2wHAZEQBhGcpKR750llRS4oAfX9ww=
