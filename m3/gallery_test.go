@@ -14,13 +14,14 @@ import (
 // gallery lays every component out on one page, for looking at. It writes
 // PNGs when MEIRO_SNAPSHOTS names a directory.
 type gallery struct {
-	cfg   m3.Config
-	group int
-	on    bool
-	off   bool
-	vol   float64
-	hue   float64
-	query string
+	cfg     m3.Config
+	group   int
+	on      bool
+	off     bool
+	vol     float64
+	hue     float64
+	query   string
+	toolbar string
 }
 
 func (g *gallery) view(c *ui.Context) {
@@ -44,6 +45,7 @@ func (g *gallery) view(c *ui.Context) {
 			m3.Button(c, m3.ButtonSpec{Label: "Small", Size: m3.Small40, Key: "s1"})
 			m3.Button(c, m3.ButtonSpec{Label: "Medium", Size: m3.Medium56, Key: "s2"})
 			m3.Button(c, m3.ButtonSpec{Label: "Large", Size: m3.Large96, Icon: m3.IconAdd, Key: "s3"})
+			m3.Button(c, m3.ButtonSpec{Label: "XL", Size: m3.ExtraLarge136, Key: "s4"})
 		})
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconFavorite, Label: "Like", Key: "i0"})
@@ -78,6 +80,7 @@ func (g *gallery) view(c *ui.Context) {
 		})
 		ui.Row(c).Children(func() {
 			m3.SearchBar(c, m3.SearchSpec{Value: &g.query, Placeholder: "Search songs", Key: "s", MaxWidth: 520})
+			m3.SearchBar(c, m3.SearchSpec{Value: &g.toolbar, Placeholder: "Search in a toolbar", Key: "st", Height: 48, MaxWidth: 520})
 		})
 		ui.Row(c).Gap(6).Children(func() {
 			for _, col := range []ui.Color{
@@ -91,10 +94,17 @@ func (g *gallery) view(c *ui.Context) {
 }
 
 func TestGallery(t *testing.T) {
-	dir := os.Getenv("MEIRO_SNAPSHOTS")
-	if dir == "" {
-		t.Skip("set MEIRO_SNAPSHOTS to write the gallery")
+	// Every component the gallery shows is findable by its label, so a
+	// component that stops rendering fails this test rather than only showing
+	// up in a snapshot nobody opens. The gallery runs in every appearance.
+	components := []string{
+		"Filled", "Tonal", "Elevated", "Outlined", "Text", "Disabled", "Square", "Toggled",
+		"XS", "Small", "Medium", "Large", "XL",
+		"Like", "Shuffle", "Pause", "Play", "Action", "Play all",
+		"All", "Songs", "Albums", "System", "Light", "Dark",
+		"on", "off", "Search songs", "Search in a toolbar",
 	}
+	dir := os.Getenv("MEIRO_SNAPSHOTS")
 	for _, shot := range []struct {
 		name string
 		cfg  m3.Config
@@ -104,20 +114,31 @@ func TestGallery(t *testing.T) {
 		{"gallery-dark-vibrant", m3.Config{Seed: ui.Hex("#1b6ef3"), Style: m3.Vibrant}, true},
 		{"gallery-light-expressive", m3.Config{Seed: ui.Hex("#d81b78"), Style: m3.Expressive}, false},
 	} {
-		g := &gallery{cfg: shot.cfg, group: 1, on: true, vol: 60, hue: 250}
-		tt := ui.NewTester(g.view, 980, 760)
-		tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
-		tt.SetDark(shot.dark)
-		f, err := os.Create(filepath.Join(dir, shot.name+".png"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := png.Encode(f, tt.Image()); err != nil {
-			_ = f.Close()
-			t.Fatal(err)
-		}
-		if err := f.Close(); err != nil {
-			t.Fatal(err)
-		}
+		t.Run(shot.name, func(t *testing.T) {
+			g := &gallery{cfg: shot.cfg, group: 1, on: true, vol: 60, hue: 250}
+			tt := ui.NewTester(g.view, 980, 760)
+			tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
+			tt.SetDark(shot.dark)
+			tt.Frame()
+			for _, want := range components {
+				if _, ok := tt.Find(want); !ok {
+					t.Errorf("the gallery did not render %q", want)
+				}
+			}
+			if dir == "" {
+				return
+			}
+			f, err := os.Create(filepath.Join(dir, shot.name+".png"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := png.Encode(f, tt.Image()); err != nil {
+				_ = f.Close()
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

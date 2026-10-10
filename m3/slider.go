@@ -18,6 +18,22 @@ var hueStrip = func() [hueSteps]ui.Color {
 	return strip
 }()
 
+// A wavy slider's active track is a wave that travels from the handle back to
+// the start while the music plays: waveWavelength is the distance between two
+// crests, and the wave covers one wavelength every wavePeriodMS.
+const (
+	waveWavelength = 30
+	wavePeriodMS   = 1800
+)
+
+// wavePhase is where the travelling wave sits at a wall-clock time, in
+// milliseconds since the epoch. It moves toward the start of the track as time
+// passes and repeats once per period, so its value is always negative except
+// at the start of a period.
+func wavePhase(nowMillis int64) float32 {
+	return -float32(nowMillis%wavePeriodMS) / wavePeriodMS * waveWavelength
+}
+
 // SliderSpec describes a slider.
 type SliderSpec struct {
 	Label string
@@ -113,12 +129,11 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 			if amplitude < 0.05 {
 				p.Fill(ui.Rect{X: x0, Y: cy - thick/2, W: end - x0, H: thick}, active, radius)
 			} else {
-				const wavelength = 30
 				phase := float32(0)
 				if spec.Waving {
 					animatePaint(p)
 					// The wave travels from the handle back to the start.
-					phase = -float32(p.Now().UnixMilli()%1800) / 1800 * wavelength
+					phase = wavePhase(p.Now().UnixMilli())
 				}
 				var path ui.Path
 				first := true
@@ -127,7 +142,7 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 						x = end
 					}
 					ramp := min((x-x0)/10, 1) // the wave grows out of the start
-					y := cy + amplitude*ramp*float32(math.Sin(2*math.Pi*float64((x-x0-phase)/wavelength)))
+					y := cy + amplitude*ramp*float32(math.Sin(2*math.Pi*float64((x-x0-phase)/waveWavelength)))
 					if first {
 						path.MoveTo(x, y)
 						first = false

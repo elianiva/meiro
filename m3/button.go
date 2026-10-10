@@ -66,8 +66,6 @@ type ButtonSpec struct {
 	Disabled         bool
 	// Key keeps the button's state with its item when siblings come and go.
 	Key any
-	// FillWidth stretches the button across its parent.
-	FillWidth bool
 }
 
 // containerColors returns the container and content colours of a kind in a
@@ -179,9 +177,6 @@ func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 	if spec.Label != "" {
 		b.Label(spec.Label)
 	}
-	if spec.FillWidth {
-		b.FillWidth()
-	}
 	if outline.A != 0 {
 		b.Border(1, outline)
 	}
@@ -206,16 +201,12 @@ type IconButtonSpec struct {
 	Label string
 	Kind  IconButtonKind
 	Size  ButtonSize
-	// Square gives the button a squarer shape; the default is a circle.
-	Square bool
-	// Toggle makes the button a toggle with Selected as its state, drawn with
-	// SelectedIcon when it has one.
+	// Toggle makes the button a toggle with Selected as its state.
 	Toggle, Selected bool
 	// Morph swaps the shape of a selected button without recolouring it: the
 	// play button that squares off while playing.
-	Morph        bool
-	SelectedIcon *ui.SVG
-	Disabled     bool
+	Morph    bool
+	Disabled bool
 	// Loading swaps the icon for the loading indicator and ignores presses,
 	// while the button's action is under way.
 	Loading bool
@@ -268,7 +259,7 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	}
 	fill := StateFill(container, content, b.Hovered() && !spec.Disabled, b.Pressed(), b.FocusVisible())
 
-	round := spec.Square == (spec.Selected && (spec.Toggle || spec.Morph))
+	round := !(spec.Selected && (spec.Toggle || spec.Morph))
 	rest := d.height / 2
 	if !round {
 		rest = d.square
@@ -278,10 +269,6 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	}
 	radius := max(Animate(b, "radius", rest, SpatialFast), 0)
 
-	icon := spec.Icon
-	if spec.Selected && spec.SelectedIcon != nil {
-		icon = spec.SelectedIcon
-	}
 	b.Size(d.height, d.height).Radius(radius).Background(fill).Center().Shrink(0).
 		TextColor(content).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast))
 	if spec.Label != "" {
@@ -298,7 +285,7 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 			loadingIndicator(c, d.icon*1.4, content, ui.Transparent)
 			return
 		}
-		ui.Icon(c, icon).FontSize(d.icon).TextColor(content)
+		ui.Icon(c, spec.Icon).FontSize(d.icon).TextColor(content)
 	})
 	return b
 }

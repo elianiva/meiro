@@ -1,15 +1,23 @@
+//go:build snapshot
+
+// Snapshots render the app's pages to PNG files, for looking at them. They are
+// a build-tagged check, run explicitly so they never slow or flake the default
+// suite:
+//
+//	go test -tags snapshot -run TestSnapshots .
+//
+// The justfile's `snapshots` recipe does this. Each snapshot also asserts that
+// the window drew something, so a broken frame fails instead of writing a
+// blank PNG.
+
 package main
 
 import (
-	"fmt"
-	"hash/fnv"
 	"image"
 	"image/color"
 	"image/png"
-	"math"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -19,107 +27,28 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// Snapshots render the app's pages to PNG files, for looking at them. They
-// run only when MEIRO_SNAPSHOTS names a directory:
-//
-//	MEIRO_SNAPSHOTS=/tmp/meiro-shots go test -run TestSnapshots .
-
-var artCache sync.Map
-
-// synthArt makes artwork out of a URL: a soft two-colour gradient with a
-// disc, different for every URL.
-func synthArt(url string, size int) *ui.Bitmap {
-	if b, ok := artCache.Load(url); ok {
-		return b.(*ui.Bitmap)
-	}
-	h := fnv.New32a()
-	h.Write([]byte(url))
-	seed := h.Sum32()
-	hue := float64(seed%360) + 0
-	a := m3.Palette{Hue: hue, Chroma: 0.13}.Tone(62)
-	b := m3.Palette{Hue: hue + 70, Chroma: 0.12}.Tone(38)
-	const n = 160
-	img := image.NewRGBA(image.Rect(0, 0, n, n))
-	cx, cy := float64(30+seed%100), float64(30+(seed/7)%100)
-	for y := 0; y < n; y++ {
-		for x := 0; x < n; x++ {
-			t := (float64(x) + float64(y)) / (2 * n)
-			c := mixColor(a, b, t)
-			if d := math.Hypot(float64(x)-cx, float64(y)-cy); d < 38 {
-				c = mixColor(c, ui.RGB(255, 255, 255), 0.25)
+// drawn reports whether the window shows more than a handful of colours, so a
+// snapshot of an empty frame fails rather than being written silently.
+func drawn(img *image.RGBA) bool {
+	seen := map[color.RGBA]struct{}{}
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y += 4 {
+		for x := b.Min.X; x < b.Max.X; x += 4 {
+			seen[img.RGBAAt(x, y)] = struct{}{}
+			if len(seen) > 8 {
+				return true
 			}
-			img.Set(x, y, color.RGBA{c.R, c.G, c.B, 255})
 		}
 	}
-	bm := ui.NewBitmap(img)
-	artCache.Store(url, bm)
-	return bm
-}
-
-func mixColor(a, b ui.Color, t float64) ui.Color { return a.Mix(b, float32(t)) }
-
-func songs(prefix string, names ...string) []youtube.MusicItem {
-	var items []youtube.MusicItem
-	for i, name := range names {
-		items = append(items, youtube.MusicItem{
-			ID: fmt.Sprintf("%s-%d", prefix, i), VideoID: fmt.Sprintf("%s-%d", prefix, i), Title: name,
-			Subtitle: []string{"Aurora Vale", "Night Transit", "Low Tide", "Hollow Pines", "Mira Kessler"}[i%5],
-			Kind:     "track", Duration: fmt.Sprintf("%d:%02d", 2+i%4, 7+(i*13)%50),
-			Thumbnail: fmt.Sprintf("https://art.test/%s/%d", prefix, i),
-		})
-	}
-	return items
-}
-
-func albums(prefix string, names ...string) []youtube.MusicItem {
-	var items []youtube.MusicItem
-	for i, name := range names {
-		kind := "MPREb_" + fmt.Sprint(prefix, i)
-		items = append(items, youtube.MusicItem{
-			ID: kind, BrowseID: kind, Title: name, Kind: "music_item",
-			Subtitle:  []string{"Album • Aurora Vale", "Single • Low Tide", "Album • Hollow Pines", "EP • Mira Kessler"}[i%4],
-			Thumbnail: fmt.Sprintf("https://art.test/%s/a%d", prefix, i),
-		})
-	}
-	return items
-}
-
-func artists(names ...string) []youtube.MusicItem {
-	var items []youtube.MusicItem
-	for i, name := range names {
-		id := fmt.Sprintf("UCartist%d", i)
-		items = append(items, youtube.MusicItem{
-			ID: id, BrowseID: id, Title: name, Kind: "music_item",
-			Subtitle: "2.4M subscribers", Thumbnail: "https://art.test/artist/" + name,
-		})
-	}
-	return items
-}
-
-func homeSections() []youtube.MusicSection {
-	return []youtube.MusicSection{
-		{Title: "Quick picks", Items: songs("qp", "Glass Hours", "Slow Burn", "Paper Lanterns", "Static Bloom", "Midnight Cartography", "Salt & Honey", "Afterimage", "Low Orbit")},
-		{Title: "Listen again", Items: albums("la", "Deep Focus", "Tidal", "Evergreen", "Soft Machine", "Northern Lights", "Dust & Gold")},
-		{Title: "Artists you might like", Items: artists("Aurora Vale", "Night Transit", "Low Tide", "Hollow Pines", "Mira Kessler", "Pale Harbor")},
-		{Title: "Albums for you", Items: albums("fy", "Quiet Machines", "The Long Way Home", "Orchid", "Slow Currents", "Halcyon", "Mirrors")},
-	}
-}
-
-func newShotApp(path string, dark bool) (*app, *ui.Tester) {
-	a := newTestApp()
-	a.thumbs.synth = synthArt
-	a.router = ui.NewRouter(path)
-	a.location = path
-	a.feed = pageState{sections: homeSections()}
-	tt := ui.NewTester(a.view, 1180, 760)
-	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
-	tt.SetDark(dark)
-	return a, tt
+	return false
 }
 
 func save(t *testing.T, tt *ui.Tester, name string) {
-	dir := os.Getenv("MEIRO_SNAPSHOTS")
-	f, err := os.Create(filepath.Join(dir, name+".png"))
+	t.Helper()
+	if !drawn(tt.Image()) {
+		t.Errorf("snapshot %s drew a blank window", name)
+	}
+	f, err := os.Create(filepath.Join(os.Getenv("MEIRO_SNAPSHOTS"), name+".png"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +60,7 @@ func save(t *testing.T, tt *ui.Tester, name string) {
 
 func TestSnapshots(t *testing.T) {
 	if os.Getenv("MEIRO_SNAPSHOTS") == "" {
-		t.Skip("set MEIRO_SNAPSHOTS to a directory to write snapshots")
+		t.Fatal("set MEIRO_SNAPSHOTS to a directory to write snapshots")
 	}
 	play := func(a *app) {
 		a.current = songs("qp", "Glass Hours")[0]

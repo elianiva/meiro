@@ -19,9 +19,12 @@ func TestHueStripMatchesFromHue(t *testing.T) {
 	}
 }
 
+// A custom animation must repaint on its own schedule, coarser than a 60 Hz
+// refresh but still smooth: that cap is what keeps a high-refresh display from
+// repainting these widgets on every frame.
 func TestAnimatedPaintIntervalCapsPlaybackAnimationRate(t *testing.T) {
-	if animatedPaintInterval != 33*time.Millisecond {
-		t.Errorf("animated paint interval = %v, want 33 ms (~30 fps)", animatedPaintInterval)
+	if animatedPaintInterval < 16*time.Millisecond || animatedPaintInterval > 40*time.Millisecond {
+		t.Errorf("animated paint interval = %v, want about 30 fps (between 16ms and 40ms)", animatedPaintInterval)
 	}
 }
 

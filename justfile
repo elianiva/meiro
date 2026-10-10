@@ -34,7 +34,7 @@ run: (build host)
 # Render the app's pages to PNG files, for looking at them.
 snapshots dir="/tmp/meiro-shots":
     mkdir -p {{dir}}
-    MEIRO_SNAPSHOTS={{dir}} go test -run TestSnapshots .
+    MEIRO_SNAPSHOTS={{dir}} go test -tags snapshot -run TestSnapshots .
 
 # Remove build output and the downloaded tools.
 clean:

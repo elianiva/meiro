@@ -130,15 +130,26 @@ func TestAudioCacheTreatsCompletedDownloadAsMostRecentlyUsed(t *testing.T) {
 	}
 	installTestAudio(t, cache, "older")
 	installTestAudio(t, cache, "newer")
-	for id, used := range map[string]time.Time{
-		"older": time.Unix(1, 0),
-		"newer": time.Unix(2, 0),
+	// Give the two tracks a definite recency order — "older" was used before
+	// "newer" — by setting the index and the files directly. Touching them with
+	// get would order them by two time.Now() calls, and the map iteration that
+	// used to drive this loop shuffled that order from run to run.
+	for _, entry := range []struct {
+		id   string
+		used time.Time
+	}{
+		{"older", time.Unix(1, 0)},
+		{"newer", time.Unix(2, 0)},
 	} {
-		path, ok := cache.get(id)
-		if !ok {
-			t.Fatalf("cached track %q was not found", id)
+		if _, ok := cache.get(entry.id); !ok {
+			t.Fatalf("cached track %q was not found", entry.id)
 		}
-		if err := os.Chtimes(path, used, used); err != nil {
+		cache.mu.Lock()
+		file := cache.files[audioCacheKey(entry.id)]
+		file.used = entry.used
+		cache.files[file.key] = file
+		cache.mu.Unlock()
+		if err := os.Chtimes(file.path, entry.used, entry.used); err != nil {
 			t.Fatal(err)
 		}
 	}
