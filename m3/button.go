@@ -259,9 +259,9 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	}
 	fill := StateFill(container, content, b.Hovered() && !spec.Disabled, b.Pressed(), b.FocusVisible())
 
-	round := !(spec.Selected && (spec.Toggle || spec.Morph))
+	// A selected toggle or morph button rests in the squarer shape.
 	rest := d.height / 2
-	if !round {
+	if spec.Selected && (spec.Toggle || spec.Morph) {
 		rest = d.square
 	}
 	if b.Pressed() {
