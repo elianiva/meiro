@@ -165,25 +165,29 @@ type app struct {
 	// recommendationStart marks the first generated track in queue; tracks
 	// before it came from the user's selected page or playlist.
 	recommendationStart int
-	playNextID          string
-	queueSource         string
-	upNextOptions       youtube.UpNextOptions
-	upNextGeneration    int
-	upNextLoading       bool
-	upNextFetched       bool
-	upNextErr           string
-	upNextToken         string
-	upNextSeen          map[string]struct{}
-	recommendationIDs   map[string]struct{}
-	waitingForAuto      bool
-	total               time.Duration
-	scrub               float64
-	scrubbing           bool
-	volume              float64
-	muted               float64 // the volume to return to, while muted
-	shuffle             bool
-	repeat              repeatMode
-	playErr             string
+
+	// stopTick ends the ticker; stopTicking closes it once.
+	stopTick          chan struct{}
+	stopOnce          sync.Once
+	playNextID        string
+	queueSource       string
+	upNextOptions     youtube.UpNextOptions
+	upNextGeneration  int
+	upNextLoading     bool
+	upNextFetched     bool
+	upNextErr         string
+	upNextToken       string
+	upNextSeen        map[string]struct{}
+	recommendationIDs map[string]struct{}
+	waitingForAuto    bool
+	total             time.Duration
+	scrub             float64
+	scrubbing         bool
+	volume            float64
+	muted             float64 // the volume to return to, while muted
+	shuffle           bool
+	repeat            repeatMode
+	playErr           string
 	// resolving is set from the moment a track is chosen until its audio URL
 	// is found, and streamGen numbers those requests, so that only the latest
 	// one plays when it lands.
@@ -238,6 +242,7 @@ func newApp() *app {
 		carousels:           make(map[string]*m3.CarouselState),
 		pageCache:           make(map[string]*cachedPage),
 		recommendationStart: -1,
+		stopTick:            make(chan struct{}),
 	}
 	a.run = func(work func()) { go work() }
 	a.schedule = func(delay time.Duration, work func()) func() {
@@ -280,8 +285,11 @@ func main() {
 		// Background work reaches the window through a.win, so it starts only
 		// once the window is there.
 		a.restoreAccount()
+		a.startTicker(a.stopTick)
+		a.win.OnClosed(a.stopTicking)
 	})
 	err := mygo.App.Run()
+	a.stopTicking()
 	a.shutdown()
 	if err != nil {
 		log.Fatal(err)
@@ -628,19 +636,65 @@ func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 	return a.shown
 }
 
-// tick advances what the frame depends on: the player's position, the next
-// track when one ends, and the frame after this one.
-func (a *app) tick(c *ui.Context) {
+// syncLocation loads the page the router shows, once per location.
+func (a *app) syncLocation() {
+	location := a.router.Location()
+	if location == a.location {
+		return
+	}
+	a.onNavigate() // caches the page it leaves under the old location
+	a.location = location
+}
+
+// stopTicking ends the periodic work. The window closing and the app exiting
+// both call it.
+func (a *app) stopTicking() { a.stopOnce.Do(func() { close(a.stopTick) }) }
+
+// pollInterval is how often the ticker looks at the player.
+const pollInterval = 250 * time.Millisecond
+
+// startTicker owns the periodic player work: it wakes the main thread while
+// a track plays or has just ended or failed, and stops when stop is closed.
+// The view only describes the state the polls leave behind.
+func (a *app) startTicker(stop <-chan struct{}) {
+	go func() {
+		ticker := time.NewTicker(pollInterval)
+		defer ticker.Stop()
+		failure := ""
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			}
+			now := a.player.Failure()
+			if a.player.Playing() || a.player.Ended() || now != failure {
+				failure = now
+				a.update(a.poll)
+			}
+		}
+	}()
+}
+
+// poll advances what playback depends on: the player's position, the next
+// track when one ends, and the system media session. It runs on the main
+// thread, from the ticker.
+func (a *app) poll() {
 	if !a.player.Active() {
 		return
 	}
 	if failure := a.player.Failure(); failure != "" {
-		a.playErr = failure
-		a.syncSystemMedia()
+		if a.playErr != failure {
+			a.playErr = failure
+			a.syncSystemMedia()
+		}
 		return
 	}
 	if a.player.Ended() {
-		a.trackEnded()
+		// A new track is already on its way; the old one's end is not news.
+		if !a.resolving {
+			a.trackEnded()
+		}
 		return
 	}
 	if a.player.Playing() {
@@ -649,7 +703,6 @@ func (a *app) tick(c *ui.Context) {
 			a.scrub = a.player.Position().Seconds()
 		}
 		a.syncSystemMedia()
-		c.After(250 * time.Millisecond)
 	}
 }
 

@@ -165,6 +165,7 @@ func (a *app) playerBar(c *ui.Context) {
 		})
 		if info.Clicked() {
 			a.npOpen = true
+			a.loadPanel()
 		}
 
 		ui.Column(c).Grow(2).Basis(0).MinWidth(260).MaxWidth(580).Gap(0).Children(func() {
@@ -181,6 +182,7 @@ func (a *app) playerBar(c *ui.Context) {
 			}
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconExpandLess, Label: "Open the player", Key: "bar-expand"}).Clicked() {
 				a.npOpen, a.npQueueOnly = true, false
+				a.loadPanel()
 			}
 		})
 	})
@@ -318,6 +320,7 @@ func (a *app) nowPlayingTabs(c *ui.Context) {
 			})
 			if button.Clicked() {
 				a.npTab = index
+				a.loadPanel()
 			}
 		}
 	})
@@ -409,7 +412,6 @@ func (a *app) queueView(c *ui.Context) {
 }
 
 func (a *app) relatedView(c *ui.Context) {
-	a.loadRelated()
 	switch {
 	case a.related.loading:
 		ui.Column(c).Grow(1).Center().Children(func() { m3.LoadingIndicator(c, 56, true) })
@@ -438,7 +440,6 @@ func (a *app) relatedView(c *ui.Context) {
 // opens.
 func (a *app) lyricsView(c *ui.Context) {
 	sc := m3.Active().Scheme
-	a.loadLyrics()
 	switch {
 	case a.lyrics.loading:
 		ui.Column(c).Grow(1).Center().Children(func() { m3.LoadingIndicator(c, 56, true) })

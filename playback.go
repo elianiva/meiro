@@ -90,6 +90,7 @@ func (a *app) start(item youtube.MusicItem) {
 	a.player.Stop()
 	a.stream(item)
 	a.ensureUpNext()
+	a.loadPanel()
 	a.syncSystemMedia()
 }
 
@@ -688,6 +689,21 @@ type lyricsState struct {
 	text    string
 	footer  string
 	err     string
+}
+
+// loadPanel starts the load behind the tab of the side panel that is showing.
+// Opening the panel, choosing a tab and starting a track call it; building the
+// view never does.
+func (a *app) loadPanel() {
+	if !a.npOpen {
+		return
+	}
+	switch a.npTab {
+	case 1:
+		a.loadLyrics()
+	case 2:
+		a.loadRelated()
+	}
 }
 
 // loadLyrics fetches the lyrics of the current track, once.

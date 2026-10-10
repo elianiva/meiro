@@ -24,11 +24,10 @@ func (a *app) view(c *ui.Context) {
 	sc := m3.Active().Scheme
 	c.Root().Background(sc.SurfaceContainerLow)
 
-	if location := a.router.Location(); location != a.location {
-		a.onNavigate()
-		a.location = location
-	}
-	a.tick(c)
+	// The router also moves on its own, by the keyboard's back and forward
+	// keys, so the build is where a new location is noticed. It is guarded:
+	// a location is acted on once.
+	a.syncLocation()
 	a.followArtwork()
 	if a.notice != "" {
 		c.Toast(a.notice)
