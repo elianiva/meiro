@@ -17,6 +17,8 @@ platform="${1:?usage: fetch-tools.sh <darwin-arm64|darwin-amd64|linux-amd64|linu
 FFMPEG_VERSION="8.1.3-1"
 ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v${FFMPEG_VERSION}"
 
+# yt-dlp ships as the one-directory build: the one-file build unpacks itself to
+# a temporary directory on every launch, which costs about 0.4 s per resolve.
 # yt-dlp breaks whenever YouTube changes, so a release takes the newest one
 # unless YT_DLP_VERSION pins it. Its checksums come from the release itself.
 YT_DLP_VERSION="${YT_DLP_VERSION:-latest}"
@@ -36,28 +38,28 @@ case "$platform" in
 	darwin-arm64)
 		ffmpeg_asset="macarm64"
 		ffmpeg_sha256="22445d7299742749ad2eeb9ce87963d50def0357e45b3e6c7b69987c8365dbf6"
-		ytdlp_asset="yt-dlp_macos"
+		ytdlp_asset="yt-dlp_macos.zip"
 		quickjs_asset="qjs-darwin-arm64"
 		quickjs_sha256="8be3ddfe3397d2e692e4e1e8972ee9d032a0a580505d2f8b4ea528cf1b651c11"
 		;;
 	darwin-amd64)
 		ffmpeg_asset="mac64"
 		ffmpeg_sha256="cb2b5c154d49a6b6bfe29fa6c16510e85dcbf60b805764121a167b093d4bb6fb"
-		ytdlp_asset="yt-dlp_macos"
+		ytdlp_asset="yt-dlp_macos.zip"
 		quickjs_asset="qjs-darwin-x86_64"
 		quickjs_sha256="9e5e101b4fd13cda3204222ca9f8be35412c41dcdef3745829633b7a67245412"
 		;;
 	linux-amd64)
 		ffmpeg_asset="linux64"
 		ffmpeg_sha256="b86dc023c64a5a9a410e6e3a938a970460214fae78f31c1553c9f88f1c289b6a"
-		ytdlp_asset="yt-dlp_linux"
+		ytdlp_asset="yt-dlp_linux.zip"
 		quickjs_asset="qjs-linux-x86_64"
 		quickjs_sha256="0bfc02511a9f549c28b53880d988fc7cd5d361e90c5e8afdfcd7dc6774ceace5"
 		;;
 	linux-arm64)
 		ffmpeg_asset="linuxarm64"
 		ffmpeg_sha256="7bc8e8d0986f7f4693f63e9728570f671f07b6e21c05d5465dd7ce461d1631dc"
-		ytdlp_asset="yt-dlp_linux_aarch64"
+		ytdlp_asset="yt-dlp_linux_aarch64.zip"
 		quickjs_asset="qjs-linux-aarch64"
 		quickjs_sha256="3372133484edf50a69f3c67903af41206d22a061e930e3cfb63269272ef56d2e"
 		;;
@@ -116,12 +118,19 @@ echo "yt-dlp ${YT_DLP_VERSION} for ${platform}"
 curl -fsSL -o "$work/SHA2-256SUMS" "${ytdlp_url}/SHA2-256SUMS"
 expected="$(awk -v name="$ytdlp_asset" '$2 == name || $2 == "*" name { print $1 }' "$work/SHA2-256SUMS")"
 [[ -n "$expected" ]] || { printf 'No checksum for %s\n' "$ytdlp_asset" >&2; exit 1; }
-if cached "$out/bin/yt-dlp" "$expected"; then
+# The zip holds the executable and an _internal/ directory it finds beside
+# itself, so both are installed into bin/. The zip's checksum is recorded to
+# tell a later run that the download is current.
+if [[ -x "$out/bin/yt-dlp" && -d "$out/bin/_internal" && "$(cat "$out/bin/.yt-dlp.sha256" 2>/dev/null)" == "$expected" ]]; then
 	echo "  already downloaded"
 else
-	curl -fsSL -o "$work/yt-dlp" "${ytdlp_url}/${ytdlp_asset}"
-	verify "$work/yt-dlp" "$expected"
-	install -m 0755 "$work/yt-dlp" "$out/bin/yt-dlp"
+	curl -fsSL -o "$work/yt-dlp.zip" "${ytdlp_url}/${ytdlp_asset}"
+	verify "$work/yt-dlp.zip" "$expected"
+	unzip -q "$work/yt-dlp.zip" -d "$work/yt-dlp"
+	rm -rf "$out/bin/_internal" "$out/bin/yt-dlp"
+	cp -R "$work/yt-dlp/_internal" "$out/bin/_internal"
+	install -m 0755 "$work/yt-dlp/${ytdlp_asset%.zip}" "$out/bin/yt-dlp"
+	printf '%s\n' "$expected" > "$out/bin/.yt-dlp.sha256"
 fi
 
 echo "quickjs ${QUICKJS_VERSION} for ${platform}"

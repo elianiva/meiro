@@ -330,9 +330,11 @@ func (a *app) stream(item youtube.MusicItem) {
 				cancel()
 			}
 		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-			streamURL, total, err = ytDlpStream(ctx, item.VideoID, cookie)
-			cancel()
+			var resolved time.Duration
+			streamURL, resolved, err = a.streams.get(item.VideoID, cookie)
+			if resolved > 0 {
+				total = resolved
+			}
 		}
 		a.update(func() {
 			if gen != a.streamGen {
@@ -371,10 +373,11 @@ func (a *app) stream(item youtube.MusicItem) {
 	})
 }
 
-// warmNext starts the next queue track downloading while the current one
-// plays, so a play that follows opens a local file instead of waiting on the
-// network. It does nothing when the queue ends at the current track, or when
-// the cache is too small for a warmed track to survive until it plays.
+// warmNext resolves the next queue track's audio URL while the current one
+// plays, so a play that follows skips yt-dlp. That costs a few kilobytes. When
+// the cache is big enough for a warmed track to survive until it plays, the
+// track is also downloaded from that URL. It does nothing when the queue ends
+// at the current track.
 func (a *app) warmNext() {
 	if a.index+1 >= len(a.queue) {
 		return
@@ -384,10 +387,16 @@ func (a *app) warmNext() {
 		return
 	}
 	cache, cookie := a.currentAudioCache(), a.ytDlpCookie
-	if !cache.warmable() {
-		return
-	}
-	a.run(func() { cache.enqueue(next.VideoID, cookie) })
+	a.run(func() {
+		streamURL, _, err := a.streams.get(next.VideoID, cookie)
+		if err != nil {
+			log.Printf("playback: could not resolve next video_id=%s: %v", next.VideoID, err)
+			return
+		}
+		if cache.warmable() {
+			cache.enqueueStream(next.VideoID, streamURL)
+		}
+	})
 }
 
 // setAudioCacheLimit changes the number of recently played audio files kept
@@ -408,7 +417,9 @@ func ytDlpStream(ctx context.Context, videoID, cookie string) (string, time.Dura
 		return "", 0, errors.New("playing needs ffmpeg and yt-dlp on PATH")
 	}
 	jsRuntime, runtimeArgs := ytDlpJSRuntimeArgs()
-	args := []string{"-f", "bestaudio", "-g", "--no-playlist", "--verbose"}
+	// The player API already lists the audio formats; the HLS and DASH
+	// manifests only cost two more requests.
+	args := []string{"-f", "bestaudio", "-g", "--no-playlist", "--extractor-args", "youtube:skip=hls,dash"}
 	args = append(args, runtimeArgs...)
 	if cookie != "" {
 		cookieFile, err := ytDlpCookieFile(cookie)

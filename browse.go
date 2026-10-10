@@ -272,6 +272,9 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 	key := cardKey(item, list, position)
 	card := ui.ButtonBase(c.Key(key))
 	hovered := card.Hovered()
+	if kind == pageTrack {
+		a.hoverSong(key, item, hovered)
+	}
 	card.Column().AlignItems(ui.Start).Width(cardWidth).Shrink(0).Padding(8).Gap(10).Radius(m3.ExtraLarge).Cursor(ui.CursorPointer).
 		Background(m3.Layer(sc.Surface, sc.OnSurface, hoverOpacity(hovered || card.FocusVisible()))).
 		Label(item.Title)
@@ -421,6 +424,9 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	row.Children(func() {
 		main = ui.ButtonBase(c.Key(key + "-activate"))
 		hovered := row.Hovered()
+		if isSong {
+			a.hoverSong(key, item, hovered)
+		}
 		main.Grow(1).Basis(0).MinWidth(0).Height(rowHeight - 16).PaddingX(8).Gap(12).AlignItems(ui.Center).
 			Radius(m3.Large).Cursor(ui.CursorPointer).Label(item.Title).Background(ui.Transparent)
 		row.Background(m3.StateFill(container, sc.OnSurface, hovered && !playing, main.Pressed(), main.FocusVisible()))

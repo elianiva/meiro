@@ -186,6 +186,14 @@ type app struct {
 	// one plays when it lands.
 	resolving bool
 	streamGen int
+	// streams remembers resolved audio URLs, including those of tracks
+	// resolved ahead of their turn.
+	streams *streamCache
+	// hoverKey is the song the pointer rests on, hoverStop cancels its
+	// pending lookup, and hoverBusy is set while a lookup runs.
+	hoverKey  string
+	hoverStop func()
+	hoverBusy bool
 	// opening is the album or playlist whose first song is being looked up
 	// to play, so that a second press does not look it up again.
 	opening string
@@ -236,6 +244,7 @@ func newApp() *app {
 		pageCache:           make(map[string]*cachedPage),
 		recommendationStart: -1,
 		stopTick:            make(chan struct{}),
+		streams:             newStreamCache(ytDlpStream),
 	}
 	a.run = func(work func()) { go work() }
 	a.schedule = func(delay time.Duration, work func()) func() {

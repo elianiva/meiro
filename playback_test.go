@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,25 +53,46 @@ func TestAutoplayQueueIsBoundedWithoutReplacingCurrentTrack(t *testing.T) {
 	}
 }
 
-// Warming downloads the next track, which is only worth its bandwidth when
-// the cache keeps enough tracks for it to still be there when it plays. At a
-// limit of one it would evict the track that is playing.
-func TestWarmNextNeedsACacheThatKeepsMoreThanOneTrack(t *testing.T) {
+// Resolving the next track's URL costs a few kilobytes, so it always happens.
+// Downloading it is only worth its bandwidth when the cache keeps enough
+// tracks for it to still be there when it plays. At a limit of one it would
+// evict the track that is playing.
+func TestWarmNextResolvesAlwaysAndDownloadsOnlyWithRoom(t *testing.T) {
 	for _, limit := range []int{0, 1, 2} {
 		a := newTestApp()
 		cache, err := newAudioCache(filepath.Join(t.TempDir(), "audio"), limit)
 		if err != nil {
 			t.Fatal(err)
 		}
+		fetched := make(chan string, 1)
+		cache.fetch = func(_ context.Context, streamURL, _ string) (string, error) {
+			fetched <- streamURL
+			return "", errors.New("stub")
+		}
 		a.replaceAudioCache(cache)
+		resolved := 0
+		a.streams = newStreamCache(func(_ context.Context, id, _ string) (string, time.Duration, error) {
+			resolved++
+			return "https://media.invalid/" + id, 0, nil
+		})
 		a.current = youtube.MusicItem{VideoID: "playing"}
 		a.queue = []youtube.MusicItem{{VideoID: "playing"}, {VideoID: "next"}}
 		a.index = 0
-		queued := 0
-		a.run = func(work func()) { queued++ }
 		a.warmNext()
-		if wantQueued := limit > 1; (queued > 0) != wantQueued {
-			t.Errorf("warmNext with a cache limit of %d queued %d downloads, want queued=%v", limit, queued, wantQueued)
+		if resolved != 1 {
+			t.Errorf("limit %d: resolved %d times, want 1", limit, resolved)
+		}
+		select {
+		case got := <-fetched:
+			if limit <= 1 {
+				t.Errorf("limit %d downloaded %q, want no download", limit, got)
+			} else if got != "https://media.invalid/next" {
+				t.Errorf("downloaded %q, want the resolved URL", got)
+			}
+		case <-time.After(300 * time.Millisecond):
+			if limit > 1 {
+				t.Errorf("limit %d did not download the next track", limit)
+			}
 		}
 		cache.close()
 	}
