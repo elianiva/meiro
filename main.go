@@ -255,6 +255,7 @@ func main() {
 	// before a collection; half as much costs a little time and saves tens of
 	// megabytes.
 	debug.SetGCPercent(50)
+	sweepTempRoot()
 	a := newApp()
 	mygo.App.WhenReady(func() {
 		a.setup()

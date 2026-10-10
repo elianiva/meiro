@@ -57,7 +57,7 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 	}
 	// The browser holds its database open, and writes recent cookies to a
 	// journal beside it: both are read from a copy.
-	directory, err := os.MkdirTemp("", "meiro-cookies-")
+	directory, err := mkdirTemp("meiro-cookies-")
 	if err != nil {
 		return "", err
 	}
@@ -77,7 +77,7 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 	}
 
 	query := func(statement string) ([]byte, error) {
-		out, err := exec.CommandContext(ctx, sqlite, "-readonly", "-json", copied, statement).Output()
+		out, err := command(ctx, sqlite, "-readonly", "-json", copied, statement).Output()
 		if err != nil {
 			return nil, fmt.Errorf("read the cookie database: %w", err)
 		}
@@ -146,7 +146,7 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 // cookies with from the password it keeps in the keychain, which asks the
 // user before it answers.
 func chromiumKey(ctx context.Context, key keychainKey) ([]byte, error) {
-	out, err := exec.CommandContext(ctx, "security", "find-generic-password", "-w", "-s", key.service, "-a", key.account).Output()
+	out, err := command(ctx, "security", "find-generic-password", "-w", "-s", key.service, "-a", key.account).Output()
 	if err != nil {
 		return nil, fmt.Errorf("the keychain did not give the browser's key: %w", err)
 	}

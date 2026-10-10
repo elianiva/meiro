@@ -419,7 +419,7 @@ func ytDlpStream(ctx context.Context, videoID, cookie string) (string, time.Dura
 	}
 	args = append(args,
 		"https://music.youtube.com/watch?v="+url.QueryEscape(videoID))
-	command := exec.CommandContext(ctx, path, args...)
+	command := command(ctx, path, args...)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	started := time.Now()
@@ -472,7 +472,7 @@ func ytDlpJSRuntimeArgs() (string, []string) {
 // ytDlpCookieFile translates the app's YouTube Cookie header into the
 // temporary Netscape file yt-dlp accepts. CreateTemp keeps credentials private.
 func ytDlpCookieFile(cookie string) (string, error) {
-	file, err := os.CreateTemp("", "meiro-yt-dlp-cookies-*.txt")
+	file, err := createTemp("meiro-yt-dlp-cookies-*.txt")
 	if err != nil {
 		return "", err
 	}
@@ -546,7 +546,7 @@ func audioFileDuration(ctx context.Context, path string) time.Duration {
 	if err != nil {
 		return 0
 	}
-	output, _ := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-i", path).CombinedOutput()
+	output, _ := command(ctx, ffmpeg, "-hide_banner", "-i", path).CombinedOutput()
 	return parseFFmpegDuration(string(output))
 }
 

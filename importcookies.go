@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -376,7 +375,7 @@ func ytDlpCookie(ctx context.Context, spec string) (string, error) {
 	if err != nil {
 		return "", errors.New("importing needs yt-dlp on PATH")
 	}
-	directory, err := os.MkdirTemp("", "meiro-cookies-")
+	directory, err := mkdirTemp("meiro-cookies-")
 	if err != nil {
 		return "", err
 	}
@@ -386,7 +385,7 @@ func ytDlpCookie(ctx context.Context, spec string) (string, error) {
 	file := filepath.Join(directory, "cookies.txt")
 	// yt-dlp needs a URL to get as far as loading the cookies, and saves them
 	// when it ends, whether or not it found anything to download.
-	command := exec.CommandContext(ctx, path,
+	command := command(ctx, path,
 		"--cookies-from-browser", spec, "--cookies", file,
 		"--skip-download", "--no-warnings", "--no-playlist", "--playlist-items", "0",
 		"https://music.youtube.com/")

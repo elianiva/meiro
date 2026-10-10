@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -372,6 +371,7 @@ type audioCacheFile struct {
 // when the cache is created, so later lookups and evictions need no directory
 // scan. The caller holds c.mu.
 func (c *audioCache) scanLocked() {
+	sweepStaleTemp(c.dir, staleTempAge, ".audio-")
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
 		return
@@ -443,7 +443,7 @@ func downloadAudio(ctx context.Context, videoID, cacheDir, cookie string) (strin
 		options = append(options, "--cookies", cookieFile)
 	}
 	args := audioCacheDownloadArgs(videoID, tempDir, options...)
-	command := exec.CommandContext(ctx, path, args...)
+	command := command(ctx, path, args...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		_ = os.RemoveAll(tempDir)
@@ -568,7 +568,7 @@ func audioCacheDownloadArgs(videoID, tempDir string, options ...string) []string
 	args := []string{
 		"-f", "bestaudio",
 		"--no-playlist", "--no-warnings", "--no-progress",
-		"-o", filepath.Join(tempDir, "audio.%(ext)s"),
+		"-P", tempDir, "-o", "audio.%(ext)s",
 	}
 	args = append(args, options...)
 	return append(args, "https://music.youtube.com/watch?v="+url.QueryEscape(videoID))

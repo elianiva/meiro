@@ -106,7 +106,7 @@ func (s secret) set(ctx context.Context, value string) error {
 	if program == "" {
 		return errNoCredentialStore
 	}
-	command := exec.CommandContext(ctx, program, "store", "--label="+s.service, "service", s.service, "account", s.account)
+	command := command(ctx, program, "store", "--label="+s.service, "service", s.service, "account", s.account)
 	command.Stdin = strings.NewReader(value)
 	if err := command.Run(); err != nil {
 		return fmt.Errorf("save the sign-in in the system keychain: %w", err)
@@ -135,7 +135,7 @@ func (s secret) get(ctx context.Context) (string, error) {
 	if program == "" {
 		return "", errNoCredentialStore
 	}
-	command := exec.CommandContext(ctx, program, "lookup", "service", s.service, "account", s.account)
+	command := command(ctx, program, "lookup", "service", s.service, "account", s.account)
 	output, err := command.Output()
 	if err != nil {
 		if missingSecret(err) {
@@ -164,7 +164,7 @@ func (s secret) remove(ctx context.Context) error {
 	if program == "" {
 		return nil
 	}
-	command := exec.CommandContext(ctx, program, "clear", "service", s.service, "account", s.account)
+	command := command(ctx, program, "clear", "service", s.service, "account", s.account)
 	// Output captures secret-tool diagnostics in ExitError.Stderr, which is
 	// needed to distinguish a missing secret from an operational failure.
 	if _, err := command.Output(); err != nil && !missingSecret(err) {
