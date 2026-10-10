@@ -6,12 +6,51 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/elianiva/meiro/youtube"
 )
+
+func TestAutoplayQueueIsBoundedWithoutReplacingCurrentTrack(t *testing.T) {
+	a := newTestApp()
+	a.queue = make([]youtube.MusicItem, autoplayQueueLimit+1)
+	a.queue[0] = youtube.MusicItem{VideoID: "selected"}
+	for i := 1; i < len(a.queue); i++ {
+		a.queue[i] = youtube.MusicItem{VideoID: "recommendation-" + strconv.Itoa(i)}
+	}
+	a.recommendationStart = 1
+	a.index = 5
+	a.current = a.queue[a.index]
+	current := a.current.VideoID
+	a.appendRecommendations([]youtube.MusicItem{
+		{VideoID: "new-a"}, {VideoID: "new-b"}, {VideoID: "new-c"}, {VideoID: "new-d"}, {VideoID: "new-e"},
+	})
+
+	if a.current.VideoID != current || a.queue[a.index].VideoID != current {
+		t.Fatalf("adding recommendations changed the current track to %q at index %d", a.queue[a.index].VideoID, a.index)
+	}
+	if len(a.recommendationIDs) > autoplayQueueLimit {
+		t.Fatalf("retained %d autoplay tracks, limit is %d", len(a.recommendationIDs), autoplayQueueLimit)
+	}
+	if a.index != 0 {
+		t.Errorf("played queue prefix was not evicted, current index = %d", a.index)
+	}
+	if len(a.queue) != autoplayQueueLimit || a.queue[len(a.queue)-1].VideoID != "new-d" {
+		t.Fatalf("queue length = %d and last item = %q, want a full bounded queue ending in new-d", len(a.queue), a.queue[len(a.queue)-1].VideoID)
+	}
+
+	more := make([]youtube.MusicItem, autoplayQueueLimit)
+	for i := range more {
+		more[i] = youtube.MusicItem{VideoID: "later-" + strconv.Itoa(i)}
+	}
+	a.appendRecommendations(more)
+	if len(a.recommendationIDs) > autoplayQueueLimit || len(a.queue) != autoplayQueueLimit {
+		t.Fatalf("a full autoplay queue grew to %d items (%d recommendations)", len(a.queue), len(a.recommendationIDs))
+	}
+}
 
 // Warming downloads the next track, which is only worth its bandwidth when
 // the cache keeps enough tracks for it to still be there when it plays. At a

@@ -83,6 +83,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 // are answered by fakeMusic.
 func newTestApp() *app {
 	a := newApp()
+	a.volume = a.settings.Volume
+	a.player.SetVolume(a.volume / 100)
 	a.run = func(work func()) { work() }
 	// Debounced work runs at once, so a frame sees the suggestion request's
 	// answer without waiting.
@@ -100,6 +102,27 @@ func newTestApp() *app {
 	a.newClient = newFakeClient
 	a.public, a.authed = newFakeClient(nil), newFakeClient(nil)
 	return a
+}
+
+func TestItemKeysUseIdentityAndDistinguishRepeatedItems(t *testing.T) {
+	first := youtube.MusicItem{ID: "album-one", BrowseID: "MPREb_one", Title: "Same title"}
+	second := youtube.MusicItem{ID: "album-two", BrowseID: "MPREb_two", Title: "Same title"}
+	if cardKey(first, "shelf", 0) == cardKey(second, "shelf", 0) {
+		t.Fatal("same-title albums with different identities share a key")
+	}
+	if got, want := cardKey(first, "shelf", 0), cardKey(first, "shelf", 1); got == want {
+		t.Fatal("repeated identical cards share a key")
+	}
+	if got, want := cardKey(first, "shelf-one", 0), cardKey(first, "shelf-two", 0); got == want {
+		t.Fatal("repeated cards in different shelves share a key")
+	}
+	if got, want := songKey(first, songOptions{list: "shelf", position: 0}), songKey(first, songOptions{list: "shelf", position: 1}); got == want {
+		t.Fatal("repeated identical items in one shelf share a key")
+	}
+	firstRow, secondRow := row{kind: rowTrack, item: first, shelf: "/home#0"}, row{kind: rowTrack, item: first, shelf: "/home#1"}
+	if firstRow.key() == secondRow.key() {
+		t.Fatal("the same item repeated across sections shares a row key")
+	}
 }
 
 func TestHomeListsSections(t *testing.T) {

@@ -13,10 +13,11 @@ import (
 
 // The sizes of what a shelf holds, in DIPs.
 const (
-	cardWidth   = 176
-	cardArt     = cardWidth - 16
-	columnWidth = 392
-	rowHeight   = 64
+	cardWidth          = 176
+	cardArt            = cardWidth - 16
+	columnWidth        = 392
+	rowHeight          = 64
+	carouselStateLimit = pageCacheLimit * 4 // four shelves per retained route
 )
 
 // browsePage shows a feed, or an album, a playlist or an artist, as rows of
@@ -90,7 +91,7 @@ func (a *app) rowView(c *ui.Context, i int) {
 	case rowColumns:
 		a.columnShelf(c, r)
 	case rowTrack:
-		a.songRow(c, r.item, a.playable, songOptions{number: r.number(), list: "page:" + a.router.Path(), inset: true, fetchArtwork: true})
+		a.songRow(c, r.item, a.playable, songOptions{number: r.number(), list: r.shelf, position: r.position, inset: true, fetchArtwork: true})
 	case rowMore:
 		ui.Row(c).Justify(ui.Center).Padding(16).Children(func() {
 			if m3.Button(c, m3.ButtonSpec{Label: r.title, Kind: m3.Tonal, Size: m3.Medium56, Key: "more"}).Clicked() {
@@ -122,6 +123,12 @@ func (a *app) carousel(key string) *m3.CarouselState {
 	if st == nil {
 		st = &m3.CarouselState{}
 		a.carousels[key] = st
+	}
+	a.carouselOrder = append(removeKey(a.carouselOrder, key), key)
+	for len(a.carouselOrder) > carouselStateLimit {
+		oldest := a.carouselOrder[0]
+		a.carouselOrder = a.carouselOrder[1:]
+		delete(a.carousels, oldest)
 	}
 	return st
 }
@@ -166,7 +173,7 @@ func (a *app) cardShelf(c *ui.Context, r row) {
 		m3.Carousel(c, st, r.shelf, gap, pageGutter-8, func() {
 			shelfSpacer(c, float32(first)*(cardWidth+gap)-gap)
 			for i := first; i < last; i++ {
-				a.card(c, r.items[i], r.queue, true)
+				a.card(c, r.items[i], r.queue, r.shelf, i, true)
 			}
 			shelfSpacer(c, float32(len(r.items)-last)*(cardWidth+gap)-gap)
 		})
@@ -202,8 +209,8 @@ func (a *app) columnShelf(c *ui.Context, r row) {
 				start := g * 4
 				group := r.items[start:min(start+4, len(r.items))]
 				ui.Column(c).Key(start).Width(columnWidth).Shrink(0).Children(func() {
-					for _, item := range group {
-						a.songRow(c, item, r.queue, songOptions{list: r.shelf, fetchArtwork: true})
+					for i, item := range group {
+						a.songRow(c, item, r.queue, songOptions{list: r.shelf, position: start + i, fetchArtwork: true})
 					}
 				})
 			}
@@ -217,7 +224,27 @@ func (a *app) columnShelf(c *ui.Context, r row) {
 }
 
 func itemKey(prefix string, item youtube.MusicItem) string {
-	return prefix + ":" + item.ID + "\x00" + item.Title + "\x00" + item.Subtitle
+	kind, id := targetOf(item)
+	if id == "" {
+		id = item.ID
+	}
+	if id == "" {
+		id = item.BrowseID
+	}
+	if id == "" {
+		id = item.PlaylistID
+	}
+	if id == "" {
+		id = item.Kind + "\x00" + item.Thumbnail + "\x00" + item.Duration
+	}
+	if kind == "" {
+		kind = item.Kind
+	}
+	return prefix + ":" + kind + "\x00" + id
+}
+
+func cardKey(item youtube.MusicItem, list string, position int) string {
+	return itemKey("card", item) + "\x00" + list + "#" + strconv.Itoa(position)
 }
 
 // hoverOpacity is the state layer of something that may be under the pointer.
@@ -239,10 +266,10 @@ func artRadius(item youtube.MusicItem, square float32) float32 {
 
 // card shows an album, a playlist, an artist or a song as artwork over its
 // name. A play button rises over the artwork under the pointer.
-func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, fetchArtwork bool) {
+func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, list string, position int, fetchArtwork bool) {
 	sc := m3.Active().Scheme
 	kind, _ := targetOf(item)
-	key := itemKey("card", item)
+	key := cardKey(item, list, position)
 	card := ui.ButtonBase(c.Key(key))
 	hovered := card.Hovered()
 	card.Column().AlignItems(ui.Start).Width(cardWidth).Shrink(0).Padding(8).Gap(10).Radius(m3.ExtraLarge).Cursor(ui.CursorPointer).
@@ -253,7 +280,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 	hasMenu := false
 	card.Children(func() {
 		radius := artRadius(item, m3.LargeIncreased)
-		opening := a.opening == itemKey("open", item)
+		opening := a.opening == itemKey("open", item)+"\x00"+list+"#"+strconv.Itoa(position)
 		m3.Art(c, a.thumbs.bitmapIf(item.Thumbnail, 320, fetchArtwork), cardArt, radius, func() {
 			if isVideo(item) {
 				m3.VideoBadge(c, cardArt)
@@ -314,7 +341,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		// The card's button also receives this pointer event. Opening its menu
 		// must not activate the card underneath it.
 	case played:
-		a.playCollection(item)
+		a.playCollection(item, list, position)
 	case card.Clicked():
 		a.activate(item, queue)
 	}
@@ -363,7 +390,8 @@ type songOptions struct {
 	// list names the list the row belongs to, so that the same song in two
 	// lists, as in the queue behind a page of quick picks, is two rows with
 	// two keys rather than one shared menu.
-	list string
+	list     string
+	position int
 	// inset puts the row in from the edges of the page, as the rows of a
 	// page of songs are; rows in a shelf sit flush.
 	inset        bool
@@ -375,7 +403,7 @@ type songOptions struct {
 // songKey identifies a row of a song in its list, for the element tree and
 // for the menu state that a row opens.
 func songKey(item youtube.MusicItem, o songOptions) string {
-	return itemKey("song", item) + strconv.Itoa(o.number) + "\x00" + o.list
+	return itemKey("song", item) + "\x00" + strconv.Itoa(o.number) + "\x00" + o.list + "#" + strconv.Itoa(o.position)
 }
 
 // songRow shows a song, an album, an artist or a playlist as a row: artwork,
@@ -518,7 +546,7 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 		if artistID := artistID(item); artistID != "" {
 			if m3.MenuItem(c, "Go to artist", m3.IconPerson).Clicked() {
 				path := "/artist/" + url.PathEscape(artistID)
-				a.details[path] = detail{kind: pageArtist}
+				a.rememberDetail(path, detail{kind: pageArtist})
 				a.router.Push(path)
 				close()
 			}

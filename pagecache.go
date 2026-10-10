@@ -64,7 +64,7 @@ func (a *app) restorePage(location string) (*cachedPage, bool) {
 }
 
 func (a *app) touchPage(location string) {
-	a.pageCacheOrder = append(removePage(a.pageCacheOrder, location), location)
+	a.pageCacheOrder = append(removeKey(a.pageCacheOrder, location), location)
 	for len(a.pageCacheOrder) > pageCacheLimit {
 		oldest := a.pageCacheOrder[0]
 		a.pageCacheOrder = a.pageCacheOrder[1:]
@@ -72,18 +72,18 @@ func (a *app) touchPage(location string) {
 	}
 }
 
-func removePage(pages []string, location string) []string {
-	for index, page := range pages {
-		if page == location {
-			return append(pages[:index], pages[index+1:]...)
+func removeKey(keys []string, key string) []string {
+	for index, candidate := range keys {
+		if candidate == key {
+			return append(keys[:index], keys[index+1:]...)
 		}
 	}
-	return pages
+	return keys
 }
 
 func (a *app) forgetPage(location string) {
 	delete(a.pageCache, location)
-	a.pageCacheOrder = removePage(a.pageCacheOrder, location)
+	a.pageCacheOrder = removeKey(a.pageCacheOrder, location)
 }
 
 func (a *app) forgetPages() {

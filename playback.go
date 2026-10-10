@@ -18,6 +18,8 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
+const autoplayQueueLimit = 100 // current and upcoming generated tracks; played history is evicted at the limit
+
 // play starts item, with the items around it as the queue.
 func (a *app) play(item youtube.MusicItem, queue []youtube.MusicItem, index int) {
 	a.playWithOptions(item, queue, index, youtube.UpNextOptions{}, "")
@@ -65,6 +67,7 @@ func (a *app) resetUpNext(options youtube.UpNextOptions, source string) {
 	a.upNextErr = ""
 	a.upNextToken = ""
 	a.upNextSeen = make(map[string]struct{})
+	a.recommendationIDs = make(map[string]struct{})
 	a.recommendationStart = -1
 	a.queueSource = source
 	a.waitingForAuto = false
@@ -172,12 +175,23 @@ func (a *app) ensureUpNext() {
 // appendRecommendations keeps the selected queue intact and appends only
 // tracks YouTube Music has not already returned in it.
 func (a *app) appendRecommendations(items []youtube.MusicItem) {
-	seen := make(map[string]struct{}, len(a.queue)+len(items))
+	if a.recommendationIDs == nil {
+		a.recommendationIDs = make(map[string]struct{})
+		if a.recommendationStart >= 0 {
+			for _, queued := range a.queue[a.recommendationStart:] {
+				if queued.VideoID != "" {
+					a.recommendationIDs[queued.VideoID] = struct{}{}
+				}
+			}
+		}
+	}
+	seen := make(map[string]struct{}, len(a.queue)+min(len(items), autoplayQueueLimit+1))
 	for _, queued := range a.queue {
 		if queued.VideoID != "" {
 			seen[queued.VideoID] = struct{}{}
 		}
 	}
+	recommendations := make([]youtube.MusicItem, 0, min(len(items), autoplayQueueLimit+1))
 	for _, item := range items {
 		if item.VideoID == "" {
 			continue
@@ -186,10 +200,33 @@ func (a *app) appendRecommendations(items []youtube.MusicItem) {
 			continue
 		}
 		seen[item.VideoID] = struct{}{}
+		recommendations = append(recommendations, item)
+		if len(recommendations) > autoplayQueueLimit {
+			break
+		}
+	}
+	if len(a.recommendationIDs)+len(recommendations) > autoplayQueueLimit && a.index > 0 {
+		// Keep the current track and everything after it. Dropping played
+		// history frees recommendation slots without interrupting playback.
+		played := a.index
+		for _, queued := range a.queue[:played] {
+			delete(a.recommendationIDs, queued.VideoID)
+		}
+		a.queue = slices.Clone(a.queue[played:])
+		a.index = 0
+		if a.recommendationStart >= 0 {
+			a.recommendationStart = max(0, a.recommendationStart-played)
+		}
+	}
+	for _, item := range recommendations {
+		if len(a.recommendationIDs) >= autoplayQueueLimit {
+			break
+		}
 		if a.recommendationStart < 0 {
 			a.recommendationStart = len(a.queue)
 		}
 		a.queue = append(a.queue, item)
+		a.recommendationIDs[item.VideoID] = struct{}{}
 	}
 	// A recommended track can be the one that plays next, so warm it too.
 	a.warmNext()
@@ -249,6 +286,14 @@ func (a *app) setAutoPlay(enabled bool) {
 		a.upNextFetched = false
 		a.upNextToken = ""
 		a.upNextSeen = make(map[string]struct{})
+		a.recommendationIDs = make(map[string]struct{})
+		if a.recommendationStart >= 0 {
+			for _, item := range a.queue[a.recommendationStart:] {
+				if item.VideoID != "" {
+					a.recommendationIDs[item.VideoID] = struct{}{}
+				}
+			}
+		}
 		a.upNextOptions.VideoID = a.current.VideoID
 		a.ensureUpNext()
 	}

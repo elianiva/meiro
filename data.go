@@ -26,6 +26,8 @@ const (
 	pageSettings = "settings"
 )
 
+const detailStateLimit = pageCacheLimit // one detail per retained route
+
 // searchKinds are the filters of the search page, in the order its chips show
 // them.
 var searchKinds = []struct {
@@ -95,7 +97,8 @@ type row struct {
 	// of the page.
 	queue []youtube.MusicItem
 	// track is the place of a song among the page's songs, or -1.
-	track int
+	track    int
+	position int
 }
 
 // key identifies a row across frames, so the list keeps its place when the
@@ -103,7 +106,7 @@ type row struct {
 func (r row) key() any {
 	switch r.kind {
 	case rowTrack:
-		return "track:" + r.item.ID + "\x00" + r.item.Title + "\x00" + strconv.Itoa(r.track)
+		return itemKey("track", r.item) + "\x00" + r.shelf + "#" + strconv.Itoa(r.position)
 	case rowCards, rowColumns, rowHeading:
 		return strconv.Itoa(int(r.kind)) + ":" + r.shelf
 	}
@@ -161,17 +164,35 @@ func (a *app) onNavigate() {
 	case path == "/settings":
 		a.detail = detail{}
 	case strings.HasPrefix(path, "/album/"):
-		a.detail = a.details[path]
+		a.detail = a.detailFor(path)
 		a.detail.kind = pageAlbum
 		a.loadDetail(pageAlbum, pathArg(path))
 	case strings.HasPrefix(path, "/playlist/"):
-		a.detail = a.details[path]
+		a.detail = a.detailFor(path)
 		a.detail.kind = pagePlaylist
 		a.loadDetail(pagePlaylist, pathArg(path))
 	case strings.HasPrefix(path, "/artist/"):
-		a.detail = a.details[path]
+		a.detail = a.detailFor(path)
 		a.detail.kind = pageArtist
 		a.loadDetail(pageArtist, pathArg(path))
+	}
+}
+
+func (a *app) detailFor(path string) detail {
+	detail := a.details[path]
+	if detail.title != "" || detail.subtitle != "" || detail.art != "" || detail.kind != "" {
+		a.detailOrder = append(removeKey(a.detailOrder, path), path)
+	}
+	return detail
+}
+
+func (a *app) rememberDetail(path string, detail detail) {
+	a.details[path] = detail
+	a.detailOrder = append(removeKey(a.detailOrder, path), path)
+	for len(a.detailOrder) > detailStateLimit {
+		oldest := a.detailOrder[0]
+		a.detailOrder = a.detailOrder[1:]
+		delete(a.details, oldest)
 	}
 }
 
@@ -473,8 +494,8 @@ func (a *app) setRows() {
 		}
 		switch {
 		case vertical || (onDetail && songs*10 >= len(section.Items)*6):
-			for _, item := range section.Items {
-				r := row{kind: rowTrack, item: item, track: -1}
+			for position, item := range section.Items {
+				r := row{kind: rowTrack, shelf: shelf, item: item, track: -1, position: position}
 				if kind, _ := targetOf(item); kind == pageTrack {
 					r.track = len(a.playable)
 					if item.Thumbnail == "" {
@@ -532,7 +553,7 @@ func (a *app) activate(item youtube.MusicItem, queue []youtube.MusicItem) {
 		a.playWithOptions(item, queue, index, options, source)
 	case pageAlbum, pagePlaylist, pageArtist:
 		path := "/" + kind + "/" + url.PathEscape(id)
-		a.details[path] = detail{title: item.Title, subtitle: item.Subtitle, art: item.Thumbnail, kind: kind}
+		a.rememberDetail(path, detail{title: item.Title, subtitle: item.Subtitle, art: item.Thumbnail, kind: kind})
 		a.router.Push(path)
 	}
 }
@@ -541,10 +562,7 @@ func (a *app) activate(item youtube.MusicItem, queue []youtube.MusicItem) {
 // from a playlist page. The page title is shown as the queue's source.
 func (a *app) playbackQueueOptions(index int) (youtube.UpNextOptions, string) {
 	options := youtube.UpNextOptions{}
-	path := ""
-	if a.router != nil {
-		path = a.router.Path()
-	}
+	path := a.router.Path()
 	if strings.HasPrefix(path, "/playlist/") {
 		playlistIndex := index
 		options.PlaylistID = pathArg(path)
@@ -570,7 +588,7 @@ func (a *app) playbackQueueOptions(index int) (youtube.UpNextOptions, string) {
 
 // playCollection plays an album or a playlist from its first song, without
 // opening its page, as the play button over its card does.
-func (a *app) playCollection(item youtube.MusicItem) {
+func (a *app) playCollection(item youtube.MusicItem, list string, position int) {
 	kind, id := targetOf(item)
 	if kind == pageTrack {
 		a.play(item, []youtube.MusicItem{item}, 0)
@@ -580,7 +598,7 @@ func (a *app) playCollection(item youtube.MusicItem) {
 	if kind != pageAlbum && kind != pagePlaylist || client == nil {
 		return
 	}
-	key := itemKey("open", item)
+	key := itemKey("open", item) + "\x00" + list + "#" + strconv.Itoa(position)
 	if a.opening == key {
 		return
 	}

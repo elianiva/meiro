@@ -126,10 +126,12 @@ type app struct {
 	// detail is the heading of the album, playlist or artist page shown,
 	// and details remembers one for each page the user opened, so going
 	// back to one finds its heading again.
-	detail  detail
-	details map[string]detail
+	detail      detail
+	details     map[string]detail
+	detailOrder []string
 	// carousels keep the scroll of each shelf.
-	carousels map[string]*m3.CarouselState
+	carousels     map[string]*m3.CarouselState
+	carouselOrder []string
 	// previews caches the palette-style preview schemes the settings show,
 	// until the seed or appearance they are drawn from changes.
 	previews      map[m3.Style]m3.Scheme
@@ -172,6 +174,7 @@ type app struct {
 	upNextErr           string
 	upNextToken         string
 	upNextSeen          map[string]struct{}
+	recommendationIDs   map[string]struct{}
 	waitingForAuto      bool
 	total               time.Duration
 	scrub               float64
@@ -231,13 +234,11 @@ func newApp() *app {
 		player:              player.New(playerOptions...),
 		settings:            defaultSettings(),
 		cacheSongsText:      strconv.Itoa(defaultAudioCacheLimit),
-		search:              searchState{},
 		details:             make(map[string]detail),
 		carousels:           make(map[string]*m3.CarouselState),
 		pageCache:           make(map[string]*cachedPage),
 		recommendationStart: -1,
 	}
-	a.volume = a.settings.Volume
 	a.run = func(work func()) { go work() }
 	a.schedule = func(delay time.Duration, work func()) func() {
 		timer := time.AfterFunc(delay, work)
@@ -247,7 +248,6 @@ func newApp() *app {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
 	}
 	a.thumbs = newThumbCache(a.refresh)
-	a.player.SetVolume(a.volume / 100)
 	return a
 }
 
@@ -307,9 +307,9 @@ func (a *app) setup() {
 		a.settingsPath = filepath.Join(directory, "settings.json")
 		a.settings = loadSettings(a.settingsPath)
 		a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
-		a.volume = a.settings.Volume
-		a.player.SetVolume(a.volume / 100)
 	}
+	a.volume = a.settings.Volume
+	a.player.SetVolume(a.volume / 100)
 	defaultRoot, rootErr := mygo.App.Path(mygo.PathCache)
 	if rootErr != nil {
 		log.Printf("finding default audio cache directory: %v", rootErr)

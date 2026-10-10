@@ -27,6 +27,49 @@ func TestPageCacheEvictsTheLeastRecentlyUsedRoute(t *testing.T) {
 	}
 }
 
+func TestDetailAndCarouselStateAreBoundedAndLeastRecentlyUsed(t *testing.T) {
+	a := newTestApp()
+	for i := range detailStateLimit {
+		path := fmt.Sprintf("/album/%d", i)
+		a.rememberDetail(path, detail{title: path, kind: pageAlbum})
+	}
+	if got := len(a.details); got != detailStateLimit {
+		t.Fatalf("detail states = %d, want at most %d", got, detailStateLimit)
+	}
+	a.detailFor("/album/0")
+	a.rememberDetail("/album/new", detail{title: "new", kind: pageAlbum})
+	if _, ok := a.details["/album/0"]; !ok {
+		t.Fatal("recently used detail state was evicted")
+	}
+	if _, ok := a.details["/album/1"]; ok {
+		t.Fatal("least recently used detail state was retained")
+	}
+
+	for i := range carouselStateLimit {
+		a.carousel(fmt.Sprintf("/home#%d", i))
+	}
+	if got := len(a.carousels); got != carouselStateLimit {
+		t.Fatalf("carousel states = %d, want at most %d", got, carouselStateLimit)
+	}
+	first := a.carousel("/home#0")
+	a.carousel("/home#new")
+	if a.carousels["/home#0"] != first {
+		t.Fatal("recently used carousel state was evicted")
+	}
+	if _, ok := a.carousels["/home#1"]; ok {
+		t.Fatal("least recently used carousel state was retained")
+	}
+}
+
+func TestCarouselStateRetainsItsScrollState(t *testing.T) {
+	a := newTestApp()
+	state := a.carousel("/home#0")
+	state.ScrollState = ui.ScrollState{X: 42, MaxX: 100}
+	if got := a.carousel("/home#0"); got != state || got.X != 42 {
+		t.Fatal("looking up a carousel replaced its retained scroll state")
+	}
+}
+
 func TestPageCacheUsesTheWholeLocationAsItsKey(t *testing.T) {
 	a := newTestApp()
 	for _, test := range []struct {
