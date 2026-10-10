@@ -385,6 +385,31 @@ func TestTrackMenuQueuesCopiesAndOpensTheArtist(t *testing.T) {
 	}
 }
 
+// A track's menu opens an artist page knowing only the ID, so the page must
+// take the name and the picture it puts over its content from what it loads.
+func TestArtistPageTakesItsHeadingFromWhatItLoads(t *testing.T) {
+	a := newTestApp()
+	// What "Go to artist" seeds: the kind, and nothing else.
+	a.details["/artist/UCartist"] = detail{kind: pageArtist}
+	a.router.Push("/artist/UCartist")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+
+	if got := a.detail.title; got != "Aurora Vale" {
+		t.Errorf("artist name = %q, want the name its page carries", got)
+	}
+	if got := a.detail.art; got != "https://img.example/aurora" {
+		t.Errorf("artist picture = %q, want the one its page carries", got)
+	}
+	if !tt.HasText("Aurora Vale") {
+		t.Errorf("the artist does not show over the tracks: %q", tt.Texts())
+	}
+	// The heading the page loaded also names the queue it plays into.
+	if _, source := a.playbackQueueOptions(0); source != "Aurora Vale" {
+		t.Errorf("queue source = %q, want the artist's name", source)
+	}
+}
+
 func TestTargetOfRoutesItemsToPages(t *testing.T) {
 	cases := []struct {
 		name string
