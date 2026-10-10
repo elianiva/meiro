@@ -7,16 +7,13 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// animatedPaintInterval caps custom animations at about 30 frames per second.
-// That keeps small indicators smooth while avoiding a repaint on every
-// display refresh, which can be twice as frequent on a 60 Hz screen and more
-// often on high-refresh displays.
-const animatedPaintInterval = 33 * time.Millisecond
-
 // animatePaint schedules the next paint of a moving drawing without
-// rebuilding the view.
+// rebuilding the view. It asks for the next display frame rather than a timer:
+// a timer of 33 ms lands between two vsyncs of a 60 Hz screen, and the frame it
+// then requests waits for the next one, so frames alternate between two and
+// three refreshes and the motion judders.
 func animatePaint(p *ui.Painter) {
-	p.After(animatedPaintInterval)
+	p.AnimationFrame()
 }
 
 // morph is one shape of the loading indicator: a circle bumped by n lobes of

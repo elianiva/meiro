@@ -45,6 +45,12 @@ var ErrNoFFmpeg = errors.New("player: ffmpeg is not installed or not on PATH")
 
 // Player plays one stream at a time.
 type Player struct {
+	// ctl serialises the calls that replace or end the stream: Play, Seek and
+	// Stop. They do slow work (killing and starting ffmpeg, waiting on the
+	// audio device), so they run under ctl alone and take mu only to swap the
+	// session in or out. The readers the UI asks every frame take mu, and so
+	// never wait on that work.
+	ctl     sync.Mutex
 	mu      sync.Mutex
 	session *session
 	volume  float64
@@ -87,9 +93,9 @@ func (p *Player) Available() bool {
 // Play starts url from its beginning, replacing anything playing. It returns
 // once ffmpeg has started, not when the stream ends.
 func (p *Player) Play(url string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.startLocked(url, 0, false)
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
+	return p.start(url, 0, false)
 }
 
 // Resume starts a paused stream again, and does nothing when it plays or has
@@ -134,20 +140,27 @@ func (p *Player) Toggle() {
 // Seek moves to at within the stream by restarting the decode there. It
 // keeps the stream paused when it was paused.
 func (p *Player) Seek(at time.Duration) {
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.session == nil || at < 0 {
+	s := p.session
+	var url string
+	var paused bool
+	if s != nil {
+		url, paused = s.url, s.paused
+	}
+	p.mu.Unlock()
+	if s == nil || at < 0 {
 		return
 	}
-	url, paused := p.session.url, p.session.paused
-	_ = p.startLocked(url, at, paused)
+	_ = p.start(url, at, paused)
 }
 
 // Stop ends the stream and forgets it.
 func (p *Player) Stop() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.stopLocked()
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
+	p.stop()
 }
 
 // SetVolume sets the playback gain, 1 for the stream's own level. Values
@@ -278,9 +291,9 @@ func (p *Player) endedLocked(s *session) bool {
 	return endOfStream(s.source.read.Load(), s.source.eof.Load(), s.out.IsPlaying(), s.paused)
 }
 
-// startLocked replaces the current stream with url, decoded from at, and
-// assumes the caller holds the lock.
-func (p *Player) startLocked(url string, at time.Duration, paused bool) error {
+// start replaces the current stream with url, decoded from at. The caller
+// holds ctl and not mu.
+func (p *Player) start(url string, at time.Duration, paused bool) error {
 	if strings.TrimSpace(url) == "" {
 		return errors.New("player: stream URL is empty")
 	}
@@ -292,7 +305,7 @@ func (p *Player) startLocked(url string, at time.Duration, paused bool) error {
 	if err != nil {
 		return err
 	}
-	p.stopLocked()
+	p.stop()
 
 	cmd := exec.Command(ffmpeg, streamArgs(url, at)...)
 	pipe, err := cmd.StdoutPipe()
@@ -312,11 +325,13 @@ func (p *Player) startLocked(url string, at time.Duration, paused bool) error {
 		offset: at, paused: paused, done: make(chan struct{}), quit: make(chan struct{}),
 	}
 	s.out = audioCtx.newPlayer(s.source)
+	p.mu.Lock()
 	s.out.SetVolume(p.volume)
+	p.session = s
+	p.mu.Unlock()
 	if !paused {
 		s.out.Play()
 	}
-	p.session = s
 	go p.reap(s)
 	return nil
 }
@@ -376,19 +391,23 @@ func (p *Player) reap(s *session) {
 	close(s.done)
 }
 
-// stopLocked ends the current stream, if any, and assumes the caller holds
-// the lock.
-func (p *Player) stopLocked() {
+// stop ends the current stream, if any. The caller holds ctl and not mu: the
+// session is detached under mu, and the slow teardown runs outside it.
+func (p *Player) stop() {
+	p.mu.Lock()
 	s := p.session
+	p.session = nil
+	if s != nil {
+		s.stopped = true
+	}
+	p.mu.Unlock()
 	if s == nil {
 		return
 	}
-	p.session = nil
-	s.stopped = true
 	close(s.quit)
 	// ffmpeg goes first, and the pipe with it. oto may be blocked reading a
 	// stream that has stalled, and PauseAndStopReading waits for that read, on
-	// the thread of whoever pressed stop, with the lock held.
+	// the thread of whoever pressed stop.
 	if s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}

@@ -4,7 +4,6 @@ import (
 	"math"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -16,15 +15,6 @@ func TestHueStripMatchesFromHue(t *testing.T) {
 		if want := FromHue(float64(i) * 360 / hueSteps); hueStrip[i] != want {
 			t.Fatalf("hue band %d = %v, want %v", i, hueStrip[i], want)
 		}
-	}
-}
-
-// A custom animation must repaint on its own schedule, coarser than a 60 Hz
-// refresh but still smooth: that cap is what keeps a high-refresh display from
-// repainting these widgets on every frame.
-func TestAnimatedPaintIntervalCapsPlaybackAnimationRate(t *testing.T) {
-	if animatedPaintInterval < 16*time.Millisecond || animatedPaintInterval > 40*time.Millisecond {
-		t.Errorf("animated paint interval = %v, want about 30 fps (between 16ms and 40ms)", animatedPaintInterval)
 	}
 }
 
