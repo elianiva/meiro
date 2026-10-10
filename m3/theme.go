@@ -166,7 +166,11 @@ const (
 	Full            float32 = 9999
 )
 
-// Elevation gives an element the shadow of a Material level, 0 to 5.
+// Elevation gives an element the shadow of a Material level, 0 to 5. One
+// shadow layer is drawn per level, not Material's two: the second, wider
+// layer covered a larger patch than the first, and the shadow shader works
+// across the whole of it, so dropping it halves what an elevated element
+// costs to draw while it still reads as raised.
 func Elevation(c *ui.Context, e ui.Element, level int) ui.Element {
 	t := Of(c)
 	k := float32(1)
@@ -176,15 +180,15 @@ func Elevation(c *ui.Context, e ui.Element, level int) ui.Element {
 	shadow := t.Scheme.Shadow
 	switch level {
 	case 1:
-		e.Shadow(0, 1, 2, 0, shadow.Alpha(0.30*k)).Shadow(0, 1, 3, 1, shadow.Alpha(0.15*k))
+		e.Shadow(0, 1, 2, 0, shadow.Alpha(0.30*k))
 	case 2:
-		e.Shadow(0, 1, 2, 0, shadow.Alpha(0.30*k)).Shadow(0, 2, 6, 2, shadow.Alpha(0.15*k))
+		e.Shadow(0, 1, 2, 0, shadow.Alpha(0.30*k))
 	case 3:
-		e.Shadow(0, 1, 3, 0, shadow.Alpha(0.30*k)).Shadow(0, 4, 8, 3, shadow.Alpha(0.15*k))
+		e.Shadow(0, 1, 3, 0, shadow.Alpha(0.30*k))
 	case 4:
-		e.Shadow(0, 2, 3, 0, shadow.Alpha(0.30*k)).Shadow(0, 6, 10, 4, shadow.Alpha(0.15*k))
+		e.Shadow(0, 2, 3, 0, shadow.Alpha(0.30*k))
 	case 5:
-		e.Shadow(0, 4, 4, 0, shadow.Alpha(0.30*k)).Shadow(0, 8, 12, 6, shadow.Alpha(0.15*k))
+		e.Shadow(0, 4, 4, 0, shadow.Alpha(0.30*k))
 	}
 	return e
 }

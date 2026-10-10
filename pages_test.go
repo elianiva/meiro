@@ -40,7 +40,6 @@ func TestEveryPageDraws(t *testing.T) {
 				tt := ui.NewTester(a.view, 1000, 700)
 				tt.SetDark(dark)
 				a.current = youtube.MusicItem{VideoID: "vid-1", Title: "Ambient One"}
-				a.npOpen = page.path == "/home"
 				tt.Frame()
 				for _, want := range page.want {
 					if !tt.HasText(want) {
@@ -49,5 +48,27 @@ func TestEveryPageDraws(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// The full-screen player replaces the page it covers: while it is open the
+// page under it, and the top bar, are not built, so nothing of them is laid
+// out or painted.
+func TestThePlayerReplacesThePage(t *testing.T) {
+	a := newTestApp()
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1000, 700)
+	a.current = youtube.MusicItem{VideoID: "vid-1", Title: "Ambient One"}
+	tt.Frame()
+	if !tt.HasText("Quick picks") {
+		t.Fatalf("the home page did not draw: %q", tt.Texts())
+	}
+	a.npOpen = true
+	tt.Frame()
+	if !tt.HasText("Now playing") || !tt.HasText("Ambient One") {
+		t.Errorf("the player did not draw: %q", tt.Texts())
+	}
+	if tt.HasText("Quick picks") {
+		t.Errorf("the page still drew under the player: %q", tt.Texts())
 	}
 }

@@ -41,10 +41,12 @@ type RailEvent struct {
 // indicator behind the current destination grows out of its icon.
 func Rail(c *ui.Context, spec RailSpec) RailEvent {
 	var event RailEvent
+	sc := Of(c).Scheme
 	rail := ui.Column(c).Key("m3-rail")
 	width := Animate(rail, "width", pick(spec.Expanded, RailExpanded, RailCollapsed), SpatialDefault)
 	railWidth := max(width, RailCollapsed-8)
-	rail.Width(railWidth).Shrink(0).FillHeight().ClipX().PaddingY(12).Gap(4)
+	rail.Width(railWidth).Shrink(0).FillHeight().ClipX().PaddingY(12).Gap(4).
+		Background(sc.SurfaceContainerLow)
 	align := ui.Center
 	if spec.Expanded {
 		align = ui.Start

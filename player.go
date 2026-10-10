@@ -194,9 +194,8 @@ func (a *app) nowPlaying(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	w, h := c.Size()
 	wide := w > 1040
-	wash := sc.PrimaryContainer.Mix(sc.Surface, 0.3)
 	panel := ui.Column(c).Key("now-playing").Absolute().Top(0).Left(0).Right(0).Bottom(0).
-		Gradient(wash, sc.Surface, 170).Radius(m3.ExtraLarge).Clip()
+		Background(sc.Surface).Radius(m3.ExtraLarge).Clip()
 	panel.Transition(ui.ElementTransition{
 		Enter: &ui.Motion{Y: 80}, Exit: &ui.Motion{Y: 80},
 		Position: true, Duration: m3.SpatialDefault.Duration(), Ease: m3.SpatialDefault.Ease(),

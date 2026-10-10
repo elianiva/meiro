@@ -7,13 +7,22 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// animateInterval is how long animatePaint waits before a moving drawing is
+// painted again, about a 60 Hz frame. Asking for the very next display frame
+// instead repaints the whole scene at the screen's refresh rate — three times
+// that on a 180 Hz display — for motions this slow: the wave covers one
+// wavelength in 1.8 s and the loading indicator morphs over 0.7 s. That pins
+// the GPU and leaves it none for everything else, the slide into the
+// full-screen player first, so the cadence is fixed. Just under a 60 Hz
+// refresh, the frame lands on the next refresh of a 60, 120 or 180 Hz screen
+// alike, which keeps the motion even rather than alternating between two and
+// three refreshes as a timer on the refresh's own length does.
+const animateInterval = 15 * time.Millisecond
+
 // animatePaint schedules the next paint of a moving drawing without
-// rebuilding the view. It asks for the next display frame rather than a timer:
-// a timer of 33 ms lands between two vsyncs of a 60 Hz screen, and the frame it
-// then requests waits for the next one, so frames alternate between two and
-// three refreshes and the motion judders.
+// rebuilding the view.
 func animatePaint(p *ui.Painter) {
-	p.AnimationFrame()
+	p.After(animateInterval)
 }
 
 // morph is one shape of the loading indicator: a circle bumped by n lobes of

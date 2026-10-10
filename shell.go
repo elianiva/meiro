@@ -21,8 +21,10 @@ const (
 // under its top bar, and the player floating over the foot of the sheet.
 func (a *app) view(c *ui.Context) {
 	m3.Provide(c, a.resolveTheme(c))
-	sc := m3.Of(c).Scheme
-	c.Root().Background(sc.SurfaceContainerLow)
+	// The window paints no background of its own: the rail, the sheet's
+	// border and the sheet between them cover it, so a frame fills the window
+	// as the sheet and a thin ring rather than as a full-window quad under
+	// everything.
 
 	// The router also moves on its own, by the keyboard's back and forward
 	// keys, so the build is where a new location is noticed. It is guarded:
@@ -40,7 +42,7 @@ func (a *app) view(c *ui.Context) {
 	bar := c.TitleBar()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 		a.rail(c, bar)
-		ui.Column(c).Grow(1).MinWidth(0).Padding(sheetInset, sheetInset, sheetInset, 0).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.sheet(c, bar)
 		})
 	})
@@ -108,21 +110,52 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 	}
 }
 
+// sheetCorner is the side of the square painted behind each of the sheet's
+// corners: the inset, plus the reach of a continuous corner, 1.528665 of its
+// radius. The sheet's own fill covers all of it but the rounded band the
+// square is there to fill, so any larger square would do.
+const sheetCorner = sheetInset + m3.ExtraLarge*1.528665
+
 // sheet is the rounded surface the pages live on. The player floats over its
-// foot, and the full-screen player covers it.
+// foot, and the full-screen player covers it, along with the top bar and the
+// page under it.
+//
+// The window tint between the sheet and the window's edge is painted as a
+// ring of thin strips and corner squares behind the sheet, not as a
+// full-window fill under it: the sheet covers all of the window but that
+// edge and the corners its rounding cuts, so a full-window quad is the
+// largest thing a frame would paint.
 func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 	sc := m3.Of(c).Scheme
-	sheet := ui.Column(c).Key("sheet").Grow(1).MinHeight(0).Radius(m3.ExtraLarge).Clip().Background(sc.Surface)
+	tint := sc.SurfaceContainerLow
+	ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(sheetInset).Background(tint)
+	ui.Box(c).Absolute().Top(0).Right(0).Bottom(0).Width(sheetInset).Background(tint)
+	ui.Box(c).Absolute().Bottom(0).Left(0).Right(0).Height(sheetInset).Background(tint)
+	ui.Box(c).Absolute().Top(0).Left(0).Size(sheetCorner, sheetCorner).Background(tint)
+	ui.Box(c).Absolute().Top(0).Right(0).Size(sheetCorner, sheetCorner).Background(tint)
+	ui.Box(c).Absolute().Bottom(0).Left(0).Size(sheetCorner, sheetCorner).Background(tint)
+	ui.Box(c).Absolute().Bottom(0).Right(0).Size(sheetCorner, sheetCorner).Background(tint)
+	sheet := ui.Column(c).Key("sheet").Absolute().Top(sheetInset).Left(0).Right(sheetInset).Bottom(sheetInset).
+		Radius(m3.ExtraLarge).Clip()
+	if !a.npOpen {
+		sheet.Background(sc.Surface)
+	}
 	sheet.Children(func() {
+		if a.npOpen {
+			// The player covers the sheet whole, and the page and the top
+			// bar with it. Only the player is built: the page and the bar
+			// were laid out and painted in full on every frame of the wave
+			// and of the slide into the player, which is most of the frame,
+			// to be covered at once.
+			a.nowPlaying(c)
+			return
+		}
 		a.topBar(c, bar)
 		ui.Column(c).Grow(1).MinHeight(0).Children(func() {
 			a.page(c)
 		})
-		if a.current.VideoID != "" && !a.npOpen {
+		if a.current.VideoID != "" {
 			a.playerBar(c)
-		}
-		if a.npOpen {
-			a.nowPlaying(c)
 		}
 	})
 }
