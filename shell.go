@@ -47,6 +47,7 @@ func (a *app) view(c *ui.Context) {
 		})
 	})
 	a.signInDialog(c)
+	a.newPlaylistDialog(c)
 	m3.Snackbars(c, 0)
 
 	// The transport, wherever the keyboard focus is that does not want the

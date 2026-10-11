@@ -297,6 +297,15 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		radius := artRadius(item, m3.LargeIncreased)
 		opening := a.opening == itemKey("open", item)+"\x00"+list+"#"+strconv.Itoa(position)
 		m3.Art(c, a.thumbs.bitmapIf(item.Thumbnail, 320, fetchArtwork), cardArt, radius, func() {
+			if isNewPlaylist(item) {
+				// The tile has no artwork of its own: the plus covers the
+				// panel a missing one stands in with.
+				ui.Box(c).Size(cardArt, cardArt).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
+					Background(sc.SurfaceContainerHighest).Center().Children(func() {
+					ui.Icon(c, m3.IconAdd).FontSize(max(cardArt*0.4, 18)).TextColor(sc.OnSurfaceVariant)
+				})
+				return
+			}
 			if isVideo(item) {
 				m3.VideoBadge(c, cardArt)
 			}
@@ -349,6 +358,8 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		// must not activate the card underneath it.
 	case played:
 		a.playCollection(item, list, position)
+	case card.Clicked() && isNewPlaylist(item):
+		a.openNewPlaylist()
 	case card.Clicked():
 		a.activate(item, queue)
 	}

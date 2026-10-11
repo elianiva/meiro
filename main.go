@@ -69,6 +69,8 @@ type app struct {
 	accounts []youtube.AccountChannel
 	signedIn bool
 	signIn   signInState
+	// newPlaylist is the dialog that names a playlist to make.
+	newPlaylist newPlaylistState
 	// signInAttempt invalidates work when a sign-in dialog is dismissed.
 	signInAttempt atomic.Uint64
 	// credentialMu serializes restore, save and delete operations so a late

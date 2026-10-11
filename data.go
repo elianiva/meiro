@@ -479,6 +479,8 @@ func (a *app) setRows() {
 		sections = []youtube.MusicSection{{Items: s.items}}
 	}
 	vertical := onDetail && a.detail.kind != pageArtist || path == "/search"
+	// placed says whether the library has led with its tile yet.
+	placed := false
 	for index, section := range sections {
 		if len(section.Items) == 0 {
 			continue
@@ -518,10 +520,17 @@ func (a *app) setRows() {
 			if songs*10 >= len(section.Items)*6 && len(section.Items) >= 3 && section.Items[0].Duration != "" {
 				kind = rowColumns
 			}
+			items := section.Items
 			if path == "/library" && kind == rowCards {
 				kind = rowGrid
 			}
-			a.rows = append(a.rows, row{kind: kind, shelf: shelf, items: section.Items, queue: queue, track: -1})
+			// The library leads with making a playlist, before the Liked
+			// Music that the rest of it usually starts with.
+			if path == "/library" && !placed && (kind == rowGrid || kind == rowCards) {
+				items = append([]youtube.MusicItem{newPlaylistItem}, items...)
+				placed = true
+			}
+			a.rows = append(a.rows, row{kind: kind, shelf: shelf, items: items, queue: queue, track: -1})
 		}
 	}
 	if s.more != "" {
