@@ -62,12 +62,13 @@ func (a *app) createNewPlaylist() {
 	a.run(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		_, err := client.CreatePlaylist(ctx, name, song.VideoID)
+		id, err := client.CreatePlaylist(ctx, name, song.VideoID)
 		a.update(func() {
-			if err == nil && a.router.Path() == "/library" {
-				// The playlist belongs in the library, whether or not the
-				// dialog that named it is still open.
-				a.reloadPage()
+			if err == nil {
+				// YouTube's library does not hold a new playlist the moment it
+				// answers, so the playlist is put in the library the app shows
+				// rather than read back from YouTube and not found.
+				a.showPlaylist(id, name)
 			}
 			if !a.newPlaylist.open || a.newPlaylist.attempt != attempt {
 				return // the dialog moved on while the playlist was being made
@@ -122,6 +123,23 @@ func (a *app) newPlaylistDialog(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// showPlaylist puts a playlist the app has just made at the front of the
+// library, which is where YouTube lists a new one. YouTube answers the write
+// before its library holds the playlist, so reading the library back loses it;
+// the next load of the page replaces what is shown here.
+func (a *app) showPlaylist(id, name string) {
+	if id == "" || a.router.Path() != "/library" || name == "" {
+		return
+	}
+	item := youtube.MusicItem{ID: "VL" + id, BrowseID: "VL" + id, Title: name, Subtitle: "Playlist"}
+	if len(a.feed.sections) == 0 {
+		a.feed.items = append([]youtube.MusicItem{item}, a.feed.items...)
+	} else {
+		a.feed.sections[0].Items = append([]youtube.MusicItem{item}, a.feed.sections[0].Items...)
+	}
+	a.rowsDirty = true
 }
 
 // addToPlaylistState is what the dialog that puts a song in a playlist holds:

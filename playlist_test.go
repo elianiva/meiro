@@ -131,8 +131,18 @@ func TestMakingAPlaylistFromTheLibraryTile(t *testing.T) {
 	if got := playlistCreates.Load(); got != 1 {
 		t.Errorf("YouTube was asked for %d playlists, want one", got)
 	}
-	if got := libraryLoads.Load(); got < 2 {
-		t.Errorf("the library loaded %d times, want it loaded again to show the new playlist", got)
+	// YouTube answers the write before its library holds the playlist, so the
+	// app shows the one it made instead of reading the library back without
+	// it: no read, and the playlist leads the library's shelf.
+	if got := libraryLoads.Load(); got != 1 {
+		t.Errorf("the library loaded %d times, want the playlist shown rather than read back", got)
+	}
+	first, ok := firstCardRow(a)
+	if !ok || len(first.items) < 2 {
+		t.Fatalf("the library has no shelf of cards: %#v", a.rows)
+	}
+	if first.items[0].ID != newPlaylistID || first.items[1].Title != "Late night" || first.items[1].BrowseID != "VLPLnew" {
+		t.Errorf("the library leads with %#v, want the tile and the playlist just made", first.items[:2])
 	}
 	// The toast is what the user is told; the frame that showed it may already
 	// have taken the notice, so look at the window rather than the field.
@@ -329,6 +339,11 @@ func TestCreatingAPlaylistFromThePickerHoldsTheSong(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("Added “Ambient One” to “Late night”") {
 		t.Errorf("the playlist was not announced: %q", tt.Texts())
+	}
+	// The picker is reached from any page, and only the library holds a list a
+	// new playlist belongs in.
+	if got := a.feed.sections[0].Items[0].Title; got != "Ambient One" {
+		t.Errorf("a playlist made from the picker was put on another page: %q, want the page left alone", got)
 	}
 }
 
