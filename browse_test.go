@@ -339,13 +339,10 @@ func TestTrackMenuQueuesCopiesAndOpensTheArtist(t *testing.T) {
 	if err := tt.Click(menuButton); err != nil {
 		t.Fatal(err)
 	}
-	for _, label := range []string{"Go to artist", "Play next", "Add to queue", "Copy link"} {
+	for _, label := range []string{"Go to artist", "Play next", "Add to queue", "Add to playlist", "Copy link"} {
 		if !tt.HasText(label) {
 			t.Errorf("track menu is missing %q: %q", label, tt.Texts())
 		}
-	}
-	if tt.HasText("Add to playlist") {
-		t.Fatal("track menu unexpectedly offers playlist editing")
 	}
 	if err := tt.Click("Play next"); err != nil {
 		t.Fatal(err)

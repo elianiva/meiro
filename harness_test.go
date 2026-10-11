@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -19,7 +20,16 @@ var (
 	fakePageID      atomic.Value
 	libraryLoads    atomic.Int32
 	playlistCreates atomic.Int32
+	// lastWrite is the last playlist write the fake YouTube was asked for:
+	// which endpoint, and the fields of its body.
+	lastWrite atomic.Value
 )
+
+// playlistWrite is one write the fake YouTube was asked to make.
+type playlistWrite struct {
+	endpoint string
+	body     map[string]any
+}
 
 // fakeMusic answers the InnerTube endpoints with canned responses, so the
 // app's tests need no network.
@@ -50,12 +60,16 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = albumResponse
 	case strings.Contains(asked, "FEmusic_library_landing"):
 		libraryLoads.Add(1)
-		reply = homeResponse
+		reply = libraryResponse
 	case strings.HasSuffix(request.URL.Path, "/playlist/create"):
 		playlistCreates.Add(1)
+		recordWrite(request.URL.Path, asked)
 		reply = createPlaylistResponse
 	case strings.Contains(asked, "UCartist"):
 		reply = artistResponse
+	case strings.HasSuffix(request.URL.Path, "/browse/edit_playlist"):
+		recordWrite(request.URL.Path, asked)
+		reply = editPlaylistResponse
 	case strings.Contains(asked, `"query"`):
 		searches.Add(1)
 		reply = searchResponse
@@ -226,6 +240,98 @@ const signedOutAccountMenu = `{"contents":{}}`
 
 // createPlaylistResponse is what YouTube answers a playlist it made with.
 const createPlaylistResponse = `{"playlistId":"PLnew"}`
+
+// editPlaylistResponse is what YouTube answers an edit it made.
+const editPlaylistResponse = `{"status":"STATUS_SUCCEEDED"}`
+
+// recordWrite remembers the body of a playlist write, so a test can say what
+// the app asked YouTube to do.
+func recordWrite(endpoint, body string) {
+	var fields map[string]any
+	_ = json.Unmarshal([]byte(body), &fields)
+	lastWrite.Store(playlistWrite{endpoint: endpoint, body: fields})
+}
+
+// written is the last playlist write the fake YouTube was asked for.
+func written() playlistWrite {
+	value, _ := lastWrite.Load().(playlistWrite)
+	return value
+}
+
+// libraryResponse is a library landing page: the playlist a thumb fills, two
+// playlists, and an artist.
+const libraryResponse = `{"contents":{"musicCarouselShelfRenderer":{
+	"contents":[
+		{"musicTwoRowItemRenderer":{
+			"title":{"runs":[{"text":"Liked Music"}]},
+			"subtitle":{"runs":[{"text":"Auto playlist"}]},
+			"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/liked=w544-h544-l90-rj"}]}}},
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"VLLM"}}
+		}},
+		{"musicTwoRowItemRenderer":{
+			"title":{"runs":[{"text":"Hype"}]},
+			"subtitle":{"runs":[{"text":"Nuarth · 37 tracks"}]},
+			"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/hype=w544-h544-l90-rj"}]}}},
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLhype"}}
+		}},
+		{"musicTwoRowItemRenderer":{
+			"title":{"runs":[{"text":"car radio"}]},
+			"subtitle":{"runs":[{"text":"Nuarth · 26 tracks"}]},
+			"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/car=w544-h544-l90-rj"}]}}},
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLcar"}}
+		}},
+		{"musicTwoRowItemRenderer":{
+			"title":{"runs":[{"text":"Aurora Vale"}]},
+			"subtitle":{"runs":[{"text":"Artist"}]},
+			"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/aurora=w544-h544-l90-rj"}]}}},
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"UCaurora"}}
+		}}
+	]
+}}}`
+
+// refusingEdits answers a playlist edit the way YouTube answers one it will not
+// make, and serves everything else as the fake YouTube does.
+type refusingEdits struct {
+	status string
+}
+
+func (r refusingEdits) RoundTrip(request *http.Request) (*http.Response, error) {
+	if strings.HasSuffix(request.URL.Path, "/browse/edit_playlist") {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"status":"` + r.status + `"}`)),
+			Request:    request,
+		}, nil
+	}
+	return fakeMusic{}.RoundTrip(request)
+}
+
+// noPlaylistLibrary serves a library that holds no playlist at all.
+type noPlaylistLibrary struct{}
+
+func (noPlaylistLibrary) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Path != "" && strings.HasSuffix(request.URL.Path, "/browse") {
+		body := ""
+		if request.Body != nil {
+			data, _ := io.ReadAll(request.Body)
+			request.Body = io.NopCloser(strings.NewReader(string(data)))
+			body = string(data)
+		}
+		if strings.Contains(body, "FEmusic_library_landing") {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(emptyLibraryResponse)),
+				Request:    request,
+			}, nil
+		}
+	}
+	return fakeMusic{}.RoundTrip(request)
+}
+
+// emptyLibraryResponse is a library landing page with nothing in it.
+const emptyLibraryResponse = `{"contents":{}}`
 
 // memoryStore is a cookie store held in memory.
 type memoryStore struct {

@@ -361,7 +361,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 	case played:
 		a.playCollection(item, list, position, false)
 	case card.Clicked() && isNewPlaylist(item):
-		a.openNewPlaylist()
+		a.openNewPlaylist(youtube.MusicItem{})
 	case card.Clicked():
 		a.activate(item, queue)
 	}
@@ -569,6 +569,10 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 		}
 		if m3.MenuItem(c, "Add to queue", m3.IconQueue).Clicked() {
 			a.enqueue(item, false)
+			close()
+		}
+		if item.VideoID != "" && m3.MenuItem(c, "Add to playlist", m3.IconLibrary).Clicked() {
+			a.openAddToPlaylist(item)
 			close()
 		}
 		if m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
