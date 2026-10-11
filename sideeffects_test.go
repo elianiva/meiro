@@ -12,8 +12,12 @@ import (
 
 type countingSession struct{ updates atomic.Int32 }
 
-func (s *countingSession) Update(systemmedia.State) { s.updates.Add(1) }
-func (s *countingSession) Close() error             { return nil }
+func (s *countingSession) Update(systemmedia.State) error {
+	s.updates.Add(1)
+	return nil
+}
+
+func (s *countingSession) Close() error { return nil }
 
 // Building the view describes state: with a track current, the side panel on
 // the lyrics tab and a thumbnail on screen, repeated frames start no work.

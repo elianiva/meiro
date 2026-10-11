@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -171,17 +172,23 @@ func (s *settings) save(path string) error {
 	return writeFileAtomic(path, data, 0o600)
 }
 
-// settingsWriter saves settings off the main thread, one write at a time and
-// in the order they were asked for. A save asked for while another runs
-// replaces any waiting one, so a slider dragged across the screen costs a
-// few writes, not one for each frame.
+// settingsWriteDelay gives a burst of settings changes time to settle before
+// writing the final state to disk.
+const settingsWriteDelay = 400 * time.Millisecond
+
+// settingsWriter saves settings off the main thread, one write at a time. A
+// save asked for while another runs replaces any waiting one, and the writer
+// waits for settingsWriteDelay before each write so a slider drag costs one
+// write instead of one for each frame.
 type settingsWriter struct {
 	mu      sync.Mutex
 	next    *settings
 	path    string
 	running bool
-	idle    sync.WaitGroup
+	done    chan struct{}
+	flush   chan struct{}
 	write   func(*settings, string) error
+	after   func(time.Duration) <-chan time.Time
 }
 
 // save writes s to path soon. It keeps its own copy of s.
@@ -194,22 +201,36 @@ func (w *settingsWriter) save(s *settings, path string) {
 		return
 	}
 	w.running = true
-	w.idle.Add(1)
+	w.done = make(chan struct{})
+	w.flush = make(chan struct{}, 1)
+	done := w.done
 	w.mu.Unlock()
-	go w.drain()
+	go w.drain(done)
 }
 
-func (w *settingsWriter) drain() {
-	defer w.idle.Done()
+func (w *settingsWriter) drain(done chan struct{}) {
+	defer close(done)
 	for {
 		w.mu.Lock()
-		s, path := w.next, w.path
-		w.next = nil
-		if s == nil {
+		if w.next == nil {
 			w.running = false
 			w.mu.Unlock()
 			return
 		}
+		after := w.after
+		flush := w.flush
+		w.mu.Unlock()
+		if after == nil {
+			after = time.After
+		}
+		select {
+		case <-after(settingsWriteDelay):
+		case <-flush:
+		}
+
+		w.mu.Lock()
+		s, path := w.next, w.path
+		w.next = nil
 		write := w.write
 		w.mu.Unlock()
 		if write == nil {
@@ -221,5 +242,19 @@ func (w *settingsWriter) drain() {
 	}
 }
 
-// wait returns once every save asked for so far has been written.
-func (w *settingsWriter) wait() { w.idle.Wait() }
+// wait flushes the latest pending settings state and returns once its write is
+// complete.
+func (w *settingsWriter) wait() {
+	w.mu.Lock()
+	if !w.running {
+		w.mu.Unlock()
+		return
+	}
+	done := w.done
+	select {
+	case w.flush <- struct{}{}:
+	default:
+	}
+	w.mu.Unlock()
+	<-done
+}

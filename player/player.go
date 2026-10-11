@@ -36,7 +36,8 @@ const (
 	bytesPerSecond = sampleRate * channelCount * bytesPerSample
 	// userAgent is what ffmpeg sends when it opens the stream. YouTube's
 	// media servers answer some requests without one with an error.
-	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+	userAgent       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+	httpReadTimeout = 15 * time.Second
 )
 
 // ErrNoFFmpeg reports that ffmpeg is not on PATH, which the player needs to
@@ -80,7 +81,7 @@ func New(options ...Option) *Player {
 	}
 	// Opening the device can take a long while; do it now, off the thread
 	// that will later press play.
-	go p.audio.context()
+	go func() { _, _ = p.audio.context() }()
 	return p
 }
 
@@ -264,15 +265,17 @@ func (p *Player) Failure() string {
 	default:
 		return ""
 	}
+	message := strings.TrimSpace(s.stderr.String())
 	// ffmpeg decodes faster than the track plays, so it exits cleanly a little
-	// before the end. That is the stream finishing, which Ended reports.
+	// before the end. A clean exit has no errors on stderr; -xerror makes
+	// decode and read failures nonzero, and the stderr check also preserves an
+	// error from older ffmpeg builds that exit successfully after one.
 	p.mu.Lock()
-	finished := s.waitErr == nil && s.source.read.Load() > 0
+	finished := s.waitErr == nil && message == "" && s.source.read.Load() > 0
 	p.mu.Unlock()
 	if finished {
 		return ""
 	}
-	message := strings.TrimSpace(s.stderr.String())
 	if message == "" {
 		message = "ffmpeg stopped"
 	}
@@ -339,10 +342,11 @@ func (p *Player) start(url string, at time.Duration, paused bool) error {
 // streamArgs is the ffmpeg command line that decodes url from at into signed
 // 16-bit stereo PCM on stdout.
 func streamArgs(url string, at time.Duration) []string {
-	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin"}
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-xerror"}
 	if isHTTP(url) {
 		args = append(args,
 			"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+			"-rw_timeout", strconv.FormatInt(httpReadTimeout.Microseconds(), 10),
 			"-user_agent", userAgent,
 		)
 	}

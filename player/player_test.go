@@ -127,24 +127,38 @@ func TestEndOfStream(t *testing.T) {
 	}
 }
 
-func TestFailureIgnoresACleanExitAfterSound(t *testing.T) {
-	done := make(chan struct{})
-	close(done)
-	source := newCountingReader(strings.NewReader(""))
-	s := &session{source: source, stderr: &boundedBuffer{limit: 16}, done: done}
-	p := &Player{session: s}
+func TestFailureReportsAnErrorAfterSound(t *testing.T) {
+	newFinishedPlayer := func() (*Player, *session) {
+		done := make(chan struct{})
+		close(done)
+		source := newCountingReader(strings.NewReader(""))
+		source.read.Store(1024)
+		s := &session{source: source, stderr: &boundedBuffer{limit: 16}, done: done}
+		return &Player{session: s}, s
+	}
 
-	if got := p.Failure(); got == "" {
-		t.Error("ffmpeg exiting before any sound should be a failure")
-	}
-	source.read.Store(1024)
-	if got := p.Failure(); got != "" {
-		t.Errorf("a clean exit after sound is the track ending, got failure %q", got)
-	}
-	s.waitErr = errors.New("exit status 1")
-	if got := p.Failure(); got == "" {
-		t.Error("ffmpeg dying with an error is a failure")
-	}
+	t.Run("negative: clean exit after sound", func(t *testing.T) {
+		p, _ := newFinishedPlayer()
+		if got := p.Failure(); got != "" {
+			t.Errorf("clean exit after sound is the track ending, got failure %q", got)
+		}
+	})
+	t.Run("positive: stderr error after sound", func(t *testing.T) {
+		p, s := newFinishedPlayer()
+		if _, err := s.stderr.Write([]byte("read error")); err != nil {
+			t.Fatal(err)
+		}
+		if got := p.Failure(); !strings.Contains(got, "read error") {
+			t.Errorf("error after sound was not reported, got failure %q", got)
+		}
+	})
+	t.Run("positive: exit status error", func(t *testing.T) {
+		p, s := newFinishedPlayer()
+		s.waitErr = errors.New("exit status 1")
+		if got := p.Failure(); got == "" {
+			t.Error("ffmpeg dying with an error is a failure")
+		}
+	})
 }
 
 // ffmpeg exits while samples are still in the pipe; the reader must still get
@@ -228,16 +242,19 @@ func TestStreamArgsOnlySendHTTPOptionsToHTTPURLs(t *testing.T) {
 	local := streamArgs("/Users/me/Meiro Audio Cache/abc.webm", 0)
 	for _, arg := range local {
 		switch arg {
-		case "-reconnect", "-reconnect_streamed", "-reconnect_delay_max", "-user_agent":
+		case "-reconnect", "-reconnect_streamed", "-reconnect_delay_max", "-rw_timeout", "-user_agent":
 			t.Errorf("a local file was given the HTTP option %s: %v", arg, local)
 		}
 	}
 	remote := streamArgs("https://media.example/videoplayback?id=1", 0)
 	joined := strings.Join(remote, " ")
-	for _, want := range []string{"-reconnect 1", "-reconnect_streamed 1", "-reconnect_delay_max 5", "-user_agent"} {
+	for _, want := range []string{"-xerror", "-reconnect 1", "-reconnect_streamed 1", "-reconnect_delay_max 5", "-rw_timeout 15000000", "-user_agent"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("an HTTP stream did not get %q: %v", want, remote)
 		}
+	}
+	if !strings.Contains(strings.Join(local, " "), "-xerror") {
+		t.Errorf("a local stream did not get -xerror: %v", local)
 	}
 	// Seeking a local file still works: -ss is an input option, before -i.
 	seeking := strings.Join(streamArgs("/tmp/track.webm", 90*time.Second), " ")

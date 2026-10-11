@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"image"
 	"net/http"
 	"net/http/httptest"
@@ -15,11 +16,21 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-type captureSystemMedia struct{ state systemmedia.State }
+type captureSystemMedia struct {
+	state  systemmedia.State
+	err    error
+	closed bool
+}
 
-func (s *captureSystemMedia) Update(state systemmedia.State) { s.state = state }
+func (s *captureSystemMedia) Update(state systemmedia.State) error {
+	s.state = state
+	return s.err
+}
 
-func (*captureSystemMedia) Close() error { return nil }
+func (s *captureSystemMedia) Close() error {
+	s.closed = true
+	return nil
+}
 
 func TestPlayerBarShowsTheCurrentTrack(t *testing.T) {
 	a := newTestApp()
@@ -71,6 +82,18 @@ func TestSystemMediaCommandsUpdatePlaybackState(t *testing.T) {
 	controls.Stop()
 	if a.resolving || media.state.Status != systemmedia.Stopped {
 		t.Errorf("media Stop left playback state resolving=%v status=%q", a.resolving, media.state.Status)
+	}
+}
+
+func TestSystemMediaFailureClosesAndDisablesTheSession(t *testing.T) {
+	a := newTestApp()
+	media := &captureSystemMedia{err: errors.New("D-Bus connection closed")}
+	a.systemMedia = media
+
+	a.syncSystemMedia()
+
+	if !media.closed || a.systemMedia != nil {
+		t.Fatalf("failed system media session remained active: closed=%t session=%T", media.closed, a.systemMedia)
 	}
 }
 

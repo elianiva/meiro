@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -201,11 +203,170 @@ func TestSettingsSavesAreOrderedAndIndependent(t *testing.T) {
 	}
 }
 
+type settingsDebounceGate struct {
+	scheduled chan time.Duration
+	fire      chan time.Time
+}
+
+func newSettingsDebounceGate() *settingsDebounceGate {
+	return &settingsDebounceGate{
+		scheduled: make(chan time.Duration, 1),
+		fire:      make(chan time.Time, 1),
+	}
+}
+
+func (g *settingsDebounceGate) after(delay time.Duration) <-chan time.Time {
+	g.scheduled <- delay
+	return g.fire
+}
+
+func TestSettingsWriterDebouncesToTheLatestState(t *testing.T) {
+	gate := newSettingsDebounceGate()
+	written := make(chan settings, 1)
+	w := settingsWriter{
+		after: gate.after,
+		write: func(s *settings, _ string) error {
+			written <- s.clone()
+			return nil
+		},
+	}
+	first, last := defaultSettings(), defaultSettings()
+	first.Volume, last.Volume = 10, 90
+	w.save(&first, "settings.json")
+	w.save(&last, "settings.json")
+
+	select {
+	case delay := <-gate.scheduled:
+		if delay != settingsWriteDelay {
+			t.Errorf("debounce delay = %v, want %v", delay, settingsWriteDelay)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("settings writer did not schedule a debounced save")
+	}
+	select {
+	case got := <-written:
+		t.Fatalf("settings writer wrote volume %v before its debounce elapsed", got.Volume)
+	default:
+	}
+	gate.fire <- time.Now()
+	w.wait()
+	select {
+	case got := <-written:
+		if got.Volume != last.Volume {
+			t.Errorf("debounced write volume = %v, want %v", got.Volume, last.Volume)
+		}
+	default:
+		t.Fatal("settings writer did not write after the debounce elapsed")
+	}
+}
+
+func TestSettingsWriterWaitFlushesPendingState(t *testing.T) {
+	gate := newSettingsDebounceGate()
+	written := make(chan settings, 1)
+	w := settingsWriter{
+		after: gate.after,
+		write: func(s *settings, _ string) error {
+			written <- s.clone()
+			return nil
+		},
+	}
+	s := defaultSettings()
+	s.Volume = 13
+	w.save(&s, "settings.json")
+	select {
+	case <-gate.scheduled:
+	case <-time.After(time.Second):
+		t.Fatal("settings writer did not schedule a debounced save")
+	}
+	w.wait()
+	select {
+	case got := <-written:
+		if got.Volume != s.Volume {
+			t.Errorf("flushed write volume = %v, want %v", got.Volume, s.Volume)
+		}
+	default:
+		t.Fatal("wait returned without flushing the pending settings")
+	}
+}
+
+func TestSettingsWriterLogsWriteFailuresAndCanFlushAgain(t *testing.T) {
+	gate := newSettingsDebounceGate()
+	writeErr := errors.New("disk is read-only")
+	var logs bytes.Buffer
+	oldOutput := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(oldOutput) })
+	var writes atomic.Int32
+	w := settingsWriter{
+		after: gate.after,
+		write: func(*settings, string) error {
+			if writes.Add(1) == 1 {
+				return writeErr
+			}
+			return nil
+		},
+	}
+	s := defaultSettings()
+	w.save(&s, "settings.json")
+	<-gate.scheduled
+	w.wait()
+	if !strings.Contains(logs.String(), writeErr.Error()) {
+		t.Errorf("settings save failure was not logged: %q", logs.String())
+	}
+	w.save(&s, "settings.json")
+	<-gate.scheduled
+	w.wait()
+	if got := writes.Load(); got != 2 {
+		t.Errorf("write attempts = %d, want 2", got)
+	}
+}
+
+func TestSettingsWriterCoalescesConcurrentUpdates(t *testing.T) {
+	gate := newSettingsDebounceGate()
+	var writes, active atomic.Int32
+	w := settingsWriter{
+		after: gate.after,
+		write: func(*settings, string) error {
+			if active.Add(1) != 1 {
+				t.Error("settings writes ran concurrently")
+			}
+			writes.Add(1)
+			active.Add(-1)
+			return nil
+		},
+	}
+	start := make(chan struct{})
+	var saves sync.WaitGroup
+	for i := range 50 {
+		saves.Add(1)
+		go func() {
+			defer saves.Done()
+			<-start
+			s := defaultSettings()
+			s.Volume = float64(i)
+			w.save(&s, "settings.json")
+		}()
+	}
+	close(start)
+	saves.Wait()
+	select {
+	case <-gate.scheduled:
+	case <-time.After(time.Second):
+		t.Fatal("settings writer did not schedule a debounced save")
+	}
+	gate.fire <- time.Now()
+	w.wait()
+	if got := writes.Load(); got != 1 {
+		t.Errorf("writes after concurrent saves = %d, want 1", got)
+	}
+}
+
 func TestShutdownFlushesPendingSettings(t *testing.T) {
 	a := newTestApp()
 	a.settingsPath = filepath.Join(t.TempDir(), "settings.json")
 	started := make(chan struct{})
 	release := make(chan struct{})
+	a.saver.after = func(time.Duration) <-chan time.Time { return make(chan time.Time) }
 	a.saver.write = func(s *settings, path string) error {
 		close(started)
 		<-release
@@ -213,13 +374,17 @@ func TestShutdownFlushesPendingSettings(t *testing.T) {
 	}
 	a.settings.Volume = 13
 	a.saveSettings()
-	<-started
 
 	done := make(chan struct{})
 	go func() {
 		a.shutdown()
 		close(done)
 	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not flush the pending settings save")
+	}
 	select {
 	case <-done:
 		t.Fatal("shutdown returned before the pending settings save completed")

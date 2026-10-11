@@ -65,7 +65,7 @@ func (s *macSession) addCommand(remote objc.ID, selector string, action func(), 
 	s.commands = append(s.commands, macCommand{command: command, token: token, block: block})
 }
 
-func (s *macSession) Update(state State) {
+func (s *macSession) Update(state State) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	objc.AutoreleasePool(func() {
@@ -114,6 +114,7 @@ func (s *macSession) Update(state State) {
 	})
 	s.state = state
 	s.hasState = true
+	return nil
 }
 
 func (s *macSession) setEnabled(remote objc.ID, selector string, enabled bool) {

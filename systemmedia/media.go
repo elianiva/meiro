@@ -48,6 +48,8 @@ type Controls struct {
 
 // Session publishes state and receives commands from the operating system.
 type Session interface {
-	Update(State)
+	// Update publishes the latest player state. A failed update means the
+	// operating-system media session is no longer usable.
+	Update(State) error
 	Close() error
 }

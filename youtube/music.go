@@ -58,8 +58,10 @@ type BrowseResult struct {
 	QueuePlaylistID string `json:"queuePlaylistId,omitempty"`
 }
 
-// MusicSection is a shelf or grid in a browse response. ContinuationToken can
-// be passed to ContinueBrowse to load more items in that section.
+// MusicSection is a shelf or grid in a browse response. A continuation response
+// without an owning shelf is represented as a synthetic section with an empty
+// Title and its continuation renderer as Kind. ContinuationToken can be passed
+// to ContinueBrowse to load more items in that section.
 type MusicSection struct {
 	Title             string      `json:"title,omitempty"`
 	Kind              string      `json:"kind"`
@@ -167,7 +169,7 @@ func (c *Client) GetAllLibrary(ctx context.Context) (*BrowseResult, error) {
 		return nil, err
 	}
 	if err := c.drainBrowse(ctx, result, "library"); err != nil {
-		return nil, err
+		return result, err
 	}
 	return result, nil
 }
@@ -175,25 +177,41 @@ func (c *Client) GetAllLibrary(ctx context.Context) (*BrowseResult, error) {
 // drainBrowse folds every continuation page reachable from result into it.
 // label names the page in the error a runaway result produces.
 func (c *Client) drainBrowse(ctx context.Context, result *BrowseResult, label string) error {
-	queue := browseContinuations(result)
+	queue := browseContinuationQueue(result)
 	seen := make(map[string]struct{})
 	for len(queue) > 0 {
-		token := queue[0]
+		continuation := queue[0]
 		queue = queue[1:]
-		if _, exists := seen[token]; exists {
+		if _, exists := seen[continuation.token]; exists {
 			continue
 		}
-		seen[token] = struct{}{}
+		seen[continuation.token] = struct{}{}
 		if len(seen) > 1000 {
 			return fmt.Errorf("youtube: %s exceeded 1000 continuation pages", label)
 		}
-		page, err := c.ContinueBrowse(ctx, token)
+		page, err := c.ContinueBrowse(ctx, continuation.token)
 		if err != nil {
 			return err
 		}
 		result.Items = append(result.Items, page.Items...)
-		result.Sections = append(result.Sections, page.Sections...)
-		queue = append(queue, browseContinuations(page)...)
+		if continuation.section >= 0 {
+			result.Sections[continuation.section].Items = append(result.Sections[continuation.section].Items, page.Items...)
+		} else {
+			result.Sections = append(result.Sections, page.Sections...)
+		}
+		if page.ContinuationToken != "" {
+			queue = append(queue, browseContinuation{token: page.ContinuationToken, section: -1})
+		}
+		for index, section := range page.Sections {
+			if section.ContinuationToken == "" {
+				continue
+			}
+			sectionIndex := continuation.section
+			if sectionIndex < 0 {
+				sectionIndex = len(result.Sections) - len(page.Sections) + index
+			}
+			queue = append(queue, browseContinuation{token: section.ContinuationToken, section: sectionIndex})
+		}
 	}
 	result.ContinuationToken = ""
 	for index := range result.Sections {
@@ -258,7 +276,7 @@ func (c *Client) GetAllPlaylist(ctx context.Context, playlistID string) (*Browse
 		return nil, err
 	}
 	if err := c.drainBrowse(ctx, result, "playlist"); err != nil {
-		return nil, err
+		return result, err
 	}
 	return result, nil
 }
@@ -643,7 +661,7 @@ func browseResult(root any) *BrowseResult {
 	items, sections := browseParts(root, true)
 	return &BrowseResult{
 		Items: items, Sections: sections,
-		ContinuationToken: continuationToken(root),
+		ContinuationToken: pageContinuationToken(root),
 	}
 }
 
@@ -656,17 +674,53 @@ func (c *Client) newSearchResult(raw json.RawMessage) *SearchResult {
 	}
 }
 
-func browseContinuations(result *BrowseResult) []string {
-	tokens := make([]string, 0, len(result.Sections)+1)
+type browseContinuation struct {
+	token   string
+	section int
+}
+
+func browseContinuationQueue(result *BrowseResult) []browseContinuation {
+	continuations := make([]browseContinuation, 0, len(result.Sections)+1)
 	if result.ContinuationToken != "" {
-		tokens = append(tokens, result.ContinuationToken)
+		continuations = append(continuations, browseContinuation{token: result.ContinuationToken, section: -1})
 	}
-	for _, section := range result.Sections {
+	for index, section := range result.Sections {
 		if section.ContinuationToken != "" {
-			tokens = append(tokens, section.ContinuationToken)
+			continuations = append(continuations, browseContinuation{token: section.ContinuationToken, section: index})
 		}
 	}
-	return tokens
+	return continuations
+}
+
+// pageContinuationToken returns only continuations that extend the whole
+// browse response. Shelf continuations are owned by their renderer and must
+// remain available on the corresponding MusicSection instead.
+func pageContinuationToken(root any) string {
+	var walk func(any) string
+	walk = func(value any) string {
+		switch node := value.(type) {
+		case []any:
+			for _, child := range node {
+				if token := walk(child); token != "" {
+					return token
+				}
+			}
+		case *jsonObject:
+			if token, ok := node.get("continuation").(string); ok && token != "" {
+				return token
+			}
+			for _, member := range node.members {
+				if isSectionRenderer(member.key) {
+					continue
+				}
+				if token := walk(member.value); token != "" {
+					return token
+				}
+			}
+		}
+		return ""
+	}
+	return walk(root)
 }
 
 func continuationToken(root any) string {
@@ -776,7 +830,7 @@ func parseMusicRenderer(key string, value any) (MusicItem, *jsonObject, bool) {
 // as its own section.
 func isSectionRenderer(key string) bool {
 	switch key {
-	case "musicShelfRenderer", "musicPlaylistShelfRenderer", "playlistVideoListRenderer", "gridRenderer", "musicCarouselShelfRenderer":
+	case "musicShelfRenderer", "musicShelfContinuation", "musicPlaylistShelfRenderer", "musicPlaylistShelfContinuation", "playlistVideoListRenderer", "playlistVideoListContinuation", "gridRenderer", "gridContinuation", "musicCarouselShelfRenderer":
 		return true
 	default:
 		return false

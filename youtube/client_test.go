@@ -179,6 +179,78 @@ func TestGetAllLibraryLoadsEverySectionContinuation(t *testing.T) {
 	}
 }
 
+func TestBrowseContinuationsKeepPageAndShelfTokensSeparate(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decoding request: %v", err)
+			return
+		}
+		if request["browseId"] == "FEmusic_library_landing" {
+			_, _ = w.Write([]byte(`{"contents":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"title":{"simpleText":"Songs"},"contents":[{"musicResponsiveListItemRenderer":{"videoId":"first","title":{"simpleText":"First"}}}],"continuations":[{"nextContinuationData":{"continuation":"SHELF_1"}}]}}]}},"continuations":[{"nextContinuationData":{"continuation":"PAGE_1"}}]}`))
+			return
+		}
+		token, _ := request["continuation"].(string)
+		requests = append(requests, token)
+		switch token {
+		case "PAGE_1":
+			_, _ = w.Write([]byte(`{"continuationContents":{"musicShelfContinuation":{"contents":[{"musicResponsiveListItemRenderer":{"videoId":"page-1","title":{"simpleText":"Page one"}}}],"continuations":[{"nextContinuationData":{"continuation":"SHELF_2"}}]}},"continuations":[{"nextContinuationData":{"continuation":"PAGE_2"}}]}`))
+		case "SHELF_1":
+			_, _ = w.Write([]byte(`{"continuationContents":{"musicShelfContinuation":{"contents":[{"musicResponsiveListItemRenderer":{"videoId":"shelf-1","title":{"simpleText":"Shelf one"}}}]}}}`))
+		case "PAGE_2":
+			_, _ = w.Write([]byte(`{"contents":{"items":[{"musicResponsiveListItemRenderer":{"videoId":"page-2","title":{"simpleText":"Page two"}}}]}}`))
+		case "SHELF_2":
+			_, _ = w.Write([]byte(`{"continuationContents":{"musicShelfContinuation":{"contents":[{"musicResponsiveListItemRenderer":{"videoId":"shelf-2","title":{"simpleText":"Shelf two"}}}]}}}`))
+		default:
+			t.Errorf("unexpected continuation token %q", token)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Options{BaseURL: server.URL, APIKey: "key"})
+	library, err := client.GetAllLibrary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(requests, []string{"PAGE_1", "SHELF_1", "PAGE_2", "SHELF_2"}) {
+		t.Errorf("continuation requests = %v", requests)
+	}
+	if got := musicItemIDs(library.Items); !slices.Equal(got, []string{"first", "page-1", "shelf-1", "page-2", "shelf-2"}) {
+		t.Errorf("library items = %v", got)
+	}
+	if len(library.Sections) != 2 {
+		t.Fatalf("library sections = %#v, want the original shelf and one synthetic continuation section", library.Sections)
+	}
+	if got := musicItemIDs(library.Sections[0].Items); !slices.Equal(got, []string{"first", "shelf-1"}) {
+		t.Errorf("original shelf items = %v", got)
+	}
+	if library.Sections[1].Title != "" || library.Sections[1].Kind != "musicShelfContinuation" {
+		t.Errorf("synthetic continuation section = %#v", library.Sections[1])
+	}
+	if got := musicItemIDs(library.Sections[1].Items); !slices.Equal(got, []string{"page-1", "shelf-2"}) {
+		t.Errorf("synthetic shelf items = %v", got)
+	}
+}
+
+func TestBrowseResultSeparatesShelfAndPageContinuationTokens(t *testing.T) {
+	result := browseResult(decodeResponse([]byte(`{"continuationContents":{"musicShelfContinuation":{"contents":[],"continuations":[{"nextContinuationData":{"continuation":"SHELF"}}]}},"continuations":[{"nextContinuationData":{"continuation":"PAGE"}}]}`)))
+	if result.ContinuationToken != "PAGE" {
+		t.Errorf("page continuation = %q, want PAGE", result.ContinuationToken)
+	}
+	if len(result.Sections) != 1 || result.Sections[0].ContinuationToken != "SHELF" {
+		t.Errorf("shelf sections = %#v", result.Sections)
+	}
+}
+
+func musicItemIDs(items []MusicItem) []string {
+	ids := make([]string, len(items))
+	for index, item := range items {
+		ids[index] = item.VideoID
+	}
+	return ids
+}
+
 // TestRequestsSkipBootstrapAndSetAUserAgent pins the request policy: a client
 // with no API key talks to the InnerTube API directly, without first fetching
 // the Music homepage, and sends a browser User-Agent rather than Go's default.
@@ -518,6 +590,9 @@ func TestGetAllPlaylistLoadsContinuationPages(t *testing.T) {
 	}
 	if playlist.Items[0].VideoID != "playlist-1" || playlist.Items[1].VideoID != "playlist-2" || playlist.ContinuationToken != "" {
 		t.Errorf("playlist continuation result = %#v", playlist)
+	}
+	if len(playlist.Sections) != 1 || !slices.Equal(musicItemIDs(playlist.Sections[0].Items), []string{"playlist-1", "playlist-2"}) {
+		t.Errorf("playlist sections = %#v, want continuation items in the playlist shelf", playlist.Sections)
 	}
 }
 
@@ -907,7 +982,7 @@ func TestDrainBrowseStopsAfter1000Pages(t *testing.T) {
 		}
 		token, _ := request["continuation"].(string)
 		if token == "" {
-			_, _ = w.Write([]byte(`{"continuations":[{"nextContinuationData":{"continuation":"0"}}]}`))
+			_, _ = w.Write([]byte(`{"contents":{"items":[{"musicResponsiveListItemRenderer":{"videoId":"initial","title":{"simpleText":"Initial"}}}]},"continuations":[{"nextContinuationData":{"continuation":"0"}}]}`))
 			return
 		}
 		page, err := strconv.Atoi(token)
@@ -916,15 +991,19 @@ func TestDrainBrowseStopsAfter1000Pages(t *testing.T) {
 			return
 		}
 		requests.Add(1)
-		_, _ = w.Write([]byte(`{"continuations":[{"nextContinuationData":{"continuation":"` + strconv.Itoa(page+1) + `"}}]}`))
+		_, _ = w.Write([]byte(`{"contents":{"items":[{"musicResponsiveListItemRenderer":{"videoId":"page-` + token + `","title":{"simpleText":"Page"}}}]},"continuations":[{"nextContinuationData":{"continuation":"` + strconv.Itoa(page+1) + `"}}]}`))
 	}))
 	defer server.Close()
 	client := NewClient(Options{BaseURL: server.URL, APIKey: "key"})
-	if _, err := client.GetAllLibrary(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeded 1000 continuation pages") {
+	library, err := client.GetAllLibrary(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "exceeded 1000 continuation pages") {
 		t.Fatalf("GetAllLibrary error = %v, want the runaway-continuation guard", err)
 	}
 	if requests.Load() != 1000 {
 		t.Errorf("continuation requests = %d, want the 1000 pages the guard allows", requests.Load())
+	}
+	if library == nil || len(library.Items) != 1001 || library.Items[0].VideoID != "initial" || library.Items[len(library.Items)-1].VideoID != "page-999" {
+		t.Errorf("partial library after continuation limit = %#v", library)
 	}
 }
 

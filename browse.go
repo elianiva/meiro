@@ -90,6 +90,8 @@ func (a *app) rowView(c *ui.Context, i int) {
 		a.cardShelf(c, r)
 	case rowColumns:
 		a.columnShelf(c, r)
+	case rowGrid:
+		a.cardGrid(c, r)
 	case rowTrack:
 		a.songRow(c, r.item, a.playable, songOptions{number: r.number(), list: r.shelf, position: r.position, inset: true, fetchArtwork: true})
 	case rowMore:
@@ -183,6 +185,16 @@ func (a *app) cardShelf(c *ui.Context, r row) {
 		// the next one fills the shelf with the width it now knows.
 		c.Invalidate()
 	}
+}
+
+// cardGrid is cards that wrap onto as many lines as the page is wide, so the
+// whole of it is in view without scrolling sideways.
+func (a *app) cardGrid(c *ui.Context, r row) {
+	ui.Row(c).Wrap().Gap(4).Padding(0, pageGutter-8, 0).Children(func() {
+		for i, item := range r.items {
+			a.card(c, item, r.queue, r.shelf, i, true)
+		}
+	})
 }
 
 // shelfSpacer stands in for the items of a shelf that are off view, so the

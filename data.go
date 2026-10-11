@@ -77,6 +77,7 @@ const (
 	rowHeading                // the name of a section, with arrows for its shelf
 	rowCards                  // a shelf of cards that scrolls sideways
 	rowColumns                // a shelf of songs in columns that scrolls sideways
+	rowGrid                   // cards that wrap into a grid across the page
 	rowTrack                  // one song, album, artist or playlist in a column of rows
 	rowMore                   // the button that loads the next page
 	rowLoading                // the page is loading
@@ -107,7 +108,7 @@ func (r row) key() any {
 	switch r.kind {
 	case rowTrack:
 		return itemKey("track", r.item) + "\x00" + r.shelf + "#" + strconv.Itoa(r.position)
-	case rowCards, rowColumns, rowHeading:
+	case rowCards, rowColumns, rowGrid, rowHeading:
 		return strconv.Itoa(int(r.kind)) + ":" + r.shelf
 	}
 	return strconv.Itoa(int(r.kind)) + ":" + r.title
@@ -516,6 +517,9 @@ func (a *app) setRows() {
 			kind := rowCards
 			if songs*10 >= len(section.Items)*6 && len(section.Items) >= 3 && section.Items[0].Duration != "" {
 				kind = rowColumns
+			}
+			if path == "/library" && kind == rowCards {
+				kind = rowGrid
 			}
 			a.rows = append(a.rows, row{kind: kind, shelf: shelf, items: section.Items, queue: queue, track: -1})
 		}
