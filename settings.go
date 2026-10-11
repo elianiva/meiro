@@ -42,6 +42,11 @@ type settings struct {
 	// Channel is the signed-in account's channel to act as, or empty for the
 	// account's default one.
 	Channel string `json:"channel,omitempty"`
+	// SignInSource is the browser the session was imported from, or empty for
+	// one that was pasted. YouTube retires the cookie of a browser session as
+	// the browser goes on using it, so this is where the session is read again
+	// when YouTube stops accepting the saved one.
+	SignInSource string `json:"signInSource,omitempty"`
 }
 
 func defaultSettings() settings {

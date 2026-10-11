@@ -171,6 +171,34 @@ func (failingMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+// refusingMusic answers the account menu the way YouTube answers for a session
+// it has stopped accepting, until it is asked with the cookie the browser
+// holds.
+type refusingMusic struct {
+	fresh string
+}
+
+func (m refusingMusic) RoundTrip(request *http.Request) (*http.Response, error) {
+	reply := signedOutAccountMenu
+	if strings.Contains(request.Header.Get("Cookie"), m.fresh) {
+		reply = signedInAccountMenu
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(reply)),
+		Request:    request,
+	}, nil
+}
+
+// signedInAccountMenu names the account, which is what tells an answer from a
+// signed-in session from one YouTube has forgotten.
+const signedInAccountMenu = `{"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{"header":{"activeAccountHeaderRenderer":{"accountName":{"runs":[{"text":"Me"}]}}}}}}}]}`
+
+// signedOutAccountMenu is what a session YouTube has forgotten is answered
+// with: a page with no account in it.
+const signedOutAccountMenu = `{"contents":{}}`
+
 // memoryStore is a cookie store held in memory.
 type memoryStore struct {
 	cookie    string

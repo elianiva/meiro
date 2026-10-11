@@ -59,6 +59,10 @@ type app struct {
 	// replace it with one that needs no network.
 	newClient func(*youtube.CookieAuth) *youtube.Client
 	store     cookieStore
+	// signInSources lists the browsers a session can be imported from, which
+	// is also where it is read again once YouTube retires its cookie. Tests
+	// replace it with one that needs no browser.
+	signInSources func() []importSource
 	// account is the signed-in account, and accounts the channels it can act
 	// as, for the switcher in its menu.
 	account  youtube.AccountDetails
@@ -254,6 +258,7 @@ func newApp() *app {
 	a.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
 	}
+	a.signInSources = importSources
 	a.thumbs = newThumbCache(a.refresh)
 	return a
 }

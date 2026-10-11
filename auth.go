@@ -152,9 +152,14 @@ func (a *app) submitSignIn() {
 	channel := a.settings.Channel
 	a.run(func() {
 		defer cancel()
-		a.finishSignIn(ctx, cookie, attempt, channel)
+		// A pasted session came from no browser, so it names none.
+		a.finishSignIn(ctx, cookie, attempt, channel, "")
 	})
 }
+
+// signInTimeout bounds reading a browser's session and asking YouTube about
+// it, with room for a keyring prompt and a slow profile.
+const signInTimeout = 90 * time.Second
 
 // importSignIn takes the session of a browser the user is signed in with.
 func (a *app) importSignIn(source importSource) {
@@ -163,7 +168,7 @@ func (a *app) importSignIn(source importSource) {
 	}
 	attempt := a.signIn.generation
 	a.signIn.busy, a.signIn.err = true, ""
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), signInTimeout)
 	a.signIn.cancel = cancel
 	channel := a.settings.Channel
 	a.run(func() {
@@ -177,7 +182,7 @@ func (a *app) importSignIn(source importSource) {
 			})
 			return
 		}
-		a.finishSignIn(ctx, cookie, attempt, channel)
+		a.finishSignIn(ctx, cookie, attempt, channel, source.label)
 	})
 }
 
@@ -248,8 +253,9 @@ func (a *app) loadAccountChannels(client *youtube.Client) {
 }
 
 // finishSignIn asks YouTube whom the cookie signs in and, when it takes it,
-// keeps it as the sign-in. It runs off the main thread.
-func (a *app) finishSignIn(ctx context.Context, cookie string, attempt uint64, channel string) {
+// keeps it as the sign-in. source names the browser it came from, and is empty
+// for a pasted one. It runs off the main thread.
+func (a *app) finishSignIn(ctx context.Context, cookie string, attempt uint64, channel, source string) {
 	client, details, channel, err := a.openAccount(ctx, cookie, channel)
 	if err == nil {
 		err = a.saveSignIn(ctx, cookie, attempt)
@@ -266,8 +272,12 @@ func (a *app) finishSignIn(ctx context.Context, cookie string, attempt uint64, c
 		a.accountGen++
 		a.authed, a.signedIn, a.account = client, true, *details
 		a.accounts = nil
-		if a.settings.Channel != channel {
+		// The browser the session came from is where it is read again once
+		// YouTube retires its cookie. A pasted session names none, which is
+		// also what forgets a browser the user has moved on from.
+		if a.settings.Channel != channel || a.settings.SignInSource != source {
 			a.settings.Channel = channel
+			a.settings.SignInSource = source
 			a.saveSettings()
 		}
 		a.ytDlpCookie = cookie
@@ -319,12 +329,20 @@ func (a *app) switchAccount(channel string) {
 	})
 }
 
+// validateAccountDetails reports whether YouTube answered as the signed-in
+// account the cookie claims to be.
 func validateAccountDetails(details *youtube.AccountDetails) error {
 	if details == nil || details.Name == "" && details.ChannelID == "" {
-		return errors.New("YouTube did not recognise the cookie as a signed-in session; it may have expired")
+		return errSessionGone
 	}
 	return nil
 }
+
+// errSessionGone is YouTube answering that a cookie signs in to nothing. The
+// session that cookie held is over: YouTube retires the cookie of a browser
+// session as the browser goes on using it, so the browser the session came
+// from is where a replacement comes from.
+var errSessionGone = errors.New("YouTube did not recognise the cookie as a signed-in session; it may have expired")
 
 // restoreAccount loads the cookie saved by an earlier run and the account it
 // belongs to.
@@ -333,7 +351,14 @@ func (a *app) restoreAccount() {
 		return
 	}
 	gen := a.accountGen
-	saved := a.settings.Channel
+	// The work below runs off the main thread, so the settings it needs, and
+	// the count of sign-in changes it must not outrun, are read here. The
+	// cookie joins them once the store has been read.
+	saved := savedSignIn{
+		channel:  a.settings.Channel,
+		source:   a.settings.SignInSource,
+		attempts: a.signInAttempt.Load(),
+	}
 	a.run(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
@@ -346,7 +371,8 @@ func (a *app) restoreAccount() {
 			}
 			return // not signed in
 		}
-		client, details, channel, err := a.openAccount(ctx, cookie, saved)
+		saved.cookie = cookie
+		session, err := a.restoreSignIn(ctx, saved)
 		if err != nil {
 			a.reportRestoreError(gen, err)
 			return
@@ -355,17 +381,112 @@ func (a *app) restoreAccount() {
 			if gen != a.accountGen {
 				return // the user signed in or out while the cookie was being read
 			}
-			a.authed, a.signedIn, a.account = client, true, *details
-			if a.settings.Channel != channel {
-				a.settings.Channel = channel
+			a.authed, a.signedIn, a.account = session.client, true, session.details
+			if a.settings.Channel != session.channel {
+				a.settings.Channel = session.channel
 				a.saveSettings()
 			}
-			a.ytDlpCookie = cookie
+			a.ytDlpCookie = session.cookie
 			a.signIn.err = ""
 			a.onSignedIn()
-			a.loadAccountChannels(client)
+			a.loadAccountChannels(session.client)
 		})
 	})
+}
+
+// savedSignIn is what an earlier run left in the credential store: the cookie,
+// the channel it was using, the browser it came from, and the count of
+// sign-in changes it must not outrun.
+type savedSignIn struct {
+	cookie   string
+	channel  string
+	source   string
+	attempts uint64
+}
+
+// restoredSession is a session that works: the cookie that signs in, and what
+// it signs in as.
+type restoredSession struct {
+	cookie  string
+	client  *youtube.Client
+	details youtube.AccountDetails
+	channel string
+}
+
+// restoreSignIn signs in with the cookie an earlier run saved. When YouTube
+// answers that it no longer recognises it, the session is read from the
+// browser it was imported from, which is the one place that still holds a
+// session YouTube accepts, and the session that reads is the one kept.
+func (a *app) restoreSignIn(ctx context.Context, saved savedSignIn) (restoredSession, error) {
+	client, details, channel, err := a.openAccount(ctx, saved.cookie, saved.channel)
+	if err == nil {
+		return restoredSession{cookie: saved.cookie, client: client, details: *details, channel: channel}, nil
+	}
+	if !errors.Is(err, errSessionGone) {
+		return restoredSession{}, err
+	}
+	imported, ok := signInSource(a.signInSources(), saved.source)
+	if !ok {
+		return restoredSession{}, err
+	}
+	// Reading a browser runs a subprocess with a budget of its own; the
+	// restore's minute is for the request that just failed.
+	readCtx, cancel := context.WithTimeout(context.Background(), signInTimeout)
+	defer cancel()
+	fresh, readErr := imported.read(readCtx)
+	var freshClient *youtube.Client
+	var freshDetails *youtube.AccountDetails
+	var freshChannel string
+	if readErr == nil {
+		freshClient, freshDetails, freshChannel, readErr = a.openAccount(readCtx, fresh, saved.channel)
+	}
+	if readErr != nil {
+		// What the browser ran into is worth adding, unless it is the same
+		// answer the saved cookie already got.
+		if errors.Is(readErr, errSessionGone) {
+			return restoredSession{}, err
+		}
+		return restoredSession{}, errors.Join(err, readErr)
+	}
+	// A session that works is worth using whether or not the store takes it:
+	// one that refuses to save is a problem the next run reports.
+	_ = a.saveRestoredSignIn(readCtx, fresh, saved.attempts)
+	return restoredSession{cookie: fresh, client: freshClient, details: *freshDetails, channel: freshChannel}, nil
+}
+
+// saveRestoredSignIn keeps a session read from the browser again, in place of
+// the one YouTube stopped accepting. It does nothing when a sign-in, or a
+// sign-out, began while that session was being read: those are newer than
+// this one, and the cookie of a session the user ended must not come back.
+func (a *app) saveRestoredSignIn(ctx context.Context, cookie string, attempts uint64) error {
+	if a.store == nil {
+		return nil
+	}
+	a.credentialMu.Lock()
+	defer a.credentialMu.Unlock()
+	if a.signInAttempt.Load() != attempts {
+		return nil
+	}
+	if err := a.store.Save(ctx, cookie); err != nil {
+		return err
+	}
+	// No dialog owns this cookie, so a dismissed attempt must not remove it.
+	a.savedSignInAttempt = 0
+	return nil
+}
+
+// signInSource is the browser named by label, when this machine still offers
+// it.
+func signInSource(sources []importSource, label string) (importSource, bool) {
+	if label == "" {
+		return importSource{}, false
+	}
+	for _, source := range sources {
+		if source.label == label {
+			return source, true
+		}
+	}
+	return importSource{}, false
 }
 
 func (a *app) reportRestoreError(gen int, err error) {
