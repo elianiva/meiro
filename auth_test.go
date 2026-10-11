@@ -6,8 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -429,23 +427,6 @@ func TestSignInWaitsForSignOutStorageDeletion(t *testing.T) {
 	a.signInWithGoogle()
 	if !a.signIn.open {
 		t.Fatal("sign-in did not open after credential deletion finished")
-	}
-}
-
-func TestDeletingReportsWhatWouldNotGo(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "cookie.txt")
-	system := &fakeKeychain{usable: true, holds: true, removeErr: errors.New("access denied")}
-	store := &keychainStore{system: system, file: newFileStore(path)}
-	if err := store.file.Save(ctx, testCookie); err != nil {
-		t.Fatal(err)
-	}
-	err := store.Delete(ctx)
-	if err == nil || !strings.Contains(err.Error(), "access denied") {
-		t.Errorf("Delete = %v, want the keychain's failure", err)
-	}
-	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
-		t.Error("the file was left behind because the keychain failed")
 	}
 }
 

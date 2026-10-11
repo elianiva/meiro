@@ -4,8 +4,6 @@ github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6Xe
 github.com/ebitengine/purego v0.11.1/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
 github.com/egoist/mygo v0.3.7 h1:hT6jjSBRqtvl3b0zReFGdGjGaNfz1IqvhnrK+Vrje94=
 github.com/egoist/mygo v0.3.7/go.mod h1:1sRzZ6jEhKE7iuEQXjyoXDgxyxQ1uTgMHDcDKZvoDIU=
-github.com/go-macos/keychain v0.3.0 h1:s4uucWJajdy60M3OIw6fOvNgsD2ro2xLfllhnSWUaGY=
-github.com/go-macos/keychain v0.3.0/go.mod h1:LX6IfkOT541BqkrIvzagyDn3ze+VoiZraiP+YUpBHFQ=
 github.com/go-macos/objc v0.10.2 h1:WX8CsDT6SbDrIT2wHAZEQBhGcpKR750llRS4oAfX9ww=
 github.com/go-macos/objc v0.10.2/go.mod h1:68hzSUlhg5bFbg1kO0z4DM6xOk4B/IofuxdlyhHHtt8=
 github.com/go-quicktest/qt v1.102.0 h1:HSQxCeh5YZH3EL3W39ixjtyaEhcWSXQHtHnMBzSs474=
