@@ -344,6 +344,75 @@ func validateAccountDetails(details *youtube.AccountDetails) error {
 // from is where a replacement comes from.
 var errSessionGone = errors.New("YouTube did not recognise the cookie as a signed-in session; it may have expired")
 
+// sessionWatchEvery is how often a running app asks YouTube whether the
+// session it holds is still taken. YouTube retires the cookies of a browser
+// session as the browser goes on using them, and answers the requests of a
+// retired one with signed-out content rather than an error, so a page the app
+// shows says nothing about whether the account is still there.
+const sessionWatchEvery = time.Minute
+
+// watchSignIn checks the session for as long as the app runs, and stops when
+// stop is closed.
+func (a *app) watchSignIn(stop <-chan struct{}) {
+	go func() {
+		ticker := time.NewTicker(sessionWatchEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			}
+			a.checkSignIn()
+		}
+	}()
+}
+
+// checkSignIn asks YouTube whether the session in use is still taken, and
+// reads the browser it came from when it is not. YouTube retires a browser
+// session as the browser goes on using it, and answers a retired one with
+// signed-out content instead of an error, so nothing else notices; this is
+// what keeps the pages the app shows the account's. It runs off the main
+// thread.
+func (a *app) checkSignIn() {
+	var saved savedSignIn
+	inUse := false
+	a.update(func() {
+		// What the check needs is the app's, which the main thread owns.
+		inUse = a.signedIn && a.ytDlpCookie != ""
+		saved = savedSignIn{
+			cookie:   a.ytDlpCookie,
+			channel:  a.settings.Channel,
+			source:   a.settings.SignInSource,
+			attempts: a.signInAttempt.Load(),
+		}
+	})
+	if !inUse {
+		return
+	}
+	a.run(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		session, err := a.restoreSignIn(ctx, saved)
+		a.update(func() {
+			switch {
+			case err == nil && session.cookie == saved.cookie:
+				// YouTube still takes the session: there is nothing to change.
+			case err == nil:
+				// The browser replaced a session YouTube had retired.
+				a.applySignIn(a.accountGen, session)
+			case errors.Is(err, errSessionGone):
+				// YouTube no longer takes the session, and the browser it came
+				// from could not replace it: say so rather than show pages the
+				// account no longer has.
+				a.reportRestoreError(a.accountGen, err)
+			}
+			// A request that failed for another reason says nothing about the
+			// session; the next check tries again.
+		})
+	})
+}
+
 // restoreAccount loads the cookie saved by an earlier run and the account it
 // belongs to.
 func (a *app) restoreAccount() {
@@ -377,21 +446,27 @@ func (a *app) restoreAccount() {
 			a.reportRestoreError(gen, err)
 			return
 		}
-		a.update(func() {
-			if gen != a.accountGen {
-				return // the user signed in or out while the cookie was being read
-			}
-			a.authed, a.signedIn, a.account = session.client, true, session.details
-			if a.settings.Channel != session.channel {
-				a.settings.Channel = session.channel
-				a.saveSettings()
-			}
-			a.ytDlpCookie = session.cookie
-			a.signIn.err = ""
-			a.onSignedIn()
-			a.loadAccountChannels(session.client)
-		})
+		a.update(func() { a.applySignIn(gen, session) })
 	})
+}
+
+// applySignIn puts a session that works into use, and reloads the page the
+// change of account leaves stale. It runs on the main thread. gen is the
+// account generation the session was read under: a sign-in or a sign-out since
+// then is newer, and stands.
+func (a *app) applySignIn(gen int, session restoredSession) {
+	if gen != a.accountGen {
+		return
+	}
+	a.authed, a.signedIn, a.account = session.client, true, session.details
+	if a.settings.Channel != session.channel {
+		a.settings.Channel = session.channel
+		a.saveSettings()
+	}
+	a.ytDlpCookie = session.cookie
+	a.signIn.err = ""
+	a.onSignedIn()
+	a.loadAccountChannels(session.client)
 }
 
 // savedSignIn is what an earlier run left in the credential store: the cookie,

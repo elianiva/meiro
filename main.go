@@ -294,6 +294,7 @@ func main() {
 		// once the window is there.
 		a.restoreAccount()
 		a.startTicker(a.stopTick)
+		a.watchSignIn(a.stopTick)
 		a.win.OnClosed(a.stopTicking)
 	})
 	err := mygo.App.Run()
