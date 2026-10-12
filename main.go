@@ -709,6 +709,13 @@ func (a *app) poll() {
 			a.playErr = failure
 			a.syncSystemMedia()
 		}
+		// ffmpeg gave up on the stream. The queue keeps its place: the track
+		// after this one plays, and the failure stays on the player until it
+		// does. A stream that stops because the sound did is not the queue's
+		// business, so it is left where it is.
+		if a.player.StreamFailed() {
+			a.advance()
+		}
 		return
 	}
 	if a.player.Ended() {

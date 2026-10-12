@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -199,5 +200,39 @@ func writeSilentWAV(t *testing.T, path string, length time.Duration) {
 	file.Write(data)
 	if err := os.WriteFile(path, file.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A stream that fails mid-track moves the queue on. Playback used to stop on
+// the error and never reach the next track, which is what a connection YouTube
+// resets left behind.
+func TestAFailedStreamMovesOnToTheNextTrack(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "ffmpeg")
+	body := "#!/bin/sh\nhead -c 65536 /dev/zero\necho 'IO error: Connection reset by peer' >&2\nexit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	a := newTestApp()
+	a.player = player.New(player.WithFFmpeg(script))
+	if err := a.player.Play("http://example.invalid/reset"); err != nil {
+		t.Skipf("no audio device: %v", err)
+	}
+	current := youtube.MusicItem{VideoID: "a", Title: "A"}
+	a.current = current
+	a.queue = []youtube.MusicItem{current, {VideoID: "b", Title: "B"}}
+	a.index = 0
+	a.resetUpNext(youtube.UpNextOptions{VideoID: current.VideoID}, "")
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && !a.player.StreamFailed() {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !a.player.StreamFailed() {
+		t.Fatalf("the stream did not fail: %q", a.player.Failure())
+	}
+
+	a.poll()
+	if a.index != 1 {
+		t.Errorf("a failed stream left the queue at %d, want the next track", a.index)
 	}
 }

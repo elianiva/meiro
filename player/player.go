@@ -282,6 +282,28 @@ func (p *Player) Failure() string {
 	return message
 }
 
+// StreamFailed reports whether the last decode stopped because the stream
+// could not be read, as a connection YouTube's server reset, rather than
+// because the audio device stopped working or the stream ended.
+func (p *Player) StreamFailed() bool {
+	p.mu.Lock()
+	s := p.session
+	stopped := s != nil && s.stopped
+	p.mu.Unlock()
+	if s == nil || stopped {
+		return false
+	}
+	if err := p.audioFailure(s); err != nil {
+		return false // the sound, not the stream, is what stopped
+	}
+	select {
+	case <-s.done:
+	default:
+		return false // the decode is still running
+	}
+	return strings.TrimSpace(s.stderr.String()) != ""
+}
+
 // endOfStream says whether a stream has been played to its end. A paused
 // stream also finds its device player not playing while the samples it holds
 // drain or sit, which is not the track's end: only an unpaused stream with

@@ -355,3 +355,56 @@ func TestOutputErrorBecomesFailure(t *testing.T) {
 		t.Errorf("failure = %q, want the context error", got)
 	}
 }
+
+// A stream that fails mid-track is told apart from a track that ended and from
+// the sound going away: the app moves the queue on for the first, and leaves it
+// alone for the others.
+func TestStreamFailedTellsAReadFailureFromACleanEnd(t *testing.T) {
+	failing := filepath.Join(t.TempDir(), "ffmpeg-fails")
+	body := "#!/bin/sh\nhead -c 65536 /dev/zero\necho 'IO error: Connection reset by peer' >&2\nexit 1\n"
+	if err := os.WriteFile(failing, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p := New(WithFFmpeg(failing))
+	if _, err := p.audio.context(); err != nil {
+		t.Skipf("no audio device: %v", err)
+	}
+	if err := p.Play("http://example.invalid/reset"); err != nil {
+		t.Fatal(err)
+	}
+	waitForFailure(t, p)
+	if !p.StreamFailed() {
+		t.Errorf("a failed read was not reported as a stream failure: %q", p.Failure())
+	}
+
+	clean := filepath.Join(t.TempDir(), "ffmpeg-clean")
+	body = "#!/bin/sh\nhead -c 65536 /dev/zero\nexit 0\n"
+	if err := os.WriteFile(clean, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p = New(WithFFmpeg(clean))
+	if err := p.Play("http://example.invalid/clean"); err != nil {
+		t.Fatal(err)
+	}
+	waitForFailure(t, p)
+	if p.Failure() != "" {
+		t.Errorf("a clean end was reported as a failure: %q", p.Failure())
+	}
+	if p.StreamFailed() {
+		t.Error("a clean end was reported as a stream failure")
+	}
+}
+
+// waitForFailure waits until the decode has stopped, and says so when it does
+// not.
+func waitForFailure(t *testing.T, p *Player) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if p.Ended() || p.Failure() != "" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("the decode never stopped: playing=%v failure=%q", p.Playing(), p.Failure())
+}
