@@ -302,6 +302,35 @@ func TestAddingASongToAPlaylistFromItsMenu(t *testing.T) {
 	}
 }
 
+// A library page lists a playlist in more than one shelf, as the real one does
+// when it holds both a shelf and a grid. The picker offers it once: two rows
+// with one key would share one state, and the click would land on the other.
+func TestThePickerOffersAPlaylistOnceWhenTheLibraryListsItTwice(t *testing.T) {
+	a := signedInWith(t, repeatingLibrary{})
+	tt := ui.NewTester(a.view, 1180, 850)
+	openSongPicker(t, tt)
+
+	offered := 0
+	for _, text := range tt.Texts() {
+		if text == "Add to Hype" {
+			offered++
+		}
+	}
+	if offered != 1 {
+		t.Errorf("the picker offers Hype %d times, want once: %q", offered, tt.Texts())
+	}
+	if err := tt.Click("Add to Hype"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.addToPlaylist.open || a.addToPlaylist.err != "" {
+		t.Errorf("the picker did not close: %#v", a.addToPlaylist)
+	}
+	if write := written(); !strings.HasSuffix(write.endpoint, "/browse/edit_playlist") {
+		t.Errorf("write endpoint = %q, want the edit the click asked for", write.endpoint)
+	}
+}
+
 // A playlist made from the picker is made holding the song, in one write.
 func TestCreatingAPlaylistFromThePickerHoldsTheSong(t *testing.T) {
 	a := signedInApp(t)

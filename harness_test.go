@@ -333,6 +333,43 @@ func (noPlaylistLibrary) RoundTrip(request *http.Request) (*http.Response, error
 // emptyLibraryResponse is a library landing page with nothing in it.
 const emptyLibraryResponse = `{"contents":{}}`
 
+// repeatingLibrary serves a library page that lists the same playlist in two
+// shelves, which is what a page holding both a shelf and a grid answers.
+type repeatingLibrary struct{}
+
+func (repeatingLibrary) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Path != "" && strings.HasSuffix(request.URL.Path, "/browse") {
+		body := ""
+		if request.Body != nil {
+			data, _ := io.ReadAll(request.Body)
+			request.Body = io.NopCloser(strings.NewReader(string(data)))
+			body = string(data)
+		}
+		if strings.Contains(body, "FEmusic_library_landing") {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(repeatingLibraryResponse)),
+				Request:    request,
+			}, nil
+		}
+	}
+	return fakeMusic{}.RoundTrip(request)
+}
+
+// repeatingLibraryResponse is a library landing page whose two shelves hold the
+// same two playlists, as the real one does.
+const repeatingLibraryResponse = `{"contents":{"sectionListRenderer":{"contents":[
+	{"gridRenderer":{"title":{"simpleText":"Playlists"},"items":[
+		{"gridPlaylistRenderer":{"playlistId":"PLhype","title":{"simpleText":"Hype"}}},
+		{"gridPlaylistRenderer":{"playlistId":"PLcar","title":{"simpleText":"car radio"}}}
+	]}},
+	{"gridRenderer":{"title":{"simpleText":"Playlists"},"items":[
+		{"gridPlaylistRenderer":{"playlistId":"PLhype","title":{"simpleText":"Hype"}}},
+		{"gridPlaylistRenderer":{"playlistId":"PLcar","title":{"simpleText":"car radio"}}}
+	]}}
+]}}}`
+
 // memoryStore is a cookie store held in memory.
 type memoryStore struct {
 	cookie    string

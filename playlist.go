@@ -195,7 +195,7 @@ func (a *app) dismissAddToPlaylist() {
 }
 
 // libraryPlaylists picks the playlists out of a library page, in the order the
-// page holds them, leaving out the one a thumb fills.
+// page holds them, once each, leaving out the one a thumb fills.
 func libraryPlaylists(library *youtube.BrowseResult) []youtube.MusicItem {
 	if library == nil {
 		return nil
@@ -210,11 +210,18 @@ func libraryPlaylists(library *youtube.BrowseResult) []youtube.MusicItem {
 		groups = append(groups, library.Items)
 	}
 	var playlists []youtube.MusicItem
+	// A library page lists a playlist in more than one shelf, and the picker
+	// gives each row a key of its playlist: two rows with one key would share
+	// one state, and the click on one would land on the other.
+	seen := make(map[string]bool)
 	for _, items := range groups {
 		for _, item := range items {
-			if kind, id := targetOf(item); kind == pagePlaylist && strings.TrimPrefix(id, "VL") != likedMusicID {
-				playlists = append(playlists, item)
+			kind, id := targetOf(item)
+			if kind != pagePlaylist || strings.TrimPrefix(id, "VL") == likedMusicID || seen[id] {
+				continue
 			}
+			seen[id] = true
+			playlists = append(playlists, item)
 		}
 	}
 	return playlists
