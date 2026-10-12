@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -225,5 +226,24 @@ func TestRefusedSessionStaysSignedOut(t *testing.T) {
 	}
 	if !strings.Contains(a.notice, "Could not restore") {
 		t.Errorf("the refusal was not surfaced: %q", a.notice)
+	}
+}
+
+// Plays recorded while the history is still being read are kept, in front of
+// nothing lost and behind what the file held.
+func TestHistoryLoadMergesPendingPlays(t *testing.T) {
+	a := newTestApp()
+	a.historyPath = filepath.Join(t.TempDir(), "history.json")
+	var finish func()
+	a.run = func(work func()) { finish = work } // the read is held back
+	a.loadHistory()
+	a.recordHistory(youtube.MusicItem{VideoID: "new", Title: "New"})
+	if err := os.WriteFile(a.historyPath, []byte(`[{"videoId":"old","playedAt":"2026-01-01T00:00:00Z"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.run = func(work func()) { work() }
+	finish()
+	if len(a.history) != 2 || a.history[0].VideoID != "old" || a.history[1].VideoID != "new" {
+		t.Fatalf("history = %+v", a.history)
 	}
 }

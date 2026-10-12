@@ -71,37 +71,57 @@ func (a *app) historyFile() string {
 	return a.historyPath
 }
 
-// loadHistory reads the history once; a missing or unreadable file means no
-// history rather than an error the user must see.
+// loadHistory starts reading the history once, off the main thread: the file
+// holds thousands of entries. A missing or unreadable file means no history
+// rather than an error the user must see. Plays recorded before the read
+// finishes are kept in front of what it brings, and written with it.
 func (a *app) loadHistory() {
-	if a.historyLoaded {
+	if a.historyLoaded || a.historyLoading {
 		return
 	}
-	a.historyLoaded = true
+	a.historyLoading = true
 	path := a.historyFile()
+	a.run(func() {
+		entries := readHistory(path)
+		a.update(func() {
+			pending := len(a.history) > 0
+			a.history = append(entries, a.history...)
+			if len(a.history) > maxHistoryEntries {
+				a.history = slices.Delete(a.history, 0, len(a.history)-maxHistoryEntries)
+			}
+			a.historyLoaded, a.historyLoading = true, false
+			if pending {
+				a.saveHistory()
+			}
+		})
+	})
+}
+
+// readHistory reads the history file, and nothing when it is not there.
+func readHistory(path string) []historyEntry {
 	if path == "" {
-		return
+		return nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("reading listening history: %v", err)
 		}
-		return
+		return nil
 	}
 	var entries []historyEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
 		log.Printf("listening history in %s is not readable, starting fresh: %v", path, err)
-		return
+		return nil
 	}
-	a.history = entries
+	return entries
 }
 
 // saveHistory writes the history off the main thread, one write at a time.
 // It keeps its own copy: the caller may keep appending while it writes.
 func (a *app) saveHistory() {
 	path := a.historyFile()
-	if path == "" {
+	if path == "" || !a.historyLoaded {
 		return
 	}
 	history := append([]historyEntry(nil), a.history...)

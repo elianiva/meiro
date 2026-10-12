@@ -28,8 +28,8 @@ func (a *app) syncTray() {
 		return
 	}
 	if a.tray != nil {
-		a.tray.SetToolTip(a.trayTip())
-		a.tray.SetMenu(a.trayMenu())
+		a.trayShown = trayShown{}
+		a.syncTrayMedia()
 		return
 	}
 	icon, err := trayIcon()
@@ -50,6 +50,7 @@ func (a *app) syncTray() {
 		a.update(a.bringToFront)
 	})
 	a.tray = tray
+	a.trayShown = trayShown{}
 	a.syncTrayMedia()
 }
 
@@ -104,8 +105,22 @@ func (a *app) syncTrayMedia() {
 	if a.tray == nil {
 		return
 	}
-	a.tray.SetToolTip(a.trayTip())
+	// The poll calls this four times a second while a track plays, and
+	// replacing the native menu is not free: only what the tray shows decides.
+	shown := trayShown{tip: a.trayTip(), pause: a.player.Playing() || a.resolving}
+	if shown == a.trayShown {
+		return
+	}
+	a.trayShown = shown
+	a.tray.SetToolTip(shown.tip)
 	a.tray.SetMenu(a.trayMenu())
+}
+
+// trayShown is what the tray last showed: the tip, and whether the menu
+// offered Pause rather than Play.
+type trayShown struct {
+	tip   string
+	pause bool
 }
 
 // syncShortcut registers the global play/pause shortcut while the user

@@ -82,6 +82,7 @@ type thumbCache struct {
 	tick       uint64
 	seq        uint64
 	pending    map[string]bool
+	colouring  map[string]bool
 	// keys remembers the sized URL and the sizeless base for a (URL, size)
 	// pair, so repeated lookups skip the regex work.
 	keys map[thumbRequest]thumbKeys
@@ -193,16 +194,17 @@ func thumbBytes(b *ui.Bitmap) int {
 // the window draws it.
 func newThumbCache(notify func()) *thumbCache {
 	t := &thumbCache{
-		client:  &http.Client{Timeout: 30 * time.Second},
-		notify:  notify,
-		bitmaps: make(map[string]*thumb),
-		recent:  list.New(),
-		sources: make(map[string]*thumbSource),
-		queue:   make(map[string]thumbJob),
-		pending: make(map[string]bool),
-		failed:  make(map[string]thumbFailure),
-		keys:    make(map[thumbRequest]thumbKeys),
-		sizes:   make(map[string][]string),
+		client:    &http.Client{Timeout: 30 * time.Second},
+		notify:    notify,
+		bitmaps:   make(map[string]*thumb),
+		recent:    list.New(),
+		sources:   make(map[string]*thumbSource),
+		queue:     make(map[string]thumbJob),
+		pending:   make(map[string]bool),
+		colouring: make(map[string]bool),
+		failed:    make(map[string]thumbFailure),
+		keys:      make(map[thumbRequest]thumbKeys),
+		sizes:     make(map[string][]string),
 	}
 	t.cond = sync.NewCond(&t.mu)
 	for range thumbFetches {
@@ -657,39 +659,50 @@ func sizeless(url string) string {
 // colour returns the colour that stands out in the artwork at url, asked for
 // at size pixels across, once the artwork has landed. The colour is taken
 // from the picture the first time something asks, so covers that never need
-// it never pay for it.
-func (t *thumbCache) colour(url string, size int) (ui.Color, bool) {
+// it never pay for it. It returns ready false while the artwork or its colour
+// is still on the way, and the cache wakes the view when it lands.
+func (t *thumbCache) colour(url string, size int) (colour ui.Color, has, ready bool) {
 	if url == "" {
-		return ui.Color{}, false
+		return ui.Color{}, false, true
 	}
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	sized := t.keyLocked(url, size).sized
 	entry, ok := t.bitmaps[sized]
 	if !ok {
-		t.mu.Unlock()
-		return ui.Color{}, false
+		return ui.Color{}, false, false
 	}
 	if entry.colourReady {
-		colour, hasColour := entry.colour, entry.hasColour
-		t.mu.Unlock()
-		return colour, hasColour
+		return entry.colour, entry.hasColour, true
 	}
 	data, ok := t.source(sized)
-	t.mu.Unlock()
 	if !ok {
-		return ui.Color{}, false
+		return ui.Color{}, false, false
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return ui.Color{}, false
+	if !t.colouring[sized] {
+		// Decoding and quantizing is too much for a frame: do it on a
+		// worker and wake the view when it is done.
+		t.colouring[sized] = true
+		go t.takeColour(sized, entry, data)
 	}
-	colour, hasColour := dominantColour(img)
+	return ui.Color{}, false, false
+}
+
+// takeColour finds the colour of a picture off the main thread and files it
+// with the bitmap it came from, if that bitmap is still the one cached.
+func (t *thumbCache) takeColour(sized string, entry *thumb, data []byte) {
+	var colour ui.Color
+	var has bool
+	if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
+		colour, has = dominantColour(img)
+	}
 	t.mu.Lock()
+	delete(t.colouring, sized)
 	if current, ok := t.bitmaps[sized]; ok && current == entry {
-		current.colour, current.hasColour, current.colourReady = colour, hasColour, true
+		current.colour, current.hasColour, current.colourReady = colour, has, true
 	}
 	t.mu.Unlock()
-	return colour, hasColour
+	t.notify()
 }
 
 // dominantColour finds the colour of a picture that a theme should grow from:

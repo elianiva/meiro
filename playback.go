@@ -909,7 +909,15 @@ func (a *app) followArtwork() {
 	if !a.settings.Dynamic || a.current.Thumbnail == "" {
 		return
 	}
-	if colour, ok := a.thumbs.colour(a.current.Thumbnail, playerArt); ok {
+	if a.dynamicFor == a.current.Thumbnail {
+		return
+	}
+	colour, has, ready := a.thumbs.colour(a.current.Thumbnail, playerArt)
+	if !ready {
+		return // the picture or its colour is still on the way; the cache wakes the view
+	}
+	a.dynamicFor = a.current.Thumbnail
+	if has {
 		a.dynamic, a.dynamicOK = colour, true
 	}
 }

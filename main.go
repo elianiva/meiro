@@ -217,7 +217,10 @@ type app struct {
 	historyPath           string
 	history               []historyEntry
 	historyLoaded         bool
-	statsRange            int // days the stats page covers: 7, 14 or 30
+	historyLoading        bool
+	trayShown             trayShown // what the tray shows, to skip identical updates
+	dynamicFor            string    // the artwork the dynamic colour was last taken from
+	statsRange            int       // days the stats page covers: 7, 14 or 30
 	stats                 statsMemo
 	listWidth             float32 // width the page's list had in the last frame
 	knownPlaylists        knownPlaylists
@@ -322,6 +325,7 @@ func main() {
 		// Background work reaches the window through a.win, so it starts only
 		// once the window is there.
 		a.restoreAccount()
+		a.loadHistory()
 		a.startTicker(a.stopTick)
 		a.watchSignIn(a.stopTick)
 		a.win.OnClosed(a.stopTicking)
