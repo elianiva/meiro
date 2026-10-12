@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math/rand/v2"
 	"net/url"
 	"strconv"
 	"strings"
@@ -590,9 +591,13 @@ func (a *app) playbackQueueOptions(index int) (youtube.UpNextOptions, string) {
 	return options, source
 }
 
-// playCollection plays an album or a playlist from its first song, without
-// opening its page, as the play button over its card does.
-func (a *app) playCollection(item youtube.MusicItem, list string, position int) {
+// playCollection plays an album or a playlist without opening its page, as the
+// play button over its card does. With shuffle, a song is drawn to open on and
+// the rest are arranged behind it.
+func (a *app) playCollection(item youtube.MusicItem, list string, position int, shuffle bool) {
+	if shuffle {
+		a.shuffle = true
+	}
 	kind, id := targetOf(item)
 	if kind == pageTrack {
 		a.play(item, []youtube.MusicItem{item}, 0)
@@ -639,14 +644,24 @@ func (a *app) playCollection(item youtube.MusicItem, list string, position int) 
 			if a.opening == key {
 				a.opening = ""
 			}
-			if len(songs) > 0 {
-				options := youtube.UpNextOptions{}
-				if kind == pagePlaylist {
-					playlistIndex := 0
-					options.PlaylistID, options.PlaylistIndex = id, &playlistIndex
-				}
-				a.playWithOptions(songs[0], songs, 0, options, item.Title)
+			if len(songs) == 0 {
+				return
 			}
+			// What the playlist is read from follows the song drawn to open
+			// it, so the queue YouTube is asked for keeps the same place.
+			start := 0
+			if shuffle && len(songs) > 1 {
+				start = rand.IntN(len(songs))
+				rest := append(append([]youtube.MusicItem{}, songs[:start]...), songs[start+1:]...)
+				rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+				songs = append([]youtube.MusicItem{songs[start]}, rest...)
+			}
+			options := youtube.UpNextOptions{}
+			if kind == pagePlaylist {
+				playlistIndex := start
+				options.PlaylistID, options.PlaylistIndex = id, &playlistIndex
+			}
+			a.playWithOptions(songs[0], songs, 0, options, item.Title)
 		})
 	})
 }

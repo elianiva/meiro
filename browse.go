@@ -348,7 +348,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		// The card's button also receives this pointer event. Opening its menu
 		// must not activate the card underneath it.
 	case played:
-		a.playCollection(item, list, position)
+		a.playCollection(item, list, position, false)
 	case card.Clicked():
 		a.activate(item, queue)
 	}
@@ -380,6 +380,10 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 		}
 		if label != "" && m3.MenuItem(c, label, icon).Clicked() {
 			a.activate(item, queue)
+			close()
+		}
+		if kind == pagePlaylist && m3.MenuItem(c, "Shuffle play", m3.IconShuffle).Clicked() {
+			a.playCollection(item, "", 0, true)
 			close()
 		}
 		if id != "" && m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
