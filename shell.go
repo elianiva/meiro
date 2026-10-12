@@ -47,6 +47,7 @@ func (a *app) view(c *ui.Context) {
 		})
 	})
 	a.signInDialog(c)
+	a.newPlaylistDialog(c)
 	m3.Snackbars(c, 0)
 
 	// The transport, wherever the keyboard focus is that does not want the
@@ -78,6 +79,8 @@ func navPage(path string) string {
 	switch path {
 	case "/home", "/explore", "/library", "/recap", "/search", "/settings":
 		return path[1:]
+	case "/stats":
+		return "settings"
 	}
 	return ""
 }
@@ -197,6 +200,8 @@ func (a *app) pageTitle(now time.Time) string {
 		return "Search"
 	case "/settings":
 		return "Settings"
+	case "/stats":
+		return "Listening stats"
 	}
 	return ""
 }
@@ -250,6 +255,9 @@ func (a *app) page(c *ui.Context) {
 		case r.Match("/settings"):
 			r.Title("Settings")
 			a.settingsPage(c)
+		case r.Match("/stats"):
+			r.Title("Stats")
+			a.statsPage(c)
 		case r.Match("/album/{id}"):
 			r.Title("Album")
 			a.browsePage(c)

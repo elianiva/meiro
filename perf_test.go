@@ -105,12 +105,28 @@ func TestThemeIsResolvedOnceUntilItsInputsChange(t *testing.T) {
 	seen = nil
 	tt.Frame()
 	tt.Frame()
-	if len(seen) != 2 || seen[0] != seen[1] {
-		t.Fatalf("an unchanged theme was resolved again: %v then %v", seen[0], seen[1])
+	// The settings page animates its controls, so a frame may build the view
+	// more than once. What matters is that the resolved theme is the same
+	// object while the inputs hold still.
+	if len(seen) < 2 {
+		t.Fatalf("the theme was never resolved: %d builds", len(seen))
 	}
+	for i, th := range seen {
+		if th != seen[0] {
+			t.Fatalf("an unchanged theme was resolved again at build %d: %v then %v", i, seen[0], th)
+		}
+	}
+	before := len(seen)
 	a.settings.Seed, a.settings.Dynamic = "#d81b78", false
 	tt.Frame()
-	if len(seen) != 3 || seen[2] == seen[1] {
+	changed := false
+	for _, th := range seen[before:] {
+		if th != seen[0] {
+			changed = true
+			break
+		}
+	}
+	if !changed {
 		t.Error("a changed seed did not resolve a new theme")
 	}
 }

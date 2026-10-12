@@ -32,6 +32,8 @@ func (a *app) settingsPage(c *ui.Context) {
 		ui.Column(c).MaxWidth(780).Gap(16).Children(func() {
 			a.appearanceCard(c)
 			a.playbackCacheCard(c)
+			a.desktopCard(c)
+			a.updatesCard(c)
 			a.accountCard(c)
 			a.aboutCard(c)
 		})

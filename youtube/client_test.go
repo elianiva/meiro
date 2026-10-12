@@ -282,6 +282,70 @@ func TestRequestsSkipBootstrapAndSetAUserAgent(t *testing.T) {
 	}
 }
 
+func TestExecuteSanitizesErrorResponses(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		want       string
+		mustNotSee []string
+	}{
+		{
+			name:       "useful plain diagnostic",
+			status:     http.StatusForbidden,
+			body:       "quota exceeded",
+			want:       "HTTP 403: quota exceeded",
+			mustNotSee: []string{"<html>"},
+		},
+		{
+			name:       "HTML error page",
+			status:     http.StatusInternalServerError,
+			body:       "<html><body>token=secret-signature</body></html>",
+			want:       "HTTP 500: server returned an unreadable error response",
+			mustNotSee: []string{"<html>", "secret-signature", "token="},
+		},
+		{
+			name:       "signed URL in diagnostic",
+			status:     http.StatusBadGateway,
+			body:       "upstream https://media.youtube.com/audio?signature=secret",
+			want:       "HTTP 502: server returned an unreadable error response",
+			mustNotSee: []string{"media.youtube.com", "signature", "secret"},
+		},
+		{
+			name:       "unbounded diagnostic",
+			status:     http.StatusServiceUnavailable,
+			body:       strings.Repeat("x", maxErrorDiagnosticBytes+50),
+			want:       "HTTP 503: server returned an unreadable error response",
+			mustNotSee: []string{strings.Repeat("x", maxErrorDiagnosticBytes+1)},
+		},
+		{
+			name:   "empty diagnostic falls back to status",
+			status: http.StatusNotFound,
+			body:   " \n ",
+			want:   "HTTP 404: Not Found",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+			client := NewClient(Options{BaseURL: server.URL})
+			_, err := client.GetHomeFeed(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+			for _, forbidden := range tt.mustNotSee {
+				if strings.Contains(err.Error(), forbidden) {
+					t.Errorf("error %q exposes forbidden text %q", err, forbidden)
+				}
+			}
+		})
+	}
+}
+
 func TestExecuteReportsAnErrorStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "quota exceeded", http.StatusForbidden)
@@ -289,7 +353,26 @@ func TestExecuteReportsAnErrorStatus(t *testing.T) {
 	defer server.Close()
 	client := NewClient(Options{BaseURL: server.URL})
 	if _, err := client.GetHomeFeed(context.Background()); err == nil || !strings.Contains(err.Error(), "HTTP 403") || !strings.Contains(err.Error(), "quota exceeded") {
-		t.Fatalf("error = %v, want the status and response body", err)
+		t.Fatalf("error = %v, want the status and safe diagnostic", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestExecuteDoesNotLeakTransportRequestURL(t *testing.T) {
+	client := NewClient(Options{BaseURL: "https://youtube.com", HTTPClient: &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("dial https://youtube.com/youtubei/v1/browse?key=secret-key failed")
+		}),
+	}})
+	_, err := client.GetHomeFeed(context.Background())
+	if err == nil || strings.Contains(err.Error(), "secret-key") || strings.Contains(err.Error(), "youtube.com/youtubei") {
+		t.Fatalf("transport error = %v, want safe failure without request URL", err)
+	}
+	if !strings.Contains(err.Error(), "request failed") {
+		t.Errorf("transport error = %v, want useful request failure", err)
 	}
 }
 

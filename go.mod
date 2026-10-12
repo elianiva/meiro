@@ -9,7 +9,7 @@ tool (
 
 require (
 	github.com/ebitengine/oto/v3 v3.5.1
-	github.com/egoist/mygo v0.4.1
+	github.com/egoist/mygo v0.4.5
 	github.com/go-macos/objc v0.10.2
 	github.com/godbus/dbus/v5 v5.2.2
 )

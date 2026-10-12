@@ -48,10 +48,19 @@ type settings struct {
 	// the browser goes on using it, so this is where the session is read again
 	// when YouTube stops accepting the saved one.
 	SignInSource string `json:"signInSource,omitempty"`
+	// NotifyTrack shows a desktop notification when a new track starts.
+	NotifyTrack bool `json:"notifyTrack"`
+	// GlobalShortcut plays or pauses from anywhere with
+	// CmdOrCtrl+Shift+Space.
+	GlobalShortcut bool `json:"globalShortcut"`
+	// ShowTray keeps an icon in the menu bar with transport controls.
+	ShowTray bool `json:"showTray"`
+	// OpenAtLogin starts Meiro when the user logs in.
+	OpenAtLogin bool `json:"openAtLogin"`
 }
 
 func defaultSettings() settings {
-	return settings{Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: defaultAudioCacheLimit}
+	return settings{Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: defaultAudioCacheLimit, NotifyTrack: true, ShowTray: true}
 }
 
 // clone returns a copy that shares no memory with s, for work that outlives

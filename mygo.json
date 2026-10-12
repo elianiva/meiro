@@ -2,5 +2,8 @@
   "name": "Meiro",
   "identifier": "com.elianiva.meiro",
   "version": "0.1.0",
-  "out": "build"
+  "out": "build",
+  "urlSchemes": [
+    "meiro"
+  ]
 }

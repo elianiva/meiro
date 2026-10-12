@@ -22,8 +22,7 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 		spec := small
 		spec.Icon, spec.Label, spec.Toggle, spec.Selected, spec.Key = m3.IconShuffle, "Shuffle", true, a.shuffle, "shuffle"
 		if m3.IconButton(c, spec).Clicked() {
-			a.shuffle = !a.shuffle
-			a.syncSystemMedia()
+			a.setShuffle(!a.shuffle)
 		}
 		spec = small
 		spec.Icon, spec.Label, spec.Key = m3.IconPrevious, "Previous", "previous"
@@ -147,9 +146,10 @@ func (a *app) playerBar(c *ui.Context) {
 		Height(playerHeight).Padding(10, 20, 10, 12).Gap(16).AlignItems(ui.Center).
 		Radius(m3.ExtraLarge).Background(sc.SurfaceContainerHigh)
 	m3.Elevation(c, bar, 3)
-	bar.Transition(ui.ElementTransition{
-		Enter: &ui.Motion{Y: 48}, Position: true, Duration: m3.SpatialDefault.Duration(), Ease: m3.SpatialDefault.Ease(),
-	})
+	slide := m3.Move(m3.SpatialDefault)
+	slide.Enter = &ui.Motion{Y: 48}
+	slide.Position = true
+	bar.Transition(slide)
 	bar.Children(func() {
 		info := ui.ButtonBase(c.Key("player-info"))
 		info.Grow(1).Basis(0).MinWidth(0).Gap(14).AlignItems(ui.Center).Radius(m3.Large).Padding(0, 8, 0, 0).
@@ -196,10 +196,10 @@ func (a *app) nowPlaying(c *ui.Context) {
 	wide := w > 1040
 	panel := ui.Column(c).Key("now-playing").Absolute().Top(0).Left(0).Right(0).Bottom(0).
 		Background(sc.Surface).Radius(m3.ExtraLarge).Clip()
-	panel.Transition(ui.ElementTransition{
-		Enter: &ui.Motion{Y: 80}, Exit: &ui.Motion{Y: 80},
-		Position: true, Duration: m3.SpatialDefault.Duration(), Ease: m3.SpatialDefault.Ease(),
-	})
+	rise := m3.Move(m3.SpatialDefault)
+	rise.Enter, rise.Exit = &ui.Motion{Y: 80, Scale: 0.96}, &ui.Motion{Y: 80, Scale: 0.96}
+	rise.Position = true
+	panel.Transition(rise)
 	panel.Children(func() {
 		ui.Row(c).Height(76).PaddingX(pageGutter - 8).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconExpandMore, Label: "Close the player", Key: "np-close"}).Clicked() {
@@ -388,6 +388,11 @@ func (a *app) queueView(c *ui.Context) {
 			return ""
 		}
 		return a.queue[index].Title
+	}
+	// Rows drag to a new place in the queue; the divider between chosen and
+	// generated tracks is not draggable itself.
+	a.queueList.Reorder = func(rows []int, to int) {
+		a.moveQueue(rows, to)
 	}
 	if a.queueFollow != a.current.VideoID {
 		a.queueFollow = a.current.VideoID

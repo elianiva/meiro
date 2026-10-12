@@ -226,7 +226,10 @@ func (c *Client) executeForClient(ctx context.Context, endpoint string, payload 
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("youtube: %s request: %w", endpoint, err)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("youtube: %s request: %w", endpoint, err)
+		}
+		return nil, fmt.Errorf("youtube: %s request failed", endpoint)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -251,9 +254,25 @@ func isYouTubeURL(endpoint *url.URL) bool {
 	return host == "youtube.com" || strings.HasSuffix(host, ".youtube.com")
 }
 
+const maxErrorDiagnosticBytes = 256
+
 func responseError(operation string, resp *http.Response) error {
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	return fmt.Errorf("youtube: %s returned HTTP %d: %s", operation, resp.StatusCode, strings.TrimSpace(string(data)))
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorDiagnosticBytes+1))
+	diagnostic := strings.TrimSpace(string(data))
+	if int64(len(data)) > maxErrorDiagnosticBytes || strings.ContainsAny(diagnostic, "<>\r\n") || strings.Contains(diagnostic, "://") || strings.Contains(strings.ToLower(diagnostic), "cookie") || strings.Contains(strings.ToLower(diagnostic), "signature=") {
+		diagnostic = "server returned an unreadable error response"
+	} else {
+		diagnostic = strings.Map(func(r rune) rune {
+			if r < 0x20 || r == 0x7f {
+				return -1
+			}
+			return r
+		}, diagnostic)
+	}
+	if diagnostic == "" {
+		diagnostic = http.StatusText(resp.StatusCode)
+	}
+	return fmt.Errorf("youtube: %s returned HTTP %d: %s", operation, resp.StatusCode, diagnostic)
 }
 
 func (c *Client) browse(ctx context.Context, browseID string) (*BrowseResult, error) {

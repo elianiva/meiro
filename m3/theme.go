@@ -244,17 +244,19 @@ func (s Spring) Ease() ui.Easing {
 // Move is the transition of an element that should move, resize and recolour
 // along a spring.
 func Move(s Spring) ui.ElementTransition {
-	return ui.ElementTransition{Duration: s.Duration(), Ease: s.Ease()}
+	return s.Motion()
 }
 
 // Fade is the transition of an element that only changes colour.
 func Fade(s Spring) ui.ElementTransition {
-	return ui.ElementTransition{Colors: true, Duration: s.Duration(), Ease: s.Ease()}
+	a := s.animation()
+	return ui.ElementTransition{Colors: true, Animation: &a}
 }
 
-// Animate eases a value of an element to its target along a spring.
+// Animate eases a value of an element to its target along a spring,
+// keeping its velocity when the target changes on the way.
 func Animate(e ui.Element, key any, target float32, s Spring) float32 {
-	return e.AnimateWith(key, target, s.Duration(), s.Ease())
+	return AnimateMotion(e, key, target, s)
 }
 
 // Role is an entry of the type scale.

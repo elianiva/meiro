@@ -231,4 +231,30 @@ func TestSnapshots(t *testing.T) {
 	play(a)
 	tt.Frame()
 	save(t, tt, "account-channels")
+
+	a, tt = newShotApp("/stats", false)
+	now := time.Now()
+	titles := []string{"Glass Hours", "Slow Burn", "Paper Lanterns"}
+	artists := []string{"Aurora Vale", "Slow Choir"}
+	for d := 0; d < 14; d++ {
+		for i := 0; i < (d*7+3)%9; i++ {
+			pick := (d + i) % 3
+			a.history = append(a.history, historyEntry{
+				VideoID:  "stat-" + string(rune('a'+pick)),
+				Title:    titles[pick],
+				Artist:   artists[pick%2],
+				PlayedAt: now.AddDate(0, 0, -d).Add(time.Duration(i) * time.Hour),
+			})
+		}
+	}
+	a.historyLoaded = true
+	tt.Frame()
+	save(t, tt, "stats-light")
+
+	a, tt = newShotApp("/settings", false)
+	play(a)
+	tt.Frame()
+	tt.Scroll(590, 600, 0, 1200)
+	tt.Frame()
+	save(t, tt, "settings-desktop")
 }

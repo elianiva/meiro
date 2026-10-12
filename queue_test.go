@@ -242,11 +242,18 @@ func TestShuffleAndRepeatChooseTheNextTrack(t *testing.T) {
 	if i, ok := a.nextIndex(); !ok || i != 0 {
 		t.Errorf("repeating the queue went to %d, %v", i, ok)
 	}
-	a.shuffle = true
-	for range 50 {
-		if i, ok := a.nextIndex(); !ok || i == a.index {
-			t.Fatalf("shuffle chose %d, %v for the current track", i, ok)
-		}
+	a.repeat, a.index = repeatOff, 0
+	a.setShuffle(true)
+	if i, ok := a.nextIndex(); !ok || i != 1 {
+		t.Errorf("a shuffled queue went to %d, %v instead of the track after it", i, ok)
+	}
+	a.index = 2
+	if _, ok := a.nextIndex(); ok {
+		t.Errorf("a shuffled queue did not end at its last track")
+	}
+	a.repeat = repeatQueue
+	if i, ok := a.nextIndex(); !ok || i != 0 {
+		t.Errorf("repeating a shuffled queue went to %d, %v", i, ok)
 	}
 }
 
@@ -398,24 +405,45 @@ func TestUpNextFailureKeepsTheSelectedQueue(t *testing.T) {
 	}
 }
 
-func TestShuffleOfTwoTracksAlwaysPicksTheOther(t *testing.T) {
+// Shuffle arranges what is still to play, once: the queue then moves from each
+// track to the next and ends, which is where auto-play takes over. Drawing a
+// track at random as it played never reached the end.
+func TestShuffleArrangesTheQueueOnceAndThenPlaysItInOrder(t *testing.T) {
 	a := newTestApp()
-	a.shuffle = true
-	a.queue = []youtube.MusicItem{{VideoID: "a"}, {VideoID: "b"}}
-	for _, index := range []int{0, 1} {
-		a.index = index
-		for range 50 {
-			if i, ok := a.nextIndex(); !ok || i != 1-index {
-				t.Fatalf("from %d, shuffle chose %d, %v", index, i, ok)
-			}
-		}
+	for _, id := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"} {
+		a.queue = append(a.queue, youtube.MusicItem{VideoID: id})
 	}
-	// A stale index past the end still yields a track in the queue.
-	a.index = 7
-	for range 50 {
-		if i, ok := a.nextIndex(); !ok || i < 0 || i >= len(a.queue) {
-			t.Fatalf("from a stale index, shuffle chose %d, %v", i, ok)
+	a.current, a.index = a.queue[0], 0
+	original := make([]string, 0, len(a.queue))
+	for _, item := range a.queue {
+		original = append(original, item.VideoID)
+	}
+	a.setShuffle(true)
+
+	var played []string
+	for {
+		next, ok := a.nextIndex()
+		if !ok {
+			break
 		}
+		if next != a.index+1 {
+			t.Fatalf("the shuffled queue moved from %d to %d", a.index, next)
+		}
+		a.index = next
+		played = append(played, a.queue[next].VideoID)
+	}
+	if len(played) != len(a.queue)-1 {
+		t.Fatalf("shuffle played %d tracks, want the %d still to play", len(played), len(a.queue)-1)
+	}
+	seen := map[string]bool{}
+	for _, id := range played {
+		if seen[id] {
+			t.Errorf("shuffle played %q twice", id)
+		}
+		seen[id] = true
+	}
+	if slices.Equal(played, original[1:]) {
+		t.Errorf("shuffle left the queue in the order it was given: %v", played)
 	}
 }
 

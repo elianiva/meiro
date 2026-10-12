@@ -71,3 +71,52 @@ func TestSearchSuggestionsRunTheChosenSearch(t *testing.T) {
 		t.Fatalf("the chosen search has no results: %q", tt.Texts())
 	}
 }
+
+// Leaving the search page while a search is in flight must not leave its
+// spinner behind, and coming back shows what it found.
+func TestSearchFinishedWhileAwayIsShownOnReturn(t *testing.T) {
+	a := newTestApp()
+	a.router.Push("/search")
+	a.location = "/search"
+	tt := ui.NewTester(a.view, 1000, 700)
+	var pending []func()
+	a.run = func(work func()) { pending = append(pending, work) }
+
+	a.runSearch("ambient")
+	if len(pending) != 1 || !a.search.loading {
+		t.Fatalf("the search did not start: %d requests, loading=%v", len(pending), a.search.loading)
+	}
+	a.router.Push("/home")
+	tt.Frame()
+	pending[0]()
+
+	a.router.Push("/search")
+	tt.Frame()
+	if a.search.loading {
+		t.Error("the search page came back still loading")
+	}
+	if !tt.HasText("Search Result Song") {
+		t.Fatalf("the search that finished while away is missing: %q", tt.Texts())
+	}
+}
+
+// A search that lands after a newer one must not replace its results.
+func TestAnEarlierSearchDoesNotReplaceALaterOne(t *testing.T) {
+	a := newTestApp()
+	var pending []func()
+	a.run = func(work func()) { pending = append(pending, work) }
+
+	a.runSearch("ambient")
+	a.runSearch("yorushika")
+	if len(pending) != 2 {
+		t.Fatalf("two searches left %d requests, want 2", len(pending))
+	}
+	pending[0]()
+	if !a.search.loading || len(a.search.items) != 0 {
+		t.Errorf("the earlier search was applied: loading=%v, %d items", a.search.loading, len(a.search.items))
+	}
+	pending[1]()
+	if a.search.loading || len(a.search.items) == 0 {
+		t.Errorf("the later search was not applied: loading=%v, %d items", a.search.loading, len(a.search.items))
+	}
+}
