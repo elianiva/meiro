@@ -54,6 +54,9 @@ func (a *app) playWithOptions(item youtube.MusicItem, queue []youtube.MusicItem,
 		a.ensureUpNext()
 		return // this track is already on its way
 	}
+	if a.shuffle {
+		a.shuffleQueue()
+	}
 	a.start(item)
 }
 
@@ -679,16 +682,43 @@ func clock(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", minutes, seconds)
 }
 
-// shufflePage turns shuffle on and plays the page from a song picked at
-// random.
+// shufflePage turns shuffle on and plays the page shuffled from its start.
 func (a *app) shufflePage() {
 	if len(a.playable) == 0 {
 		return
 	}
 	a.shuffle = true
-	i := rand.IntN(len(a.playable))
-	options, source := a.playbackQueueOptions(i)
-	a.playWithOptions(a.playable[i], a.playable, i, options, source)
+	options, source := a.playbackQueueOptions(0)
+	a.playWithOptions(a.playable[0], a.playable, 0, options, source)
+}
+
+// shuffleQueue arranges the tracks of the queue that are still to play in a
+// random order, once: from there the queue moves from each track to the next.
+// The track playing, the tracks already played, and the generated tracks at the
+// end of the queue stay where they are.
+func (a *app) shuffleQueue() {
+	limit := len(a.queue)
+	if a.recommendationStart >= 0 && a.recommendationStart < limit {
+		limit = a.recommendationStart
+	}
+	start := a.index + 1
+	if start < 0 || start >= limit {
+		return
+	}
+	rand.Shuffle(limit-start, func(i, j int) {
+		a.queue[start+i], a.queue[start+j] = a.queue[start+j], a.queue[start+i]
+	})
+}
+
+// setShuffle turns shuffle on or off. Turning it on arranges what is still to
+// play, and the queue then plays in that order to its end, where auto-play
+// takes over. Turning it off leaves the queue in the order it reached.
+func (a *app) setShuffle(on bool) {
+	a.shuffle = on
+	if on {
+		a.shuffleQueue()
+	}
+	a.syncSystemMedia()
 }
 
 // setVolume sets the volume, from 0 to 100, and keeps it for the next run.

@@ -22,8 +22,7 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 		spec := small
 		spec.Icon, spec.Label, spec.Toggle, spec.Selected, spec.Key = m3.IconShuffle, "Shuffle", true, a.shuffle, "shuffle"
 		if m3.IconButton(c, spec).Clicked() {
-			a.shuffle = !a.shuffle
-			a.syncSystemMedia()
+			a.setShuffle(!a.shuffle)
 		}
 		spec = small
 		spec.Icon, spec.Label, spec.Key = m3.IconPrevious, "Previous", "previous"
