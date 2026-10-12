@@ -647,7 +647,10 @@ func (a *app) playCollection(item youtube.MusicItem, list string, position int, 
 		if kind == pageAlbum {
 			result, err = client.GetAlbum(ctx, id)
 		} else {
-			result, err = client.GetAllPlaylist(ctx, id)
+			// The first page of a playlist holds the playlist itself. Draining
+			// it reads on into the shelf of suggestions beside it, which never
+			// ends, and long outlasts the read: the page reads it the same way.
+			result, err = client.GetPlaylist(ctx, id)
 		}
 		var songs []youtube.MusicItem
 		if err == nil {

@@ -465,3 +465,33 @@ func TestFailedLoadMoreKeepsThePage(t *testing.T) {
 		t.Errorf("rows after a failed load more = %q, want the shelf and the button", kinds)
 	}
 }
+
+// The play button of a playlist card plays the playlist. The card read every
+// continuation, which folds in the shelf beside the tracks that never ends and
+// takes far longer than the read is given, so the card played nothing.
+func TestThePlayButtonOfAPlaylistCardPlaysIt(t *testing.T) {
+	a := newTestApp()
+	client := youtube.NewClient(youtube.Options{APIKey: "test", HTTPClient: &http.Client{Transport: playlistCardHome{}}})
+	a.public, a.authed = client, client
+	tt := ui.NewTester(a.view, 1180, 850)
+	tt.Frame()
+
+	card, ok := tt.Find("Mixtape")
+	if !ok {
+		t.Fatalf("the home page has no playlist card: %q", tt.Texts())
+	}
+	tt.Move(card.X+card.W/2, card.Y+card.H/2)
+	tt.Frame()
+	if err := tt.Click("Action"); err != nil {
+		t.Fatalf("the playlist card shows no play button: %v", err)
+	}
+	tt.Frame()
+
+	var queued []string
+	for _, item := range a.queue {
+		queued = append(queued, item.Title)
+	}
+	if len(queued) < 2 || queued[0] != "Mix One" || queued[1] != "Mix Two" {
+		t.Errorf("the queue = %v, want the playlist's tracks", queued)
+	}
+}

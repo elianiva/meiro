@@ -370,6 +370,68 @@ const repeatingLibraryResponse = `{"contents":{"sectionListRenderer":{"contents"
 	]}}
 ]}}}`
 
+// playlistCardHome is a home page whose shelf leads with a playlist card, and
+// a playlist read that offers a continuation page which fails: putting the
+// playlist on must not need it.
+type playlistCardHome struct{}
+
+func (playlistCardHome) RoundTrip(request *http.Request) (*http.Response, error) {
+	body := ""
+	if request.Body != nil {
+		data, _ := io.ReadAll(request.Body)
+		request.Body = io.NopCloser(strings.NewReader(string(data)))
+		body = string(data)
+	}
+	switch {
+	case strings.Contains(body, "MIX_MORE"):
+		// A playlist page holds a shelf of suggestions beside its tracks that
+		// never ends.
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{}`)),
+			Request:    request,
+		}, nil
+	case strings.Contains(body, "VLPLmixtape"):
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(mixtapeResponse)),
+			Request:    request,
+		}, nil
+	case strings.Contains(body, "FEmusic_home"):
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(homePlaylistCardResponse)),
+			Request:    request,
+		}, nil
+	}
+	return fakeMusic{}.RoundTrip(request)
+}
+
+// homePlaylistCardResponse is a home shelf holding a playlist card.
+const homePlaylistCardResponse = `{"contents":{"sectionListRenderer":{"contents":[
+	{"musicCarouselShelfRenderer":{
+		"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Made for you"}]}}},
+		"contents":[
+			{"musicTwoRowItemRenderer":{
+				"title":{"runs":[{"text":"Mixtape"}]},
+				"subtitle":{"runs":[{"text":"Playlist"}]},
+				"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/mix=w544-h544-l90-rj"}]}}},
+				"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLmixtape"}}
+			}}
+		]
+	}}
+]}}}`
+
+// mixtapeResponse is the first page of a playlist: its own tracks, and the
+// continuation of the shelf beside them.
+const mixtapeResponse = `{"contents":{"musicPlaylistShelfRenderer":{"contents":[
+	{"playlistVideoRenderer":{"videoId":"mix-1","title":{"simpleText":"Mix One"},"lengthText":{"simpleText":"3:00"}}},
+	{"playlistVideoRenderer":{"videoId":"mix-2","title":{"simpleText":"Mix Two"},"lengthText":{"simpleText":"4:00"}}}
+],"continuations":[{"nextContinuationData":{"continuation":"MIX_MORE"}}]}}}`
+
 // memoryStore is a cookie store held in memory.
 type memoryStore struct {
 	cookie    string
