@@ -729,14 +729,24 @@ func clock(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", minutes, seconds)
 }
 
-// shufflePage turns shuffle on and plays the page shuffled from its start.
+// shufflePage turns shuffle on and plays the page from a track drawn at
+// random, with the whole page arranged behind it.
 func (a *app) shufflePage() {
 	if len(a.playable) == 0 {
 		return
 	}
 	a.shuffle = true
-	options, source := a.playbackQueueOptions(0)
-	a.playWithOptions(a.playable[0], a.playable, 0, options, source)
+	// The track drawn opens the queue, and the rest of the page is arranged
+	// behind it. The position the playlist is read from goes with the draw, so
+	// the queue YouTube is asked for follows the same track.
+	start := rand.IntN(len(a.playable))
+	rest := make([]youtube.MusicItem, 0, len(a.playable)-1)
+	rest = append(rest, a.playable[:start]...)
+	rest = append(rest, a.playable[start+1:]...)
+	rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+	queue := append([]youtube.MusicItem{a.playable[start]}, rest...)
+	options, source := a.playbackQueueOptions(start)
+	a.playWithOptions(queue[0], queue, 0, options, source)
 }
 
 // shuffleQueue arranges the tracks of the queue that are still to play in a

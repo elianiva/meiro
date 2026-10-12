@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -496,5 +497,33 @@ func TestRepeatCyclesThroughItsModes(t *testing.T) {
 	}
 	if want := []repeatMode{repeatQueue, repeatTrack, repeatOff, repeatQueue}; !slices.Equal(seen, want) {
 		t.Errorf("repeat went %v, want %v", seen, want)
+	}
+}
+
+// Shuffle plays the page from a track drawn at random, with the whole page in
+// the queue behind it, arranged in an order of its own.
+func TestShufflePlaysThePageFromARandomTrack(t *testing.T) {
+	a := newTestApp()
+	for _, id := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		a.playable = append(a.playable, youtube.MusicItem{VideoID: id})
+	}
+	opened, orders := map[string]bool{}, map[string]bool{}
+	for range 200 {
+		a.shufflePage()
+		if len(a.queue) < len(a.playable) {
+			t.Fatalf("the queue holds %d of the page's %d tracks", len(a.queue), len(a.playable))
+		}
+		held := make([]string, 0, len(a.playable))
+		for _, item := range a.queue[:len(a.playable)] {
+			held = append(held, item.VideoID)
+		}
+		orders[strings.Join(held, ",")] = true
+		opened[a.queue[a.index].VideoID] = true
+	}
+	if len(opened) < 2 {
+		t.Errorf("shuffle always opened on %v", opened)
+	}
+	if len(orders) < 2 {
+		t.Errorf("shuffle left the page in one order: %v", orders)
 	}
 }
