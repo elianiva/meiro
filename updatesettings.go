@@ -1,27 +1,12 @@
 package main
 
 import (
-	"time"
-
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/m3"
 )
-
-// updatesLive reports whether the updater plugin runs. The settings page
-// reaches the plugin only through helpers that check it first, so tests,
-// which never start the app, still build the card.
-func updatesLive() (live bool) {
-	defer func() {
-		if recover() != nil {
-			live = false
-		}
-	}()
-	updater.AutomaticChecks()
-	return true
-}
 
 // updatesCard is where the user checks for updates and chooses whether they
 // install themselves. Builds made without update signing say so instead.
@@ -31,7 +16,7 @@ func (a *app) updatesCard(c *ui.Context) {
 		if version == "" {
 			version = "a development build"
 		}
-		if !mygo.Updater.Enabled() {
+		if !a.desktop.updates() {
 			settingLabel(c, "Meiro "+version, "This copy updates itself once it is installed from a signed release. Development builds and package installs update another way.").Grow(1)
 			return
 		}
@@ -39,12 +24,10 @@ func (a *app) updatesCard(c *ui.Context) {
 			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 				settingLabel(c, "Meiro "+version, updateSubtitle()).Grow(1)
 				if m3.Button(c, m3.ButtonSpec{Label: "Check for updates", Kind: m3.Tonal, Size: m3.Medium56, Key: "check-updates"}).Clicked() {
-					if updatesLive() {
-						updater.CheckForUpdates()
-					}
+					updater.CheckForUpdates()
 				}
 			})
-			if updatesLive() {
+			{
 				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 					settingLabel(c, "Check automatically", "Look for a new version once a day.").Grow(1)
 					on := updater.AutomaticChecks()
@@ -66,19 +49,10 @@ func (a *app) updatesCard(c *ui.Context) {
 
 // updateSubtitle names the last successful update check, when there was one.
 func updateSubtitle() string {
-	if last := updaterLastCheck(); !last.IsZero() {
+	if last := updater.LastCheck(); !last.IsZero() {
 		return "Last checked " + last.Format("Jan 2, 15:04") + "."
 	}
 	return "Signed releases install themselves."
-}
-
-// updaterLastCheck returns when the app last checked, without touching the
-// plugin when it does not run.
-func updaterLastCheck() time.Time {
-	if !updatesLive() {
-		return time.Time{}
-	}
-	return updater.LastCheck()
 }
 
 // desktopCard holds the switches that tie Meiro to the rest of the system:
@@ -91,7 +65,7 @@ func (a *app) desktopCard(c *ui.Context) {
 			a.desktopSwitch(c, "Menu bar icon", "Keep Meiro in the menu bar with play, next and quit.",
 				a.settings.ShowTray, func(on bool) {
 					a.settings.ShowTray = on
-					a.syncTray()
+					a.syncDesktop()
 				})
 			a.desktopSwitch(c, "Global shortcut", "Play or pause from anywhere with "+toggleShortcut+".",
 				a.settings.GlobalShortcut, func(on bool) {
@@ -101,12 +75,12 @@ func (a *app) desktopCard(c *ui.Context) {
 			a.desktopSwitch(c, "Open at login", "Start Meiro when you log in.",
 				a.settings.OpenAtLogin, func(on bool) {
 					a.settings.OpenAtLogin = on
-					a.syncOpenAtLogin()
+					a.desktop.setOpenAtLogin(on)
 				})
 			ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
 				settingLabel(c, "Listening stats", "Plays per day, most played tracks and artists.").Grow(1)
 				if m3.Button(c, m3.ButtonSpec{Label: "Show stats", Kind: m3.Tonal, Size: m3.Medium56, Key: "show-stats"}).Clicked() {
-					a.router.Push("/stats")
+					a.navigate(routeStats)
 				}
 			})
 		})

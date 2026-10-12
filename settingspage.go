@@ -1,11 +1,15 @@
 package main
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/audio"
+	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
 )
 
@@ -72,7 +76,7 @@ func (a *app) appearanceCard(c *ui.Context) {
 			settingLabel(c, "Theme", "Follow the desktop, or stay light or dark.").Grow(1)
 			mode := int(th.Mode)
 			if m3.ButtonGroup(c, "mode", &mode, []string{"System", "Light", "Dark"}, nil) {
-				a.settings.setMode(m3.Modes()[mode])
+				a.settings.SetMode(m3.Modes()[mode])
 				a.saveSettings()
 			}
 		})
@@ -94,7 +98,7 @@ func (a *app) appearanceCard(c *ui.Context) {
 				value := hue
 				slider := m3.Slider(c, &value, 0, 360, m3.SliderSpec{Label: "Hue", Thickness: 16, Hue: true, Key: "hue"})
 				if slider.Changed() {
-					a.settings.Seed, a.settings.Dynamic = seedHex(m3.FromHue(value)), false
+					a.settings.Seed, a.settings.Dynamic = settings.SeedHex(m3.FromHue(value)), false
 					a.saveSettings()
 				}
 			})
@@ -130,7 +134,7 @@ func (a *app) playbackCacheCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Playback cache", m3.IconMusicNote, func() {
 		ui.Column(c).Gap(12).Children(func() {
-			settingLabel(c, "Keep recent songs", "Enter any non-negative whole number and press Enter to apply. Set 0 to turn the cache off. Older songs are removed first; cached files are MP3s stored in a private Meiro cache folder.")
+			settingLabel(c, "Keep recent songs", "Enter any non-negative whole number and press Enter to apply. Set 0 to turn the cache off. Older songs are removed first; each is kept in the format YouTube serves it, in a private Meiro cache folder.")
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				input := ui.TextInputBase(c.Key("audio-cache-limit"), &a.cacheSongsText).
 					Width(128).Height(48).Shrink(0).Padding(12).Radius(m3.Medium).Background(sc.SurfaceContainerHigh).
@@ -148,7 +152,7 @@ func (a *app) playbackCacheCard(c *ui.Context) {
 			if a.cacheLimitError != "" {
 				m3.Text(c, m3.BodyMedium, a.cacheLimitError).TextColor(sc.Error)
 			}
-			settingLabel(c, "Cache folder", "Meiro creates a private ‘Meiro Audio Cache’ folder inside this location. Changing folders leaves the old cache in place.")
+			settingLabel(c, "Cache folder", "Meiro creates a private ‘Meiro Audio Cache’ folder inside this location. Changing folders removes the songs Meiro cached in the old one.")
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				location := a.cacheDirectoryText
 				if location == "" {
@@ -159,8 +163,8 @@ func (a *app) playbackCacheCard(c *ui.Context) {
 					a.chooseAudioCacheDirectory()
 				}
 			})
-			if a.cacheDirectoryError != "" {
-				m3.Text(c, m3.BodyMedium, a.cacheDirectoryError).TextColor(sc.Error)
+			if a.cacheDirError != "" {
+				m3.Text(c, m3.BodyMedium, a.cacheDirError).TextColor(sc.Error)
 			}
 		})
 	})
@@ -171,7 +175,7 @@ func (a *app) playbackCacheCard(c *ui.Context) {
 func (a *app) swatch(c *ui.Context, name, hex string) bool {
 	th := m3.Of(c)
 	sc := th.Scheme
-	seed, _ := parseSeed(hex)
+	seed, _ := settings.ParseSeed(hex)
 	fill, on := seed, ui.RGB(255, 255, 255)
 	if m3.Contrast(fill, on) < 3 {
 		on = ui.RGB(24, 24, 27)
@@ -205,14 +209,15 @@ func (a *app) swatch(c *ui.Context, name, hex string) bool {
 // stylePreview returns the scheme a palette style would give the seed in a
 // light or dark appearance, reusing what it resolved until either changes.
 func (a *app) stylePreview(seed ui.Color, dark bool, style m3.Style) m3.Scheme {
-	if a.previews == nil || seed != a.previewSeed || dark != a.previewDark {
-		a.previews, a.previewSeed, a.previewDark = make(map[m3.Style]m3.Scheme, len(m3.Styles())), seed, dark
+	t := &a.theme
+	if t.previews == nil || seed != t.previewSeed || dark != t.previewDark {
+		t.previews, t.previewSeed, t.previewDark = make(map[m3.Style]m3.Scheme, len(m3.Styles())), seed, dark
 	}
-	if preview, ok := a.previews[style]; ok {
+	if preview, ok := t.previews[style]; ok {
 		return preview
 	}
 	preview := m3.NewScheme(m3.NewPalettes(seed, style), dark)
-	a.previews[style] = preview
+	t.previews[style] = preview
 	return preview
 }
 
@@ -252,16 +257,12 @@ func (a *app) accountCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Account", m3.IconPerson, func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			if a.signedIn {
-				name := a.account.Name
-				if name == "" {
-					name = "Signed in"
-				}
-				m3.Avatar(c, name, a.thumbs.bitmap(a.account.Thumbnail, 128), 56)
+			if current := a.account.session; current != nil {
+				m3.Avatar(c, current.name(), a.thumbs.Bitmap(current.details.Thumbnail, 128), 56)
 				ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
-					m3.EmphasizedText(c, m3.TitleMedium, name).SingleLine()
-					if a.account.Email != "" {
-						m3.Text(c, m3.BodyMedium, a.account.Email).SingleLine().TextColor(sc.OnSurfaceVariant)
+					m3.EmphasizedText(c, m3.TitleMedium, current.name()).SingleLine()
+					if current.details.Email != "" {
+						m3.Text(c, m3.BodyMedium, current.details.Email).SingleLine().TextColor(sc.OnSurfaceVariant)
 					}
 				})
 				if m3.Button(c, m3.ButtonSpec{Label: "Sign out", Icon: m3.IconLogout, Kind: m3.Tonal, Size: m3.Medium56, Key: "sign-out"}).Clicked() {
@@ -271,11 +272,11 @@ func (a *app) accountCard(c *ui.Context) {
 			}
 			settingLabel(c, "Not signed in", "Sign in to see your library. Browsing and playing work without it.").Grow(1)
 			if m3.Button(c, m3.ButtonSpec{Label: "Sign in", Icon: m3.IconLogin, Size: m3.Medium56, Key: "sign-in"}).Clicked() {
-				a.signInWithGoogle()
+				a.openSignIn()
 			}
 		})
-		if a.signIn.err != "" && !a.signIn.open {
-			m3.Text(c, m3.BodyMedium, a.signIn.err).TextColor(sc.Error).MaxLines(3)
+		if s := &a.account.signIn; s.err != "" && !s.open {
+			m3.Text(c, m3.BodyMedium, s.err).TextColor(sc.Error).MaxLines(3)
 		}
 	})
 }
@@ -298,5 +299,72 @@ func (a *app) aboutCard(c *ui.Context) {
 				})
 			}
 		})
+	})
+}
+
+// chooseAudioCacheDirectory opens the native folder picker, then switches
+// future playback to an app-owned audio folder inside the chosen directory.
+// The songs cached in the folder before are removed.
+func (a *app) chooseAudioCacheDirectory() {
+	defaultRoot, _ := mygo.App.Path(mygo.PathCache)
+	current := a.cacheDirectoryText
+	if current == "" {
+		current = defaultRoot
+	}
+	limit, parent := a.settings.CacheSongs, a.desktop.window()
+	type chosen struct {
+		root  string
+		cache *audio.Cache
+		err   string
+	}
+	spawn(a, func() chosen {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: parent, Title: "Choose audio cache folder", DefaultPath: current,
+			Directory: true, CreateDirectories: true,
+		})
+		if err != nil {
+			return chosen{err: "Could not open the folder picker: " + err.Error()}
+		}
+		if len(paths) == 0 {
+			return chosen{}
+		}
+		root, err := filepath.Abs(paths[0])
+		if err != nil {
+			return chosen{err: "Could not use that folder: " + err.Error()}
+		}
+		if filepath.Clean(root) == filepath.Clean(current) {
+			return chosen{root: root}
+		}
+		cache, root, err := audio.Open(root, limit)
+		if err != nil {
+			return chosen{err: "Could not use that folder: " + err.Error()}
+		}
+		return chosen{root: root, cache: cache}
+	}, func(c chosen) {
+		if c.err != "" {
+			a.cacheDirError = c.err
+			return
+		}
+		if c.root == "" {
+			return // the picker was cancelled
+		}
+		if c.cache != nil {
+			c.cache.SetLimit(a.settings.CacheSongs)
+			if previous := a.replaceAudioCache(c.cache); previous != nil {
+				a.run(func() {
+					previous.Close()
+					// The old location is app-owned and no longer used.
+					if previous.Dir() != c.cache.Dir() {
+						previous.Purge()
+					}
+				})
+			}
+		}
+		a.settings.CacheDirectory = c.root
+		if filepath.Clean(c.root) == filepath.Clean(defaultRoot) {
+			a.settings.CacheDirectory = ""
+		}
+		a.cacheDirectoryText, a.cacheDirError = c.root, ""
+		a.saveSettings()
 	})
 }

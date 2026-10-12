@@ -1,4 +1,6 @@
-package main
+// Package proc runs the helper programs the app ships with, ffmpeg, yt-dlp
+// and QuickJS, and keeps the private temporary files they work with.
+package proc
 
 import (
 	"context"
@@ -7,27 +9,46 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egoist/mygo"
 )
 
 // commandWaitDelay bounds how long a cancelled command may keep Wait blocked
 // on pipes that a surviving grandchild still holds open.
 const commandWaitDelay = 5 * time.Second
 
-// staleTempAge is how old an app-owned temporary entry must be before the
-// startup sweep removes it. It is longer than any single yt-dlp run (30
-// minutes), so work still running in another process is never touched.
-const staleTempAge = 2 * time.Hour
+// StaleAge is how old an app-owned temporary entry must be before a sweep
+// removes it. It is longer than any single yt-dlp run (30 minutes), so work
+// still running in another process is never touched.
+const StaleAge = 2 * time.Hour
 
 // tempRootPrefix names the private per-user directory holding every
 // temporary credential or scratch file the app creates.
 const tempRootPrefix = "meiro-tmp-"
 
-// command builds an exec.Cmd whose cancellation kills the whole process tree
+// Tool finds a helper program: the copy that ships inside the app if there
+// is one, so a download runs as it is, and otherwise the one on PATH, which
+// is what a run from source uses.
+func Tool(name string) (string, error) {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if resources, err := mygo.App.Path(mygo.PathResources); err == nil {
+		bundled := filepath.Join(resources, "bin", name)
+		if info, err := os.Stat(bundled); err == nil && !info.IsDir() {
+			return bundled, nil
+		}
+	}
+	return exec.LookPath(name)
+}
+
+// Command builds an exec.Cmd whose cancellation kills the whole process tree
 // and whose Wait cannot hang on inherited pipes.
-func command(ctx context.Context, name string, args ...string) *exec.Cmd {
+func Command(ctx context.Context, name string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, name, args...)
 	hardenCommand(cmd)
 	cmd.WaitDelay = commandWaitDelay
@@ -55,8 +76,8 @@ func tempRoot() (string, error) {
 	return root, nil
 }
 
-// mkdirTemp creates a private temporary directory under tempRoot.
-func mkdirTemp(pattern string) (string, error) {
+// MkdirTemp creates a private temporary directory.
+func MkdirTemp(pattern string) (string, error) {
 	root, err := tempRoot()
 	if err != nil {
 		return "", err
@@ -64,8 +85,8 @@ func mkdirTemp(pattern string) (string, error) {
 	return os.MkdirTemp(root, pattern)
 }
 
-// createTemp creates a private temporary file under tempRoot.
-func createTemp(pattern string) (*os.File, error) {
+// CreateTemp creates a private temporary file.
+func CreateTemp(pattern string) (*os.File, error) {
 	root, err := tempRoot()
 	if err != nil {
 		return nil, err
@@ -73,10 +94,10 @@ func createTemp(pattern string) (*os.File, error) {
 	return os.CreateTemp(root, pattern)
 }
 
-// sweepStaleTemp removes entries of dir that are older than maxAge and whose
-// name starts with one of prefixes. Entries newer than maxAge belong to work
-// that may still be running, possibly in another process.
-func sweepStaleTemp(dir string, maxAge time.Duration, prefixes ...string) {
+// SweepStale removes entries of dir that are older than StaleAge and whose
+// name starts with one of prefixes. Newer entries belong to work that may
+// still be running, possibly in another process.
+func SweepStale(dir string, prefixes ...string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -93,7 +114,7 @@ func sweepStaleTemp(dir string, maxAge time.Duration, prefixes ...string) {
 			continue
 		}
 		info, err := entry.Info()
-		if err != nil || time.Since(info.ModTime()) < maxAge {
+		if err != nil || time.Since(info.ModTime()) < StaleAge {
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
@@ -102,9 +123,10 @@ func sweepStaleTemp(dir string, maxAge time.Duration, prefixes ...string) {
 	}
 }
 
-// sweepTempRoot clears stale leftovers from a crashed run.
-func sweepTempRoot() {
+// SweepTemp clears stale leftovers of a crashed run from the private
+// temporary directory.
+func SweepTemp() {
 	if root, err := tempRoot(); err == nil {
-		sweepStaleTemp(root, staleTempAge, "")
+		SweepStale(root, "")
 	}
 }

@@ -1,4 +1,4 @@
-package main
+package cookies
 
 import (
 	"bytes"
@@ -18,6 +18,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/elianiva/meiro/internal/fsutil"
+	"github.com/elianiva/meiro/internal/proc"
 )
 
 // A Chromium browser encrypts its cookies with a key it keeps in the macOS
@@ -57,18 +60,18 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 	}
 	// SQLite's backup command takes a consistent snapshot, including committed
 	// WAL contents, instead of racing the browser while copying database files.
-	directory, err := mkdirTemp("meiro-cookies-")
+	directory, err := proc.MkdirTemp("meiro-cookies-")
 	if err != nil {
 		return "", err
 	}
-	defer removeAll(directory)
+	defer fsutil.RemoveAll(directory)
 	copied := filepath.Join(directory, "Cookies")
-	if out, err := command(ctx, sqlite, database, ".backup "+copied).CombinedOutput(); err != nil {
+	if out, err := proc.Command(ctx, sqlite, database, ".backup "+copied).CombinedOutput(); err != nil {
 		return "", fmt.Errorf("snapshot the browser cookie database: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
 	query := func(statement string) ([]byte, error) {
-		out, err := command(ctx, sqlite, "-readonly", "-json", copied, statement).Output()
+		out, err := proc.Command(ctx, sqlite, "-readonly", "-json", copied, statement).Output()
 		if err != nil {
 			return nil, fmt.Errorf("read the cookie database: %w", err)
 		}
@@ -142,7 +145,7 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 // cookies with from the password it keeps in the keychain, which asks the
 // user before it answers.
 func chromiumKey(ctx context.Context, key keychainKey) ([]byte, error) {
-	out, err := command(ctx, "security", "find-generic-password", "-w", "-s", key.service, "-a", key.account).Output()
+	out, err := proc.Command(ctx, "security", "find-generic-password", "-w", "-s", key.service, "-a", key.account).Output()
 	if err != nil {
 		return nil, fmt.Errorf("the keychain did not give the browser's key: %w", err)
 	}

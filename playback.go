@@ -1,299 +1,380 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"math/rand/v2"
-	"net/url"
-	"os"
-	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/youtube"
 )
 
-const autoplayQueueLimit = 100 // current and upcoming generated tracks; played history is evicted at the limit
+// playback is the track playing, the queue it plays from, and the work that
+// keeps the music going: finding each track's audio and the recommendations
+// that follow the queue.
+type playback struct {
+	current youtube.MusicItem
+	queue   queue
+	// total is the current track's length, once known.
+	total       time.Duration
+	scrub       float64
+	scrubbing   bool
+	seekVersion uint64
+	volume      float64
+	muted       float64 // the volume to return to, while muted
+	shuffle     bool
+	repeat      repeatMode
+	playErr     string
 
-// play starts item, with the items around it as the queue.
-func (a *app) play(item youtube.MusicItem, queue []youtube.MusicItem, index int) {
-	a.playWithOptions(item, queue, index, youtube.UpNextOptions{}, "")
+	// stream finds the current track's audio; it is busy from the moment a
+	// track is chosen until its audio is found.
+	stream  task
+	streams *audio.URLs
+	upNext  upNextState
+	// opening is the album or playlist whose songs are being read to play
+	// it, so that a second press does not read them again.
+	opening    task
+	openingKey string
+	hover      hoverState
+
+	suspendedWhilePlaying bool
 }
 
-// playWithOptions starts an item and remembers the context used to ask
-// YouTube Music for the generated queue.
-func (a *app) playWithOptions(item youtube.MusicItem, queue []youtube.MusicItem, index int, options youtube.UpNextOptions, source string) {
+func newPlayback(streams *audio.URLs, volume float64) playback {
+	return playback{queue: newQueue(), streams: streams, volume: volume}
+}
+
+// upNextState is the queue YouTube Music generates after the chosen tracks.
+type upNextState struct {
+	load    task
+	options youtube.UpNextOptions
+	// fetched says the first page was asked for; token continues it, and
+	// seen holds the tokens already used, so a loop of pages ends.
+	fetched bool
+	token   string
+	seen    map[string]struct{}
+	err     string
+	// waiting says playback reached the end of the queue and waits for what
+	// YouTube Music has to follow it.
+	waiting bool
+}
+
+// play starts item, with tracks as the queue.
+func (a *app) play(item youtube.MusicItem, tracks []youtube.MusicItem) {
+	a.playFrom(item, tracks, -1, youtube.UpNextOptions{}, "")
+}
+
+// playFrom starts an item from a queue, and remembers the context used to
+// ask YouTube Music for the generated queue that follows it.
+func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index int, options youtube.UpNextOptions, source string) {
 	if item.VideoID == "" {
 		return
 	}
-	// The page rebuilds its own list on every frame, so the queue must not
-	// share its backing array.
-	a.queue = slices.Clone(queue)
-	if len(a.queue) == 0 {
-		a.queue = []youtube.MusicItem{item}
-	}
-	if index < 0 || index >= len(a.queue) || a.queue[index].VideoID != item.VideoID {
-		index = 0
-		for i := range a.queue {
-			if a.queue[i].VideoID == item.VideoID {
-				index = i
-				break
-			}
-		}
-	}
-	a.index = index
+	a.queue.replace(item, tracks, index, source)
 	options.VideoID = item.VideoID
-	a.resetUpNext(options, source)
-	if a.resolving && a.current.VideoID == item.VideoID {
+	a.resetUpNext(options)
+	if a.loading() && a.current.VideoID == item.VideoID {
 		a.ensureUpNext()
 		return // this track is already on its way
 	}
 	if a.shuffle {
-		a.shuffleQueue()
+		a.queue.shuffleUpcoming()
 	}
 	a.start(item)
 }
 
-// resetUpNext drops recommendations from the queue being replaced and
-// invalidates any request that belongs to the previous selection.
-func (a *app) resetUpNext(options youtube.UpNextOptions, source string) {
-	a.upNextGeneration++
-	a.playNextID = ""
-	a.upNextOptions = options
-	a.upNextLoading = false
-	a.upNextFetched = false
-	a.upNextErr = ""
-	a.upNextToken = ""
-	a.upNextSeen = make(map[string]struct{})
-	a.recommendationIDs = make(map[string]struct{})
-	a.recommendationStart = -1
-	a.queueSource = source
-	a.waitingForAuto = false
+// resetUpNext forgets the recommendations of the queue being replaced, and
+// drops any request for them still on its way.
+func (a *app) resetUpNext(options youtube.UpNextOptions) {
+	u := &a.upNext
+	u.load.stop()
+	u.options, u.fetched, u.token, u.err, u.waiting = options, false, "", "", false
+	u.seen = map[string]struct{}{}
 }
 
 // playAll plays everything on the page shown.
 func (a *app) playAll() {
-	if len(a.playable) == 0 {
+	if len(a.page.playable) == 0 {
 		return
 	}
-	options, source := a.playbackQueueOptions(0)
-	a.playWithOptions(a.playable[0], a.playable, 0, options, source)
+	options, source := a.queueContext(0)
+	a.playFrom(a.page.playable[0], a.page.playable, 0, options, source)
 }
 
-// start makes item the current track and resolves its audio.
+// shufflePage turns shuffle on and plays the page from a track drawn at
+// random, with the whole page arranged behind it.
+func (a *app) shufflePage() {
+	if len(a.page.playable) == 0 {
+		return
+	}
+	a.shuffle = true
+	// The position the playlist is read from goes with the draw, so the queue
+	// YouTube is asked for follows the same track.
+	start, tracks := drawFirst(a.page.playable)
+	options, source := a.queueContext(start)
+	a.playFrom(tracks[0], tracks, 0, options, source)
+}
+
+// drawFirst draws a track at random to open a queue on, with the rest
+// shuffled behind it, and says where the drawn track was.
+func drawFirst(tracks []youtube.MusicItem) (int, []youtube.MusicItem) {
+	start := rand.IntN(len(tracks))
+	out := make([]youtube.MusicItem, 0, len(tracks))
+	out = append(out, tracks[start])
+	out = append(out, tracks[:start]...)
+	out = append(out, tracks[start+1:]...)
+	rest := out[1:]
+	rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+	return start, out
+}
+
+// queueContext is what playing from the page shown tells YouTube Music about
+// the queue, and the name of the page, for the queue's heading. A playlist
+// page adds where in the playlist the queue starts.
+func (a *app) queueContext(index int) (youtube.UpNextOptions, string) {
+	options := youtube.UpNextOptions{}
+	r, id := a.route()
+	if r.target == youtube.TargetPlaylist {
+		playlistIndex := index
+		options.PlaylistID, options.PlaylistIndex = id, &playlistIndex
+	}
+	source := a.page.detail.title
+	if source == "" {
+		source = r.source
+	}
+	return options, source
+}
+
+// start makes item the current track and finds its audio.
 func (a *app) start(item youtube.MusicItem) {
 	changed := a.current.VideoID != item.VideoID
-	a.cancelStream()
 	a.current = item
 	a.total = parseDuration(item.Duration)
 	a.scrub, a.playErr = 0, ""
 	a.player.Stop()
-	a.stream(item)
+	a.streamAudio(item)
 	a.ensureUpNext()
 	a.loadPanel()
 	if changed {
 		a.recordHistory(item)
-		a.trackNotification(item)
+		if a.settings.NotifyTrack {
+			a.desktop.notify(item)
+		}
 	}
 	a.syncSystemMedia()
 }
 
-// ensureUpNext fetches the initial queue at once, then asks for another page
-// only when the generated part is almost exhausted.
+// loading reports whether the track chosen is not making sound yet: its audio
+// is being found, or ffmpeg is still opening it.
+func (a *app) loading() bool { return a.stream.busy() || a.player.Buffering() }
+
+// resolvedAudio is where a track's audio is, and how long it plays.
+type resolvedAudio struct {
+	url       string
+	total     time.Duration
+	fromCache bool
+}
+
+// streamAudio finds a track's audio off the main thread, in the cache or
+// with yt-dlp, and plays it.
+func (a *app) streamAudio(item youtube.MusicItem) {
+	cookie, cache := a.account.cookie(), a.currentAudioCache()
+	log.Printf("playback: resolving video_id=%s signed_in=%t", item.VideoID, cookie != "")
+	startTask(a, &a.stream, audio.ResolveTimeout, func(ctx context.Context) (resolvedAudio, error) {
+		found := resolvedAudio{total: parseDuration(item.Duration)}
+		if path, ok := cache.Get(item.VideoID); ok {
+			log.Printf("playback: audio cache hit video_id=%s", item.VideoID)
+			found.url, found.fromCache = path, true
+			if found.total <= 0 {
+				// A track cached ahead of time was never resolved, so its
+				// length is written nowhere but the file itself.
+				probe, cancel := context.WithTimeout(ctx, 15*time.Second)
+				defer cancel()
+				found.total = audio.Probe(probe, path)
+			}
+			return found, nil
+		}
+		url, total, err := a.streams.Get(ctx, item.VideoID, cookie)
+		found.url = url
+		if total > 0 {
+			found.total = total
+		}
+		return found, err
+	}, func(found resolvedAudio, err error) {
+		if err != nil {
+			log.Printf("playback: audio resolution failed video_id=%s: %v", item.VideoID, err)
+			a.playErr = err.Error()
+			a.syncSystemMedia()
+			return
+		}
+		if found.total > 0 {
+			a.total = found.total
+		}
+		if err := a.player.Play(found.url); err != nil {
+			log.Printf("playback: player could not open video_id=%s: %v", item.VideoID, err)
+			a.playErr = err.Error()
+			a.syncSystemMedia()
+			return
+		}
+		log.Printf("playback: audio started video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
+		if !found.fromCache {
+			// The direct URL is already in hand, so the cache downloads it as
+			// it is instead of resolving the same track again.
+			cache.Add(item.VideoID, found.url)
+		}
+		a.warmNext()
+		a.syncSystemMedia()
+	})
+}
+
+// warmNext resolves the next track's audio URL while the current one plays,
+// so a play that follows skips yt-dlp. That costs a few kilobytes. When the
+// cache is big enough for a warmed track to survive until it plays, the
+// track is also downloaded from that URL.
+func (a *app) warmNext() {
+	if a.queue.remaining() < 1 {
+		return
+	}
+	next := a.queue.at(a.queue.index + 1)
+	if next.VideoID == "" || next.VideoID == a.current.VideoID {
+		return
+	}
+	cache, cookie := a.currentAudioCache(), a.account.cookie()
+	a.run(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), audio.ResolveTimeout)
+		defer cancel()
+		url, _, err := a.streams.Get(ctx, next.VideoID, cookie)
+		if err != nil {
+			log.Printf("playback: could not resolve next video_id=%s: %v", next.VideoID, err)
+			return
+		}
+		if cache.Warmable() {
+			cache.Add(next.VideoID, url)
+		}
+	})
+}
+
+// upNextTimeout bounds one request for recommendations.
+const upNextTimeout = 45 * time.Second
+
+// ensureUpNext asks for the generated queue at once, then for another page
+// only when the generated part is almost played out.
 func (a *app) ensureUpNext() {
-	if !a.settings.AutoPlay || a.current.VideoID == "" || a.upNextLoading || len(a.queue) == 0 {
+	u := &a.upNext
+	if !a.settings.AutoPlay || a.current.VideoID == "" || u.load.busy() || a.queue.len() == 0 {
 		return
 	}
 	client := a.client()
-	if client == nil {
-		return
-	}
 	continuation := ""
-	if a.upNextFetched {
+	if u.fetched {
 		switch {
-		case a.upNextToken == "":
+		case u.token == "":
 			// Everything the recommendations held has been played out, so
 			// there is nothing to continue. At the end of the queue that is
 			// where the music stopped: ask again from the track that is
 			// playing, which is what keeps the queue going.
-			if len(a.queue)-a.index > 1 {
+			if a.queue.remaining() > 0 {
 				return
 			}
-			a.upNextFetched = false
-			a.upNextSeen = make(map[string]struct{})
-			a.upNextOptions.VideoID = a.current.VideoID
-		case len(a.queue)-a.index > 2:
+			u.seen = map[string]struct{}{}
+			u.options.VideoID = a.current.VideoID
+		case a.queue.remaining() > 1:
 			return
 		default:
-			continuation = a.upNextToken
-			if a.upNextSeen == nil {
-				a.upNextSeen = make(map[string]struct{})
+			continuation = u.token
+			if u.seen == nil {
+				u.seen = map[string]struct{}{}
 			}
-			if _, seen := a.upNextSeen[continuation]; seen {
-				a.upNextToken = ""
+			if _, seen := u.seen[continuation]; seen {
+				u.token = ""
 				return
 			}
-			a.upNextSeen[continuation] = struct{}{}
+			u.seen[continuation] = struct{}{}
 		}
 	}
-	if !a.upNextFetched {
-		a.upNextFetched = true
-	}
-	a.upNextLoading = true
-	generation := a.upNextGeneration
-	options := a.upNextOptions
-	a.run(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		defer cancel()
-		var result *youtube.BrowseResult
-		var err error
+	u.fetched = true
+	options := u.options
+	startTask(a, &u.load, upNextTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
 		if continuation == "" {
-			result, err = client.GetUpNext(ctx, options)
-		} else {
-			result, err = client.ContinueUpNext(ctx, options, continuation)
+			return client.GetUpNext(ctx, options)
 		}
-		a.update(func() {
-			if generation != a.upNextGeneration {
-				return
+		return client.ContinueUpNext(ctx, options, continuation)
+	}, func(result *youtube.BrowseResult, err error) {
+		if err != nil {
+			u.err, u.token = err.Error(), ""
+			if u.waiting {
+				u.waiting = false
+				a.stopAtQueueEnd()
 			}
-			a.upNextLoading = false
-			if err != nil {
-				a.upNextErr = err.Error()
-				a.upNextToken = ""
-				if a.waitingForAuto {
-					a.waitingForAuto = false
-					a.stopAtQueueEnd()
-				}
-				return
+			return
+		}
+		u.err = ""
+		if result.QueuePlaylistID != "" {
+			if u.options.PlaylistID != "" && u.options.PlaylistID != result.QueuePlaylistID {
+				u.options.PlaylistIndex = nil
 			}
-			a.upNextErr = ""
-			if result.QueuePlaylistID != "" {
-				if a.upNextOptions.PlaylistID != "" && a.upNextOptions.PlaylistID != result.QueuePlaylistID {
-					a.upNextOptions.PlaylistIndex = nil
-				}
-				a.upNextOptions.PlaylistID = result.QueuePlaylistID
-			}
-			if result.ContinuationToken == continuation {
-				a.upNextToken = ""
-			} else {
-				a.upNextToken = result.ContinuationToken
-			}
-			a.appendRecommendations(result.Items)
-			if a.waitingForAuto {
-				switch {
-				case a.index+1 < len(a.queue):
-					a.waitingForAuto = false
-					a.advance()
-				case continuation != "":
-					a.ensureUpNext() // the list had more to pull
-				default:
-					// A fresh request found nothing to follow the queue with.
-					a.waitingForAuto = false
-					a.stopAtQueueEnd()
-				}
-			}
-		})
+			u.options.PlaylistID = result.QueuePlaylistID
+		}
+		u.token = result.ContinuationToken
+		if u.token == continuation {
+			u.token = ""
+		}
+		a.queue.appendGenerated(result.Items)
+		// A recommended track can be the one that plays next, so warm it too.
+		a.warmNext()
+		if !u.waiting {
+			return
+		}
+		switch {
+		case a.queue.remaining() > 0:
+			u.waiting = false
+			a.advance()
+		case continuation != "":
+			a.ensureUpNext() // the list had more to pull
+		default:
+			// A fresh request found nothing to follow the queue with.
+			u.waiting = false
+			a.stopAtQueueEnd()
+		}
 	})
 }
 
-// appendRecommendations keeps the selected queue intact and appends only
-// tracks YouTube Music has not already returned in it.
-func (a *app) appendRecommendations(items []youtube.MusicItem) {
-	if a.recommendationIDs == nil {
-		a.recommendationIDs = make(map[string]struct{})
-		if a.recommendationStart >= 0 {
-			for _, queued := range a.queue[a.recommendationStart:] {
-				if queued.VideoID != "" {
-					a.recommendationIDs[queued.VideoID] = struct{}{}
-				}
-			}
-		}
+// setAutoPlay changes whether generated tracks can follow the chosen queue.
+func (a *app) setAutoPlay(enabled bool) {
+	if a.settings.AutoPlay == enabled {
+		return
 	}
-	seen := make(map[string]struct{}, len(a.queue)+min(len(items), autoplayQueueLimit+1))
-	for _, queued := range a.queue {
-		if queued.VideoID != "" {
-			seen[queued.VideoID] = struct{}{}
-		}
+	a.settings.AutoPlay = enabled
+	a.saveSettings()
+	a.upNext.load.stop()
+	a.upNext.err, a.upNext.waiting = "", false
+	if enabled {
+		a.upNext.fetched, a.upNext.token = false, ""
+		a.upNext.seen = map[string]struct{}{}
+		a.upNext.options.VideoID = a.current.VideoID
+		a.queue.regenerate()
+		a.ensureUpNext()
 	}
-	recommendations := make([]youtube.MusicItem, 0, min(len(items), autoplayQueueLimit+1))
-	for _, item := range items {
-		if item.VideoID == "" {
-			continue
-		}
-		if _, exists := seen[item.VideoID]; exists {
-			continue
-		}
-		seen[item.VideoID] = struct{}{}
-		recommendations = append(recommendations, item)
-		if len(recommendations) > autoplayQueueLimit {
-			break
-		}
-	}
-	if len(a.recommendationIDs)+len(recommendations) > autoplayQueueLimit && a.index > 0 {
-		// Keep the current track and everything after it. Dropping played
-		// history frees recommendation slots without interrupting playback.
-		played := a.index
-		for _, queued := range a.queue[:played] {
-			delete(a.recommendationIDs, queued.VideoID)
-		}
-		a.queue = slices.Clone(a.queue[played:])
-		a.index = 0
-		if a.recommendationStart >= 0 {
-			a.recommendationStart = max(0, a.recommendationStart-played)
-		}
-	}
-	for _, item := range recommendations {
-		if len(a.recommendationIDs) >= autoplayQueueLimit {
-			break
-		}
-		if a.recommendationStart < 0 {
-			a.recommendationStart = len(a.queue)
-		}
-		a.queue = append(a.queue, item)
-		a.recommendationIDs[item.VideoID] = struct{}{}
-	}
-	// A recommended track can be the one that plays next, so warm it too.
-	a.warmNext()
+	a.syncSystemMedia()
 }
 
-// enqueue adds a track to the selected queue without changing the current
-// track. User-selected tracks stay ahead of autoplay recommendations.
+// enqueue adds a track to the chosen queue without changing the current
+// track. Chosen tracks stay ahead of auto-play recommendations.
 func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 	if item.VideoID == "" {
 		return
 	}
-	if a.current.VideoID == "" || len(a.queue) == 0 {
-		a.playWithOptions(item, []youtube.MusicItem{item}, 0, youtube.UpNextOptions{}, "Queue")
+	if a.current.VideoID == "" || a.queue.len() == 0 {
+		a.playFrom(item, nil, 0, youtube.UpNextOptions{}, "Queue")
 		a.notice = "Playing " + item.Title
 		return
 	}
-
-	position := len(a.queue)
-	if a.recommendationStart >= 0 {
-		position = a.recommendationStart
-	}
+	a.queue.insert(item, playNext, a.settings.AutoPlay)
 	if playNext {
-		position = a.index + 1
-	}
-	position = min(max(position, 0), len(a.queue))
-	a.queue = slices.Insert(a.queue, position, item)
-	if position <= a.index {
-		a.index++
-	}
-	if a.recommendationStart >= 0 && position <= a.recommendationStart {
-		a.recommendationStart++
-	}
-	if playNext {
-		a.playNextID = item.VideoID
-		if !a.settings.AutoPlay && a.recommendationStart >= 0 && position >= a.recommendationStart {
-			a.recommendationStart = position + 1
-		}
 		a.notice = item.Title + " will play next"
 	} else {
 		a.notice = "Added " + item.Title + " to the queue"
@@ -301,316 +382,356 @@ func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 	a.syncSystemMedia()
 }
 
-// setAutoPlay changes whether generated tracks can follow the selected queue.
-func (a *app) setAutoPlay(enabled bool) {
-	if a.settings.AutoPlay == enabled {
+// moveQueue carries out a drag in the queue's list.
+func (a *app) moveQueue(rows []int, to int) {
+	if a.queue.moveRows(rows, to) {
+		a.nowPlaying.queueFollow = "" // the list scrolls to the current track again
+		a.syncSystemMedia()
+	}
+}
+
+// playVideoID starts a video, wherever it comes from: a link, a history
+// entry or the queue. Tracks the queue or the page already holds play from
+// there.
+func (a *app) playVideoID(id string) {
+	if id == "" {
 		return
 	}
-	a.settings.AutoPlay = enabled
-	a.saveSettings()
-	a.upNextGeneration++
-	a.upNextLoading = false
-	a.upNextErr = ""
-	a.waitingForAuto = false
-	if enabled {
-		a.upNextFetched = false
-		a.upNextToken = ""
-		a.upNextSeen = make(map[string]struct{})
-		a.recommendationIDs = make(map[string]struct{})
-		if a.recommendationStart >= 0 {
-			for _, item := range a.queue[a.recommendationStart:] {
-				if item.VideoID != "" {
-					a.recommendationIDs[item.VideoID] = struct{}{}
-				}
-			}
+	if i := a.queue.find(id); i >= 0 {
+		a.start(a.queue.moveTo(i))
+		return
+	}
+	for i, item := range a.page.playable {
+		if item.VideoID == id {
+			a.playFrom(item, a.page.playable, i, youtube.UpNextOptions{}, a.queue.source)
+			return
 		}
-		a.upNextOptions.VideoID = a.current.VideoID
+	}
+	a.play(youtube.MusicItem{VideoID: id}, nil)
+}
+
+// pollInterval is how often the ticker looks at the player.
+const pollInterval = 250 * time.Millisecond
+
+// startTicker wakes the main thread while a track plays, or has just ended
+// or failed, so poll can move playback on. The view only describes the
+// state the polls leave behind.
+func (a *app) startTicker() {
+	failure := ""
+	a.every(pollInterval, func() {
+		now := a.player.Failure()
+		if a.player.Playing() || a.player.Ended() || now != failure {
+			failure = now
+			a.update(a.poll)
+		}
+	})
+}
+
+// poll advances what playback depends on: the player's position, the next
+// track when one ends, and the system's media controls. It runs on the main
+// thread, from the ticker.
+func (a *app) poll() {
+	if !a.player.Active() {
+		return
+	}
+	if failure := a.player.Failure(); failure != "" {
+		if a.playErr != failure {
+			a.playErr = failure
+			a.syncSystemMedia()
+		}
+		// ffmpeg gave up on the stream. The queue keeps its place: the track
+		// after this one plays, and the failure stays on the player until it
+		// does. A stream that stops because the sound did is not the queue's
+		// business, so it is left where it is.
+		if a.player.StreamFailed() {
+			a.advance()
+		}
+		return
+	}
+	if a.player.Ended() {
+		// A new track is already on its way; the old one's end is not news.
+		if !a.stream.busy() {
+			a.trackEnded()
+		}
+		return
+	}
+	if a.player.Playing() {
 		a.ensureUpNext()
+		if !a.scrubbing {
+			a.scrub = a.player.Position().Seconds()
+		}
+		a.syncSystemMedia()
+	}
+}
+
+// trackEnded moves on when a track finishes: it repeats, or plays the next
+// one, or stops at the end of the queue.
+func (a *app) trackEnded() {
+	if a.repeat == repeatTrack {
+		a.start(a.current)
+		return
+	}
+	a.advance()
+}
+
+// advance plays the next track of the queue, waiting for recommendations at
+// its end when auto-play is on.
+func (a *app) advance() {
+	if next, ok := a.queue.next(a.settings.AutoPlay, a.repeat); ok {
+		a.start(a.queue.moveTo(next))
+		return
+	}
+	if a.settings.AutoPlay {
+		// The queue is over and the music should not be. Wait for what
+		// YouTube has to follow it with, which ensureUpNext asks for when the
+		// recommendations pulled so far have been played out.
+		a.upNext.waiting = true
+		a.player.Stop()
+		a.syncSystemMedia()
+		a.ensureUpNext()
+		return
+	}
+	a.stopAtQueueEnd()
+}
+
+// stopAtQueueEnd stops playback, and drops a track still being found.
+func (a *app) stopAtQueueEnd() {
+	a.stream.stop()
+	a.player.Stop()
+	a.syncSystemMedia()
+}
+
+// previous restarts the track, or plays the one before it when the track
+// has only just started.
+func (a *app) previous() {
+	if a.queue.index == 0 || a.player.Position() > 3*time.Second {
+		a.seek(0)
+		return
+	}
+	a.start(a.queue.moveTo(a.queue.index - 1))
+}
+
+// seek moves the track to a position. seekVersion tells the system's media
+// controls an explicit change of position from playback moving on.
+func (a *app) seek(position time.Duration) {
+	a.player.Seek(position)
+	a.seekVersion++
+	a.syncSystemMedia()
+}
+
+// togglePlay pauses a playing track, resumes a paused one, and starts the
+// current track again after it failed or ended.
+func (a *app) togglePlay() {
+	if a.stream.busy() {
+		return // the track is already on its way
+	}
+	if a.playErr != "" || !a.player.Active() {
+		if a.current.VideoID != "" {
+			a.start(a.current)
+		}
+		return
+	}
+	a.player.Toggle()
+	a.syncSystemMedia()
+}
+
+// resume plays a paused track, or starts the current one again when it has
+// ended or failed. It does nothing while a track plays or is on its way.
+func (a *app) resume() {
+	if a.stream.busy() || a.player.Playing() {
+		return
+	}
+	if a.playErr != "" || !a.player.Active() || a.player.Ended() {
+		if a.current.VideoID != "" {
+			a.start(a.current)
+		}
+	} else {
+		a.player.Resume()
 	}
 	a.syncSystemMedia()
 }
 
-func (a *app) cancelStream() {
-	if a.streamStop != nil {
-		a.streamStop()
-		a.streamStop = nil
+// pause holds the track where it is.
+func (a *app) pause() {
+	a.player.Pause()
+	a.syncSystemMedia()
+}
+
+// setShuffle turns shuffle on or off. Turning it on arranges what is still to
+// play, and the queue then plays in that order to its end, where auto-play
+// takes over. Turning it off leaves the queue in the order it reached.
+func (a *app) setShuffle(on bool) {
+	a.shuffle = on
+	if on {
+		a.queue.shuffleUpcoming()
 	}
+	a.syncSystemMedia()
 }
 
-// loading reports whether the track chosen is not making sound yet: its audio
-// is being found, or ffmpeg is still opening it.
-func (a *app) loading() bool {
-	return a.resolving || a.player.Buffering()
+// setVolume sets the volume, from 0 to 100, and keeps it for the next run.
+func (a *app) setVolume(v float64) {
+	a.volume = min(max(v, 0), 100)
+	a.player.SetVolume(a.volume / 100)
+	a.settings.Volume = a.volume
+	a.syncSystemMedia()
 }
 
-// stream resolves a track's audio off the main thread and plays it.
-func (a *app) stream(item youtube.MusicItem) {
-	a.streamGen++
-	gen := a.streamGen
-	a.cancelStream()
-	ctx, cancel := context.WithTimeout(context.Background(), streamResolveTimeout)
-	a.streamStop = cancel
-	a.resolving = true
-	cookie := a.ytDlpCookie
-	log.Printf("playback: resolving video_id=%s signed_in=%t", item.VideoID, cookie != "")
-	a.run(func() {
-		streamURL, total := "", parseDuration(item.Duration)
-		var err error
-		cached, fromCache := a.currentAudioCache().get(item.VideoID)
-		if fromCache {
-			log.Printf("playback: audio cache hit video_id=%s", item.VideoID)
-			streamURL = cached
-			if total <= 0 {
-				// A track downloaded ahead of time was never resolved, so its
-				// length is written nowhere but the file itself.
-				probe, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				total = audioFileDuration(probe, cached)
-				cancel()
-			}
-		} else {
-			var resolved time.Duration
-			streamURL, resolved, err = a.streams.get(ctx, item.VideoID, cookie)
-			if resolved > 0 {
-				total = resolved
-			}
-		}
-		a.update(func() {
-			if gen != a.streamGen {
-				return // another track was chosen while this one resolved
-			}
-			a.cancelStream()
-			a.resolving = false
-			if err != nil {
-				log.Printf("playback: audio resolution failed video_id=%s: %v", item.VideoID, err)
-				a.playErr = err.Error()
-				a.syncSystemMedia()
-				return
-			}
-			if total > 0 {
-				a.total = total
-			}
-			if playerErr := a.player.Play(streamURL); playerErr != nil {
-				log.Printf("playback: player could not open video_id=%s: %v", item.VideoID, playerErr)
-				a.playErr = playerErr.Error()
-				a.syncSystemMedia()
-				return
-			}
-			source := "stream"
-			if fromCache {
-				source = "cache"
-			}
-			log.Printf("playback: audio started video_id=%s source=%s duration=%s", item.VideoID, source, total)
-			if !fromCache {
-				// The direct URL is already in hand, so the cache downloads it
-				// as it is instead of resolving the same track again.
-				cache, videoID, streamURL := a.currentAudioCache(), item.VideoID, streamURL
-				a.run(func() { cache.enqueueStream(videoID, streamURL) })
-			}
-			a.warmNext()
-			a.syncSystemMedia()
-		})
-	})
-}
-
-// warmNext resolves the next queue track's audio URL while the current one
-// plays, so a play that follows skips yt-dlp. That costs a few kilobytes. When
-// the cache is big enough for a warmed track to survive until it plays, the
-// track is also downloaded from that URL. It does nothing when the queue ends
-// at the current track.
-func (a *app) warmNext() {
-	if a.index+1 >= len(a.queue) {
+// toggleMute silences the player, or brings the volume back, never quieter
+// than 40.
+func (a *app) toggleMute() {
+	if a.volume > 0 {
+		a.muted = a.volume
+		a.setVolume(0)
 		return
 	}
-	next := a.queue[a.index+1]
-	if next.VideoID == "" || next.VideoID == a.current.VideoID {
-		return
-	}
-	cache, cookie := a.currentAudioCache(), a.ytDlpCookie
-	a.run(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), streamResolveTimeout)
-		defer cancel()
-		streamURL, _, err := a.streams.get(ctx, next.VideoID, cookie)
-		if err != nil {
-			log.Printf("playback: could not resolve next video_id=%s: %v", next.VideoID, err)
-			return
-		}
-		if cache.warmable() {
-			cache.enqueueStream(next.VideoID, streamURL)
-		}
-	})
+	a.setVolume(max(a.muted, 40))
+}
+
+// cycleRepeat goes from not repeating to repeating the queue to repeating the
+// track and back.
+func (a *app) cycleRepeat() {
+	a.repeat = a.repeat.next()
+	a.syncSystemMedia()
 }
 
 // setAudioCacheLimit changes the number of recently played audio files kept
 // locally, evicting old files at once when the limit goes down.
 func (a *app) setAudioCacheLimit(limit int) {
-	a.settings.CacheSongs = validAudioCacheLimit(limit)
+	a.settings.CacheSongs = audio.ValidLimit(limit)
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	cache, count := a.currentAudioCache(), a.settings.CacheSongs
-	a.run(func() { cache.setLimit(count) })
+	a.run(func() { cache.SetLimit(count) })
 	a.saveSettings()
 }
 
-// ytDlpStream asks yt-dlp for a direct audio URL, using the signed-in session
-// when YouTube requires one.
-func ytDlpStream(ctx context.Context, videoID, cookie string) (string, time.Duration, error) {
-	// An anonymous session does not need the JavaScript solver: the visionos
-	// client returns audio URLs that need no challenge. yt-dlp's default also
-	// asks the web client, which makes it run the solver under QuickJS for
-	// about seven seconds of CPU, so try visionos alone first and fall back to
-	// the full set if YouTube stops serving it.
-	if cookie == "" {
-		streamURL, total, err := ytDlpResolve(ctx, videoID, cookie, true)
-		if err == nil {
-			return streamURL, total, nil
-		}
-		if ctx.Err() != nil {
-			return "", 0, err
-		}
-		log.Printf("playback: js-less resolve failed video_id=%s, retrying with the solver: %v", videoID, err)
-	}
-	return ytDlpResolve(ctx, videoID, cookie, false)
-}
+// openTimeout bounds reading an album or a playlist to play it.
+const openTimeout = time.Minute
 
-func ytDlpResolve(ctx context.Context, videoID, cookie string, jsless bool) (string, time.Duration, error) {
-	path, err := toolPath("yt-dlp")
-	if err != nil {
-		return "", 0, errors.New("playing needs ffmpeg and yt-dlp on PATH")
+// playCollection plays an album or a playlist without opening its page, as
+// the play button over its card does. With shuffle, a song is drawn to open
+// on and the rest are arranged behind it. key names the card pressed.
+func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
+	if shuffle {
+		a.shuffle = true
 	}
-	jsRuntime := "none"
-	var runtimeArgs []string
-	extractorArgs := "youtube:skip=hls,dash"
-	if jsless {
-		extractorArgs += ";player_client=visionos"
-	} else {
-		jsRuntime, runtimeArgs = ytDlpJSRuntimeArgs()
+	target := item.Target()
+	if target.Kind == youtube.TargetTrack {
+		a.play(item, []youtube.MusicItem{item})
+		return
 	}
-	// The player API already lists the audio formats; the HLS and DASH
-	// manifests only cost two more requests.
-	args := []string{"-f", "bestaudio", "-g", "--no-playlist", "--extractor-args", extractorArgs}
-	args = append(args, runtimeArgs...)
-	if cookie != "" {
-		cookieFile, err := ytDlpCookieFile(cookie)
+	if target.Kind != youtube.TargetAlbum && target.Kind != youtube.TargetPlaylist {
+		return
+	}
+	if a.isOpening(key) {
+		return
+	}
+	a.openingKey = key
+	client := a.client()
+	startTask(a, &a.opening, openTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
+		if target.Kind == youtube.TargetAlbum {
+			return client.GetAlbum(ctx, target.ID)
+		}
+		// The first page of a playlist holds the playlist itself. Draining
+		// it reads on into the shelf of suggestions beside it, which never
+		// ends, and long outlasts the read: the page reads it the same way.
+		return client.GetPlaylist(ctx, target.ID)
+	}, func(result *youtube.BrowseResult, err error) {
+		a.openingKey = ""
 		if err != nil {
-			return "", 0, fmt.Errorf("prepare yt-dlp authentication: %w", err)
+			a.notice = "Could not open “" + item.Title + "”: " + firstLine(err.Error())
+			return
 		}
-		defer func() { _ = os.Remove(cookieFile) }()
-		args = append(args, "--cookies", cookieFile)
-	}
-	args = append(args,
-		"https://music.youtube.com/watch?v="+url.QueryEscape(videoID))
-	command := command(ctx, path, args...)
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	started := time.Now()
-	log.Printf("playback: running yt-dlp video_id=%s authenticated=%t js_runtime=%s", videoID, cookie != "", jsRuntime)
-	output, err := command.Output()
-	if err != nil {
-		log.Printf("playback: yt-dlp failed video_id=%s elapsed=%s: %s", videoID, time.Since(started).Round(time.Millisecond), strings.TrimSpace(stderr.String()))
-		if exit := (*exec.ExitError)(nil); errors.As(err, &exit) {
-			if reason := lastError(stderr.String()); reason != "" {
-				return "", 0, fmt.Errorf("yt-dlp could not resolve the audio: %s", reason)
-			}
+		songs := tracksOf(result, item.Thumbnail)
+		if len(songs) == 0 {
+			return
 		}
-		return "", 0, fmt.Errorf("yt-dlp could not resolve the audio: %w", err)
-	}
-	streamURL, _, _ := strings.Cut(string(output), "\n")
-	streamURL = strings.TrimSpace(streamURL)
-	if streamURL == "" {
-		return "", 0, errors.New("could not resolve the audio")
-	}
-	log.Printf("playback: yt-dlp resolved video_id=%s elapsed=%s", videoID, time.Since(started).Round(time.Millisecond))
-	return streamURL, durationFromURL(streamURL), nil
+		// What the playlist is read from follows the song drawn to open it,
+		// so the queue YouTube is asked for keeps the same place.
+		start := 0
+		if shuffle && len(songs) > 1 {
+			start, songs = drawFirst(songs)
+		}
+		options := youtube.UpNextOptions{}
+		if target.Kind == youtube.TargetPlaylist {
+			playlistIndex := start
+			options.PlaylistID, options.PlaylistIndex = target.ID, &playlistIndex
+		}
+		a.playFrom(songs[0], songs, 0, options, item.Title)
+	})
 }
 
-// ytDlpJSRuntimeArgs names the JavaScript runtime yt-dlp should use to solve
-// YouTube's challenges, and the arguments that enable it. yt-dlp ships the
-// EJS solver scripts but needs a runtime to run them. A JIT runtime already
-// on PATH is several times cheaper in CPU than QuickJS, which only
-// interprets the solver. The app still ships QuickJS as the fallback so
-// playing works on a machine with neither.
-func ytDlpJSRuntimeArgs() (string, []string) {
-	jsRuntimeMu.Lock()
-	defer jsRuntimeMu.Unlock()
-	if jsRuntimeFound {
-		return jsRuntimeName, slices.Clone(jsRuntimeArgs)
-	}
-	name, args := lookupJSRuntime()
-	// Only a runtime that exists is remembered, so installing one later is
-	// noticed and a missing tool is still reported on every call.
-	if args != nil {
-		jsRuntimeFound, jsRuntimeName, jsRuntimeArgs = true, name, args
-	}
-	return name, slices.Clone(args)
-}
+// isOpening reports whether the card under key is being read to play.
+func (a *app) isOpening(key string) bool { return a.opening.busy() && a.openingKey == key }
 
-var (
-	jsRuntimeMu    sync.Mutex
-	jsRuntimeFound bool
-	jsRuntimeName  string
-	jsRuntimeArgs  []string
-)
-
-func lookupJSRuntime() (string, []string) {
-	for _, name := range []string{"node", "bun"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return name, []string{"--js-runtimes", name + ":" + path}
+// tracksOf picks the tracks out of a page, in order, giving those without
+// artwork of their own the page's.
+func tracksOf(result *youtube.BrowseResult, art string) []youtube.MusicItem {
+	all := result.Items
+	if len(result.Sections) > 0 {
+		all = nil
+		for _, section := range result.Sections {
+			all = append(all, section.Items...)
 		}
 	}
-	if path, err := toolPath("qjs"); err == nil {
-		return "quickjs", []string{"--js-runtimes", "quickjs:" + path}
-	}
-	return "none", nil
-}
-
-// ytDlpCookieFile translates the app's YouTube Cookie header into the
-// temporary Netscape file yt-dlp accepts. CreateTemp keeps credentials private.
-func ytDlpCookieFile(cookie string) (string, error) {
-	file, err := createTemp("meiro-yt-dlp-cookies-*.txt")
-	if err != nil {
-		return "", err
-	}
-	name := file.Name()
-	remove := func() { _ = os.Remove(name) }
-	if _, err := file.WriteString("# Netscape HTTP Cookie File\n"); err != nil {
-		_ = file.Close()
-		remove()
-		return "", err
-	}
-	count := 0
-	for part := range strings.SplitSeq(cookie, ";") {
-		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
-		if !ok || key == "" || strings.ContainsAny(key+value, "\t\r\n") {
+	var songs []youtube.MusicItem
+	for _, song := range all {
+		if !song.IsTrack() {
 			continue
 		}
-		if _, err := fmt.Fprintf(file, ".youtube.com\tTRUE\t/\tTRUE\t0\t%s\t%s\n", key, strings.TrimSpace(value)); err != nil {
-			_ = file.Close()
-			remove()
-			return "", err
+		if song.Thumbnail == "" {
+			song.Thumbnail = art
 		}
-		count++
+		songs = append(songs, song)
 	}
-	if err := file.Close(); err != nil {
-		remove()
-		return "", err
-	}
-	if count == 0 {
-		remove()
-		return "", errors.New("cookie header has no valid cookies")
-	}
-	return name, nil
+	return songs
 }
 
-// durationFromURL reads the track length YouTube puts in its media URLs.
-func durationFromURL(streamURL string) time.Duration {
-	parsed, err := url.Parse(streamURL)
-	if err != nil {
-		return 0
+// hoverResolveDelay is how long the pointer rests on a song before its audio
+// URL is looked up, so sweeping across a list starts nothing.
+const hoverResolveDelay = 400 * time.Millisecond
+
+// hoverState is the song the pointer rests on. lookup waits out the delay
+// and then resolves the song's audio URL; resolving is set once it is past
+// the wait, so a lookup that runs yt-dlp is never superseded by another.
+type hoverState struct {
+	key       string
+	lookup    task
+	resolving bool
+}
+
+// hoverSong notes whether the pointer is on a song, drawn under key. A song
+// the pointer rests on has its audio URL resolved ahead, so a click plays
+// without waiting on yt-dlp. Only a few kilobytes are fetched; nothing is
+// downloaded. Each draw of a row reports its own state, so the row the
+// pointer left cancels its own pending lookup.
+func (a *app) hoverSong(key string, item youtube.MusicItem, hovered bool) {
+	h := &a.hover
+	if !hovered {
+		if h.key == key {
+			h.key = ""
+			if !h.resolving {
+				h.lookup.stop()
+			}
+		}
+		return
 	}
-	seconds, err := strconv.ParseFloat(parsed.Query().Get("dur"), 64)
-	if err != nil {
-		return 0
+	id := item.VideoID
+	if h.key == key || h.resolving || id == "" || id == a.current.VideoID || a.stream.busy() {
+		return
 	}
-	return time.Duration(seconds * float64(time.Second))
+	h.key = key
+	if _, cached := a.currentAudioCache().Get(id); cached {
+		return
+	}
+	cookie := a.account.cookie()
+	startProgress(a, &h.lookup, hoverResolveDelay+audio.ResolveTimeout, func(ctx context.Context, progress func(func())) (struct{}, error) {
+		if err := a.sleep(ctx, hoverResolveDelay); err != nil {
+			return struct{}{}, err
+		}
+		progress(func() { h.resolving = true })
+		_, _, err := a.streams.Get(ctx, id, cookie)
+		return struct{}{}, err
+	}, func(struct{}, error) { h.resolving = false })
 }
 
 // parseDuration reads a "3:42" or "1:02:03" track length.
@@ -630,294 +751,12 @@ func parseDuration(text string) time.Duration {
 	return total
 }
 
-// audioFileDuration reads how long an audio file plays. The cached tracks
-// carry their length in their header, and ffmpeg is already at hand to decode
-// them, so it is asked to open the file: it prints the length it finds, and
-// fails for the output it was not given.
-func audioFileDuration(ctx context.Context, path string) time.Duration {
-	ffmpeg, err := toolPath("ffmpeg")
-	if err != nil {
-		return 0
-	}
-	output, _ := command(ctx, ffmpeg, "-hide_banner", "-i", path).CombinedOutput()
-	return parseFFmpegDuration(string(output))
-}
-
-// parseFFmpegDuration reads the length out of what ffmpeg prints about a
-// file, in its "Duration: 00:03:00.62" line.
-func parseFFmpegDuration(output string) time.Duration {
-	for line := range strings.SplitSeq(output, "\n") {
-		value, ok := strings.CutPrefix(strings.TrimSpace(line), "Duration:")
-		if !ok {
-			continue
-		}
-		value, _, _ = strings.Cut(strings.TrimSpace(value), ",")
-		parts := strings.Split(strings.TrimSpace(value), ":")
-		if len(parts) != 3 {
-			return 0
-		}
-		hours, hourErr := strconv.ParseFloat(parts[0], 64)
-		minutes, minuteErr := strconv.ParseFloat(parts[1], 64)
-		seconds, secondErr := strconv.ParseFloat(parts[2], 64)
-		if hourErr != nil || minuteErr != nil || secondErr != nil {
-			return 0
-		}
-		return time.Duration((hours*3600 + minutes*60 + seconds) * float64(time.Second))
-	}
-	return 0
-}
-
-// advance plays the next track of the queue, waiting for recommendations at
-// its end when autoplay is on.
-func (a *app) advance() {
-	if next, ok := a.nextIndex(); ok {
-		if a.queue[next].VideoID == a.playNextID {
-			a.playNextID = ""
-		}
-		a.index = next
-		a.start(a.queue[a.index])
-		return
-	}
-	if a.settings.AutoPlay {
-		// The queue is over and the music should not be. Wait for what
-		// YouTube has to follow it with, which ensureUpNext asks for when the
-		// recommendations pulled so far have been played out.
-		a.waitingForAuto = true
-		a.player.Stop()
-		a.syncSystemMedia()
-		a.ensureUpNext()
-		return
-	}
-	a.stopAtQueueEnd()
-}
-
-// stopAtQueueEnd stops playback and invalidates a stream lookup that may still
-// be outstanding.
-func (a *app) stopAtQueueEnd() {
-	a.streamGen++ // drop a track still being found
-	a.resolving = false
-	a.player.Stop()
-	a.syncSystemMedia()
-}
-
-// previous restarts the track, or plays the one before it when the track
-// has only just started.
-func (a *app) previous() {
-	if a.index == 0 || a.player.Position() > 3*time.Second {
-		a.seek(0)
-		return
-	}
-	a.index--
-	a.start(a.queue[a.index])
-}
-
-// seek distinguishes an explicit position change from normal playback progress.
-func (a *app) seek(position time.Duration) {
-	a.player.Seek(position)
-	a.seekVersion++
-	a.syncSystemMedia()
-}
-
-// togglePlay pauses a playing track, resumes a paused one, and starts the
-// current track again after it failed or ended.
-func (a *app) togglePlay() {
-	if a.resolving {
-		return // the track is already on its way
-	}
-	if a.playErr != "" || !a.player.Active() {
-		if a.current.VideoID != "" {
-			a.start(a.current)
-		}
-		return
-	}
-	a.player.Toggle()
-	a.syncSystemMedia()
-}
-
 // clock formats a position as "3:42" or "1:02:03".
 func clock(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	total := int(d.Seconds())
+	total := int(max(d, 0).Seconds())
 	hours, minutes, seconds := total/3600, (total%3600)/60, total%60
 	if hours > 0 {
 		return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
 	}
 	return fmt.Sprintf("%d:%02d", minutes, seconds)
-}
-
-// shufflePage turns shuffle on and plays the page from a track drawn at
-// random, with the whole page arranged behind it.
-func (a *app) shufflePage() {
-	if len(a.playable) == 0 {
-		return
-	}
-	a.shuffle = true
-	// The track drawn opens the queue, and the rest of the page is arranged
-	// behind it. The position the playlist is read from goes with the draw, so
-	// the queue YouTube is asked for follows the same track.
-	start := rand.IntN(len(a.playable))
-	rest := make([]youtube.MusicItem, 0, len(a.playable)-1)
-	rest = append(rest, a.playable[:start]...)
-	rest = append(rest, a.playable[start+1:]...)
-	rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
-	queue := append([]youtube.MusicItem{a.playable[start]}, rest...)
-	options, source := a.playbackQueueOptions(start)
-	a.playWithOptions(queue[0], queue, 0, options, source)
-}
-
-// shuffleQueue arranges the tracks of the queue that are still to play in a
-// random order, once: from there the queue moves from each track to the next.
-// The track playing, the tracks already played, and the generated tracks at the
-// end of the queue stay where they are.
-func (a *app) shuffleQueue() {
-	limit := len(a.queue)
-	if a.recommendationStart >= 0 && a.recommendationStart < limit {
-		limit = a.recommendationStart
-	}
-	start := a.index + 1
-	if start < 0 || start >= limit {
-		return
-	}
-	rand.Shuffle(limit-start, func(i, j int) {
-		a.queue[start+i], a.queue[start+j] = a.queue[start+j], a.queue[start+i]
-	})
-}
-
-// setShuffle turns shuffle on or off. Turning it on arranges what is still to
-// play, and the queue then plays in that order to its end, where auto-play
-// takes over. Turning it off leaves the queue in the order it reached.
-func (a *app) setShuffle(on bool) {
-	a.shuffle = on
-	if on {
-		a.shuffleQueue()
-	}
-	a.syncSystemMedia()
-}
-
-// setVolume sets the volume, from 0 to 100, and keeps it for the next run.
-func (a *app) setVolume(v float64) {
-	a.volume = min(max(v, 0), 100)
-	a.player.SetVolume(a.volume / 100)
-	a.settings.Volume = a.volume
-	a.syncSystemMedia()
-}
-
-// toggleMute silences the player, or brings the volume back.
-func (a *app) toggleMute() {
-	if a.volume > 0 {
-		a.muted = a.volume
-		a.setVolume(0)
-		return
-	}
-	a.setVolume(max(a.muted, 40))
-}
-
-// cycleRepeat goes from not repeating to repeating the queue to repeating the
-// track and back.
-func (a *app) cycleRepeat() {
-	a.repeat = (a.repeat + 1) % (repeatTrack + 1)
-	a.syncSystemMedia()
-}
-
-// lyricsState is the lyrics of the track playing, as far as they are loaded.
-type lyricsState struct {
-	videoID string
-	loading bool
-	text    string
-	footer  string
-	err     string
-}
-
-// loadPanel starts the load behind the tab of the side panel that is showing.
-// Opening the panel, choosing a tab and starting a track call it; building the
-// view never does.
-func (a *app) loadPanel() {
-	if !a.npOpen {
-		return
-	}
-	switch a.npTab {
-	case 1:
-		a.loadLyrics()
-	case 2:
-		a.loadRelated()
-	}
-}
-
-// loadLyrics fetches the lyrics of the current track, once.
-func (a *app) loadLyrics() {
-	id := a.current.VideoID
-	client := a.client()
-	if id == "" || a.lyrics.videoID == id || client == nil {
-		return
-	}
-	a.lyrics = lyricsState{videoID: id, loading: true}
-	a.run(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		lyrics, err := client.GetLyrics(ctx, id)
-		a.update(func() {
-			if a.lyrics.videoID != id {
-				return
-			}
-			a.lyrics.loading = false
-			if err != nil {
-				a.lyrics.err = "No lyrics for this song."
-				return
-			}
-			a.lyrics.text, a.lyrics.footer = strings.TrimSpace(lyrics.Description), lyrics.Footer
-			if a.lyrics.text == "" {
-				a.lyrics.err = "No lyrics for this song."
-			}
-		})
-	})
-}
-
-// loadRelated fetches related songs for the track playing, once per track.
-func (a *app) loadRelated() {
-	id := a.current.VideoID
-	client := a.client()
-	if id == "" || a.related.videoID == id || client == nil {
-		return
-	}
-	a.related = relatedState{videoID: id, loading: true}
-	a.run(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		result, err := client.GetRelated(ctx, id)
-		a.update(func() {
-			if a.related.videoID != id {
-				return
-			}
-			a.related.loading = false
-			if err != nil {
-				a.related.err = "Related songs aren't available."
-				return
-			}
-			a.related.items = result.Items
-			if len(result.Items) == 0 {
-				a.related.err = "No related songs for this track."
-			}
-		})
-	})
-}
-
-// followArtwork takes the theme's seed from the artwork of the track playing,
-// when the user asked for it.
-func (a *app) followArtwork() {
-	if !a.settings.Dynamic || a.current.Thumbnail == "" {
-		return
-	}
-	if a.dynamicFor == a.current.Thumbnail {
-		return
-	}
-	colour, has, ready := a.thumbs.colour(a.current.Thumbnail, playerArt)
-	if !ready {
-		return // the picture or its colour is still on the way; the cache wakes the view
-	}
-	a.dynamicFor = a.current.Thumbnail
-	if has {
-		a.dynamic, a.dynamicOK = colour, true
-	}
 }

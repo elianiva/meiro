@@ -11,6 +11,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/cookies"
+	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -21,12 +23,11 @@ import (
 func signedInApp(t *testing.T) *app {
 	t.Helper()
 	a := newTestApp()
-	a.signedIn = true
 	auth, err := youtube.NewCookieAuth("SAPISID=test", youtube.CookieOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.authed = a.newClient(auth)
+	a.account.session = &session{client: a.account.newClient(auth), cookie: "SAPISID=test"}
 	return a
 }
 
@@ -107,7 +108,7 @@ func TestBrowsingFromHomeIntoAnAlbum(t *testing.T) {
 func TestSettingsPersistAcrossRestarts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp()
-	a.settingsPath = path
+	a.saver.Path = path
 	a.router.Push("/settings")
 	tt := ui.NewTester(a.view, 1000, 900)
 	if err := tt.Click("Dark"); err != nil {
@@ -116,11 +117,11 @@ func TestSettingsPersistAcrossRestarts(t *testing.T) {
 	if err := tt.Click("Rose"); err != nil {
 		t.Fatal(err)
 	}
-	a.saver.save(&a.settings, path)
-	a.saver.wait()
+	a.saver.Save(&a.settings)
+	a.saver.Wait()
 
 	restarted := newTestApp()
-	restarted.settings = loadSettings(path)
+	restarted.settings = settings.Load(path)
 	if restarted.settings.Mode != "dark" || restarted.settings.Seed != "#d81b78" {
 		t.Errorf("settings came back as %+v", restarted.settings)
 	}
@@ -144,7 +145,7 @@ func TestMakingAPlaylistFromTheLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if playlistCreates.Load() != 1 || a.newPlaylist.open {
+	if playlistCreates.Load() != 1 || a.newPlaylist != nil {
 		t.Fatalf("playlist creates = %d, dialog %#v", playlistCreates.Load(), a.newPlaylist)
 	}
 	tt.Frame()
@@ -187,8 +188,8 @@ func TestAddingASongToAPlaylist(t *testing.T) {
 func TestSessionRestoreAndSignOut(t *testing.T) {
 	a := newTestApp()
 	store := &memoryStore{cookie: "SAPISID=fresh"}
-	a.store = store
-	a.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
+	a.account.creds.store = store
+	a.account.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
 		return youtube.NewClient(youtube.Options{
 			APIKey:     "test",
 			CookieAuth: auth,
@@ -196,24 +197,25 @@ func TestSessionRestoreAndSignOut(t *testing.T) {
 		})
 	}
 	a.restoreAccount()
-	if !a.signedIn || a.authed == nil {
+	if !a.signedIn() {
 		t.Fatalf("the saved session did not sign in; notice %q", a.notice)
 	}
 	a.signOut()
-	if a.signedIn || store.cookie != "" {
-		t.Errorf("sign-out left signedIn=%v, saved cookie %q", a.signedIn, store.cookie)
+	if a.signedIn() || store.cookie != "" {
+		t.Errorf("sign-out left signedIn=%v, saved cookie %q", a.signedIn(), store.cookie)
 	}
 }
 
 func TestRefusedSessionStaysSignedOut(t *testing.T) {
 	a := newTestApp()
-	a.store = &memoryStore{cookie: "SAPISID=stale"}
-	a.signInSources = func() []importSource {
-		return []importSource{{label: "Browser", read: func(context.Context) (string, error) {
+	a.account.creds.store = &memoryStore{cookie: "SAPISID=stale"}
+	a.settings.SignInSource = "Browser"
+	a.account.sources = func() []cookies.Source {
+		return []cookies.Source{{Label: "Browser", Read: func(context.Context) (string, error) {
 			return "SAPISID=stale", nil
 		}}}
 	}
-	a.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
+	a.account.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
 		return youtube.NewClient(youtube.Options{
 			APIKey:     "test",
 			CookieAuth: auth,
@@ -221,7 +223,7 @@ func TestRefusedSessionStaysSignedOut(t *testing.T) {
 		})
 	}
 	a.restoreAccount()
-	if a.signedIn {
+	if a.signedIn() {
 		t.Fatal("a session YouTube refuses signed the user in")
 	}
 	if !strings.Contains(a.notice, "Could not restore") {

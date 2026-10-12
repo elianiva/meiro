@@ -74,7 +74,11 @@ type Client struct {
 // newHTTPClient builds the default HTTP client. It bounds only the wait for
 // response headers: the request context governs how long the body may take.
 func newHTTPClient(responseHeaderTimeout time.Duration) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		base = &http.Transport{Proxy: http.ProxyFromEnvironment}
+	}
+	transport := base.Clone()
 	transport.ResponseHeaderTimeout = responseHeaderTimeout
 	return &http.Client{Transport: transport}
 }

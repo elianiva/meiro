@@ -1,0 +1,94 @@
+# golangci-lint v2. The linters beyond the defaults are the ones that turn a
+# convention of this codebase into an error, so neither a person nor an agent
+# has to remember it. See AGENTS.md for what each convention is for.
+version: "2"
+
+linters:
+  enable:
+    # Every switch over one of the app's enums names every value, so adding a
+    # route, a tab or a row kind is a compile-time to-do list, not a hunt.
+    - exhaustive
+    # Package layering: see the depguard rules below.
+    - depguard
+    # Correctness.
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - nilerr
+    - noctx
+    - forcetypeassert
+    - copyloopvar
+    - wastedassign
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - intrange
+    - gocritic
+    # A //nolint says which linter it silences, and why.
+    - nolintlint
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    exhaustive:
+      # A default case does not count: each value is handled, or listed with
+      # the values that share a case.
+      default-signifies-exhaustive: false
+      # The JSON tokenizer's kinds are not ours to list.
+      ignore-enum-types: "jsontext\\.Kind"
+    gocritic:
+      disabled-checks:
+        # The views build trees of nested closures; naming each one would
+        # not make them clearer.
+        - unlambda
+    depguard:
+      rules:
+        # The reusable packages never reach into the app or its UI toolkit:
+        # they are what the app is built from.
+        library:
+          files:
+            - "**/youtube/**"
+            - "**/player/**"
+            - "**/systemmedia/**"
+            - "**/internal/lru/**"
+            - "**/internal/fsutil/**"
+            - "**/internal/history/**"
+            - "**/internal/cookies/**"
+            - "**/internal/ytdlp/**"
+            - "**/internal/audio/**"
+            - "**/internal/proc/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/egoist/mygo/ui
+              desc: only the app, m3 and internal/artwork draw; keep this package free of UI
+            - pkg: github.com/elianiva/meiro/m3
+              desc: only the app and the packages that draw use the theme
+        # The YouTube client stands alone, so it can be tested and reused
+        # without the app's helpers.
+        youtube:
+          files:
+            - "**/youtube/**"
+          deny:
+            - pkg: github.com/elianiva/meiro/internal
+              desc: the YouTube client must not depend on the app's internals
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    rules:
+      # m3 is a component library: its switches fall through to the zero
+      # value after the switch, which also catches an out-of-range int read
+      # from a settings file.
+      - path: ^m3/
+        linters:
+          - exhaustive
+      # Tests poke at state directly and build fixtures inline.
+      - path: _test\.go
+        linters:
+          - forcetypeassert
+          - noctx
+          - unparam
+
+formatters:
+  enable:
+    - gofumpt

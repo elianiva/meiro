@@ -22,80 +22,87 @@ var newPlaylistItem = youtube.MusicItem{ID: newPlaylistID, Title: "New playlist"
 // isNewPlaylist says whether an item is that tile.
 func isNewPlaylist(item youtube.MusicItem) bool { return item.ID == newPlaylistID }
 
-// newPlaylistState is what the dialog that makes a playlist holds: the name
-// being typed, the song it is asked to hold, whether the write is out, and what
-// it answered. attempt numbers the openings, so an answer that lands after the
-// dialog moved on is dropped.
+// newPlaylistState is the dialog that makes a playlist: the name being
+// typed, the song it is asked to hold, whether the write is out, and what it
+// answered. The app holds one while the dialog is open, and nil otherwise, so
+// a write that lands after its dialog closed knows it.
 type newPlaylistState struct {
-	open    bool
-	name    string
-	song    youtube.MusicItem
-	busy    bool
-	err     string
-	attempt uint64
+	open bool
+	name string
+	song youtube.MusicItem
+	busy bool
+	err  string
 }
+
+// playlistTimeout bounds a playlist read or write.
+const playlistTimeout = time.Minute
 
 // openNewPlaylist asks for the name of a playlist to make, and holds a song in
 // it when one is given.
 func (a *app) openNewPlaylist(song youtube.MusicItem) {
-	a.newPlaylist = newPlaylistState{open: true, song: song, attempt: a.newPlaylist.attempt + 1}
-}
-
-// dismissNewPlaylist drops the name being typed.
-func (a *app) dismissNewPlaylist() {
-	a.newPlaylist = newPlaylistState{attempt: a.newPlaylist.attempt + 1}
+	a.newPlaylist = &newPlaylistState{open: true, song: song}
 }
 
 // createNewPlaylist makes the playlist the dialog names, and shows it in the
-// library. It runs off the main thread.
+// library.
 func (a *app) createNewPlaylist() {
-	name := strings.TrimSpace(a.newPlaylist.name)
-	if a.newPlaylist.busy || name == "" {
+	d := a.newPlaylist
+	if d == nil {
 		return
 	}
-	client := a.client()
-	if client == nil {
+	name := strings.TrimSpace(d.name)
+	if d.busy || name == "" {
 		return
 	}
-	song, attempt := a.newPlaylist.song, a.newPlaylist.attempt
-	a.newPlaylist.busy, a.newPlaylist.err = true, ""
-	a.run(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	client, song := a.client(), d.song
+	d.busy, d.err = true, ""
+	type created struct {
+		id  string
+		err error
+	}
+	spawn(a, func() created {
+		ctx, cancel := context.WithTimeout(context.Background(), playlistTimeout)
 		defer cancel()
 		id, err := client.CreatePlaylist(ctx, name, song.VideoID)
-		a.update(func() {
-			if err == nil {
-				// YouTube's library does not hold a new playlist the moment it
-				// answers, so the playlist is put in the library the app shows
-				// rather than read back from YouTube and not found.
-				a.showPlaylist(id, name)
-			}
-			if !a.newPlaylist.open || a.newPlaylist.attempt != attempt {
-				return // the dialog moved on while the playlist was being made
-			}
-			if err != nil {
-				a.newPlaylist.busy, a.newPlaylist.err = false, err.Error()
-				return
-			}
-			a.newPlaylist = newPlaylistState{attempt: attempt}
-			if song.VideoID != "" {
-				a.notice = "Added “" + song.Title + "” to “" + name + "”"
-				return
+		return created{id, err}
+	}, func(r created) {
+		d.busy = false
+		open := a.newPlaylist == d
+		switch {
+		case r.err != nil && open:
+			d.err = r.err.Error()
+		case r.err != nil:
+			a.notice = "Could not create “" + name + "”: " + firstLine(r.err.Error())
+		default:
+			// YouTube's library does not hold a new playlist the moment it
+			// answers, so the playlist is put in the library the app shows
+			// rather than read back from YouTube and not found.
+			a.showPlaylist(r.id, name)
+			if open {
+				a.newPlaylist = nil
 			}
 			a.notice = "Created “" + name + "”"
-		})
+			if song.VideoID != "" {
+				a.notice = "Added “" + song.Title + "” to “" + name + "”"
+			}
+		}
 	})
 }
 
 // newPlaylistDialog asks for a name, and shows what YouTube answered.
 func (a *app) newPlaylistDialog(c *ui.Context) {
-	if !a.newPlaylist.open {
+	d := a.newPlaylist
+	if d == nil {
+		return
+	}
+	if !d.open {
+		a.newPlaylist = nil // closed by its scrim or the Escape key
 		return
 	}
 	sc := m3.Of(c).Scheme
-	m3.Dialog(c, &a.newPlaylist.open, 480, func() {
+	m3.Dialog(c, &d.open, 480, func() {
 		m3.EmphasizedText(c, m3.HeadlineSmall, "New playlist")
-		if song := a.newPlaylist.song; song.VideoID != "" {
+		if song := d.song; song.VideoID != "" {
 			m3.Text(c, m3.BodyMedium, "It will hold “"+song.Title+"”.").TextColor(sc.OnSurfaceVariant).SingleLine()
 		}
 		m3.Text(c, m3.BodyMedium, "Meiro makes it private to your account.").TextColor(sc.OnSurfaceVariant)
@@ -104,21 +111,21 @@ func (a *app) newPlaylistDialog(c *ui.Context) {
 			box.Border(2, sc.Primary)
 		}
 		box.Children(func() {
-			ui.TextInputBase(c.Key("playlist-name-field"), &a.newPlaylist.name).
+			ui.TextInputBase(c.Key("playlist-name-field"), &d.name).
 				Placeholder("Playlist name").Label("Name").TextColor(sc.OnSurface).FontSize(16).AutoFocus().
 				OnSubmit(a.createNewPlaylist)
 		})
-		if a.newPlaylist.err != "" {
-			m3.Text(c, m3.BodyMedium, a.newPlaylist.err).TextColor(sc.Error).MaxLines(4)
+		if d.err != "" {
+			m3.Text(c, m3.BodyMedium, d.err).TextColor(sc.Error).MaxLines(4)
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-			if a.newPlaylist.busy {
+			if d.busy {
 				m3.LoadingIndicator(c, 40, false)
 			}
 			if m3.Button(c, m3.ButtonSpec{Label: "Cancel", Kind: m3.TextOnly, Key: "cancel-new-playlist"}).Clicked() {
-				a.dismissNewPlaylist()
+				a.newPlaylist = nil
 			}
-			if m3.Button(c, m3.ButtonSpec{Label: "Create", Disabled: a.newPlaylist.busy || strings.TrimSpace(a.newPlaylist.name) == "", Key: "create-playlist"}).Clicked() {
+			if m3.Button(c, m3.ButtonSpec{Label: "Create", Disabled: d.busy || strings.TrimSpace(d.name) == "", Key: "create-playlist"}).Clicked() {
 				a.createNewPlaylist()
 			}
 		})
@@ -130,33 +137,32 @@ func (a *app) newPlaylistDialog(c *ui.Context) {
 // before its library holds the playlist, so reading the library back loses it;
 // the next load of the page replaces what is shown here.
 func (a *app) showPlaylist(id, name string) {
-	if id == "" || a.router.Path() != "/library" || name == "" {
+	if r, _ := a.route(); id == "" || r.id != routeLibrary || name == "" {
 		return
 	}
 	item := youtube.MusicItem{ID: "VL" + id, BrowseID: "VL" + id, Title: name, Subtitle: "Playlist"}
-	if len(a.feed.sections) == 0 {
-		a.feed.items = append([]youtube.MusicItem{item}, a.feed.items...)
+	feed := &a.page.feed
+	if len(feed.sections) == 0 {
+		feed.items = append([]youtube.MusicItem{item}, feed.items...)
 	} else {
-		a.feed.sections[0].Items = append([]youtube.MusicItem{item}, a.feed.sections[0].Items...)
+		feed.sections[0].Items = append([]youtube.MusicItem{item}, feed.sections[0].Items...)
 	}
-	a.rowsDirty = true
+	a.page.rowsDirty = true
 }
 
-// addToPlaylistState is what the dialog that puts a song in a playlist holds:
-// the song, the playlists to choose from, and what a choice answered. attempt
-// numbers the openings, so an answer that lands after the dialog moved on is
-// dropped.
+// addToPlaylistState is the dialog that puts a song in a playlist: the song,
+// the playlists to choose from, and what a choice answered. The app holds one
+// while the dialog is open, and nil otherwise.
 type addToPlaylistState struct {
 	open      bool
 	item      youtube.MusicItem
 	playlists []youtube.MusicItem
-	loading   bool
-	busy      bool
-	err       string
-	attempt   uint64
-	// list is the picker's scroll. It is a pointer, because a choice replaces
-	// this whole state while the list that took it is still being built.
-	list *ui.ListState
+	// load reads the library's playlists; busy is set while a choice is
+	// being written.
+	load task
+	busy bool
+	err  string
+	list ui.ListState
 }
 
 // likedMusicID is the playlist a library holds thumbs-up songs in. It is not
@@ -166,37 +172,25 @@ const likedMusicID = "LM"
 // openAddToPlaylist asks which playlist a song goes into, and reads the
 // playlists to choose from.
 func (a *app) openAddToPlaylist(item youtube.MusicItem) {
-	a.addToPlaylist = addToPlaylistState{
-		open: true, item: item, loading: true, attempt: a.addToPlaylist.attempt + 1,
-	}
-	attempt := a.addToPlaylist.attempt
+	d := &addToPlaylistState{open: true, item: item}
+	a.addToPlaylist = d
 	client := a.client()
-	if client == nil {
-		return
-	}
 	// The playlists the library last showed are offered at once, while the
 	// library is read again to catch up with what changed since.
-	if known := a.knownPlaylists; known.client == client && len(known.items) > 0 {
-		a.addToPlaylist.playlists, a.addToPlaylist.loading = known.items, false
+	if known := a.knownPlaylists; known.client == client {
+		d.playlists = known.items
 	}
-	a.run(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		library, err := client.GetAllLibrary(ctx)
-		a.update(func() {
-			if !a.addToPlaylist.open || a.addToPlaylist.attempt != attempt {
-				return // the dialog moved on while the playlists were being read
+	startTask(a, &d.load, playlistTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
+		return client.GetAllLibrary(ctx)
+	}, func(library *youtube.BrowseResult, err error) {
+		if err != nil {
+			if len(d.playlists) == 0 {
+				d.err = err.Error()
 			}
-			a.addToPlaylist.loading = false
-			if err != nil {
-				if len(a.addToPlaylist.playlists) == 0 {
-					a.addToPlaylist.err = err.Error()
-				}
-				return
-			}
-			a.addToPlaylist.playlists = libraryPlaylists(library)
-			a.knownPlaylists = knownPlaylists{client: client, items: a.addToPlaylist.playlists}
-		})
+			return
+		}
+		d.playlists = libraryPlaylists(library)
+		a.knownPlaylists = knownPlaylists{client: client, items: d.playlists}
 	})
 }
 
@@ -208,9 +202,12 @@ type knownPlaylists struct {
 	items  []youtube.MusicItem
 }
 
-// dismissAddToPlaylist drops the choice being made.
+// dismissAddToPlaylist closes the picker and stops its read.
 func (a *app) dismissAddToPlaylist() {
-	a.addToPlaylist = addToPlaylistState{attempt: a.addToPlaylist.attempt + 1}
+	if d := a.addToPlaylist; d != nil {
+		d.load.stop()
+		a.addToPlaylist = nil
+	}
 }
 
 // libraryPlaylists picks the playlists out of a library page, in the order the
@@ -235,11 +232,11 @@ func libraryPlaylists(library *youtube.BrowseResult) []youtube.MusicItem {
 	seen := make(map[string]bool)
 	for _, items := range groups {
 		for _, item := range items {
-			kind, id := targetOf(item)
-			if kind != pagePlaylist || strings.TrimPrefix(id, "VL") == likedMusicID || seen[id] {
+			target := item.Target()
+			if target.Kind != youtube.TargetPlaylist || strings.TrimPrefix(target.ID, "VL") == likedMusicID || seen[target.ID] {
 				continue
 			}
-			seen[id] = true
+			seen[target.ID] = true
 			playlists = append(playlists, item)
 		}
 	}
@@ -248,63 +245,62 @@ func libraryPlaylists(library *youtube.BrowseResult) []youtube.MusicItem {
 
 // choosePlaylist puts the song the dialog holds into the playlist chosen.
 func (a *app) choosePlaylist(playlist youtube.MusicItem) {
-	if a.addToPlaylist.busy || a.addToPlaylist.item.VideoID == "" {
+	d := a.addToPlaylist
+	target := playlist.Target()
+	if d == nil || d.busy || d.item.VideoID == "" || target.ID == "" {
 		return
 	}
-	client := a.client()
-	if client == nil {
-		return
-	}
-	_, id := targetOf(playlist)
-	if id == "" {
-		return
-	}
-	item, attempt := a.addToPlaylist.item, a.addToPlaylist.attempt
-	a.addToPlaylist.busy, a.addToPlaylist.err = true, ""
-	a.run(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	client, item := a.client(), d.item
+	d.busy, d.err = true, ""
+	spawn(a, func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), playlistTimeout)
 		defer cancel()
-		err := client.AddToPlaylist(ctx, id, item.VideoID)
-		a.update(func() {
-			if !a.addToPlaylist.open || a.addToPlaylist.attempt != attempt {
-				return // the dialog moved on while the write was out
+		return client.AddToPlaylist(ctx, target.ID, item.VideoID)
+	}, func(err error) {
+		d.busy = false
+		open := a.addToPlaylist == d
+		switch {
+		case err != nil && open:
+			d.err = err.Error()
+		case err != nil:
+			a.notice = "Could not add “" + item.Title + "” to “" + playlist.Title + "”: " + firstLine(err.Error())
+		default:
+			if open {
+				a.dismissAddToPlaylist()
 			}
-			if err != nil {
-				a.addToPlaylist.busy, a.addToPlaylist.err = false, err.Error()
-				return
-			}
-			a.addToPlaylist = addToPlaylistState{attempt: attempt}
 			a.notice = "Added “" + item.Title + "” to “" + playlist.Title + "”"
-		})
+		}
 	})
 }
 
 // addToPlaylistDialog asks which playlist a song goes into.
 func (a *app) addToPlaylistDialog(c *ui.Context) {
-	if !a.addToPlaylist.open {
+	d := a.addToPlaylist
+	if d == nil {
+		return
+	}
+	if !d.open {
+		a.dismissAddToPlaylist() // closed by its scrim or the Escape key
 		return
 	}
 	sc := m3.Of(c).Scheme
-	m3.Dialog(c, &a.addToPlaylist.open, 480, func() {
+	m3.Dialog(c, &d.open, 480, func() {
 		m3.EmphasizedText(c, m3.HeadlineSmall, "Add to playlist")
-		if title := a.addToPlaylist.item.Title; title != "" {
+		if title := d.item.Title; title != "" {
 			m3.Text(c, m3.BodyMedium, title).TextColor(sc.OnSurfaceVariant).SingleLine()
 		}
 		switch {
-		case a.addToPlaylist.loading:
+		case len(d.playlists) == 0 && d.load.busy():
 			ui.Row(c).Height(72).Center().Children(func() { m3.LoadingIndicator(c, 40, true) })
-		case a.addToPlaylist.err != "":
-			m3.Text(c, m3.BodyMedium, a.addToPlaylist.err).TextColor(sc.Error).MaxLines(4)
-		case len(a.addToPlaylist.playlists) == 0:
+		case d.err != "":
+			m3.Text(c, m3.BodyMedium, d.err).TextColor(sc.Error).MaxLines(4)
+		case len(d.playlists) == 0:
 			m3.Text(c, m3.BodyMedium, "You have no playlists yet.").TextColor(sc.OnSurfaceVariant)
 		default:
 			// A library can hold hundreds of playlists: the list builds, and
 			// asks for the artwork of, only those in view.
-			playlists := a.addToPlaylist.playlists
-			if a.addToPlaylist.list == nil {
-				a.addToPlaylist.list = &ui.ListState{}
-			}
-			list := a.addToPlaylist.list
+			playlists := d.playlists
+			list := &d.list
 			list.Key = func(i int) any {
 				if i >= len(playlists) {
 					return nil
@@ -316,11 +312,11 @@ func (a *app) addToPlaylistDialog(c *ui.Context) {
 			}).Height(min(float32(len(playlists))*playlistChoiceHeight, 280))
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-			if a.addToPlaylist.busy {
+			if d.busy {
 				m3.LoadingIndicator(c, 40, false)
 			}
 			if m3.Button(c, m3.ButtonSpec{Label: "New playlist", Kind: m3.TextOnly, Key: "new-playlist-from-picker"}).Clicked() {
-				song := a.addToPlaylist.item
+				song := d.item
 				a.dismissAddToPlaylist()
 				a.openNewPlaylist(song)
 			}
@@ -343,7 +339,7 @@ func (a *app) playlistChoice(c *ui.Context, playlist youtube.MusicItem) {
 		Label("Add to " + playlist.Title).
 		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
 	row.Children(func() {
-		m3.Art(c, a.thumbs.bitmapIf(playlist.Thumbnail, 96, true), 40, m3.Small)
+		m3.Art(c, a.thumbs.Bitmap(playlist.Thumbnail, 96), 40, m3.Small)
 		m3.Text(c, m3.BodyLarge, playlist.Title).Grow(1).SingleLine().TextColor(sc.OnSurface)
 	})
 	if row.Clicked() {

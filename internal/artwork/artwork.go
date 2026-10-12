@@ -1,8 +1,12 @@
-package main
+// Package artwork downloads, decodes and keeps the pictures the app shows:
+// covers, avatars and the artwork of the track playing, at the sizes they are
+// drawn at, within a memory budget.
+package artwork
 
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -55,13 +59,12 @@ const thumbQueueLimit = 128
 // burst of regex work.
 const thumbKeyMemo = 4096
 
-// thumbCache keeps decoded artwork and a smaller cache of compressed sources.
-type thumbCache struct {
+// Cache keeps decoded artwork and a smaller cache of compressed sources. It
+// is safe for concurrent use: the view asks it for pictures on the main
+// thread while its workers download them.
+type Cache struct {
 	client *http.Client
 	notify func()
-	// synth, when set, answers every request without the network: tests give
-	// pages artwork of their own making.
-	synth func(url string, size int) *ui.Bitmap
 
 	mu sync.Mutex
 	// cond wakes the workers that download and decode at most thumbFetches
@@ -190,11 +193,11 @@ func thumbBytes(b *ui.Bitmap) int {
 	return w * h * 4 * 4 / 3
 }
 
-// newThumbCache returns a cache that calls notify when a bitmap lands, so
-// the window draws it.
-func newThumbCache(notify func()) *thumbCache {
-	t := &thumbCache{
-		client:    &http.Client{Timeout: 30 * time.Second},
+// New returns a cache that downloads with client and calls notify when a
+// bitmap lands, so the window draws it.
+func New(client *http.Client, notify func()) *Cache {
+	t := &Cache{
+		client:    client,
 		notify:    notify,
 		bitmaps:   make(map[string]*thumb),
 		recent:    list.New(),
@@ -213,22 +216,12 @@ func newThumbCache(notify func()) *thumbCache {
 	return t
 }
 
-// bitmap returns the artwork at url, asked for at size pixels across. While
+// Bitmap returns the artwork at url, asked for at size pixels across. While
 // it downloads or rebuilds from a compressed source, it returns another size
 // of the same picture when one is loaded, and nil otherwise.
-func (t *thumbCache) bitmap(url string, size int) *ui.Bitmap {
-	return t.bitmapIf(url, size, true)
-}
-
-// bitmapIf returns a picture only when it may be fetched. Carousel cards
-// outside the visible range use this to avoid touching cache entries or
-// starting work for clipped children.
-func (t *thumbCache) bitmapIf(url string, size int, fetch bool) *ui.Bitmap {
-	if url == "" || !fetch {
+func (t *Cache) Bitmap(url string, size int) *ui.Bitmap {
+	if url == "" {
 		return nil
-	}
-	if t.synth != nil {
-		return t.synth(url, size)
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -262,7 +255,7 @@ func (t *thumbCache) bitmapIf(url string, size int, fetch bool) *ui.Bitmap {
 // keyLocked derives the sized URL and sizeless base of a request, remembering
 // the answer so repeated lookups skip the regex work. The caller holds the
 // lock.
-func (t *thumbCache) keyLocked(url string, size int) thumbKeys {
+func (t *Cache) keyLocked(url string, size int) thumbKeys {
 	request := thumbRequest{url: url, size: size}
 	if key, ok := t.keys[request]; ok {
 		return key
@@ -279,7 +272,7 @@ func (t *thumbCache) keyLocked(url string, size int) thumbKeys {
 // retryDue reports whether a missing picture may be asked for again. A
 // permanent failure never may; a transient one waits out its backoff. The
 // caller holds the lock.
-func (t *thumbCache) retryDue(url string) bool {
+func (t *Cache) retryDue(url string) bool {
 	failure, ok := t.failed[url]
 	if !ok {
 		return true
@@ -291,7 +284,7 @@ func (t *thumbCache) retryDue(url string) bool {
 }
 
 // touch marks a bitmap as drawn now and returns it.
-func (t *thumbCache) touch(entry *thumb) *ui.Bitmap {
+func (t *Cache) touch(entry *thumb) *ui.Bitmap {
 	t.tick++
 	entry.used = t.tick
 	if entry.element != nil {
@@ -303,7 +296,7 @@ func (t *thumbCache) touch(entry *thumb) *ui.Bitmap {
 // source returns compressed bytes from memory and marks them recently used.
 // The returned bytes are immutable and remain valid if the entry is evicted.
 // The caller holds t.mu.
-func (t *thumbCache) source(url string) ([]byte, bool) {
+func (t *Cache) source(url string) ([]byte, bool) {
 	entry, ok := t.sources[url]
 	if !ok {
 		return nil, false
@@ -321,7 +314,7 @@ const thumbLimit = 8 << 20
 
 // worker downloads and decodes one queued picture at a time. thumbFetches
 // workers run together, which bounds the cache's concurrent work.
-func (t *thumbCache) worker() {
+func (t *Cache) worker() {
 	for {
 		t.mu.Lock()
 		for len(t.queue) == 0 {
@@ -344,7 +337,7 @@ func (t *thumbCache) worker() {
 
 // enqueueLocked adds a picture to the work queue, dropping the least recently
 // wanted wait when the queue is full. The caller holds the lock.
-func (t *thumbCache) enqueueLocked(url string, source []byte) {
+func (t *Cache) enqueueLocked(url string, source []byte) {
 	if _, queued := t.queue[url]; !queued && len(t.queue) >= thumbQueueLimit {
 		t.dropStaleLocked()
 	}
@@ -356,7 +349,7 @@ func (t *thumbCache) enqueueLocked(url string, source []byte) {
 
 // popLocked takes the most recently wanted job, so visible pictures are not
 // starved by stale waits queued behind them. The caller holds the lock.
-func (t *thumbCache) popLocked() (string, thumbJob) {
+func (t *Cache) popLocked() (string, thumbJob) {
 	url, found := "", false
 	for key, job := range t.queue {
 		if !found || job.tick > t.queue[url].tick {
@@ -371,7 +364,7 @@ func (t *thumbCache) popLocked() (string, thumbJob) {
 // dropStaleLocked forgets the least recently wanted wait and lets a later
 // frame ask for it again only if it is still wanted. The caller holds the
 // lock.
-func (t *thumbCache) dropStaleLocked() {
+func (t *Cache) dropStaleLocked() {
 	stale, found := "", false
 	for url, job := range t.queue {
 		if !found || job.tick < t.queue[stale].tick {
@@ -386,8 +379,10 @@ func (t *thumbCache) dropStaleLocked() {
 }
 
 // download fetches the picture at url.
-func (t *thumbCache) download(url string) ([]byte, error) {
-	request, err := http.NewRequest(http.MethodGet, url, nil)
+func (t *Cache) download(url string) ([]byte, error) {
+	// Each download is bounded by the client's timeout; nothing cancels one
+	// sooner, since a picture that lands late is still kept.
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -422,10 +417,10 @@ func (t *thumbCache) download(url string) ([]byte, error) {
 // taken later, when something asks for it. Package ui registers the JPEG, PNG,
 // GIF, WebP and BMP decoders with image.Decode, and this package imports ui,
 // so the artwork formats YouTube serves all decode here.
-func (t *thumbCache) decode(url string, data []byte, keepSource bool) {
+func (t *Cache) decode(url string, data []byte, keepSource bool) {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		t.failedFetch(url, fmt.Errorf("%w: %v", errDecode, err))
+		t.failedFetch(url, fmt.Errorf("%w: %w", errDecode, err))
 		return
 	}
 	bitmap := ui.NewBitmap(img)
@@ -443,7 +438,7 @@ func (t *thumbCache) decode(url string, data []byte, keepSource bool) {
 // failedFetch notes a failed download or decode and schedules a redraw for
 // the next attempt. A permanent failure is never retried, and a transient one
 // waits out an ever longer backoff.
-func (t *thumbCache) failedFetch(url string, err error) {
+func (t *Cache) failedFetch(url string, err error) {
 	t.mu.Lock()
 	delete(t.pending, url)
 	failure := t.failed[url]
@@ -463,7 +458,7 @@ func (t *thumbCache) failedFetch(url string, err error) {
 
 // pruneFailedLocked keeps the failure record small: it forgets failures whose
 // retry wait has passed, then the oldest ones. The caller holds the lock.
-func (t *thumbCache) pruneFailedLocked() {
+func (t *Cache) pruneFailedLocked() {
 	if len(t.failed) <= thumbFailures {
 		return
 	}
@@ -489,7 +484,7 @@ func (t *thumbCache) pruneFailedLocked() {
 
 // storeSource keeps compressed bytes under their own LRU budget. The caller
 // holds the lock.
-func (t *thumbCache) storeSource(url string, data []byte) {
+func (t *Cache) storeSource(url string, data []byte) {
 	if len(data) > thumbSourceBudget {
 		return
 	}
@@ -516,7 +511,7 @@ func (t *thumbCache) storeSource(url string, data []byte) {
 
 // store keeps a bitmap that has landed, and drops the ones drawn least
 // recently while the cache is over its budget. The caller holds the lock.
-func (t *thumbCache) store(url string, entry *thumb) {
+func (t *Cache) store(url string, entry *thumb) {
 	if old, ok := t.bitmaps[url]; ok {
 		t.forgetLocked(url, old)
 	}
@@ -534,10 +529,9 @@ func (t *thumbCache) store(url string, entry *thumb) {
 
 // evictLeastRecent drops the bitmap that went longest without being drawn,
 // other than keep, which has only just landed.
-func (t *thumbCache) evictLeastRecent(keep string) {
+func (t *Cache) evictLeastRecent(keep string) {
 	for element := t.recent.Back(); element != nil; element = element.Prev() {
-		entry := element.Value.(*thumb)
-		if entry.url != keep {
+		if entry, ok := element.Value.(*thumb); ok && entry.url != keep {
 			t.forgetLocked(entry.url, entry)
 			return
 		}
@@ -545,7 +539,7 @@ func (t *thumbCache) evictLeastRecent(keep string) {
 }
 
 // forgetLocked removes a bitmap from every index. The caller holds the lock.
-func (t *thumbCache) forgetLocked(url string, entry *thumb) {
+func (t *Cache) forgetLocked(url string, entry *thumb) {
 	t.held -= entry.bytes
 	delete(t.bitmaps, url)
 	if entry.element != nil {
@@ -656,12 +650,12 @@ func sizeless(url string) string {
 	return url
 }
 
-// colour returns the colour that stands out in the artwork at url, asked for
+// Colour returns the colour that stands out in the artwork at url, asked for
 // at size pixels across, once the artwork has landed. The colour is taken
 // from the picture the first time something asks, so covers that never need
 // it never pay for it. It returns ready false while the artwork or its colour
 // is still on the way, and the cache wakes the view when it lands.
-func (t *thumbCache) colour(url string, size int) (colour ui.Color, has, ready bool) {
+func (t *Cache) Colour(url string, size int) (colour ui.Color, has, ready bool) {
 	if url == "" {
 		return ui.Color{}, false, true
 	}
@@ -690,7 +684,7 @@ func (t *thumbCache) colour(url string, size int) (colour ui.Color, has, ready b
 
 // takeColour finds the colour of a picture off the main thread and files it
 // with the bitmap it came from, if that bitmap is still the one cached.
-func (t *thumbCache) takeColour(sized string, entry *thumb, data []byte) {
+func (t *Cache) takeColour(sized string, entry *thumb, data []byte) {
 	var colour ui.Color
 	var has bool
 	if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
@@ -713,8 +707,8 @@ func dominantColour(img image.Image) (ui.Color, bool) {
 	var weight [bins]float64
 	var sumR, sumG, sumB [bins]float64
 	b := img.Bounds()
-	for gy := 0; gy < grid; gy++ {
-		for gx := 0; gx < grid; gx++ {
+	for gy := range grid {
+		for gx := range grid {
 			x := b.Min.X + (gx*2+1)*b.Dx()/(grid*2)
 			y := b.Min.Y + (gy*2+1)*b.Dy()/(grid*2)
 			r, g, bl, _ := img.At(x, y).RGBA()

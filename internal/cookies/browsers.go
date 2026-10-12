@@ -1,4 +1,6 @@
-package main
+// Package cookies finds the cookie of a signed-in YouTube session, in a
+// browser or in what the user pasted, and keeps it between runs.
+package cookies
 
 import (
 	"bufio"
@@ -11,13 +13,28 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/elianiva/meiro/internal/ytdlp"
 )
 
-// importSource is a browser the sign-in can take the session from.
-type importSource struct {
-	label string
-	// read gives the Cookie header of the browser's YouTube session.
-	read func(ctx context.Context) (string, error)
+// Source is a browser the sign-in can take the session from.
+type Source struct {
+	Label string
+	// Read gives the Cookie header of the browser's YouTube session.
+	Read func(ctx context.Context) (string, error)
+}
+
+// Find is the source named by label, when this machine still offers it.
+func Find(sources []Source, label string) (Source, bool) {
+	if label == "" {
+		return Source{}, false
+	}
+	for _, source := range sources {
+		if source.Label == label {
+			return source, true
+		}
+	}
+	return Source{}, false
 }
 
 // browserImport describes the profile selectors of one browser. Its selectors
@@ -28,12 +45,12 @@ type browserImport struct {
 	selectors func() []string
 }
 
-// importSources lists the browsers to offer and keeps profile discovery shared
+// Sources lists the browsers to offer and keeps profile discovery shared
 // across Chromium- and Firefox-based browsers.
-func importSources() []importSource {
-	var sources []importSource
+func Sources() []Source {
+	var sources []Source
 	for _, browser := range browserImports() {
-		sources = append(sources, importSource{browser.label, func(ctx context.Context) (string, error) {
+		sources = append(sources, Source{browser.label, func(ctx context.Context) (string, error) {
 			return firstSession(ctx, browser.label, browser.selectors(), ytDlpCookie)
 		}})
 	}
@@ -48,25 +65,25 @@ func importSources() []importSource {
 // a name yt-dlp does not look under, so the app reads its database itself. On
 // Linux it keeps its key, and its profiles, the way Chromium does, so yt-dlp
 // reads them once it is told the profile and the keyring.
-func heliumSource() (importSource, bool) {
+func heliumSource() (Source, bool) {
 	dir := heliumDir()
 	if dir == "" {
-		return importSource{}, false
+		return Source{}, false
 	}
 	profiles := chromiumProfiles(dir)
 	if len(profiles) == 0 {
-		return importSource{}, false
+		return Source{}, false
 	}
 	if runtime.GOOS == "darwin" {
 		key := keychainKey{service: "Helium Storage Key", account: "Helium"}
-		return importSource{"Helium", func(ctx context.Context) (string, error) {
+		return Source{"Helium", func(ctx context.Context) (string, error) {
 			return firstSession(ctx, "Helium", profiles, func(ctx context.Context, profile string) (string, error) {
 				return chromiumCookie(ctx, profile, key)
 			})
 		}}, true
 	}
 	selectors := profileSelectors(chromiumSpec("chromium", sessionKeyring()), profiles, false)
-	return importSource{"Helium", func(ctx context.Context) (string, error) {
+	return Source{"Helium", func(ctx context.Context) (string, error) {
 		return firstSession(ctx, "Helium", selectors, ytDlpCookie)
 	}}, true
 }
@@ -116,7 +133,7 @@ func kdeSession(env func(string) string) bool {
 	if env("KDE_FULL_SESSION") != "" || env("KDE_SESSION_VERSION") != "" {
 		return true
 	}
-	for _, part := range strings.Split(env("XDG_CURRENT_DESKTOP"), ":") {
+	for part := range strings.SplitSeq(env("XDG_CURRENT_DESKTOP"), ":") {
 		if part == "KDE" {
 			return true
 		}
@@ -368,61 +385,17 @@ func firstSession(ctx context.Context, label string, places []string, read func(
 	return "", fmt.Errorf("%s has no YouTube session; sign in at music.youtube.com there first", label)
 }
 
-// ytDlpCookie has yt-dlp read the cookies of one browser, or profile, and
-// returns the Cookie header for YouTube they make.
+// ytDlpCookie has yt-dlp read the cookies of one browser, or profile.
 func ytDlpCookie(ctx context.Context, spec string) (string, error) {
-	path, err := toolPath("yt-dlp")
-	if err != nil {
-		return "", errors.New("importing needs yt-dlp on PATH")
-	}
-	directory, err := mkdirTemp("meiro-cookies-")
-	if err != nil {
-		return "", err
-	}
-	// The cookies are a credential: the directory goes as soon as they have
-	// been read.
-	defer removeAll(directory)
-	file := filepath.Join(directory, "cookies.txt")
-	// yt-dlp needs a URL to get as far as loading the cookies, and saves them
-	// when it ends, whether or not it found anything to download.
-	command := command(ctx, path,
-		"--cookies-from-browser", spec, "--cookies", file,
-		"--skip-download", "--no-warnings", "--no-playlist", "--playlist-items", "0",
-		"https://music.youtube.com/")
-	output, runErr := command.CombinedOutput()
-	if data, err := os.ReadFile(file); err == nil {
-		cookie, parseErr := cookieFromNetscape(string(data), time.Now())
-		if parseErr != nil {
-			return "", parseErr
-		}
-		if cookie != "" {
-			return cookie, nil
-		}
-	}
-	if runErr != nil {
-		if reason := lastError(string(output)); reason != "" {
-			return "", errors.New(reason)
-		}
-		return "", fmt.Errorf("yt-dlp failed: %w", runErr)
-	}
-	return "", nil
+	return ytdlp.BrowserCookie(ctx, spec, func(netscape string) (string, error) {
+		return fromNetscape(netscape, time.Now())
+	})
 }
 
-// lastError returns the message of the last error yt-dlp printed.
-func lastError(output string) string {
-	reason := ""
-	for _, line := range strings.Split(output, "\n") {
-		if message, ok := strings.CutPrefix(strings.TrimSpace(line), "ERROR:"); ok {
-			reason = strings.TrimSpace(message)
-		}
-	}
-	return reason
-}
-
-// cookieFromNetscape builds the Cookie header a request to
+// fromNetscape builds the Cookie header a request to
 // music.youtube.com carries from a cookies.txt file: the cookies of
 // youtube.com and its subdomains that have not expired.
-func cookieFromNetscape(text string, now time.Time) (string, error) {
+func fromNetscape(text string, now time.Time) (string, error) {
 	var pairs []string
 	seen := map[string]int{}
 	scanner := bufio.NewScanner(strings.NewReader(text))

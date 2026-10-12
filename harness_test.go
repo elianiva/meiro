@@ -9,6 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/elianiva/meiro/internal/artwork"
+	"github.com/elianiva/meiro/internal/cookies"
+	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -83,36 +86,48 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// newTestApp builds an app whose loads run inline and whose YouTube requests
-// are answered by fakeMusic.
+// newTestApp builds an app whose work runs inline, and whose YouTube and
+// artwork requests are answered without the network.
 func newTestApp() *app {
 	a := newApp()
 	// No sound card: the player decodes with the real ffmpeg and listens
 	// to the result on the null device.
 	options := []player.Option{player.WithNullAudio()}
-	if ffmpeg, err := toolPath("ffmpeg"); err == nil {
+	if ffmpeg, err := proc.Tool("ffmpeg"); err == nil {
 		options = append(options, player.WithFFmpeg(ffmpeg))
 	}
 	a.player = player.New(options...)
-	a.volume = a.settings.Volume
 	a.player.SetVolume(a.volume / 100)
 	a.run = func(work func()) { work() }
-	// Debounced work runs at once, so a frame sees the suggestion request's
+	// Delayed work runs at once, so a frame sees the suggestion request's
 	// answer without waiting.
-	a.schedule = func(_ time.Duration, work func()) func() {
-		work()
-		return func() {}
-	}
-	newFakeClient := func(auth *youtube.CookieAuth) *youtube.Client {
-		return youtube.NewClient(youtube.Options{
-			APIKey:     "test",
-			HTTPClient: &http.Client{Transport: fakeMusic{}},
-			CookieAuth: auth,
-		})
-	}
-	a.newClient = newFakeClient
-	a.public, a.authed = newFakeClient(nil), newFakeClient(nil)
+	a.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+	a.thumbs = artwork.New(&http.Client{Transport: noArtwork{}}, func() {})
+	a.account.newClient = newFakeClient
+	a.account.public = newFakeClient(nil)
 	return a
+}
+
+// newFakeClient is a YouTube client answered by fakeMusic.
+func newFakeClient(auth *youtube.CookieAuth) *youtube.Client {
+	return youtube.NewClient(youtube.Options{
+		APIKey:     "test",
+		HTTPClient: &http.Client{Transport: fakeMusic{}},
+		CookieAuth: auth,
+	})
+}
+
+// noArtwork answers every picture with a 404, which the artwork cache never
+// asks for again.
+type noArtwork struct{}
+
+func (noArtwork) RoundTrip(request *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    request,
+	}, nil
 }
 
 const homeResponse = `{"contents":{"sectionListRenderer":{"contents":[
@@ -294,7 +309,7 @@ type memoryStore struct {
 
 func (m *memoryStore) Load(context.Context) (string, error) {
 	if m.cookie == "" {
-		return "", errNotSignedIn
+		return "", cookies.ErrNotSaved
 	}
 	return m.cookie, nil
 }

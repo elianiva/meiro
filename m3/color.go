@@ -117,7 +117,7 @@ func oklchToColor(l, c, h float64) ui.Color {
 	r, g, b := oklabToLinear(l, c*cos, c*sin)
 	if !inGamut(r, g, b) {
 		lo, hi := 0.0, c
-		for i := 0; i < 22; i++ {
+		for range 22 {
 			mid := (lo + hi) / 2
 			if mr, mg, mb := oklabToLinear(l, mid*cos, mid*sin); inGamut(mr, mg, mb) {
 				lo = mid

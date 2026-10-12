@@ -339,7 +339,7 @@ func (p *Player) start(url string, at time.Duration, paused bool) error {
 	}
 	p.stop()
 
-	cmd := exec.Command(ffmpeg, streamArgs(url, at)...)
+	cmd := exec.Command(ffmpeg, streamArgs(url, at)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("player: %w", err)

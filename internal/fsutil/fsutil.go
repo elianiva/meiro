@@ -1,4 +1,5 @@
-package main
+// Package fsutil holds the file operations the app's private data needs.
+package fsutil
 
 import (
 	"log"
@@ -6,11 +7,14 @@ import (
 	"path/filepath"
 )
 
-// writeFileAtomic writes data to path so that a crash leaves either the old
+// WriteFileAtomic writes data to path so that a crash leaves either the old
 // file or the new one, never half of one: it goes to a temporary file in the
 // same directory, is synced, and replaces the old file by a rename. The
-// directory must exist.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
+// directory is created, private to the user, when it is missing.
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
 	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
@@ -38,10 +42,10 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	return os.Rename(file.Name(), path)
 }
 
-// removeAll deletes a directory the app made for a credential, and says so
-// when it cannot: a copy of someone's session left in a temporary directory
-// is worth knowing about.
-func removeAll(directory string) {
+// RemoveAll deletes a directory the app made, and says so when it cannot: a
+// copy of someone's session left in a temporary directory is worth knowing
+// about.
+func RemoveAll(directory string) {
 	if err := os.RemoveAll(directory); err != nil {
 		log.Printf("removing %s: %v", directory, err)
 	}

@@ -1,16 +1,135 @@
 package main
 
 import (
+	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/m3"
+	"github.com/elianiva/meiro/youtube"
 )
 
 // playerArt is the size, in pixels, the player asks artwork for.
 const playerArt = 160
+
+// panelTab is a tab of the full-screen player's side panel.
+type panelTab uint8
+
+const (
+	tabQueue panelTab = iota
+	tabLyrics
+	tabRelated
+)
+
+// panelTabs are the side panel's tabs, in the order they show.
+var panelTabs = [...]struct {
+	tab   panelTab
+	label string
+}{{tabQueue, "Up next"}, {tabLyrics, "Lyrics"}, {tabRelated, "Related"}}
+
+// nowPlayingState is the full-screen player, and what its side panel shows.
+type nowPlayingState struct {
+	open bool
+	tab  panelTab
+	// queueOnly shows the side panel alone, in a window too narrow for both.
+	queueOnly bool
+	queueList ui.ListState
+	// queueFollow is the track the queue's list last scrolled to.
+	queueFollow string
+	volumeHeld  bool
+	lyrics      lyricsState
+	related     relatedState
+	relatedList ui.ListState
+}
+
+// lyricsState is the lyrics of the track playing, as far as they are loaded.
+type lyricsState struct {
+	load    task
+	videoID string
+	text    string
+	footer  string
+	err     string
+}
+
+// relatedState is the related songs of the track playing.
+type relatedState struct {
+	load    task
+	videoID string
+	items   []youtube.MusicItem
+	err     string
+}
+
+// openPlayer opens the full-screen player on a tab.
+func (a *app) openPlayer(tab panelTab, queueOnly bool) {
+	a.nowPlaying.open, a.nowPlaying.tab, a.nowPlaying.queueOnly = true, tab, queueOnly
+	a.loadPanel()
+}
+
+// loadPanel starts the load behind the tab of the side panel that is showing.
+// Opening the panel, choosing a tab and starting a track call it; building the
+// view never does.
+func (a *app) loadPanel() {
+	if !a.nowPlaying.open {
+		return
+	}
+	switch a.nowPlaying.tab {
+	case tabLyrics:
+		a.loadLyrics()
+	case tabRelated:
+		a.loadRelated()
+	case tabQueue:
+	}
+}
+
+// panelTimeout bounds the load of a side panel tab.
+const panelTimeout = time.Minute
+
+// loadLyrics fetches the lyrics of the current track, once.
+func (a *app) loadLyrics() {
+	l := &a.nowPlaying.lyrics
+	id := a.current.VideoID
+	if id == "" || l.videoID == id {
+		return
+	}
+	l.videoID, l.text, l.footer, l.err = id, "", "", ""
+	client := a.client()
+	startTask(a, &l.load, panelTimeout, func(ctx context.Context) (*youtube.Lyrics, error) {
+		return client.GetLyrics(ctx, id)
+	}, func(lyrics *youtube.Lyrics, err error) {
+		if err == nil {
+			l.text, l.footer = strings.TrimSpace(lyrics.Description), lyrics.Footer
+		}
+		if l.text == "" {
+			l.err = "No lyrics for this song."
+		}
+	})
+}
+
+// loadRelated fetches related songs for the track playing, once per track.
+func (a *app) loadRelated() {
+	r := &a.nowPlaying.related
+	id := a.current.VideoID
+	if id == "" || r.videoID == id {
+		return
+	}
+	r.videoID, r.items, r.err = id, nil, ""
+	client := a.client()
+	startTask(a, &r.load, panelTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
+		return client.GetRelated(ctx, id)
+	}, func(result *youtube.BrowseResult, err error) {
+		switch {
+		case err != nil:
+			r.err = "Related songs aren't available."
+		case len(result.Items) == 0:
+			r.err = "No related songs for this track."
+		default:
+			r.items = result.Items
+		}
+	})
+}
 
 // transport builds the controls that start, stop and move through the queue:
 // shuffle, previous, play or pause, next and repeat. The play button is a
@@ -70,9 +189,7 @@ func (a *app) scrubber(c *ui.Context) {
 	if !known {
 		total, a.scrub = 1, 0
 	}
-	if a.scrub > total {
-		a.scrub = total
-	}
+	a.scrub = min(a.scrub, total)
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 		m3.Text(c, m3.LabelMedium, clock(time.Duration(a.scrub*float64(time.Second)))).
 			Width(40).TextAlign(ui.End).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
@@ -90,7 +207,7 @@ func (a *app) scrubber(c *ui.Context) {
 	})
 }
 
-// volume is the speaker button, which mutes, and the slider beside it.
+// volumeControl is the speaker button, which mutes, and the slider beside it.
 func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 	icon := m3.IconVolumeUp
 	switch {
@@ -103,21 +220,23 @@ func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: "Mute", Key: "mute"}).Clicked() {
 			a.toggleMute()
 		}
-		if sliderWidth > 0 {
-			ui.Row(c).Width(sliderWidth).Children(func() {
-				v := a.volume
-				slider := m3.Slider(c, &v, 0, 100, m3.SliderSpec{Label: "Volume", Key: "volume"})
-				if slider.Changed() {
-					a.setVolume(v)
-				}
-				if slider.Pressed() {
-					a.volumeHeld = true
-				} else if a.volumeHeld {
-					a.volumeHeld = false
-					a.saveSettings()
-				}
-			})
+		if sliderWidth <= 0 {
+			return
 		}
+		ui.Row(c).Width(sliderWidth).Children(func() {
+			v := a.volume
+			slider := m3.Slider(c, &v, 0, 100, m3.SliderSpec{Label: "Volume", Key: "volume"})
+			if slider.Changed() {
+				a.setVolume(v)
+			}
+			// The volume is kept once the user lets go, not on every step.
+			if slider.Pressed() {
+				a.nowPlaying.volumeHeld = true
+			} else if a.nowPlaying.volumeHeld {
+				a.nowPlaying.volumeHeld = false
+				a.saveSettings()
+			}
+		})
 	})
 }
 
@@ -155,15 +274,15 @@ func (a *app) playerBar(c *ui.Context) {
 			Cursor(ui.CursorPointer).Label("Open the player").
 			Background(m3.StateFill(ui.Transparent, sc.OnSurface, info.Hovered(), info.Pressed(), info.FocusVisible()))
 		info.Children(func() {
-			m3.Art(c, a.thumbs.bitmap(a.current.Thumbnail, playerArt), 64, m3.Large, func() {
-				if isVideo(a.current) {
+			m3.Art(c, a.thumbs.Bitmap(a.current.Thumbnail, playerArt), 64, m3.Large, func() {
+				if a.current.IsVideo() {
 					m3.VideoBadge(c, 64)
 				}
 			})
 			a.trackLine(c, m3.TitleSmall, m3.BodySmall).Grow(1)
 		})
 		if info.Clicked() {
-			a.npOpen = true
+			a.nowPlaying.open = true
 			a.loadPanel()
 		}
 
@@ -177,19 +296,18 @@ func (a *app) playerBar(c *ui.Context) {
 				a.volumeControl(c, 108)
 			}
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconQueue, Label: "Up next", Key: "bar-queue"}).Clicked() {
-				a.npOpen, a.npTab, a.npQueueOnly = true, 0, true
+				a.openPlayer(tabQueue, true)
 			}
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconExpandLess, Label: "Open the player", Key: "bar-expand"}).Clicked() {
-				a.npOpen, a.npQueueOnly = true, false
-				a.loadPanel()
+				a.openPlayer(a.nowPlaying.tab, false)
 			}
 		})
 	})
 }
 
-// nowPlaying is the full-screen player: the artwork large, the controls, and
-// beside them the queue or the lyrics. It slides up over the sheet.
-func (a *app) nowPlaying(c *ui.Context) {
+// nowPlayingView is the full-screen player: the artwork large, the controls,
+// and beside them the queue or the lyrics. It slides up over the sheet.
+func (a *app) nowPlayingView(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	w, h := c.Size()
 	wide := w > 1040
@@ -202,22 +320,22 @@ func (a *app) nowPlaying(c *ui.Context) {
 	panel.Children(func() {
 		ui.Row(c).Height(76).PaddingX(pageGutter - 8).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconExpandMore, Label: "Close the player", Key: "np-close"}).Clicked() {
-				a.npOpen = false
+				a.nowPlaying.open = false
 			}
 			m3.EmphasizedText(c, m3.TitleMedium, "Now playing").TextColor(sc.OnSurfaceVariant).Grow(1)
 			if !wide {
 				if m3.IconButton(c, m3.IconButtonSpec{
-					Icon: m3.IconQueue, Label: "Up next", Toggle: true, Selected: a.npQueueOnly, Kind: m3.TonalIcon, Key: "np-queue",
+					Icon: m3.IconQueue, Label: "Up next", Toggle: true, Selected: a.nowPlaying.queueOnly, Kind: m3.TonalIcon, Key: "np-queue",
 				}).Clicked() {
-					a.npQueueOnly = !a.npQueueOnly
+					a.nowPlaying.queueOnly = !a.nowPlaying.queueOnly
 				}
 			}
 		})
 		ui.Row(c).Grow(1).MinHeight(0).Padding(0, pageGutter, pageGutter).Gap(32).AlignItems(ui.Stretch).Children(func() {
-			if wide || !a.npQueueOnly {
+			if wide || !a.nowPlaying.queueOnly {
 				a.nowPlayingMain(c, h)
 			}
-			if wide || a.npQueueOnly {
+			if wide || a.nowPlaying.queueOnly {
 				a.sidePanel(c, wide)
 			}
 		})
@@ -256,8 +374,8 @@ func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius float32) {
 	key := itemKey("now-playing-menu", a.current)
 	var menuButton ui.Element
-	artwork := m3.Art(c, a.thumbs.bitmap(a.current.Thumbnail, imageSize), artSize, radius, func() {
-		if isVideo(a.current) {
+	artwork := m3.Art(c, a.thumbs.Bitmap(a.current.Thumbnail, imageSize), artSize, radius, func() {
+		if a.current.IsVideo() {
 			m3.VideoBadge(c, artSize)
 		}
 		menuButton = m3.IconButton(c, m3.IconButtonSpec{
@@ -285,12 +403,12 @@ func (a *app) sidePanel(c *ui.Context, wide bool) {
 	}
 	card.Children(func() {
 		a.nowPlayingTabs(c)
-		switch a.npTab {
-		case 1:
+		switch a.nowPlaying.tab {
+		case tabLyrics:
 			a.lyricsView(c)
-		case 2:
+		case tabRelated:
 			a.relatedView(c)
-		default:
+		case tabQueue:
 			a.queueView(c)
 		}
 	})
@@ -298,26 +416,25 @@ func (a *app) sidePanel(c *ui.Context, wide bool) {
 
 func (a *app) nowPlayingTabs(c *ui.Context) {
 	sc := m3.Of(c).Scheme
-	labels := []string{"Up next", "Lyrics", "Related"}
 	ui.Row(c).Padding(12, 12, 8).Gap(4).Children(func() {
-		for index, label := range labels {
-			selected := a.npTab == index
+		for _, t := range panelTabs {
+			selected := a.nowPlaying.tab == t.tab
 			container, content := ui.Transparent, sc.OnSurfaceVariant
 			if selected {
 				container, content = sc.SecondaryContainer, sc.OnSecondaryContainer
 			}
-			button := ui.ButtonBase(c.Key("np-tab-" + label))
+			button := ui.ButtonBase(c.Key("np-tab-" + t.label))
 			button.Grow(1).Basis(0).MinWidth(0).Height(40).PaddingX(4).Center().Radius(m3.Full).
-				Cursor(ui.CursorPointer).Label(label).Tooltip(label).
+				Cursor(ui.CursorPointer).Label(t.label).Tooltip(t.label).
 				Background(m3.StateFill(container, content, button.Hovered(), button.Pressed(), button.FocusVisible()))
 			button.Children(func() {
-				text := m3.Text(c, m3.LabelMedium, label).Grow(1).MinWidth(0).SingleLine().TextAlign(ui.Center).TextColor(content)
+				text := m3.Text(c, m3.LabelMedium, t.label).Grow(1).MinWidth(0).SingleLine().TextAlign(ui.Center).TextColor(content)
 				if selected {
 					text.FontWeight(600)
 				}
 			})
 			if button.Clicked() {
-				a.npTab = index
+				a.nowPlaying.tab = t.tab
 				a.loadPanel()
 			}
 		}
@@ -327,10 +444,11 @@ func (a *app) nowPlayingTabs(c *ui.Context) {
 // queueView lists the tracks of the queue, with the current one picked out.
 func (a *app) queueView(c *ui.Context) {
 	sc := m3.Of(c).Scheme
-	if a.queueSource != "" {
+	q := &a.queue
+	if q.source != "" {
 		ui.Column(c).Padding(8, 16, 4).Gap(2).Children(func() {
 			m3.Text(c, m3.BodySmall, "Playing from").TextColor(sc.OnSurfaceVariant)
-			m3.EmphasizedText(c, m3.TitleSmall, a.queueSource).SingleLine()
+			m3.EmphasizedText(c, m3.TitleSmall, q.source).SingleLine()
 		})
 	}
 	ui.Row(c).Padding(8, 16, 4).Gap(12).AlignItems(ui.Center).Children(func() {
@@ -343,116 +461,99 @@ func (a *app) queueView(c *ui.Context) {
 			a.setAutoPlay(on)
 		}
 	})
-	if a.upNextLoading {
+	switch {
+	case a.upNext.load.busy():
 		m3.Text(c, m3.BodySmall, "Finding recommendations…").Padding(0, 16, 4).TextColor(sc.OnSurfaceVariant)
-	} else if a.upNextErr != "" {
+	case a.upNext.err != "":
 		m3.Text(c, m3.BodySmall, "Recommendations aren't available right now.").Padding(0, 16, 4).TextColor(sc.Error)
 	}
-	if len(a.queue) == 0 {
+	if q.len() == 0 {
 		a.message(c, m3.IconQueue, "The queue is empty", "", "", nil)
 		return
 	}
-	header := a.recommendationStart > 0 && a.recommendationStart < len(a.queue)
-	rowCount := len(a.queue)
-	if header {
-		rowCount++
-	}
-	itemIndex := func(row int) (int, bool) {
-		if header && row == a.recommendationStart {
-			return 0, false
-		}
-		if header && row > a.recommendationStart {
-			row--
-		}
-		return row, row >= 0 && row < len(a.queue)
-	}
+	list := &a.nowPlaying.queueList
 	// A press in a row can replace the queue while the list still asks about
-	// a row of the one before.
-	a.queueList.Key = func(row int) any {
-		index, track := itemIndex(row)
-		if !track {
-			if header && row == a.recommendationStart {
-				return "queue-recommendations"
-			}
-			return nil
+	// a row of the one before, so every question checks the row is there.
+	list.Key = func(row int) any {
+		if q.isDivider(row) {
+			return "queue-recommendations"
 		}
-		return itemKey("queue", a.queue[index]) + "#" + strconv.Itoa(index)
+		if index, ok := q.trackAt(row); ok {
+			return itemKey("queue", q.at(index)) + "#" + strconv.Itoa(index)
+		}
+		return nil
 	}
-	a.queueList.Label = func(row int) string {
-		index, track := itemIndex(row)
-		if !track {
-			if header && row == a.recommendationStart {
-				return "Auto-play recommendations"
-			}
-			return ""
+	list.Label = func(row int) string {
+		if q.isDivider(row) {
+			return "Auto-play recommendations"
 		}
-		return a.queue[index].Title
+		if index, ok := q.trackAt(row); ok {
+			return q.at(index).Title
+		}
+		return ""
 	}
 	// Rows drag to a new place in the queue; the divider between chosen and
 	// generated tracks is not draggable itself.
-	a.queueList.Reorder = func(rows []int, to int) {
-		a.moveQueue(rows, to)
+	list.Reorder = a.moveQueue
+	if a.nowPlaying.queueFollow != a.current.VideoID {
+		a.nowPlaying.queueFollow = a.current.VideoID
+		list.ScrollTo(q.rowOf(q.index), ui.Start)
 	}
-	if a.queueFollow != a.current.VideoID {
-		a.queueFollow = a.current.VideoID
-		follow := a.index
-		if header && follow >= a.recommendationStart {
-			follow++
-		}
-		a.queueList.ScrollTo(follow, ui.Start)
-	}
-	ui.List(c, &a.queueList, rowCount, func(row int) {
-		index, track := itemIndex(row)
-		if !track {
+	ui.List(c, list, q.rows(), func(row int) {
+		index, ok := q.trackAt(row)
+		if !ok {
 			ui.Column(c).Height(48).Padding(8, 16, 0).Gap(8).Children(func() {
 				ui.Divider(c)
 				m3.EmphasizedText(c, m3.TitleSmall, "Recommended").TextColor(sc.OnSurfaceVariant).SingleLine()
 			})
 			return
 		}
-		a.songRow(c, a.queue[index], a.queue, songOptions{directQueue: true, source: a.queueSource, list: "queue", position: index, fetchArtwork: true})
+		a.songRow(c, q.at(index), q.items, songOptions{directQueue: true, source: q.source, list: "queue", position: index})
 	}).Grow(1).Padding(0, 8, 16)
 }
 
 func (a *app) relatedView(c *ui.Context) {
+	r := &a.nowPlaying.related
 	switch {
-	case a.related.loading:
+	case r.load.busy():
 		ui.Column(c).Grow(1).Center().Children(func() { m3.LoadingIndicator(c, 56, true) })
-	case a.related.err != "":
-		a.message(c, m3.IconExplore, a.related.err, "", "", nil)
+	case r.err != "":
+		a.message(c, m3.IconExplore, r.err, "", "", nil)
 	default:
-		a.relatedList.Key = func(i int) any {
-			if i >= len(a.related.items) {
+		items := r.items
+		list := &a.nowPlaying.relatedList
+		list.Key = func(i int) any {
+			if i >= len(items) {
 				return nil
 			}
-			return itemKey("related", a.related.items[i]) + "#" + strconv.Itoa(i)
+			return itemKey("related", items[i]) + "#" + strconv.Itoa(i)
 		}
-		a.relatedList.Label = func(i int) string {
-			if i >= len(a.related.items) {
+		list.Label = func(i int) string {
+			if i >= len(items) {
 				return ""
 			}
-			return a.related.items[i].Title
+			return items[i].Title
 		}
-		ui.List(c, &a.relatedList, len(a.related.items), func(i int) {
-			a.songRow(c, a.related.items[i], a.related.items, songOptions{directQueue: true, source: "Related", list: "related", position: i, fetchArtwork: true})
+		ui.List(c, list, len(items), func(i int) {
+			a.songRow(c, items[i], items, songOptions{directQueue: true, source: "Related", list: "related", position: i})
 		}).Grow(1).Padding(0, 8, 16)
 	}
 }
 
-// lyricsView shows the lyrics of the track playing, loading them as the tab
-// opens.
+// lyricsView shows the lyrics of the track playing.
 func (a *app) lyricsView(c *ui.Context) {
 	sc := m3.Of(c).Scheme
+	l := &a.nowPlaying.lyrics
 	switch {
-	case a.lyrics.loading:
+	case l.load.busy():
 		ui.Column(c).Grow(1).Center().Children(func() { m3.LoadingIndicator(c, 56, true) })
-	case a.lyrics.err != "":
-		a.message(c, m3.IconLyrics, a.lyrics.err, "", "", nil)
+	case l.err != "":
+		a.message(c, m3.IconLyrics, l.err, "", "", nil)
 	default:
 		ui.Scroll(c).Grow(1).Padding(8, 24, 24).Children(func() {
-			m3.Text(c, m3.BodyLarge, a.lyrics.text).LineHeight(1.6).TextColor(sc.OnSurface).Selectable()
-			if a.lyrics.footer != "" {
-				m3.Text(c, m3.BodySmall, a.lyrics.footer).TextColor(sc.OnSurfaceVariant).Margin(16, 0, 0)
+			m3.Text(c, m3.BodyLarge, l.text).LineHeight(1.6).TextColor(sc.OnSurface).Selectable()
+			if l.footer != "" {
+				m3.Text(c, m3.BodySmall, l.footer).TextColor(sc.OnSurfaceVariant).Margin(16, 0, 0)
 			}
 		})
 	}

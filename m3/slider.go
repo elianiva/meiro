@@ -108,7 +108,7 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 			track := ui.Rect{X: x0, Y: cy - thick/2, W: x1 - x0, H: thick}
 			p.Clip(track, radius, func() {
 				w := track.W / hueSteps
-				for i := 0; i < hueSteps; i++ {
+				for i := range hueSteps {
 					p.Fill(ui.Rect{X: track.X + w*float32(i), Y: track.Y, W: w + 0.75, H: track.H}, hueStrip[i], 0)
 				}
 			})

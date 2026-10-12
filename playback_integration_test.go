@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -70,8 +73,8 @@ func playbackApp(t *testing.T) (*app, *resolved) {
 	a := newTestApp()
 	a.settings.AutoPlay = false
 	r := &resolved{err: map[string]error{}}
-	a.streams = newStreamCache(r.resolve)
-	a.audioCache = nil
+	a.streams = audio.NewURLs(r.resolve)
+	a.replaceAudioCache(nil)
 	t.Cleanup(a.player.Stop)
 	return a, r
 }
@@ -115,7 +118,7 @@ func TestClickingATrackPlaysIt(t *testing.T) {
 func TestQueueAdvancesPreviousAndStops(t *testing.T) {
 	a, r := playbackApp(t)
 	q := tracks("a", "b", "c")
-	a.play(q[0], q, 0)
+	a.play(q[0], q)
 
 	a.trackEnded()
 	if a.current.VideoID != "b" || !r.asked("b") {
@@ -123,23 +126,23 @@ func TestQueueAdvancesPreviousAndStops(t *testing.T) {
 	}
 	a.trackEnded()
 	a.previous() // just started: goes back a track
-	if a.current.VideoID != "b" || a.index != 1 {
-		t.Fatalf("previous left index %d on %q", a.index, a.current.VideoID)
+	if a.current.VideoID != "b" || a.queue.index != 1 {
+		t.Fatalf("previous left index %d on %q", a.queue.index, a.current.VideoID)
 	}
 	a.trackEnded()
 	if a.current.VideoID != "c" {
 		t.Fatalf("current = %q", a.current.VideoID)
 	}
 	a.trackEnded() // the end of the queue, nothing repeats
-	if a.current.VideoID != "c" || a.resolving {
-		t.Errorf("the queue end: current=%q resolving=%v", a.current.VideoID, a.resolving)
+	if a.current.VideoID != "c" || a.loading() {
+		t.Errorf("the queue end: current=%q loading=%v", a.current.VideoID, a.loading())
 	}
 }
 
 func TestRepeatModes(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b")
-	a.play(q[0], q, 0)
+	a.play(q[0], q)
 
 	a.cycleRepeat() // queue
 	a.trackEnded()
@@ -148,10 +151,10 @@ func TestRepeatModes(t *testing.T) {
 		t.Errorf("repeating the queue ended on %q, want a", a.current.VideoID)
 	}
 	a.cycleRepeat() // track
-	before := a.streamGen
+	before := a.stream.gen
 	a.trackEnded()
-	if a.current.VideoID != "a" || a.streamGen == before {
-		t.Errorf("repeating the track: current=%q, restarted=%v", a.current.VideoID, a.streamGen != before)
+	if a.current.VideoID != "a" || a.stream.gen == before {
+		t.Errorf("repeating the track: current=%q, restarted=%v", a.current.VideoID, a.stream.gen != before)
 	}
 	a.cycleRepeat() // off
 	if a.repeat != repeatOff {
@@ -162,32 +165,32 @@ func TestRepeatModes(t *testing.T) {
 func TestShuffleKeepsTheTrackPlayingAndEveryTrack(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c", "d", "e", "f", "g", "h")
-	a.play(q[0], q, 0)
+	a.play(q[0], q)
 	a.setShuffle(true)
-	if a.queue[0].VideoID != "a" || a.index != 0 {
-		t.Errorf("shuffle moved the track playing: index %d", a.index)
+	if a.queue.items[0].VideoID != "a" || a.queue.index != 0 {
+		t.Errorf("shuffle moved the track playing: index %d", a.queue.index)
 	}
-	if len(a.queue) != len(q) {
-		t.Fatalf("shuffle changed the queue length: %v", ids(a.queue))
+	if a.queue.len() != len(q) {
+		t.Fatalf("shuffle changed the queue length: %v", ids(a.queue.items))
 	}
 	seen := map[string]bool{}
-	for _, id := range ids(a.queue) {
+	for _, id := range ids(a.queue.items) {
 		seen[id] = true
 	}
 	if len(seen) != len(q) {
-		t.Errorf("shuffle lost or repeated tracks: %v", ids(a.queue))
+		t.Errorf("shuffle lost or repeated tracks: %v", ids(a.queue.items))
 	}
 }
 
 func TestQueueingATrack(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c")
-	a.play(q[0], q, 0)
+	a.play(q[0], q)
 	extra := tracks("x", "y")
 
 	a.enqueue(extra[0], false)
 	a.enqueue(extra[1], true)
-	if got := ids(a.queue); len(got) != 5 || got[1] != "y" || got[4] != "x" {
+	if got := ids(a.queue.items); len(got) != 5 || got[1] != "y" || got[4] != "x" {
 		t.Fatalf("queue = %v, want y next and x last", got)
 	}
 	a.trackEnded()
@@ -207,9 +210,9 @@ func TestEnqueueOnAnIdleAppStartsPlaying(t *testing.T) {
 func TestAnUnplayableTrackSaysWhyAndRetries(t *testing.T) {
 	a, r := playbackApp(t)
 	r.err["bad"] = errors.New("video unavailable")
-	a.play(tracks("bad")[0], nil, 0)
-	if a.playErr != "video unavailable" || a.resolving {
-		t.Fatalf("playErr=%q resolving=%v", a.playErr, a.resolving)
+	a.play(tracks("bad")[0], nil)
+	if a.playErr != "video unavailable" || a.loading() {
+		t.Fatalf("playErr=%q loading=%v", a.playErr, a.loading())
 	}
 	// Pressing play asks for the same track again.
 	delete(r.err, "bad")
@@ -243,8 +246,8 @@ func TestAutoPlayAsksYouTubeForWhatFollows(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.settings.AutoPlay = true
 	q := tracks("a")
-	a.play(q[0], q, 0)
-	if !a.upNextFetched && !a.upNextLoading {
+	a.play(q[0], q)
+	if !a.upNext.fetched && !a.upNext.load.busy() {
 		t.Error("autoplay never asked YouTube Music for an up-next queue")
 	}
 }
@@ -263,7 +266,7 @@ func TestPlayingATrackThroughToTheEnd(t *testing.T) {
 	a, r := playbackApp(t)
 	r.file = tone
 	q := tracks("a", "b")
-	a.play(q[0], q, 0)
+	a.play(q[0], q)
 
 	deadline := time.Now().Add(15 * time.Second)
 	heard := map[string]bool{}
@@ -272,13 +275,13 @@ func TestPlayingATrackThroughToTheEnd(t *testing.T) {
 		if a.player.Position() > 0 {
 			heard[a.current.VideoID] = true
 		}
-		if a.index == 1 && heard["b"] && !a.player.Active() {
+		if a.queue.index == 1 && heard["b"] && !a.player.Active() {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if a.index != 1 || !heard["a"] || !heard["b"] || a.player.Active() {
-		t.Fatalf("heard %v, index %d, active %v: want both tracks played and the queue stopped", heard, a.index, a.player.Active())
+	if a.queue.index != 1 || !heard["a"] || !heard["b"] || a.player.Active() {
+		t.Fatalf("heard %v, index %d, active %v: want both tracks played and the queue stopped", heard, a.queue.index, a.player.Active())
 	}
 	if a.playErr != "" {
 		t.Errorf("playErr = %q", a.playErr)
@@ -296,5 +299,41 @@ func TestPlayingATrackThroughToTheEnd(t *testing.T) {
 	a.togglePlay()
 	if !a.player.Paused() {
 		t.Error("play did not pause a playing track")
+	}
+}
+
+// A track the audio cache holds plays from the cache, without asking the
+// resolver.
+func TestACachedTrackPlaysWithoutResolving(t *testing.T) {
+	media := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "audio/mp4")
+		_, _ = w.Write([]byte("audio"))
+	}))
+	defer media.Close()
+	cache, _, err := audio.Open(t.TempDir(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cache.Close()
+	cache.Add("three", media.URL+"/three")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, ok := cache.Get("three"); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the track was never cached")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	a, r := playbackApp(t)
+	a.replaceAudioCache(cache)
+	a.play(tracks("three")[0], nil)
+	if r.asked("three") {
+		t.Error("a cached track was resolved anyway")
+	}
+	if a.current.VideoID != "three" || a.stream.busy() {
+		t.Errorf("current=%q resolving=%v", a.current.VideoID, a.stream.busy())
 	}
 }

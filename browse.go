@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -13,84 +12,54 @@ import (
 
 // The sizes of what a shelf holds, in DIPs.
 const (
-	cardWidth          = 176
-	cardArt            = cardWidth - 16
-	columnWidth        = 392
-	rowHeight          = 64
-	carouselStateLimit = pageCacheLimit * 4 // four shelves per retained route
+	cardWidth   = 176
+	cardArt     = cardWidth - 16
+	cardGap     = 4
+	columnWidth = 392
+	rowHeight   = 64
 )
-
-// browsePage shows a feed, or an album, a playlist or an artist, as rows of
-// shelves and songs.
-func (a *app) browsePage(c *ui.Context) { a.pageList(c) }
-
-// libraryPage asks for a sign-in before it has anything to show.
-func (a *app) libraryPage(c *ui.Context) {
-	if a.signedIn {
-		a.pageList(c)
-		return
-	}
-	ui.Column(c).Fill().Center().Children(func() {
-		a.message(c, m3.IconLibraryFilled, "Your library lives here",
-			"Sign in to see your songs, albums and playlists.",
-			"Sign in", a.signInWithGoogle)
-	})
-}
-
-// recapPage asks for a sign-in before it has anything to show: the listening
-// review is built from the account's play history.
-func (a *app) recapPage(c *ui.Context) {
-	if a.signedIn {
-		a.pageList(c)
-		return
-	}
-	ui.Column(c).Fill().Center().Children(func() {
-		a.message(c, m3.IconTrending, "Your recap lives here",
-			"Sign in to see the music you have had on repeat.",
-			"Sign in", a.signInWithGoogle)
-	})
-}
 
 // pageList builds the rows of the page in a list that builds only those in
 // view, so a page of hundreds of songs is as light as one of ten.
 func (a *app) pageList(c *ui.Context) {
 	a.syncRows()
+	rows := a.page.rows
 	// A button in a row can reload the page, and empty the rows, while the list
 	// still looks for the row that held the focus.
 	a.list.Key = func(i int) any {
-		if i >= len(a.rows) {
+		if i >= len(rows) {
 			return nil
 		}
-		return a.rows[i].key()
+		return rows[i].key()
 	}
 	a.list.Label = func(i int) string {
-		if i >= len(a.rows) {
+		if i >= len(rows) {
 			return ""
 		}
-		if r := a.rows[i]; r.kind == rowTrack {
+		if r := rows[i]; r.kind == rowTrack {
 			return r.item.Title
 		}
-		return a.rows[i].title
+		return rows[i].title
 	}
-	list := ui.List(c, &a.list, len(a.rows), func(i int) {
-		a.rowView(c, i)
+	list := ui.List(c, &a.list, len(rows), func(i int) {
+		a.rowView(c, rows, i)
 	}).Grow(1).Padding(0, 0, a.clearance())
 	// The grid's lines depend on the width, which is known only once the list
 	// has been laid out: plan the lines again when it turns out different.
 	a.listWidth = list.Bounds().W
-	if a.gridColumnsOn(a.router.Path()) != a.rowsKey.columns {
+	if r, _ := a.route(); a.gridColumns(r) != a.page.rowsKey.columns {
 		c.Invalidate()
 	}
 }
 
 // rowView builds one row of the page.
-func (a *app) rowView(c *ui.Context, i int) {
-	r := a.rows[i]
+func (a *app) rowView(c *ui.Context, rows []row, i int) {
+	r := rows[i]
 	switch r.kind {
 	case rowHero:
 		a.hero(c)
 	case rowHeading:
-		next := i+1 < len(a.rows) && (a.rows[i+1].kind == rowCards || a.rows[i+1].kind == rowColumns)
+		next := i+1 < len(rows) && (rows[i+1].kind == rowCards || rows[i+1].kind == rowColumns)
 		a.sectionHeading(c, r, next, i == 0)
 	case rowCards:
 		a.cardShelf(c, r)
@@ -99,7 +68,7 @@ func (a *app) rowView(c *ui.Context, i int) {
 	case rowGrid:
 		a.cardGrid(c, r)
 	case rowTrack:
-		a.songRow(c, r.item, a.playable, songOptions{number: r.number(), list: r.shelf, position: r.position, inset: true, fetchArtwork: true})
+		a.songRow(c, r.item, a.page.playable, songOptions{number: r.number(), list: r.shelf, position: r.position, inset: true})
 	case rowMore:
 		ui.Row(c).Justify(ui.Center).Padding(16).Children(func() {
 			if m3.Button(c, m3.ButtonSpec{Label: r.title, Kind: m3.Tonal, Size: m3.Medium56, Key: "more"}).Clicked() {
@@ -121,28 +90,9 @@ func (a *app) rowView(c *ui.Context, i int) {
 	}
 }
 
-// number is the place shown beside a song that has no artwork of its own.
-func (r row) number() int {
-	if r.track < 0 || r.item.Thumbnail != "" {
-		return 0
-	}
-	return r.track + 1
-}
-
 // carousel returns the scroll of the shelf with a key.
 func (a *app) carousel(key string) *m3.CarouselState {
-	st := a.carousels[key]
-	if st == nil {
-		st = &m3.CarouselState{}
-		a.carousels[key] = st
-	}
-	a.carouselOrder = append(removeKey(a.carouselOrder, key), key)
-	for len(a.carouselOrder) > carouselStateLimit {
-		oldest := a.carouselOrder[0]
-		a.carouselOrder = a.carouselOrder[1:]
-		delete(a.carousels, oldest)
-	}
-	return st
+	return a.carousels.GetOrPut(key, func() *m3.CarouselState { return &m3.CarouselState{} })
 }
 
 // sectionHeading names a section of a page, with arrows that page its shelf.
@@ -185,7 +135,7 @@ func (a *app) cardShelf(c *ui.Context, r row) {
 		m3.Carousel(c, st, r.shelf, gap, pageGutter-8, func() {
 			shelfSpacer(c, float32(first)*(cardWidth+gap)-gap)
 			for i := first; i < last; i++ {
-				a.card(c, r.items[i], r.queue, r.shelf, i, true)
+				a.card(c, r.items[i], r.queue, r.shelf, i)
 			}
 			shelfSpacer(c, float32(len(r.items)-last)*(cardWidth+gap)-gap)
 		})
@@ -197,13 +147,13 @@ func (a *app) cardShelf(c *ui.Context, r row) {
 	}
 }
 
-// cardGap is the space between the cards of a shelf or grid.
-const cardGap = 4
-
-// gridColumns is how many cards fit across a line of the page's grid, given
-// the width the list had in the last frame: a line is as many cards as the
-// page is wide.
-func (a *app) gridColumns() int {
+// gridColumns is how many cards fit across a line of a page's grid, given the
+// width the list had in the last frame: a line is as many cards as the page
+// is wide. It is zero for a page without a grid.
+func (a *app) gridColumns(r *route) int {
+	if !r.grid {
+		return 0
+	}
 	width := a.listWidth
 	if width <= 0 {
 		width = 1000
@@ -212,21 +162,12 @@ func (a *app) gridColumns() int {
 	return max(1, int((inner+cardGap)/(cardWidth+cardGap)))
 }
 
-// gridColumnsOn is gridColumns for a page that has a grid, and zero for the
-// pages that have none.
-func (a *app) gridColumnsOn(path string) int {
-	if path != "/library" {
-		return 0
-	}
-	return a.gridColumns()
-}
-
 // cardGrid is one line of cards of a grid, which wraps onto as many lines as
 // the page is wide, so the whole of it is in view without scrolling sideways.
 func (a *app) cardGrid(c *ui.Context, r row) {
 	ui.Row(c).Gap(cardGap).Padding(0, pageGutter-8, cardGap).Children(func() {
 		for i, item := range r.items {
-			a.card(c, item, r.queue, r.shelf, r.position+i, true)
+			a.card(c, item, r.queue, r.shelf, r.position+i)
 		}
 	})
 }
@@ -256,7 +197,7 @@ func (a *app) columnShelf(c *ui.Context, r row) {
 				group := r.items[start:min(start+4, len(r.items))]
 				ui.Column(c).Key(start).Width(columnWidth).Shrink(0).Children(func() {
 					for i, item := range group {
-						a.songRow(c, item, r.queue, songOptions{list: r.shelf, position: start + i, fetchArtwork: true})
+						a.songRow(c, item, r.queue, songOptions{list: r.shelf, position: start + i})
 					}
 				})
 			}
@@ -269,24 +210,19 @@ func (a *app) columnShelf(c *ui.Context, r row) {
 	}
 }
 
+// itemKey identifies an item, under a prefix that names where it is drawn.
 func itemKey(prefix string, item youtube.MusicItem) string {
-	kind, id := targetOf(item)
-	if id == "" {
-		id = item.ID
+	target := item.Target()
+	id := target.ID
+	for _, other := range []string{item.ID, item.BrowseID, item.PlaylistID} {
+		if id == "" {
+			id = other
+		}
 	}
 	if id == "" {
-		id = item.BrowseID
+		id = string(item.Kind) + "\x00" + item.Thumbnail + "\x00" + item.Duration
 	}
-	if id == "" {
-		id = item.PlaylistID
-	}
-	if id == "" {
-		id = item.Kind + "\x00" + item.Thumbnail + "\x00" + item.Duration
-	}
-	if kind == "" {
-		kind = item.Kind
-	}
-	return prefix + ":" + kind + "\x00" + id
+	return prefix + ":" + strconv.Itoa(int(target.Kind)) + string(item.Kind) + "\x00" + id
 }
 
 func cardKey(item youtube.MusicItem, list string, position int) string {
@@ -304,7 +240,7 @@ func hoverOpacity(hovered bool) float32 {
 // artRadius is the corner of an item's artwork: artists are round, the rest
 // are soft squares.
 func artRadius(item youtube.MusicItem, square float32) float32 {
-	if kind, _ := targetOf(item); kind == pageArtist {
+	if item.Target().Kind == youtube.TargetArtist {
 		return m3.Full
 	}
 	return square
@@ -312,13 +248,13 @@ func artRadius(item youtube.MusicItem, square float32) float32 {
 
 // card shows an album, a playlist, an artist or a song as artwork over its
 // name. A play button rises over the artwork under the pointer.
-func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, list string, position int, fetchArtwork bool) {
+func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, list string, position int) {
 	sc := m3.Of(c).Scheme
-	kind, _ := targetOf(item)
+	kind := item.Target().Kind
 	key := cardKey(item, list, position)
 	card := ui.ButtonBase(c.Key(key))
 	hovered := card.Hovered()
-	if kind == pageTrack {
+	if kind == youtube.TargetTrack {
 		a.hoverSong(key, item, hovered)
 	}
 	card.Column().AlignItems(ui.Start).Width(cardWidth).Shrink(0).Padding(8).Gap(10).Radius(m3.ExtraLarge).Cursor(ui.CursorPointer).
@@ -329,8 +265,8 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 	hasMenu, hasAnchor := false, false
 	card.Children(func() {
 		radius := artRadius(item, m3.LargeIncreased)
-		opening := a.opening == itemKey("open", item)+"\x00"+list+"#"+strconv.Itoa(position)
-		m3.Art(c, a.thumbs.bitmapIf(item.Thumbnail, 320, fetchArtwork), cardArt, radius, func() {
+		opening := a.isOpening(key)
+		m3.Art(c, a.thumbs.Bitmap(item.Thumbnail, 320), cardArt, radius, func() {
 			if isNewPlaylist(item) {
 				// The tile has no artwork of its own: the plus covers the
 				// panel a missing one stands in with.
@@ -340,7 +276,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 				})
 				return
 			}
-			if isVideo(item) {
+			if item.IsVideo() {
 				m3.VideoBadge(c, cardArt)
 			}
 			if opening {
@@ -351,14 +287,14 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 				return
 			}
 			if hovered || card.FocusVisible() || a.menu.opened(key+"-menu") {
-				if kind != "" {
+				if kind != youtube.TargetNone {
 					menuButton = m3.IconButton(c, m3.IconButtonSpec{
 						Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
 					}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
 					hasMenu = true
 				}
 			}
-			if hovered && (kind == pageTrack || kind == pageAlbum || kind == pagePlaylist) {
+			if hovered && (kind == youtube.TargetTrack || kind == youtube.TargetAlbum || kind == youtube.TargetPlaylist) {
 				fab := m3.FAB(c, m3.FABSpec{Icon: m3.IconPlay, Size: m3.FABSmall, Tone: m3.FABPrimary, Key: "play"}).
 					Attach(ui.AnchorBottomRight, ui.AnchorBottomRight).Right(8).Bottom(8)
 				enter := m3.Move(m3.SpatialFast)
@@ -393,7 +329,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		// The card's button also receives this pointer event. Opening its menu
 		// must not activate the card underneath it.
 	case played:
-		a.playCollection(item, list, position, false)
+		a.playCollection(item, key, false)
 	case card.Clicked() && isNewPlaylist(item):
 		a.openNewPlaylist(youtube.MusicItem{})
 	case card.Clicked():
@@ -408,33 +344,34 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 	if !a.menu.owns(key) {
 		return
 	}
-	if kind, _ := targetOf(item); kind == pageTrack {
+	target := item.Target()
+	if target.Kind == youtube.TargetTrack {
 		a.songMenu(c, anchor, key, item)
 		return
 	}
 	m3.Menu(c, anchor, &a.menu.open, 232, func() {
 		close := func() { a.menu.close() }
-		kind, id := targetOf(item)
 		label := ""
 		icon := m3.IconChevronRight
-		switch kind {
-		case pageAlbum:
+		switch target.Kind {
+		case youtube.TargetAlbum:
 			label, icon = "Open album", m3.IconAlbum
-		case pagePlaylist:
+		case youtube.TargetPlaylist:
 			label, icon = "Open playlist", m3.IconQueue
-		case pageArtist:
+		case youtube.TargetArtist:
 			label, icon = "Go to artist", m3.IconPerson
+		case youtube.TargetTrack, youtube.TargetNone:
 		}
 		if label != "" && m3.MenuItem(c, label, icon).Clicked() {
 			a.activate(item, queue)
 			close()
 		}
-		if kind == pagePlaylist && m3.MenuItem(c, "Shuffle play", m3.IconShuffle).Clicked() {
-			a.playCollection(item, "", 0, true)
+		if target.Kind == youtube.TargetPlaylist && m3.MenuItem(c, "Shuffle play", m3.IconShuffle).Clicked() {
+			a.playCollection(item, key, true)
 			close()
 		}
-		if id != "" && m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
-			c.WriteClipboard("https://music.youtube.com/browse/" + url.PathEscape(id))
+		if target.ID != "" && m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
+			c.WriteClipboard(youtube.BrowseURL(target.ID))
 			c.Toast("Link copied")
 			close()
 		}
@@ -452,10 +389,11 @@ type songOptions struct {
 	position int
 	// inset puts the row in from the edges of the page, as the rows of a
 	// page of songs are; rows in a shelf sit flush.
-	inset        bool
-	directQueue  bool
-	source       string
-	fetchArtwork bool
+	inset bool
+	// directQueue plays the row's song from the list it is in, named source,
+	// rather than from the page.
+	directQueue bool
+	source      string
 }
 
 // songKey identifies a row of a song in its list, for the element tree and
@@ -469,8 +407,7 @@ func songKey(item youtube.MusicItem, o songOptions) string {
 // tonal container with dancing bars.
 func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, o songOptions) {
 	sc := m3.Of(c).Scheme
-	kind, _ := targetOf(item)
-	isSong := kind == pageTrack
+	isSong := item.IsTrack()
 	playing := isSong && item.VideoID == a.current.VideoID
 	key := songKey(item, o)
 	row := ui.Row(c.Key(key))
@@ -512,19 +449,20 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 					}
 				})
 			} else {
-				m3.Art(c, a.thumbs.bitmapIf(item.Thumbnail, 128, o.fetchArtwork), 48, artRadius(item, m3.Medium), func() {
+				m3.Art(c, a.thumbs.Bitmap(item.Thumbnail, 128), 48, artRadius(item, m3.Medium), func() {
 					if isSong && (playing || hovered) {
 						ui.Box(c).Fill().Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
-							if playing && a.loading() {
+							switch {
+							case playing && a.loading():
 								m3.LoadingIndicatorIn(c, 24, ui.RGB(255, 255, 255))
-							} else if playing {
+							case playing:
 								m3.Equalizer(c, 18, a.player.Playing(), ui.RGB(255, 255, 255))
-							} else {
+							default:
 								ui.Icon(c, m3.IconPlay).FontSize(24).TextColor(ui.RGB(255, 255, 255))
 							}
 						})
 					}
-					if isVideo(item) {
+					if item.IsVideo() {
 						m3.VideoBadge(c, 48)
 					}
 				})
@@ -568,14 +506,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	}
 	if main.Clicked() {
 		if o.directQueue {
-			index := 0
-			for i := range queue {
-				if queue[i].VideoID == item.VideoID {
-					index = i
-					break
-				}
-			}
-			a.playWithOptions(item, queue, index, youtube.UpNextOptions{}, o.source)
+			a.playFrom(item, queue, max(indexOf(queue, item.VideoID), 0), youtube.UpNextOptions{}, o.source)
 		} else {
 			a.activate(item, queue)
 		}
@@ -589,11 +520,9 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 	}
 	m3.Menu(c, anchor, &a.menu.open, 232, func() {
 		close := func() { a.menu.close() }
-		if artistID := artistID(item); artistID != "" {
+		if artistID := item.ArtistID(); artistID != "" {
 			if m3.MenuItem(c, "Go to artist", m3.IconPerson).Clicked() {
-				path := "/artist/" + url.PathEscape(artistID)
-				a.rememberDetail(path, detail{kind: pageArtist})
-				a.router.Push(path)
+				a.openTarget(youtube.Target{Kind: youtube.TargetArtist, ID: artistID}, detail{})
 				close()
 			}
 		}
@@ -610,35 +539,29 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 			close()
 		}
 		if m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
-			c.WriteClipboard("https://music.youtube.com/watch?v=" + url.QueryEscape(item.VideoID))
+			c.WriteClipboard(youtube.WatchURL(item.VideoID))
 			c.Toast("Link copied")
 			close()
 		}
 	})
 }
 
-func artistID(item youtube.MusicItem) string {
-	if item.VideoID != "" && (strings.HasPrefix(item.BrowseID, "UC") || strings.Contains(item.BrowseID, "privately_owned_artist")) {
-		return item.BrowseID
-	}
-	return ""
-}
-
 // hero is the heading of an album, a playlist or an artist: its artwork large
 // over a wash of the theme's colour, its name, and the buttons that play it.
 func (a *app) hero(c *ui.Context) {
 	sc := m3.Of(c).Scheme
-	d := a.detail
+	d := a.page.detail
+	r, _ := a.route()
 	artRadius := m3.ExtraLargeInc
-	if d.kind == pageArtist {
+	if r.target == youtube.TargetArtist {
 		artRadius = m3.Full
 	}
 	wash := sc.PrimaryContainer.Mix(sc.Surface, 0.45)
 	ui.Row(c).Padding(8, pageGutter, 28).Gap(28).AlignItems(ui.End).Gradient(wash, sc.Surface, 180).Children(func() {
-		art := m3.Art(c, a.thumbs.bitmap(d.art, 512), 220, artRadius)
+		art := m3.Art(c, a.thumbs.Bitmap(d.art, 512), 220, artRadius)
 		m3.Elevation(c, art, 2)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
-			if label := heroLabel(d.kind); label != "" {
+			if label := heroLabel(r.target); label != "" {
 				m3.EmphasizedText(c, m3.LabelLarge, strings.ToUpper(label)).LetterSpacing(1.2).TextColor(sc.Primary)
 			}
 			m3.EmphasizedText(c, m3.DisplaySmall, d.title).MaxLines(2).TextColor(sc.OnSurface)
@@ -647,7 +570,7 @@ func (a *app) hero(c *ui.Context) {
 			}
 			ui.Box(c).Height(10)
 			ui.Row(c).Gap(12).Children(func() {
-				none := len(a.playable) == 0
+				none := len(a.page.playable) == 0
 				if m3.Button(c, m3.ButtonSpec{Label: "Play", Icon: m3.IconPlay, Size: m3.Medium56, Disabled: none, Key: "hero-play"}).Clicked() {
 					a.playAll()
 				}
@@ -659,14 +582,15 @@ func (a *app) hero(c *ui.Context) {
 	})
 }
 
-func heroLabel(kind string) string {
+func heroLabel(kind youtube.TargetKind) string {
 	switch kind {
-	case pageAlbum:
+	case youtube.TargetAlbum:
 		return "Album"
-	case pagePlaylist:
+	case youtube.TargetPlaylist:
 		return "Playlist"
-	case pageArtist:
+	case youtube.TargetArtist:
 		return "Artist"
+	case youtube.TargetTrack, youtube.TargetNone:
 	}
 	return ""
 }

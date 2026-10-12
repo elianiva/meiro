@@ -13,6 +13,18 @@ const (
 	Playing Status = "Playing"
 )
 
+// Loop is what playback repeats, by the names MPRIS gives them.
+type Loop string
+
+const (
+	LoopNone     Loop = "None"     // play on, and stop at the end
+	LoopTrack    Loop = "Track"    // play the same track again
+	LoopPlaylist Loop = "Playlist" // go back to the start after the last
+)
+
+// valid reports whether l is one of the loops above.
+func (l Loop) valid() bool { return l == LoopNone || l == LoopTrack || l == LoopPlaylist }
+
 // State describes the track and controls currently available to the user.
 type State struct {
 	VideoID    string
@@ -24,7 +36,7 @@ type State struct {
 	// SeekVersion advances on explicit seeks, including small seeks while playing.
 	SeekVersion uint64
 	Status      Status
-	LoopStatus  string
+	Loop        Loop
 	Volume      float64
 	CanPlay     bool
 	CanPause    bool
@@ -57,7 +69,7 @@ type Controls struct {
 	Seek       func(time.Duration)
 	SetVolume  func(float64)
 	SetShuffle func(bool)
-	SetRepeat  func(string)
+	SetLoop    func(Loop)
 }
 
 // Session publishes state and receives commands from the operating system.

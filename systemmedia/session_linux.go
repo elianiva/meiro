@@ -127,14 +127,14 @@ func propertyMap(controls Controls) prop.Map {
 		playerInterface: {
 			"PlaybackStatus": {Value: string(Stopped), Emit: prop.EmitTrue},
 			"LoopStatus": {
-				Value: "None", Writable: true, Emit: prop.EmitTrue,
+				Value: string(LoopNone), Writable: true, Emit: prop.EmitTrue,
 				Callback: func(change *prop.Change) *dbus.Error {
-					status := change.Value.(string)
-					if status != "None" && status != "Track" && status != "Playlist" {
+					status, ok := change.Value.(string)
+					if loop := Loop(status); !ok || !loop.valid() {
 						return dbus.NewError("org.freedesktop.DBus.Error.InvalidArgs", nil)
 					}
-					if controls.SetRepeat != nil {
-						controls.SetRepeat(status)
+					if controls.SetLoop != nil {
+						controls.SetLoop(Loop(status))
 					}
 					return nil
 				},
@@ -142,7 +142,7 @@ func propertyMap(controls Controls) prop.Map {
 			"Rate": {
 				Value: 1.0, Writable: true, Emit: prop.EmitConst,
 				Callback: func(change *prop.Change) *dbus.Error {
-					if change.Value.(float64) != 1 {
+					if rate, ok := change.Value.(float64); !ok || rate != 1 {
 						return dbus.NewError("org.freedesktop.DBus.Error.NotSupported", nil)
 					}
 					return nil
@@ -151,8 +151,8 @@ func propertyMap(controls Controls) prop.Map {
 			"Shuffle": {
 				Value: false, Writable: true, Emit: prop.EmitTrue,
 				Callback: func(change *prop.Change) *dbus.Error {
-					if controls.SetShuffle != nil {
-						controls.SetShuffle(change.Value.(bool))
+					if on, ok := change.Value.(bool); ok && controls.SetShuffle != nil {
+						controls.SetShuffle(on)
 					}
 					return nil
 				},
@@ -161,8 +161,8 @@ func propertyMap(controls Controls) prop.Map {
 			"Volume": {
 				Value: 0.5, Writable: true, Emit: prop.EmitTrue,
 				Callback: func(change *prop.Change) *dbus.Error {
-					if controls.SetVolume != nil {
-						controls.SetVolume(change.Value.(float64))
+					if volume, ok := change.Value.(float64); ok && controls.SetVolume != nil {
+						controls.SetVolume(volume)
 					}
 					return nil
 				},
@@ -184,8 +184,8 @@ func (s *linuxSession) Update(state State) error {
 	if state.Status == "" {
 		state.Status = Stopped
 	}
-	if state.LoopStatus == "" {
-		state.LoopStatus = "None"
+	if !state.Loop.valid() {
+		state.Loop = LoopNone
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -203,8 +203,8 @@ func (s *linuxSession) Update(state State) error {
 			return s.fail(err)
 		}
 	}
-	if (!s.hasState || state.LoopStatus != s.state.LoopStatus) && state.LoopStatus != s.props.GetMust(playerInterface, "LoopStatus") {
-		if err := s.setProperty("LoopStatus", state.LoopStatus); err != nil {
+	if (!s.hasState || state.Loop != s.state.Loop) && string(state.Loop) != s.props.GetMust(playerInterface, "LoopStatus") {
+		if err := s.setProperty("LoopStatus", string(state.Loop)); err != nil {
 			return s.fail(err)
 		}
 	}
@@ -275,7 +275,8 @@ func (s *linuxSession) setProperty(property string, value any) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			failure, ok := recovered.(error)
-			if _, isRuntimeError := failure.(runtime.Error); !ok || isRuntimeError {
+			var runtimeError runtime.Error
+			if !ok || errors.As(failure, &runtimeError) {
 				panic(recovered)
 			}
 			err = fmt.Errorf("set MPRIS property %s: %w", property, failure)

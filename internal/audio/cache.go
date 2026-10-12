@@ -1,4 +1,7 @@
-package main
+// Package audio gets the sound of a track to the player: it resolves the
+// track's direct audio URL, remembers recent ones, and keeps the audio of
+// recently played tracks on disk.
+package audio
 
 import (
 	"context"
@@ -9,23 +12,30 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/elianiva/meiro/internal/fsutil"
+	"github.com/elianiva/meiro/internal/proc"
 )
 
-// defaultAudioCacheLimit keeps a short run of recent songs for quick replay.
-const defaultAudioCacheLimit = 10
+// tempPrefix starts the name of the temporary directories downloads use.
+const tempPrefix = ".audio-"
 
-// audioCachePath keeps cache files in an app-owned child directory, so
-// choosing a parent folder does not change that folder's permissions.
-func audioCachePath(root string) string { return filepath.Join(root, "Meiro Audio Cache") }
+// DefaultLimit keeps a short run of recent songs for quick replay.
+const DefaultLimit = 10
 
-func newAudioCacheAtRoot(root string, limit int) (*audioCache, string, error) {
+// cacheDir keeps cache files in an app-owned child directory, so choosing a
+// parent folder does not change that folder's permissions.
+func cacheDir(root string) string { return filepath.Join(root, "Meiro Audio Cache") }
+
+// Open opens the cache inside the folder root, which must exist, keeping at
+// most limit tracks. It returns the cache and root made absolute.
+func Open(root string, limit int) (*Cache, string, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, "", errors.New("cache directory is empty")
 	}
@@ -40,56 +50,53 @@ func newAudioCacheAtRoot(root string, limit int) (*audioCache, string, error) {
 	if !info.IsDir() {
 		return nil, "", fmt.Errorf("%q is not a directory", absolute)
 	}
-	cache, err := newAudioCache(audioCachePath(absolute), limit)
+	cache, err := openDir(cacheDir(absolute), limit)
 	if err != nil {
 		return nil, "", err
 	}
 	return cache, absolute, nil
 }
 
-// audioCache keeps completed audio files for recently played tracks. It is a
-// private app cache, not a user-facing download library.
-type audioCache struct {
-	mu       sync.Mutex
-	dir      string
-	limit    int
-	files    map[string]audioCacheFile
-	queue    []audioCacheDownload
-	pending  map[string]struct{}
-	running  bool
-	closed   bool
-	cancel   context.CancelFunc
-	worker   sync.WaitGroup
-	download func(context.Context, string, string, string) (string, error)
-	fetch    func(context.Context, string, string) (string, error)
+// Cache keeps completed audio files for recently played tracks. It is a
+// private app cache, not a user-facing download library. Its methods are safe
+// for concurrent use, and do nothing on a nil Cache.
+type Cache struct {
+	mu      sync.Mutex
+	dir     string
+	limit   int
+	files   map[string]cachedFile
+	queue   []pendingDownload
+	pending map[string]struct{}
+	running bool
+	closed  bool
+	cancel  context.CancelFunc
+	worker  sync.WaitGroup
+	fetch   func(ctx context.Context, streamURL, dir string) (string, error)
 }
 
-type audioCacheDownload struct {
-	videoID string
-	cookie  string
-	// streamURL is a direct audio URL the app already resolved for playback.
-	// When it is set, the cache downloads it instead of resolving the track
-	// again through yt-dlp. Warm-next tracks have none and take the yt-dlp path.
+// pendingDownload is a track waiting to be cached, and the direct audio URL
+// the app already resolved for it.
+type pendingDownload struct {
+	videoID   string
 	streamURL string
 }
 
-// newAudioCache prepares a private directory and removes any files over the
-// configured limit left by an earlier run.
-func newAudioCache(dir string, limit int) (*audioCache, error) {
+// openDir prepares a private directory and removes any files over the
+// limit left by an earlier run.
+func openDir(dir string, limit int) (*Cache, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, err
 	}
-	c := &audioCache{
-		dir:      dir,
-		limit:    validAudioCacheLimit(limit),
-		files:    make(map[string]audioCacheFile),
-		pending:  make(map[string]struct{}),
-		download: downloadAudio,
+	c := &Cache{
+		dir:     dir,
+		limit:   ValidLimit(limit),
+		files:   make(map[string]cachedFile),
+		pending: make(map[string]struct{}),
 		fetch: func(ctx context.Context, streamURL, cacheDir string) (string, error) {
-			return downloadAudioURL(ctx, http.DefaultClient, streamURL, cacheDir)
+			return downloadURL(ctx, http.DefaultClient, streamURL, cacheDir)
 		},
 	}
 	c.mu.Lock()
@@ -100,17 +107,20 @@ func newAudioCache(dir string, limit int) (*audioCache, error) {
 	return c, nil
 }
 
-// validAudioCacheLimit rejects negative cache sizes. The user may choose any
+// Dir is the directory the cache keeps its files in.
+func (c *Cache) Dir() string { return c.dir }
+
+// ValidLimit rejects negative cache sizes. The user may choose any
 // non-negative count; zero disables the cache.
-func validAudioCacheLimit(limit int) int {
+func ValidLimit(limit int) int {
 	if limit < 0 {
-		return defaultAudioCacheLimit
+		return DefaultLimit
 	}
 	return limit
 }
 
-// setLimit applies a new cache size and evicts old files immediately.
-func (c *audioCache) setLimit(limit int) {
+// SetLimit applies a new cache size and evicts old files immediately.
+func (c *Cache) SetLimit(limit int) {
 	if c == nil {
 		return
 	}
@@ -119,7 +129,7 @@ func (c *audioCache) setLimit(limit int) {
 		c.mu.Unlock()
 		return
 	}
-	c.limit = validAudioCacheLimit(limit)
+	c.limit = ValidLimit(limit)
 	if c.limit == 0 && c.cancel != nil {
 		c.cancel()
 	}
@@ -128,10 +138,10 @@ func (c *audioCache) setLimit(limit int) {
 	c.removeFiles(evicted)
 }
 
-// warmable reports whether the cache keeps enough tracks for one downloaded
+// Warmable reports whether the cache keeps enough tracks for one downloaded
 // ahead of time to survive until it plays. At a limit of one, the warmed
 // track evicts the track that is playing, so nothing is gained.
-func (c *audioCache) warmable() bool {
+func (c *Cache) Warmable() bool {
 	if c == nil {
 		return false
 	}
@@ -140,8 +150,8 @@ func (c *audioCache) warmable() bool {
 	return !c.closed && c.limit > 1
 }
 
-// get returns a cached file and moves it to the most-recently-used end.
-func (c *audioCache) get(videoID string) (string, bool) {
+// Get returns a cached file and moves it to the most-recently-used end.
+func (c *Cache) Get(videoID string) (string, bool) {
 	if c == nil || videoID == "" {
 		return "", false
 	}
@@ -164,32 +174,27 @@ func (c *audioCache) get(videoID string) (string, bool) {
 	return file.path, true
 }
 
-// enqueueStream caches a track whose direct audio URL the app resolved while
-// starting playback. The URL is downloaded as it is, so starting a track does
-// not resolve the same track a second time through yt-dlp.
-func (c *audioCache) enqueueStream(videoID, streamURL string) {
-	c.enqueueDownload(audioCacheDownload{videoID: videoID, streamURL: streamURL})
-}
-
-// enqueueDownload adds one download to the queue unless the track is already
-// cached or queued, and starts the worker if it is idle.
-func (c *audioCache) enqueueDownload(download audioCacheDownload) {
-	if c == nil || download.videoID == "" {
+// Add caches a track from the direct audio URL the app resolved for it, in
+// the background, unless the track is already cached or on its way. The URL
+// is downloaded as it is, so caching never resolves a track a second time.
+func (c *Cache) Add(videoID, streamURL string) {
+	if c == nil || videoID == "" || streamURL == "" {
 		return
 	}
+	next := pendingDownload{videoID: videoID, streamURL: streamURL}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed || c.limit == 0 {
 		return
 	}
-	if _, cached := c.findLocked(download.videoID); cached {
+	if _, cached := c.findLocked(videoID); cached {
 		return
 	}
-	if _, exists := c.pending[download.videoID]; exists {
+	if _, exists := c.pending[videoID]; exists {
 		return
 	}
-	c.pending[download.videoID] = struct{}{}
-	c.queue = append(c.queue, download)
+	c.pending[videoID] = struct{}{}
+	c.queue = append(c.queue, next)
 	if c.running {
 		return
 	}
@@ -201,9 +206,9 @@ func (c *audioCache) enqueueDownload(download audioCacheDownload) {
 	}()
 }
 
-// close cancels the active download and waits for the worker to exit before
+// Close cancels the active download and waits for the worker to exit before
 // the app process shuts down.
-func (c *audioCache) close() {
+func (c *Cache) Close() {
 	if c == nil {
 		return
 	}
@@ -218,7 +223,7 @@ func (c *audioCache) close() {
 	c.worker.Wait()
 }
 
-func (c *audioCache) drain() {
+func (c *Cache) drain() {
 	for {
 		c.mu.Lock()
 		if len(c.queue) == 0 {
@@ -227,7 +232,7 @@ func (c *audioCache) drain() {
 			return
 		}
 		download := c.queue[0]
-		c.queue[0] = audioCacheDownload{}
+		c.queue[0] = pendingDownload{}
 		c.queue = c.queue[1:]
 		limit := c.limit
 		var ctx context.Context
@@ -239,7 +244,7 @@ func (c *audioCache) drain() {
 		c.mu.Unlock()
 
 		if limit > 0 {
-			temp, err := c.downloadQueued(ctx, download)
+			temp, err := c.fetch(ctx, download.streamURL, c.dir)
 			cancelled := ctx.Err() != nil
 			cancel()
 			c.mu.Lock()
@@ -267,22 +272,12 @@ func (c *audioCache) drain() {
 	}
 }
 
-// downloadQueued fetches the audio for one queued download. A track the app
-// already resolved streams from its direct URL; a warm-next track has none and
-// is resolved with yt-dlp.
-func (c *audioCache) downloadQueued(ctx context.Context, download audioCacheDownload) (string, error) {
-	if download.streamURL != "" {
-		return c.fetch(ctx, download.streamURL, c.dir)
-	}
-	return c.download(ctx, download.videoID, c.dir, download.cookie)
-}
-
 // installLocked moves a completed temporary download into the cache and drops
 // the entries over the limit from the index. It returns the paths to delete;
 // the caller releases c.mu before deleting them. The caller holds c.mu.
-func (c *audioCache) installLocked(videoID, temp string) ([]string, error) {
+func (c *Cache) installLocked(videoID, temp string) ([]string, error) {
 	if temp == "" {
-		return nil, errors.New("yt-dlp returned no audio file")
+		return nil, errors.New("the download left no audio file")
 	}
 	key := audioCacheKey(videoID)
 	if _, cached := c.files[key]; cached {
@@ -290,7 +285,7 @@ func (c *audioCache) installLocked(videoID, temp string) ([]string, error) {
 	}
 	ext := strings.ToLower(filepath.Ext(temp))
 	if !audioCacheExtension(ext) {
-		return nil, fmt.Errorf("yt-dlp returned an unsupported audio file %q", ext)
+		return nil, fmt.Errorf("the download left an unsupported audio file %q", ext)
 	}
 	if err := os.Chmod(temp, 0o600); err != nil {
 		return nil, fmt.Errorf("secure audio file: %w", err)
@@ -303,13 +298,13 @@ func (c *audioCache) installLocked(videoID, temp string) ([]string, error) {
 	if err := os.Rename(temp, final); err != nil {
 		return nil, fmt.Errorf("store audio file: %w", err)
 	}
-	c.files[key] = audioCacheFile{key: key, path: final, used: now}
+	c.files[key] = cachedFile{key: key, path: final, used: now}
 	return c.trimLocked(key), nil
 }
 
 // findLocked returns the cache entry for videoID from the in-memory index. The
 // caller holds c.mu.
-func (c *audioCache) findLocked(videoID string) (audioCacheFile, bool) {
+func (c *Cache) findLocked(videoID string) (cachedFile, bool) {
 	file, cached := c.files[audioCacheKey(videoID)]
 	return file, cached
 }
@@ -318,12 +313,12 @@ func (c *audioCache) findLocked(videoID string) (audioCacheFile, bool) {
 // cache is within its limit, except for keep, and returns their paths. It
 // updates only the index, so the caller can delete the paths after releasing
 // c.mu. The caller holds c.mu.
-func (c *audioCache) trimLocked(keep string) []string {
+func (c *Cache) trimLocked(keep string) []string {
 	excess := len(c.files) - c.limit
 	if excess <= 0 {
 		return nil
 	}
-	candidates := make([]audioCacheFile, 0, len(c.files))
+	candidates := make([]cachedFile, 0, len(c.files))
 	for _, file := range c.files {
 		if file.key != keep {
 			candidates = append(candidates, file)
@@ -332,7 +327,7 @@ func (c *audioCache) trimLocked(keep string) []string {
 	if len(candidates) == 0 {
 		return nil
 	}
-	slices.SortFunc(candidates, func(a, b audioCacheFile) int {
+	slices.SortFunc(candidates, func(a, b cachedFile) int {
 		return a.used.Compare(b.used)
 	})
 	evicted := make([]string, 0, min(excess, len(candidates)))
@@ -346,7 +341,7 @@ func (c *audioCache) trimLocked(keep string) []string {
 // removeFiles deletes evicted files. It runs without c.mu held, so a large
 // eviction never blocks lookups or the UI's warmable check, and one file that
 // cannot be removed does not stop the rest.
-func (c *audioCache) removeFiles(paths []string) {
+func (c *Cache) removeFiles(paths []string) {
 	for _, path := range paths {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			log.Printf("evicting cached audio %s: %v", path, err)
@@ -354,12 +349,12 @@ func (c *audioCache) removeFiles(paths []string) {
 	}
 }
 
-// purge deletes the files this cache owns, and then its directory when
+// Purge deletes the files this cache owns, and then its directory when
 // nothing else is in it: downloaded audio named by key, and abandoned
 // temporary download folders. Anything else in the directory is left alone.
 // It is for a cache that has been replaced by one in another location, and
 // must run after close so no download is still writing.
-func (c *audioCache) purge() {
+func (c *Cache) Purge() {
 	if c == nil {
 		return
 	}
@@ -370,8 +365,8 @@ func (c *audioCache) purge() {
 	for _, entry := range entries {
 		path := filepath.Join(c.dir, entry.Name())
 		switch {
-		case entry.IsDir() && strings.HasPrefix(entry.Name(), ".audio-"):
-			removeAll(path)
+		case entry.IsDir() && strings.HasPrefix(entry.Name(), tempPrefix):
+			fsutil.RemoveAll(path)
 		case !entry.IsDir() && isAudioCacheFile(entry.Name()):
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				log.Printf("removing old cached audio %s: %v", path, err)
@@ -393,7 +388,7 @@ func isAudioCacheFile(name string) bool {
 	return err == nil
 }
 
-type audioCacheFile struct {
+type cachedFile struct {
 	key  string
 	path string
 	used time.Time
@@ -402,8 +397,8 @@ type audioCacheFile struct {
 // scanLocked builds the in-memory index from the cache directory. It runs once
 // when the cache is created, so later lookups and evictions need no directory
 // scan. The caller holds c.mu.
-func (c *audioCache) scanLocked() {
-	sweepStaleTemp(c.dir, staleTempAge, ".audio-")
+func (c *Cache) scanLocked() {
+	proc.SweepStale(c.dir, tempPrefix)
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
 		return
@@ -417,7 +412,7 @@ func (c *audioCache) scanLocked() {
 		if err != nil {
 			continue
 		}
-		c.files[key] = audioCacheFile{key: key, path: filepath.Join(c.dir, entry.Name()), used: info.ModTime()}
+		c.files[key] = cachedFile{key: key, path: filepath.Join(c.dir, entry.Name()), used: info.ModTime()}
 	}
 }
 
@@ -437,66 +432,19 @@ func audioCacheExtension(ext string) bool {
 	}
 }
 
-// downloadAudio asks yt-dlp to save a song into a temporary directory inside
-// the cache. The caller atomically installs it after the download succeeds.
-func downloadAudio(ctx context.Context, videoID, cacheDir, cookie string) (string, error) {
-	path, err := toolPath("yt-dlp")
-	if err != nil {
-		return "", errors.New("yt-dlp is not installed or not on PATH")
-	}
-	tempDir, err := os.MkdirTemp(cacheDir, ".audio-*")
-	if err != nil {
-		return "", fmt.Errorf("prepare audio cache: %w", err)
-	}
-	_, runtimeArgs := ytDlpJSRuntimeArgs()
-	options := runtimeArgs
-	if cookie != "" {
-		cookieFile, err := ytDlpCookieFile(cookie)
-		if err != nil {
-			_ = os.RemoveAll(tempDir)
-			return "", fmt.Errorf("prepare yt-dlp authentication: %w", err)
-		}
-		defer func() { _ = os.Remove(cookieFile) }()
-		options = append(options, "--cookies", cookieFile)
-	}
-	args := audioCacheDownloadArgs(videoID, tempDir, options...)
-	command := command(ctx, path, args...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		_ = os.RemoveAll(tempDir)
-		if reason := lastError(string(output)); reason != "" {
-			return "", fmt.Errorf("yt-dlp could not cache the audio: %s", reason)
-		}
-		return "", fmt.Errorf("yt-dlp could not cache the audio: %w", err)
-	}
-	entries, err := os.ReadDir(tempDir)
-	if err != nil {
-		_ = os.RemoveAll(tempDir)
-		return "", fmt.Errorf("read downloaded audio: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".part") || !strings.HasPrefix(entry.Name(), "audio.") {
-			continue
-		}
-		return filepath.Join(tempDir, entry.Name()), nil
-	}
-	_ = os.RemoveAll(tempDir)
-	return "", errors.New("yt-dlp finished without an audio file")
-}
-
-// audioStreamUserAgent is what the cache sends when it fetches an audio
+// userAgent is what the cache sends when it fetches an audio
 // stream. YouTube's media servers answer some requests without a browser
 // User-Agent with an error, the same reason the player tells ffmpeg to send
 // one. The URL itself is already signed, so no cookie is needed.
-const audioStreamUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
-// downloadAudioURL saves an audio stream the app already resolved for
+// downloadURL saves an audio stream the app already resolved for
 // playback into a temporary directory inside the cache. The direct URL
 // carries its own authentication and expiry, so no second yt-dlp run is
 // needed. A download that ends early, or an expired URL that no longer
 // answers, is discarded: only a complete file is returned, so an interrupted
 // stream never becomes a cache hit. The caller atomically installs the file.
-func downloadAudioURL(ctx context.Context, client *http.Client, streamURL, cacheDir string) (string, error) {
+func downloadURL(ctx context.Context, client *http.Client, streamURL, cacheDir string) (string, error) {
 	if strings.TrimSpace(streamURL) == "" {
 		return "", errors.New("no resolved audio URL to cache")
 	}
@@ -504,7 +452,7 @@ func downloadAudioURL(ctx context.Context, client *http.Client, streamURL, cache
 	if err != nil {
 		return "", fmt.Errorf("prepare audio download: %w", err)
 	}
-	request.Header.Set("User-Agent", audioStreamUserAgent)
+	request.Header.Set("User-Agent", userAgent)
 	response, err := client.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("download audio: %w", err)
@@ -515,7 +463,7 @@ func downloadAudioURL(ctx context.Context, client *http.Client, streamURL, cache
 		// already playing, so the cache just skips it.
 		return "", fmt.Errorf("download audio: unexpected status %s", response.Status)
 	}
-	tempDir, err := os.MkdirTemp(cacheDir, ".audio-*")
+	tempDir, err := os.MkdirTemp(cacheDir, tempPrefix+"*")
 	if err != nil {
 		return "", fmt.Errorf("prepare audio cache: %w", err)
 	}
@@ -575,18 +523,4 @@ func audioURLExtension(contentType string) string {
 		// fallback when a media server reports no useful type.
 		return ".webm"
 	}
-}
-
-// audioCacheDownloadArgs asks yt-dlp for the track's own audio stream. It
-// keeps that stream as it is: YouTube Music already serves Opus in WebM or
-// AAC in MP4, which the player reads, and re-encoding it through ffmpeg
-// would spend CPU and lose a generation of quality for nothing.
-func audioCacheDownloadArgs(videoID, tempDir string, options ...string) []string {
-	args := []string{
-		"-f", "bestaudio",
-		"--no-playlist", "--no-warnings", "--no-progress",
-		"-P", tempDir, "-o", "audio.%(ext)s",
-	}
-	args = append(args, options...)
-	return append(args, "https://music.youtube.com/watch?v="+url.QueryEscape(videoID))
 }

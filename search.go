@@ -2,21 +2,116 @@ package main
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/m3"
+	"github.com/elianiva/meiro/youtube"
 )
 
-// suggestDelay is how long typing pauses before the app asks YouTube Music
-// for completions, and suggestTimeout bounds one such request.
 const (
+	// suggestDelay is how long typing pauses before the app asks YouTube
+	// Music for completions, and suggestTimeout bounds one such request.
 	suggestDelay   = 180 * time.Millisecond
 	suggestTimeout = 5 * time.Second
+	// searchTimeout bounds a search.
+	searchTimeout = time.Minute
 )
+
+// searchKinds are the filters of the search page, in the order its chips show
+// them.
+var searchKinds = []struct {
+	name string
+	kind youtube.SearchType
+}{
+	{"All", youtube.SearchAll},
+	{"Songs", youtube.SearchSongs},
+	{"Albums", youtube.SearchAlbums},
+	{"Artists", youtube.SearchArtists},
+	{"Playlists", youtube.SearchPlaylists},
+	{"Videos", youtube.SearchVideos},
+}
+
+// searchState is the search page. Typing only edits query; a search runs when
+// the user submits it, and submitted is what the results are for.
+type searchState struct {
+	pageState
+	query     string
+	submitted string
+	// kind is the filter chosen, a place in searchKinds.
+	kind int
+	load task
+	// suggestions are the completions of the text being typed, which suggest
+	// asks for once typing pauses.
+	suggestions []string
+	suggest     task
+}
+
+// runSearch searches for what the user submitted, with the chosen filter. It
+// is the only way a search starts: typing in the field never does.
+func (a *app) runSearch(query string) {
+	query = strings.TrimSpace(query)
+	a.cancelSuggestions()
+	// A "show more" in flight belongs to the results being replaced.
+	a.pageMore.stop()
+	s := &a.search
+	s.load.stop()
+	if query == "" {
+		s.query, s.submitted, s.pageState = "", "", pageState{}
+		a.page.rowsDirty = true
+		return
+	}
+	s.query, s.submitted = query, query
+	a.settings.Remember(query)
+	a.saveSettings()
+	s.pageState = pageState{loading: true}
+	a.page.rowsDirty = true
+	a.list.ScrollTo(0, ui.Start)
+	client, kind := a.client(), searchKinds[s.kind].kind
+	startTask(a, &s.load, searchTimeout, func(ctx context.Context) (*youtube.SearchResult, error) {
+		return client.Search(ctx, query, youtube.SearchOptions{Type: kind})
+	}, func(result *youtube.SearchResult, err error) {
+		a.page.rowsDirty = true
+		s.loading = false
+		if err != nil {
+			s.err = err.Error()
+			return
+		}
+		s.items, s.more = result.Items, result.ContinuationToken
+	})
+}
+
+// suggestSearches asks for the completions of what is being typed once typing
+// pauses. Each call replaces the request before it, so only the last query's
+// answer is kept.
+func (a *app) suggestSearches(query string) {
+	query = strings.TrimSpace(query)
+	a.cancelSuggestions()
+	if query == "" || query == a.search.submitted {
+		return
+	}
+	client := a.client()
+	startTask(a, &a.search.suggest, suggestDelay+suggestTimeout, func(ctx context.Context) ([]string, error) {
+		if err := a.sleep(ctx, suggestDelay); err != nil {
+			return nil, err
+		}
+		return client.GetSearchSuggestions(ctx, query)
+	}, func(suggestions []string, err error) {
+		if err != nil {
+			suggestions = nil
+		}
+		a.search.suggestions = suggestions
+	})
+}
+
+// cancelSuggestions stops a pending completion request and forgets what it
+// found, as when the query is submitted or the page is left.
+func (a *app) cancelSuggestions() {
+	a.search.suggest.stop()
+	a.search.suggestions = nil
+}
 
 // searchPage is a search bar over the filters and the results. Typing only
 // edits the text: a search runs when the user presses Enter, or picks another
@@ -62,45 +157,6 @@ func (a *app) searchPage(c *ui.Context) {
 		}
 		a.pageList(c)
 	})
-}
-
-// suggestSearches asks for the completions of what is being typed once typing
-// pauses. Each call replaces the request before it, so only the last query's
-// answer is kept. A request that lands after the query moved on is dropped.
-func (a *app) suggestSearches(query string) {
-	query = strings.TrimSpace(query)
-	a.cancelSuggestions()
-	client := a.client()
-	if query == "" || query == a.search.submitted || client == nil {
-		return
-	}
-	seq := a.search.suggestSeq
-	a.search.suggestCancel = a.schedule(suggestDelay, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), suggestTimeout)
-		defer cancel()
-		suggestions, err := client.GetSearchSuggestions(ctx, query)
-		a.update(func() {
-			if seq != a.search.suggestSeq {
-				return // the query moved on while this request was in flight
-			}
-			if err != nil {
-				a.search.suggestions = nil
-				return
-			}
-			a.search.suggestions = suggestions
-		})
-	})
-}
-
-// cancelSuggestions stops a pending completion request and forgets what it
-// found, as when the query is submitted or the page is left.
-func (a *app) cancelSuggestions() {
-	if a.search.suggestCancel != nil {
-		a.search.suggestCancel()
-		a.search.suggestCancel = nil
-	}
-	a.search.suggestSeq++
-	a.search.suggestions = nil
 }
 
 // suggestionList shows the completions of the text being typed, above the
@@ -156,17 +212,12 @@ func (a *app) searchLanding(c *ui.Context) {
 			})
 			switch {
 			case removed:
-				a.forget(query)
+				a.settings.Forget(query)
+				a.saveSettings()
 			case row.Clicked():
 				a.search.query = query
 				a.runSearch(query)
 			}
 		}
 	})
-}
-
-// forget takes a search out of the recent ones.
-func (a *app) forget(query string) {
-	a.settings.Recent = slices.DeleteFunc(a.settings.Recent, func(q string) bool { return q == query })
-	a.saveSettings()
 }

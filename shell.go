@@ -1,9 +1,6 @@
 package main
 
 import (
-	"strings"
-	"time"
-
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/m3"
@@ -26,33 +23,31 @@ func (a *app) view(c *ui.Context) {
 	// as the sheet and a thin ring rather than as a full-window quad under
 	// everything.
 
-	// The router also moves on its own, by the keyboard's back and forward
-	// keys, so the build is where a new location is noticed. It is guarded:
-	// a location is acted on once.
 	a.syncLocation()
 	a.followArtwork()
 	if a.notice != "" {
 		c.Toast(a.notice)
 		a.notice = ""
 	}
-	if !a.signIn.open && (a.signIn.generation != 0 || a.signIn.cancel != nil || a.signIn.cookie != "") {
-		a.dismissSignIn()
-	}
+	a.syncSignInDialog()
 
 	bar := c.TitleBar()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 		a.rail(c, bar)
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			a.sheet(c, bar)
+			a.sheet(c)
 		})
 	})
 	a.signInDialog(c)
 	a.newPlaylistDialog(c)
 	a.addToPlaylistDialog(c)
 	m3.Snackbars(c, 0)
+	a.shortcuts(c)
+}
 
-	// The transport, wherever the keyboard focus is that does not want the
-	// keys itself.
+// shortcuts are the keys the window answers wherever the keyboard focus is
+// that does not want them itself.
+func (a *app) shortcuts(c *ui.Context) {
 	if c.Shortcut(0, ui.KeySpace) {
 		a.togglePlay()
 	}
@@ -64,44 +59,54 @@ func (a *app) view(c *ui.Context) {
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyK) || c.Shortcut(ui.Cmd, ui.KeyF) {
 		a.focusSearch = true
-		a.router.Push("/search")
+		a.navigate(routeSearch)
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyComma) {
-		a.router.Push("/settings")
+		a.navigate(routeSettings)
 	}
-	if a.npOpen && c.Shortcut(0, ui.KeyEscape) {
-		a.npOpen = false
+	if a.nowPlaying.open && c.Shortcut(0, ui.KeyEscape) {
+		a.nowPlaying.open = false
 	}
 }
 
-// navPage returns the rail destination a path belongs to, and "" for a page
-// the rail does not name, as an album or a playlist.
-func navPage(path string) string {
-	switch path {
-	case "/home", "/explore", "/library", "/recap", "/search", "/settings":
-		return path[1:]
-	case "/stats":
-		return "settings"
-	}
-	return ""
+// navigate opens a page that takes no ID.
+func (a *app) navigate(id routeID) { a.router.Push(routeByID(id).path("")) }
+
+// railItems are the destinations of the rail, in order. The recap is built
+// from the account's play history, so it is only offered with an account.
+var railItems = []struct {
+	route        routeID
+	label        string
+	icon, filled *ui.SVG
+	needsAccount bool
+}{
+	{routeHome, "Home", m3.IconHome, m3.IconHomeFilled, false},
+	{routeSearch, "Search", m3.IconSearch, m3.IconSearch, false},
+	{routeExplore, "Explore", m3.IconExplore, m3.IconExploreFilled, false},
+	{routeLibrary, "Library", m3.IconLibrary, m3.IconLibraryFilled, false},
+	{routeRecap, "Recap", m3.IconTrending, m3.IconTrending, true},
 }
+
+// navID is the rail's name for a destination: its path.
+func navID(id routeID) string { return routeByID(id).path("") }
 
 func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
-	items := []m3.NavItem{
-		{ID: pageHome, Label: "Home", Icon: m3.IconHome, Selected: m3.IconHomeFilled},
-		{ID: pageSearch, Label: "Search", Icon: m3.IconSearch, Selected: m3.IconSearch},
-		{ID: pageExplore, Label: "Explore", Icon: m3.IconExplore, Selected: m3.IconExploreFilled},
-		{ID: pageLibrary, Label: "Library", Icon: m3.IconLibrary, Selected: m3.IconLibraryFilled},
+	items := make([]m3.NavItem, 0, len(railItems))
+	for _, item := range railItems {
+		if item.needsAccount && !a.signedIn() {
+			continue
+		}
+		items = append(items, m3.NavItem{ID: navID(item.route), Label: item.label, Icon: item.icon, Selected: item.filled})
 	}
-	if a.signedIn {
-		// The recap is built from the account's play history, so it is only
-		// offered once there is one.
-		items = append(items, m3.NavItem{ID: pageRecap, Label: "Recap", Icon: m3.IconTrending, Selected: m3.IconTrending})
+	r, _ := a.route()
+	selected := ""
+	if r.nav != routeNotFound {
+		selected = navID(r.nav)
 	}
 	event := m3.Rail(c, m3.RailSpec{
 		Items:    items,
-		Footer:   []m3.NavItem{{ID: pageSettings, Label: "Settings", Icon: m3.IconSettings, Selected: m3.IconSettings}},
-		Selected: navPage(a.router.Path()),
+		Footer:   []m3.NavItem{{ID: navID(routeSettings), Label: "Settings", Icon: m3.IconSettings, Selected: m3.IconSettings}},
+		Selected: selected,
 		Expanded: a.settings.RailExpanded,
 		TopInset: bar.Height,
 	})
@@ -109,8 +114,8 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 		a.settings.RailExpanded = !a.settings.RailExpanded
 		a.saveSettings()
 	}
-	if event.Item != "" && event.Item != navPage(a.router.Path()) {
-		a.router.Push("/" + event.Item)
+	if event.Item != "" && event.Item != selected {
+		a.router.Push(event.Item)
 	}
 }
 
@@ -129,7 +134,7 @@ const sheetCorner = sheetInset + m3.ExtraLarge*1.528665
 // full-window fill under it: the sheet covers all of the window but that
 // edge and the corners its rounding cuts, so a full-window quad is the
 // largest thing a frame would paint.
-func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
+func (a *app) sheet(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	tint := sc.SurfaceContainerLow
 	ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(sheetInset).Background(tint)
@@ -141,22 +146,22 @@ func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 	ui.Box(c).Absolute().Bottom(0).Right(0).Size(sheetCorner, sheetCorner).Background(tint)
 	sheet := ui.Column(c).Key("sheet").Absolute().Top(sheetInset).Left(0).Right(sheetInset).Bottom(sheetInset).
 		Radius(m3.ExtraLarge).Clip()
-	if !a.npOpen {
+	if !a.nowPlaying.open {
 		sheet.Background(sc.Surface)
 	}
 	sheet.Children(func() {
-		if a.npOpen {
+		if a.nowPlaying.open {
 			// The player covers the sheet whole, and the page and the top
 			// bar with it. Only the player is built: the page and the bar
 			// were laid out and painted in full on every frame of the wave
 			// and of the slide into the player, which is most of the frame,
 			// to be covered at once.
-			a.nowPlaying(c)
+			a.nowPlayingView(c)
 			return
 		}
-		a.topBar(c, bar)
+		a.topBar(c)
 		ui.Column(c).Grow(1).MinHeight(0).Children(func() {
-			a.page(c)
+			a.routerView(c)
 		})
 		if a.current.VideoID != "" {
 			a.playerBar(c)
@@ -173,45 +178,12 @@ func (a *app) clearance() float32 {
 	return playerHeight + playerGutter*2
 }
 
-// greeting names the part of the day.
-func greeting(now time.Time) string {
-	switch h := now.Hour(); {
-	case h < 5:
-		return "Up late?"
-	case h < 12:
-		return "Good morning"
-	case h < 18:
-		return "Good afternoon"
-	}
-	return "Good evening"
-}
-
-// pageTitle is what the top bar says for the page shown.
-func (a *app) pageTitle(now time.Time) string {
-	switch a.router.Path() {
-	case "/home":
-		return greeting(now)
-	case "/explore":
-		return "Explore"
-	case "/library":
-		return "Library"
-	case "/recap":
-		return "Recap"
-	case "/search":
-		return "Search"
-	case "/settings":
-		return "Settings"
-	case "/stats":
-		return "Listening stats"
-	}
-	return ""
-}
-
 // topBar names the page, with a way back on the pages a click opened, and
 // the account at its end. It drags the window.
-func (a *app) topBar(c *ui.Context, bar ui.TitleBar) {
+func (a *app) topBar(c *ui.Context) {
 	sc := m3.Of(c).Scheme
-	back := isDetail(a.router.Path())
+	r, _ := a.route()
+	back := r.isDetail()
 	padding := float32(pageGutter)
 	if back {
 		padding -= 8
@@ -227,52 +199,32 @@ func (a *app) topBar(c *ui.Context, bar ui.TitleBar) {
 				a.router.Back()
 			}
 		}
-		title := a.pageTitle(c.Now())
+		title := ""
+		if r.heading != nil {
+			title = r.heading(c.Now())
+		}
 		m3.EmphasizedText(c, m3.HeadlineMedium, title).SingleLine().TextColor(sc.OnSurface)
 		ui.Spacer(c)
 		a.accountButton(c)
 	})
 }
 
-// page builds the page the router shows.
-func (a *app) page(c *ui.Context) {
-	a.router.View(c, func(r *ui.Route) {
+// routerView builds the page the router shows, and the one it leaves while it
+// animates away, from the route table.
+func (a *app) routerView(c *ui.Context) {
+	a.router.View(c, func(page *ui.Route) {
+		r, _ := matchRoute(page.Path())
+		page.Title(r.title)
 		switch {
-		case r.Match("/home"):
-			r.Title("Home")
-			a.browsePage(c)
-		case r.Match("/explore"):
-			r.Title("Explore")
-			a.browsePage(c)
-		case r.Match("/library"):
-			r.Title("Library")
-			a.libraryPage(c)
-		case r.Match("/recap"):
-			r.Title("Recap")
-			a.recapPage(c)
-		case r.Match("/search"):
-			r.Title("Search")
-			a.searchPage(c)
-		case r.Match("/settings"):
-			r.Title("Settings")
-			a.settingsPage(c)
-		case r.Match("/stats"):
-			r.Title("Stats")
-			a.statsPage(c)
-		case r.Match("/album/{id}"):
-			r.Title("Album")
-			a.browsePage(c)
-		case r.Match("/playlist/{id}"):
-			r.Title("Playlist")
-			a.browsePage(c)
-		case r.Match("/artist/{id}"):
-			r.Title("Artist")
-			a.browsePage(c)
-		default:
-			r.Title("Not found")
+		case r.needsAccount != nil && !a.signedIn():
+			prompt := r.needsAccount
 			ui.Column(c).Fill().Center().Children(func() {
-				a.message(c, m3.IconError, "Not found", "That page does not exist.", "", nil)
+				a.message(c, prompt.icon, prompt.title, prompt.body, "Sign in", a.openSignIn)
 			})
+		case r.view != nil:
+			r.view(a, c)
+		default:
+			a.pageList(c)
 		}
 	})
 }
@@ -297,10 +249,4 @@ func (a *app) message(c *ui.Context, icon *ui.SVG, title, body, action string, r
 			}
 		}
 	})
-}
-
-// firstLine trims a long error to something a message can hold.
-func firstLine(text string) string {
-	text, _, _ = strings.Cut(text, "\n")
-	return text
 }

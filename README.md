@@ -30,8 +30,9 @@ half of the title.
   Pick a Material 3 palette, adjust its hue, or use the current track's artwork
   to set the app colours.
 - **Cache recent audio.** Meiro caches ten recently played tracks by default.
-  Choose a different limit and folder. Cached MP3 files go in a private cache
-  folder. Set the limit to `0` to turn off the cache.
+  Choose a different limit and folder. Tracks are kept in the format YouTube
+  serves them, in a private cache folder. Set the limit to `0` to turn off the
+  cache.
 - **Use keyboard shortcuts.** Press Space to play or pause. Use Command on
   macOS or Ctrl on Linux with Left or Right to change tracks. Use K or F to
   open Search, and Comma to open Settings.

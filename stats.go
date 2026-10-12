@@ -1,229 +1,73 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
-	"os"
-	"path/filepath"
-	"slices"
-	"sort"
 	"strconv"
 	"time"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/chart"
 
+	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
 
-// maxHistoryEntries caps the listening history: about a year of heavy
-// listening. Old entries go first when it overflows.
-const maxHistoryEntries = 5000
-
-// historyEntry is one played track.
-type historyEntry struct {
-	VideoID  string    `json:"videoId"`
-	Title    string    `json:"title,omitempty"`
-	Artist   string    `json:"artist,omitempty"`
-	PlayedAt time.Time `json:"playedAt"`
-}
-
-// recordHistory remembers a started track, once it is loaded. It runs on the
-// main thread from start; the file write goes through the settings saver so
-// a burst of skips costs one write.
+// recordHistory remembers a started track. It runs on the main thread from
+// start; the write goes off it.
 func (a *app) recordHistory(item youtube.MusicItem) {
 	if item.VideoID == "" {
 		return
 	}
 	a.loadHistory()
-	a.history = append(a.history, historyEntry{
+	a.history = history.Append(a.history, history.Entry{
 		VideoID:  item.VideoID,
 		Title:    item.Title,
 		Artist:   item.Subtitle,
 		PlayedAt: time.Now(),
 	})
-	if len(a.history) > maxHistoryEntries {
-		// Slide the newest entries down in place: reallocating the whole
-		// history on every play once it is full copied it all each time.
-		a.history = slices.Delete(a.history, 0, len(a.history)-maxHistoryEntries)
-	}
 	a.saveHistory()
 }
 
-// historyFile returns where the listening history lives, creating the
-// directory on first use. Without a window and without an explicit path it
-// returns nothing: tests keep history in memory unless they point it at a
-// temporary file.
-func (a *app) historyFile() string {
-	if a.historyPath != "" {
-		return a.historyPath
-	}
-	if a.win == nil {
-		return ""
-	}
-	directory, err := mygo.App.Path(mygo.PathUserData)
-	if err != nil {
-		return ""
-	}
-	a.historyPath = filepath.Join(directory, "history.json")
-	return a.historyPath
-}
-
 // loadHistory starts reading the history once, off the main thread: the file
-// holds thousands of entries. A missing or unreadable file means no history
-// rather than an error the user must see. Plays recorded before the read
-// finishes are kept in front of what it brings, and written with it.
+// holds thousands of entries. Plays recorded before the read finishes are
+// kept behind what it brings, and written with it.
 func (a *app) loadHistory() {
 	if a.historyLoaded || a.historyLoading {
 		return
 	}
 	a.historyLoading = true
-	path := a.historyFile()
-	a.run(func() {
-		entries := readHistory(path)
-		a.update(func() {
-			pending := len(a.history) > 0
-			a.history = append(entries, a.history...)
-			if len(a.history) > maxHistoryEntries {
-				a.history = slices.Delete(a.history, 0, len(a.history)-maxHistoryEntries)
-			}
-			a.historyLoaded, a.historyLoading = true, false
-			if pending {
-				a.saveHistory()
-			}
-		})
+	path := a.historyPath
+	spawn(a, func() []history.Entry { return history.Read(path) }, func(entries []history.Entry) {
+		pending := len(a.history) > 0
+		a.history = history.Append(entries, a.history...)
+		a.historyLoaded, a.historyLoading = true, false
+		if pending {
+			a.saveHistory()
+		}
 	})
 }
 
-// readHistory reads the history file, and nothing when it is not there.
-func readHistory(path string) []historyEntry {
-	if path == "" {
-		return nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Printf("reading listening history: %v", err)
-		}
-		return nil
-	}
-	var entries []historyEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		log.Printf("listening history in %s is not readable, starting fresh: %v", path, err)
-		return nil
-	}
-	return entries
-}
-
-// saveHistory writes the history off the main thread, one write at a time.
-// It keeps its own copy: the caller may keep appending while it writes.
+// saveHistory writes the history off the main thread. It writes a copy: the
+// main thread may keep appending while it writes.
 func (a *app) saveHistory() {
-	path := a.historyFile()
+	path := a.historyPath
 	if path == "" || !a.historyLoaded {
 		return
 	}
-	history := append([]historyEntry(nil), a.history...)
+	entries := append([]history.Entry(nil), a.history...)
 	a.run(func() {
-		data, err := json.MarshalIndent(history, "", "  ")
-		if err != nil {
-			log.Printf("saving listening history: %v", err)
-			return
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			log.Printf("saving listening history: %v", err)
-			return
-		}
-		if err := writeFileAtomic(path, data, 0o600); err != nil {
+		if err := history.Write(path, entries); err != nil {
 			log.Printf("saving listening history: %v", err)
 		}
 	})
-}
-
-// dayCount is one day of listening.
-type dayCount struct {
-	day   time.Time
-	plays int
-}
-
-// statsSummary is what the stats page shows.
-type statsSummary struct {
-	totalPlays   int
-	totalArtists int
-	byDay        []dayCount
-	topTracks    []trackCount
-	topArtists   []trackCount
-}
-
-// trackCount counts the plays of one track or artist.
-type trackCount struct {
-	title  string
-	artist string
-	plays  int
-}
-
-// summarizeHistory folds the history into totals, daily counts for the last
-// days days, and the most played tracks and artists.
-func summarizeHistory(entries []historyEntry, now time.Time, days int) statsSummary {
-	var summary statsSummary
-	seenArtists := make(map[string]struct{})
-	tracks := make(map[string]*trackCount)
-	artists := make(map[string]*trackCount)
-	cutoff := startOfDay(now).AddDate(0, 0, -days+1)
-	summary.byDay = make([]dayCount, days)
-	for d := range summary.byDay {
-		summary.byDay[d].day = cutoff.AddDate(0, 0, d)
-	}
-	// Days are told apart by their calendar number, so placing a play costs
-	// arithmetic instead of formatting its date into a string to look up.
-	firstDay := calendarDay(cutoff)
-	for _, e := range entries {
-		if e.PlayedAt.Before(cutoff) {
-			continue
-		}
-		summary.totalPlays++
-		key := e.VideoID
-		if key == "" {
-			key = e.Title
-		}
-		tc := tracks[key]
-		if tc == nil {
-			tc = &trackCount{title: e.Title, artist: e.Artist}
-			tracks[key] = tc
-		}
-		tc.plays++
-		if e.Artist != "" {
-			seenArtists[e.Artist] = struct{}{}
-			ac := artists[e.Artist]
-			if ac == nil {
-				ac = &trackCount{title: e.Artist}
-				artists[e.Artist] = ac
-			}
-			ac.plays++
-		}
-		if i := calendarDay(e.PlayedAt) - firstDay; i >= 0 && i < days {
-			summary.byDay[i].plays++
-		}
-	}
-	summary.totalArtists = len(seenArtists)
-	summary.topTracks = topCounts(tracks, 5)
-	summary.topArtists = topCounts(artists, 5)
-	return summary
-}
-
-// calendarDay numbers the day t falls on, in its own zone, counting from a
-// fixed origin, so consecutive days differ by one whatever the zone's offset.
-func calendarDay(t time.Time) int {
-	y, m, d := t.Date()
-	return int(time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix() / 86400)
 }
 
 // statsMemo holds the summary the stats page last built, and what it was built
 // from. The page rebuilds on every frame of an animation, but the history only
 // changes when a track starts.
 type statsMemo struct {
-	summary statsSummary
+	summary history.Summary
 	entries int
 	last    time.Time
 	days    int
@@ -231,44 +75,23 @@ type statsMemo struct {
 	valid   bool
 }
 
-// summary returns the summary of the history over days days ending today,
-// folding the history again only when it has changed.
-func (a *app) statsSummary(now time.Time, days int) statsSummary {
+// statsSummary returns the summary of the history over days days ending
+// today, folding the history again only when it has changed.
+func (a *app) statsSummary(now time.Time, days int) history.Summary {
 	var last time.Time
 	if n := len(a.history); n > 0 {
 		last = a.history[n-1].PlayedAt
 	}
 	memo := &a.stats
-	today := calendarDay(now)
+	today := history.CalendarDay(now)
 	if memo.valid && memo.entries == len(a.history) && memo.last.Equal(last) && memo.days == days && memo.today == today {
 		return memo.summary
 	}
 	*memo = statsMemo{
-		summary: summarizeHistory(a.history, now, days),
+		summary: history.Summarize(a.history, now, days),
 		entries: len(a.history), last: last, days: days, today: today, valid: true,
 	}
 	return memo.summary
-}
-
-// topCounts keeps the n highest counts, most plays first.
-func topCounts(counts map[string]*trackCount, n int) []trackCount {
-	all := make([]trackCount, 0, len(counts))
-	for _, c := range counts {
-		all = append(all, *c)
-	}
-	sort.Slice(all, func(i, j int) bool {
-		if all[i].plays != all[j].plays {
-			return all[i].plays > all[j].plays
-		}
-		return all[i].title < all[j].title
-	})
-	return all[:min(len(all), n)]
-}
-
-// startOfDay is midnight of the day t falls on, in its own zone.
-func startOfDay(t time.Time) time.Time {
-	y, m, d := t.Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
 }
 
 // statsRanges are the day counts the stats page offers.
@@ -277,10 +100,6 @@ var statsRanges = []int{7, 14, 30}
 // statsPage shows listening totals, a chart of plays per day, and the most
 // played tracks and artists, all from the local history.
 func (a *app) statsPage(c *ui.Context) {
-	a.loadHistory()
-	if a.statsRange == 0 {
-		a.statsRange = 14
-	}
 	summary := a.statsSummary(c.Now(), a.statsRange)
 	ui.Scroll(c).Grow(1).Padding(0, pageGutter, a.clearance()).Children(func() {
 		ui.Column(c).MaxWidth(780).Gap(16).Children(func() {
@@ -299,19 +118,19 @@ func (a *app) statsPage(c *ui.Context) {
 			})
 			a.statsTotals(c, summary)
 			a.playsChart(c, summary)
-			a.topList(c, "Most played", summary.topTracks, true)
-			a.topList(c, "Top artists", summary.topArtists, false)
+			a.topList(c, "Most played", summary.TopTracks, true)
+			a.topList(c, "Top artists", summary.TopArtists, false)
 		})
 	})
 }
 
 // statsTotals shows the headline numbers.
-func (a *app) statsTotals(c *ui.Context, summary statsSummary) {
+func (a *app) statsTotals(c *ui.Context, summary history.Summary) {
 	sc := m3.Of(c).Scheme
 	ui.Row(c).Gap(16).Children(func() {
 		for _, total := range []struct{ value, label string }{
-			{strconv.Itoa(summary.totalPlays), "plays"},
-			{strconv.Itoa(summary.totalArtists), "artists"},
+			{strconv.Itoa(summary.Plays), "plays"},
+			{strconv.Itoa(summary.Artists), "artists"},
 		} {
 			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Padding(20).Gap(4).Radius(m3.ExtraLarge).
 				Background(sc.SurfaceContainerLow).Children(func() {
@@ -323,27 +142,25 @@ func (a *app) statsTotals(c *ui.Context, summary statsSummary) {
 }
 
 // playsChart draws the plays of each day as bars, using ui/chart scales.
-func (a *app) playsChart(c *ui.Context, summary statsSummary) {
+func (a *app) playsChart(c *ui.Context, summary history.Summary) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Plays per day", m3.IconTrending, func() {
-		max := 1
-		for _, d := range summary.byDay {
-			max = maxInt(max, d.plays)
-		}
-		labels := make([]string, len(summary.byDay))
-		for i, d := range summary.byDay {
-			labels[i] = d.day.Format("Jan 2")
+		most := 1
+		labels := make([]string, len(summary.ByDay))
+		for i, d := range summary.ByDay {
+			most = max(most, d.Plays)
+			labels[i] = d.Day.Format("Jan 2")
 		}
 		x := chart.NewBand(labels...).Padding(0.35, 0.2)
-		y := chart.NewLinear(0, float64(max)).Nice(4)
+		y := chart.NewLinear(0, float64(most)).Nice(4)
 		chart.Plot(c, chart.Axes{Left: y.Ticks(4)}, func(area ui.Element) {
 			area.Height(180)
-			for i, d := range summary.byDay {
+			for i, d := range summary.ByDay {
 				span := x.Band(i)
-				height := y.Span(0, float64(d.plays))
+				height := y.Span(0, float64(d.Plays))
 				bar := chart.Rect(c, span, height)
 				fill := sc.Primary
-				if d.plays == 0 {
+				if d.Plays == 0 {
 					fill = sc.SurfaceContainerHighest
 				}
 				bar.Background(fill).Radius(m3.Small)
@@ -353,7 +170,7 @@ func (a *app) playsChart(c *ui.Context, summary statsSummary) {
 }
 
 // topList names the most played tracks or artists with their counts.
-func (a *app) topList(c *ui.Context, title string, counts []trackCount, showArtist bool) {
+func (a *app) topList(c *ui.Context, title string, counts []history.Count, showArtist bool) {
 	if len(counts) == 0 {
 		return
 	}
@@ -363,28 +180,20 @@ func (a *app) topList(c *ui.Context, title string, counts []trackCount, showArti
 				ui.Row(c).Gap(12).AlignItems(ui.Center).Padding(8, 4).Children(func() {
 					m3.Text(c, m3.TitleMedium, strconv.Itoa(i+1)+".").Width(28).Shrink(0).TextColor(m3.Of(c).Scheme.OnSurfaceVariant)
 					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-						name := tc.title
+						name := tc.Title
 						if name == "" {
 							name = "Unknown track"
 						}
 						m3.EmphasizedText(c, m3.BodyLarge, name).SingleLine()
-						if showArtist && tc.artist != "" {
-							m3.Text(c, m3.BodySmall, tc.artist).SingleLine().TextColor(m3.Of(c).Scheme.OnSurfaceVariant)
+						if showArtist && tc.Artist != "" {
+							m3.Text(c, m3.BodySmall, tc.Artist).SingleLine().TextColor(m3.Of(c).Scheme.OnSurfaceVariant)
 						}
 					})
-					m3.Text(c, m3.LabelLarge, pluralPlays(tc.plays)).TextColor(m3.Of(c).Scheme.OnSurfaceVariant)
+					m3.Text(c, m3.LabelLarge, pluralPlays(tc.Plays)).TextColor(m3.Of(c).Scheme.OnSurfaceVariant)
 				})
 			}
 		})
 	})
-}
-
-// maxInt is max for ints, where the builtin needs identical types.
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // pluralPlays names a play count.

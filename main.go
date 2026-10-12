@@ -6,285 +6,31 @@
 // Playback resolves a stream URL and decodes it in a child ffmpeg; see
 // package player. The interface is built from the components of package m3,
 // which take their colours, shapes and motion from one theme.
+//
+// The main package is the app itself: its state, the pages and the views
+// that draw them. Everything that can stand on its own lives under internal.
+// See AGENTS.md for the conventions the package keeps.
 package main
 
 import (
-	"context"
 	"log"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/audio"
+	"github.com/elianiva/meiro/internal/cookies"
+	"github.com/elianiva/meiro/internal/proc"
+	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/systemmedia"
-	"github.com/elianiva/meiro/youtube"
 )
-
-// app is the state the window shows.
-type app struct {
-	win                *mygo.Window
-	router             *ui.Router
-	player             *player.Player
-	systemMedia        systemmedia.Session
-	seekVersion        uint64
-	thumbs             *thumbCache
-	audioCache         *audioCache
-	retiredAudioCaches []*audioCache
-	audioCacheMu       sync.RWMutex
-
-	// run runs work off the main thread. Tests replace it with a runner
-	// that runs the work inline, so a frame sees its result at once.
-	run func(work func())
-
-	// schedule runs work once a delay passes, and returns a way to cancel it.
-	// It debounces the search suggestions; tests run the work at once.
-	schedule func(delay time.Duration, work func()) (cancel func())
-
-	// The YouTube clients: public browses without an account, authed with
-	// its cookie once the user signs in. The store keeps the sign-in across
-	// restarts.
-	public *youtube.Client
-	authed *youtube.Client
-	// ytDlpCookie is the signed-in session used if the external extractor
-	// needs the same authentication as the InnerTube client.
-	ytDlpCookie string
-	// newClient makes the client that carries an account's cookie; tests
-	// replace it with one that needs no network.
-	newClient func(*youtube.CookieAuth) *youtube.Client
-	store     cookieStore
-	// signInSources lists the browsers a session can be imported from, which
-	// is also where it is read again once YouTube retires its cookie. Tests
-	// replace it with one that needs no browser.
-	signInSources func() []importSource
-	// account is the signed-in account, and accounts the channels it can act
-	// as, for the switcher in its menu.
-	account  youtube.AccountDetails
-	accounts []youtube.AccountChannel
-	signedIn bool
-	signIn   signInState
-	// newPlaylist is the dialog that names a playlist to make, and
-	// addToPlaylist the one that puts a song in a playlist.
-	newPlaylist   newPlaylistState
-	addToPlaylist addToPlaylistState
-	// signInAttempt invalidates work when a sign-in dialog is dismissed.
-	signInAttempt atomic.Uint64
-	// credentialMu serializes restore, save and delete operations so a late
-	// restore or cancelled sign-in cannot resurrect a removed session.
-	credentialMu       sync.Mutex
-	savedSignInAttempt uint64 // guarded by credentialMu
-	// credentialDeletePending prevents a new sign-in from racing a sign-out
-	// deletion and having its freshly saved session deleted afterward.
-	credentialDeletePending bool
-	// accountGen numbers the changes of account, so that the answer to a
-	// question asked before a sign-in or sign-out is not taken as its result.
-	accountGen int
-	// notice is a message for the next frame to show as a toast.
-	notice string
-
-	// What the user chose, and where it is kept; empty keeps nothing.
-	settings            settings
-	settingsPath        string
-	saver               settingsWriter
-	cacheSongsText      string
-	cacheLimitError     string
-	cacheDirectoryText  string
-	cacheDirectoryError string
-	// The theme being shown. A change of colours glides from one scheme to
-	// the next rather than cutting. themeCached is the last theme resolved,
-	// reused while the settings and appearance that make it are unchanged.
-	shown     *m3.Theme
-	themeTo   *m3.Theme
-	themeFrom m3.Scheme
-	themeAt   time.Time
-	// themeCached, themeCachedCfg and themeCachedDark remember the theme
-	// settings.config and the appearance last resolved.
-	themeCached     *m3.Theme
-	themeCachedCfg  m3.Config
-	themeCachedDark bool
-	// dynamic is the seed taken from the artwork playing.
-	dynamic   ui.Color
-	dynamicOK bool
-
-	// The page shown, and what it holds.
-	location    string
-	feed        pageState
-	search      searchState
-	focusSearch bool
-	rows        []row
-	playable    []youtube.MusicItem
-	// rowsDirty marks the flattened rows stale. A change of the page's data
-	// sets it, and the next frame rebuilds them; otherwise they are reused.
-	// rowsKey is the shape they were built from, so a change a caller did not
-	// mark still rebuilds them.
-	rowsDirty bool
-	rowsKey   rowsKey
-	list      ui.ListState
-	// pageCache holds route data for MyGo history entries. It never owns UI
-	// elements, which only exist for one frame.
-	pageCache      map[string]*cachedPage
-	pageCacheOrder []string
-	pageLoadedAt   time.Time
-	// detail is the heading of the album, playlist or artist page shown,
-	// and details remembers one for each page the user opened, so going
-	// back to one finds its heading again.
-	detail      detail
-	details     map[string]detail
-	detailOrder []string
-	// carousels keep the scroll of each shelf.
-	carousels     map[string]*m3.CarouselState
-	carouselOrder []string
-	// previews caches the palette-style preview schemes the settings show,
-	// until the seed or appearance they are drawn from changes.
-	previews    map[m3.Style]m3.Scheme
-	previewSeed ui.Color
-	previewDark bool
-	menuOpen    bool
-	menu        itemMenu
-
-	// The full-screen player, and what its side panel shows.
-	npOpen      bool
-	npTab       int
-	npQueueOnly bool
-	queueList   ui.ListState
-	queueFollow string
-	volumeHeld  bool
-	lyrics      lyricsState
-	related     relatedState
-	relatedList ui.ListState
-
-	// Playback.
-	current youtube.MusicItem
-	queue   []youtube.MusicItem
-	index   int
-	// recommendationStart marks the first generated track in queue; tracks
-	// before it came from the user's selected page or playlist.
-	recommendationStart int
-
-	// stopTick ends the ticker; stopTicking closes it once.
-	stopTick          chan struct{}
-	stopOnce          sync.Once
-	playNextID        string
-	queueSource       string
-	upNextOptions     youtube.UpNextOptions
-	upNextGeneration  int
-	upNextLoading     bool
-	upNextFetched     bool
-	upNextErr         string
-	upNextToken       string
-	upNextSeen        map[string]struct{}
-	recommendationIDs map[string]struct{}
-	waitingForAuto    bool
-	total             time.Duration
-	scrub             float64
-	scrubbing         bool
-	volume            float64
-	muted             float64 // the volume to return to, while muted
-	shuffle           bool
-	repeat            repeatMode
-	playErr           string
-	// resolving is set from the moment a track is chosen until its audio URL
-	// is found, and streamGen numbers those requests, so that only the latest
-	// one plays when it lands.
-	resolving  bool
-	streamGen  int
-	streamStop context.CancelFunc
-	// streams remembers resolved audio URLs, including those of tracks
-	// resolved ahead of their turn.
-	streams *streamCache
-	// hoverKey is the song the pointer rests on, hoverStop cancels its
-	// pending lookup, and hoverBusy is set while a lookup runs.
-	hoverKey  string
-	hoverStop func()
-	hoverBusy bool
-	// opening is the album or playlist whose first song is being looked up
-	// to play, so that a second press does not look it up again.
-	opening string
-
-	// Desktop integrations. awakeRelease drops the sleep assertion; tray is
-	// the menu-bar icon while it shows; suspendedWhilePlaying remembers a
-	// pause the system sleep caused, to undo on wake.
-	awakeRelease          func()
-	tray                  *mygo.Tray
-	suspendedWhilePlaying bool
-	historyPath           string
-	history               []historyEntry
-	historyLoaded         bool
-	historyLoading        bool
-	trayShown             trayShown // what the tray shows, to skip identical updates
-	dynamicFor            string    // the artwork the dynamic colour was last taken from
-	statsRange            int       // days the stats page covers: 7, 14 or 30
-	stats                 statsMemo
-	listWidth             float32 // width the page's list had in the last frame
-	knownPlaylists        knownPlaylists
-
-	// job numbers page loads, so a slow one for a page the user has left
-	// is dropped when it lands.
-	job    int
-	cancel context.CancelFunc
-}
-
-// repeatMode is what happens when a track, or the queue, ends.
-type repeatMode int
-
-const (
-	repeatOff   repeatMode = iota // play on, and stop at the end of the queue
-	repeatQueue                   // go back to the first track after the last
-	repeatTrack                   // play the same track again
-)
-
-// detail remembers what the page being opened is, for its heading.
-type detail struct {
-	title    string
-	subtitle string
-	art      string
-	kind     string
-}
-
-// relatedState is the related songs tab for the track playing.
-type relatedState struct {
-	videoID string
-	loading bool
-	items   []youtube.MusicItem
-	err     string
-}
-
-func newApp() *app {
-	var playerOptions []player.Option
-	if ffmpeg, err := toolPath("ffmpeg"); err == nil {
-		playerOptions = append(playerOptions, player.WithFFmpeg(ffmpeg))
-	}
-	a := &app{
-		router:              ui.NewRouter("/home"),
-		player:              player.New(playerOptions...),
-		settings:            defaultSettings(),
-		cacheSongsText:      strconv.Itoa(defaultAudioCacheLimit),
-		details:             make(map[string]detail),
-		carousels:           make(map[string]*m3.CarouselState),
-		pageCache:           make(map[string]*cachedPage),
-		recommendationStart: -1,
-		stopTick:            make(chan struct{}),
-		streams:             newStreamCache(ytDlpStream),
-	}
-	a.run = func(work func()) { go work() }
-	a.schedule = func(delay time.Duration, work func()) func() {
-		timer := time.AfterFunc(delay, work)
-		return func() { timer.Stop() }
-	}
-	a.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
-		return youtube.NewClient(youtube.Options{CookieAuth: auth})
-	}
-	a.signInSources = importSources
-	a.thumbs = newThumbCache(a.refresh)
-	return a
-}
 
 func main() {
 	// The heap is mostly artwork, which lives as long as the user browses and
@@ -292,7 +38,7 @@ func main() {
 	// before a collection; half as much costs a little time and saves tens of
 	// megabytes.
 	debug.SetGCPercent(50)
-	sweepTempRoot()
+	proc.SweepTemp()
 	// A second launch hands its work to the running app instead of starting
 	// another player with its own audio.
 	if !mygo.App.RequestSingleInstanceLock() {
@@ -304,7 +50,7 @@ func main() {
 	a := newApp()
 	mygo.App.WhenReady(func() {
 		a.setup()
-		a.win = mygo.NewWindow(mygo.WindowOptions{
+		a.desktop = &desktop{win: mygo.NewWindow(mygo.WindowOptions{
 			Title:         "Meiro",
 			Width:         1180,
 			Height:        760,
@@ -313,22 +59,22 @@ func main() {
 			StateKey:      "meiro",
 			TitleBarStyle: mygo.TitleBarHidden,
 			Content:       ui.View(a.view),
-		})
+		})}
 		session, err := systemmedia.New(a.systemMediaControls())
 		if err != nil {
 			log.Printf("system media controls unavailable: %v", err)
 		} else {
-			a.systemMedia = session
-			a.syncSystemMedia()
+			a.media = session
 		}
 		a.setupDesktop()
-		// Background work reaches the window through a.win, so it starts only
-		// once the window is there.
+		a.syncSystemMedia()
+		// Background work reaches the window through the desktop, so it
+		// starts only once the window is there.
 		a.restoreAccount()
 		a.loadHistory()
-		a.startTicker(a.stopTick)
-		a.watchSignIn(a.stopTick)
-		a.win.OnClosed(a.stopTicking)
+		a.startTicker()
+		a.watchSession()
+		a.desktop.win.OnClosed(a.stopTicking)
 	})
 	err := mygo.App.Run()
 	a.stopTicking()
@@ -338,242 +84,184 @@ func main() {
 	}
 }
 
-// shutdown flushes settings before closing resources that belong to the app.
-// The desktop integrations only run with a window: tests shut the app down
-// without ever starting one, where asking the system anything would wait for
-// an event loop that does not run.
-func (a *app) shutdown() {
-	a.saver.wait()
-	if a.win != nil {
-		a.releaseAwake()
-		mygo.GlobalShortcut.UnregisterAll()
-		if a.tray != nil {
-			a.tray.Destroy()
-			a.tray = nil
-		}
+// playerOptions decode with the ffmpeg the app ships, when there is one.
+func playerOptions() []player.Option {
+	if ffmpeg, err := proc.Tool("ffmpeg"); err == nil {
+		return []player.Option{player.WithFFmpeg(ffmpeg)}
 	}
-	if a.systemMedia != nil {
-		if closeErr := a.systemMedia.Close(); closeErr != nil {
-			log.Printf("close system media controls: %v", closeErr)
+	return nil
+}
+
+// setup reads the settings, opens the audio cache and the credential store,
+// and makes the public client.
+func (a *app) setup() {
+	if directory, err := mygo.App.Path(mygo.PathUserData); err == nil {
+		a.saver.Path = filepath.Join(directory, "settings.json")
+		a.settings = settings.Load(a.saver.Path)
+		a.account.creds.store = &cookies.FileStore{Path: filepath.Join(directory, "cookie.txt")}
+		a.historyPath = filepath.Join(directory, "history.json")
+	} else {
+		a.account.signIn.err = err.Error()
+	}
+	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
+	a.volume = a.settings.Volume
+	a.player.SetVolume(a.volume / 100)
+	a.openAudioCache()
+}
+
+// openAudioCache opens the audio cache where the settings say, or at the
+// default location when that folder is gone.
+func (a *app) openAudioCache() {
+	defaultRoot, err := mygo.App.Path(mygo.PathCache)
+	if err != nil {
+		log.Printf("finding default audio cache directory: %v", err)
+		return
+	}
+	root := a.settings.CacheDirectory
+	if root == "" {
+		root = defaultRoot
+	}
+	a.cacheDirectoryText = root
+	cache, canonical, err := audio.Open(root, a.settings.CacheSongs)
+	if err != nil && root != defaultRoot {
+		log.Printf("setting up audio cache at %q: %v; using the default location", root, err)
+		a.cacheDirError = "The saved folder is unavailable. Using the default cache location."
+		cache, canonical, err = audio.Open(defaultRoot, a.settings.CacheSongs)
+	}
+	if err != nil {
+		log.Printf("setting up audio cache: %v", err)
+		return
+	}
+	a.cacheDirectoryText = canonical
+	a.replaceAudioCache(cache)
+}
+
+// shutdown flushes the settings, then closes what belongs to the app.
+func (a *app) shutdown() {
+	a.saver.Wait()
+	a.desktop.close()
+	if a.media != nil {
+		if err := a.media.Close(); err != nil {
+			log.Printf("close system media controls: %v", err)
 		}
 	}
 	a.player.Stop()
 	a.closeAudioCaches()
 }
 
-// setup prepares the account and the settings: the token store and the two
-// clients.
-func (a *app) setup() {
-	if directory, err := mygo.App.Path(mygo.PathUserData); err == nil {
-		a.settingsPath = filepath.Join(directory, "settings.json")
-		a.settings = loadSettings(a.settingsPath)
-		a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
-	}
-	a.volume = a.settings.Volume
-	a.player.SetVolume(a.volume / 100)
-	defaultRoot, rootErr := mygo.App.Path(mygo.PathCache)
-	if rootErr != nil {
-		log.Printf("finding default audio cache directory: %v", rootErr)
-	} else {
-		cacheRoot := a.settings.CacheDirectory
-		if cacheRoot == "" {
-			cacheRoot = defaultRoot
-		}
-		a.cacheDirectoryText = cacheRoot
-		cache, canonicalRoot, cacheErr := newAudioCacheAtRoot(cacheRoot, a.settings.CacheSongs)
-		if cacheErr != nil && cacheRoot != defaultRoot {
-			log.Printf("setting up audio cache at %q: %v; using the default location", cacheRoot, cacheErr)
-			a.cacheDirectoryError = "The saved folder is unavailable. Using the default cache location."
-			cache, canonicalRoot, cacheErr = newAudioCacheAtRoot(defaultRoot, a.settings.CacheSongs)
-		}
-		if cacheErr != nil {
-			log.Printf("setting up audio cache: %v", cacheErr)
-		} else {
-			a.cacheDirectoryText = canonicalRoot
-			a.replaceAudioCache(cache)
-		}
-	}
-	a.public = youtube.NewClient(youtube.Options{})
-	store, err := newCookieStore()
-	if err != nil {
-		a.signIn.err = err.Error()
-		return
-	}
-	a.store = store
-}
+// stopTicking ends the periodic work. The window closing and the app exiting
+// both call it.
+func (a *app) stopTicking() { a.stopOnce.Do(func() { close(a.stop) }) }
 
-func (a *app) currentAudioCache() *audioCache {
-	a.audioCacheMu.RLock()
-	defer a.audioCacheMu.RUnlock()
-	return a.audioCache
-}
-
-func (a *app) replaceAudioCache(cache *audioCache) *audioCache {
-	a.audioCacheMu.Lock()
-	defer a.audioCacheMu.Unlock()
-	previous := a.audioCache
-	if previous != nil && previous != cache {
-		a.retiredAudioCaches = append(a.retiredAudioCaches, previous)
-	}
-	a.audioCache = cache
-	return previous
-}
-
-func (a *app) closeAudioCaches() {
-	a.audioCacheMu.Lock()
-	caches := append(a.retiredAudioCaches, a.audioCache)
-	a.retiredAudioCaches = nil
-	a.audioCache = nil
-	a.audioCacheMu.Unlock()
-	for _, cache := range caches {
-		cache.close()
-	}
-}
-
-// chooseAudioCacheDirectory opens the native folder picker, then switches
-// future playback to an app-owned audio folder inside the chosen directory.
-func (a *app) chooseAudioCacheDirectory() {
-	defaultPath := a.cacheDirectoryText
-	currentRoot := a.cacheDirectoryText
-	defaultRoot, _ := mygo.App.Path(mygo.PathCache)
-	if defaultPath == "" {
-		defaultPath = defaultRoot
-	}
-	limit, parent := a.settings.CacheSongs, a.win
-	a.run(func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent: parent, Title: "Choose audio cache folder", DefaultPath: defaultPath,
-			Directory: true, CreateDirectories: true,
-		})
-		if err != nil {
-			a.update(func() { a.cacheDirectoryError = "Could not open the folder picker: " + err.Error() })
-			return
-		}
-		if len(paths) == 0 {
-			return
-		}
-		root, err := filepath.Abs(paths[0])
-		if err != nil {
-			a.update(func() { a.cacheDirectoryError = "Could not use that folder: " + err.Error() })
-			return
-		}
-		if filepath.Clean(root) == filepath.Clean(currentRoot) {
-			a.update(func() {
-				if filepath.Clean(root) == filepath.Clean(defaultRoot) {
-					a.settings.CacheDirectory = ""
-				} else {
-					a.settings.CacheDirectory = root
-				}
-				a.cacheDirectoryText = root
-				a.cacheDirectoryError = ""
-				a.saveSettings()
-			})
-			return
-		}
-		cache, root, err := newAudioCacheAtRoot(root, limit)
-		if err != nil {
-			a.update(func() { a.cacheDirectoryError = "Could not use that folder: " + err.Error() })
-			return
-		}
-		a.update(func() {
-			cache.setLimit(a.settings.CacheSongs)
-			previous := a.replaceAudioCache(cache)
-			if filepath.Clean(root) == filepath.Clean(defaultRoot) {
-				a.settings.CacheDirectory = ""
-			} else {
-				a.settings.CacheDirectory = root
+// every runs fn once per interval off the main thread, until the app stops.
+func (a *app) every(interval time.Duration, fn func()) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-a.stop:
+				return
+			case <-ticker.C:
+				fn()
 			}
-			a.cacheDirectoryText = root
-			a.cacheDirectoryError = ""
-			a.saveSettings()
-			if previous != nil {
-				a.run(func() {
-					previous.close()
-					// The old location is app-owned and no longer used.
-					if previous.dir != cache.dir {
-						previous.purge()
-					}
-				})
-			}
-		})
-	})
+		}
+	}()
 }
 
-// saveSettings keeps the settings, off the main thread.
-func (a *app) saveSettings() {
-	if a.settingsPath == "" {
+// themeState is the theme being shown. A change of colours glides from one
+// scheme to the next rather than cutting.
+type themeState struct {
+	shown *m3.Theme
+	to    *m3.Theme
+	from  m3.Scheme
+	at    time.Time
+	// cached is the last theme resolved, reused while the configuration and
+	// appearance that make it are unchanged.
+	cached     *m3.Theme
+	cachedCfg  m3.Config
+	cachedDark bool
+	// dynamic is the seed taken from the artwork playing, and dynamicFor the
+	// artwork it was taken from.
+	dynamic    ui.Color
+	dynamicOK  bool
+	dynamicFor string
+	// previews caches the palette-style preview schemes the settings show,
+	// until the seed or appearance they are drawn from changes.
+	previews    map[m3.Style]m3.Scheme
+	previewSeed ui.Color
+	previewDark bool
+}
+
+// themeGlide is how long a change of colours takes.
+const themeGlide = 420 * time.Millisecond
+
+// resolveTheme returns the theme to draw this frame with: the one the
+// settings describe, glided to from the one before when it changed.
+func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
+	t := &a.theme
+	cfg := a.settings.Theme(uiFont)
+	if a.settings.Dynamic && t.dynamicOK {
+		cfg.Seed = t.dynamic
+	}
+	dark := c.Theme().Dark
+	if t.cached == nil || t.cachedCfg != cfg || t.cachedDark != dark {
+		t.cached, t.cachedCfg, t.cachedDark = m3.New(cfg, dark), cfg, dark
+	}
+	target := t.cached
+	if t.to == nil {
+		t.to, t.shown, t.from = target, target, target.Scheme
+		return target
+	}
+	if target.Config != t.to.Config || target.Dark != t.to.Dark {
+		t.from = t.shown.Scheme
+		t.to, t.at = target, c.Now()
+		if c.Preferences().ReduceMotion {
+			t.at = time.Time{} // no glide: cut to the new colours
+		}
+	}
+	k := float32(c.Now().Sub(t.at)) / float32(themeGlide)
+	if k >= 1 || t.at.IsZero() {
+		t.shown = t.to
+		return t.shown
+	}
+	shown := *t.to
+	shown.Scheme = t.from.Mix(t.to.Scheme, 1-(1-k)*(1-k)*(1-k))
+	t.shown = &shown
+	c.AnimationFrame()
+	return t.shown
+}
+
+// followArtwork takes the theme's seed from the artwork of the track playing,
+// when the user asked for it.
+func (a *app) followArtwork() {
+	t := &a.theme
+	art := a.current.Thumbnail
+	if !a.settings.Dynamic || art == "" || t.dynamicFor == art {
 		return
 	}
-	a.saver.save(&a.settings, a.settingsPath)
-}
-
-// client returns the client to use for a request: the account's when the
-// user is signed in, the public one otherwise.
-func (a *app) client() *youtube.Client {
-	if a.signedIn && a.authed != nil {
-		return a.authed
+	colour, has, ready := a.thumbs.Colour(art, playerArt)
+	if !ready {
+		return // the picture or its colour is still on the way; the cache wakes the view
 	}
-	return a.public
-}
-
-// update runs fn where the view can see its result, on the main thread, and
-// draws a frame. Without a window, as in tests, it runs fn at once.
-func (a *app) update(fn func()) {
-	if a.win == nil {
-		fn()
-		return
-	}
-	a.win.Update(fn)
-}
-
-// refresh draws a frame with what background work produced.
-func (a *app) refresh() {
-	if a.win != nil {
-		a.win.Invalidate()
+	t.dynamicFor = art
+	if has {
+		t.dynamic, t.dynamicOK = colour, true
 	}
 }
 
 // systemMediaControls maps operating-system commands to the app's playback
-// actions. Platform callbacks can arrive on another goroutine, so state
-// changes go through update before they touch the app.
+// actions. Platform callbacks arrive on other goroutines, so each goes
+// through update before it touches the app.
 func (a *app) systemMediaControls() systemmedia.Controls {
+	on := func(fn func()) func() { return func() { a.update(fn) } }
 	return systemmedia.Controls{
-		Play: func() {
-			a.update(func() {
-				if a.resolving || a.player.Playing() {
-					return
-				}
-				if a.playErr != "" || !a.player.Active() || a.player.Ended() {
-					if a.current.VideoID != "" {
-						a.start(a.current)
-					}
-				} else {
-					a.player.Resume()
-				}
-				a.syncSystemMedia()
-			})
-		},
-		Pause: func() {
-			a.update(func() {
-				a.player.Pause()
-				a.syncSystemMedia()
-			})
-		},
-		Toggle: func() {
-			a.update(func() {
-				a.togglePlay()
-				a.syncSystemMedia()
-			})
-		},
-		Stop: func() {
-			a.update(func() { a.stopAtQueueEnd() })
-		},
-		Next: func() {
-			a.update(func() { a.advance() })
-		},
-		Previous: func() {
-			a.update(func() { a.previous() })
-		},
+		Play:     on(a.resume),
+		Pause:    on(a.pause),
+		Toggle:   on(a.togglePlay),
+		Stop:     on(a.stopAtQueueEnd),
+		Next:     on(a.advance),
+		Previous: on(a.previous),
 		Seek: func(position time.Duration) {
 			a.update(func() { a.seek(position) })
 		},
@@ -584,61 +272,61 @@ func (a *app) systemMediaControls() systemmedia.Controls {
 			})
 		},
 		SetShuffle: func(shuffle bool) {
-			a.update(func() {
-				a.setShuffle(shuffle)
-			})
+			a.update(func() { a.setShuffle(shuffle) })
 		},
-		SetRepeat: func(status string) {
+		SetLoop: func(loop systemmedia.Loop) {
 			a.update(func() {
-				switch status {
-				case "Track":
-					a.repeat = repeatTrack
-				case "Playlist":
-					a.repeat = repeatQueue
-				default:
-					a.repeat = repeatOff
-				}
+				a.repeat = repeatFromLoop(loop)
 				a.syncSystemMedia()
 			})
 		},
 	}
 }
 
-// syncSystemMedia publishes a snapshot of app-owned playback state. The
-// platform adapters throttle position updates to avoid flooding the OS. It
-// also lines up the sleep assertion and the tray with the player's state,
-// so every path that changes playback keeps them right through this one.
+// repeatLoops pairs each repeat mode with the loop status the system shows.
+var repeatLoops = [...]systemmedia.Loop{
+	repeatOff:   systemmedia.LoopNone,
+	repeatQueue: systemmedia.LoopPlaylist,
+	repeatTrack: systemmedia.LoopTrack,
+}
+
+func repeatFromLoop(loop systemmedia.Loop) repeatMode {
+	for mode, l := range repeatLoops {
+		if l == loop {
+			return repeatMode(mode)
+		}
+	}
+	return repeatOff
+}
+
+// syncSystemMedia publishes a snapshot of playback to the system's media
+// controls, and lines the sleep assertion and the tray up with it. Every
+// path that changes playback calls it.
 func (a *app) syncSystemMedia() {
-	a.syncAwake()
-	a.syncTrayMedia()
-	if a.systemMedia == nil {
+	a.syncDesktop()
+	if a.media == nil {
 		return
 	}
 	status := systemmedia.Stopped
-	if a.player.Playing() {
+	switch {
+	case a.player.Playing():
 		status = systemmedia.Playing
-	} else if a.player.Paused() {
+	case a.player.Paused():
 		status = systemmedia.Paused
 	}
 	position := time.Duration(0)
 	if a.player.Active() {
 		position = a.player.Position()
 	}
+	hasTrack := a.current.VideoID != ""
 	canNext := false
-	if a.current.VideoID != "" {
-		_, canNext = a.nextIndex()
+	if hasTrack {
+		_, canNext = a.queue.next(a.settings.AutoPlay, a.repeat)
 		if !canNext && a.settings.AutoPlay {
-			canNext = a.upNextLoading || !a.upNextFetched || a.upNextToken != ""
+			canNext = a.upNext.load.busy() || !a.upNext.fetched || a.upNext.token != ""
 		}
 	}
-	loopStatus := "None"
-	switch a.repeat {
-	case repeatTrack:
-		loopStatus = "Track"
-	case repeatQueue:
-		loopStatus = "Playlist"
-	}
-	if err := a.systemMedia.Update(systemmedia.State{
+	if err := a.media.Update(systemmedia.State{
 		VideoID:     a.current.VideoID,
 		Title:       a.current.Title,
 		Artist:      a.current.Subtitle,
@@ -647,168 +335,19 @@ func (a *app) syncSystemMedia() {
 		Position:    position,
 		SeekVersion: a.seekVersion,
 		Status:      status,
-		LoopStatus:  loopStatus,
+		Loop:        repeatLoops[a.repeat],
 		Volume:      a.volume / 100,
-		CanPlay:     a.current.VideoID != "",
+		CanPlay:     hasTrack,
 		CanPause:    a.player.Playing(),
 		CanNext:     canNext,
-		CanPrevious: a.current.VideoID != "",
+		CanPrevious: hasTrack,
 		CanSeek:     a.total > 0 && a.player.Active(),
 		Shuffle:     a.shuffle,
 	}); err != nil {
 		log.Printf("system media controls unavailable: %v", err)
-		if closeErr := a.systemMedia.Close(); closeErr != nil {
+		if closeErr := a.media.Close(); closeErr != nil {
 			log.Printf("close system media controls: %v", closeErr)
 		}
-		a.systemMedia = nil
+		a.media = nil
 	}
-}
-
-// resolveTheme returns the theme to draw this frame with: the one the
-// settings describe, glided to from the one before when it changed.
-func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
-	cfg := a.settings.config()
-	if a.settings.Dynamic && a.dynamicOK {
-		cfg.Seed = a.dynamic
-	}
-	dark := c.Theme().Dark
-	if a.themeCached == nil || a.themeCachedCfg != cfg || a.themeCachedDark != dark {
-		a.themeCached, a.themeCachedCfg, a.themeCachedDark = m3.New(cfg, dark), cfg, dark
-	}
-	target := a.themeCached
-	if a.themeTo == nil {
-		a.themeTo, a.shown = target, target
-		a.themeFrom = target.Scheme
-		return target
-	}
-	if target.Config != a.themeTo.Config || target.Dark != a.themeTo.Dark {
-		a.themeFrom = a.shown.Scheme
-		a.themeTo, a.themeAt = target, c.Now()
-		if c.Preferences().ReduceMotion {
-			a.themeAt = time.Time{} // no glide: cut to the new colours
-		}
-	}
-	const glide = 420 * time.Millisecond
-	k := float32(c.Now().Sub(a.themeAt)) / float32(glide)
-	if k >= 1 || a.themeAt.IsZero() {
-		a.shown = a.themeTo
-		return a.shown
-	}
-	shown := *a.themeTo
-	shown.Scheme = a.themeFrom.Mix(a.themeTo.Scheme, 1-(1-k)*(1-k)*(1-k))
-	a.shown = &shown
-	c.AnimationFrame()
-	return a.shown
-}
-
-// syncLocation loads the page the router shows, once per location.
-func (a *app) syncLocation() {
-	location := a.router.Location()
-	if location == a.location {
-		return
-	}
-	a.onNavigate() // caches the page it leaves under the old location
-	a.location = location
-}
-
-// stopTicking ends the periodic work. The window closing and the app exiting
-// both call it.
-func (a *app) stopTicking() { a.stopOnce.Do(func() { close(a.stopTick) }) }
-
-// pollInterval is how often the ticker looks at the player.
-const pollInterval = 250 * time.Millisecond
-
-// startTicker owns the periodic player work: it wakes the main thread while
-// a track plays or has just ended or failed, and stops when stop is closed.
-// The view only describes the state the polls leave behind.
-func (a *app) startTicker(stop <-chan struct{}) {
-	go func() {
-		ticker := time.NewTicker(pollInterval)
-		defer ticker.Stop()
-		failure := ""
-		for {
-			select {
-			case <-stop:
-				return
-			case <-ticker.C:
-			}
-			now := a.player.Failure()
-			if a.player.Playing() || a.player.Ended() || now != failure {
-				failure = now
-				a.update(a.poll)
-			}
-		}
-	}()
-}
-
-// poll advances what playback depends on: the player's position, the next
-// track when one ends, and the system media session. It runs on the main
-// thread, from the ticker.
-func (a *app) poll() {
-	if !a.player.Active() {
-		return
-	}
-	if failure := a.player.Failure(); failure != "" {
-		if a.playErr != failure {
-			a.playErr = failure
-			a.syncSystemMedia()
-		}
-		// ffmpeg gave up on the stream. The queue keeps its place: the track
-		// after this one plays, and the failure stays on the player until it
-		// does. A stream that stops because the sound did is not the queue's
-		// business, so it is left where it is.
-		if a.player.StreamFailed() {
-			a.advance()
-		}
-		return
-	}
-	if a.player.Ended() {
-		// A new track is already on its way; the old one's end is not news.
-		if !a.resolving {
-			a.trackEnded()
-		}
-		return
-	}
-	if a.player.Playing() {
-		a.ensureUpNext()
-		if !a.scrubbing {
-			a.scrub = a.player.Position().Seconds()
-		}
-		a.syncSystemMedia()
-	}
-}
-
-// trackEnded moves on when a track finishes: it repeats, or plays the next
-// one, or stops at the end of the queue.
-func (a *app) trackEnded() {
-	if a.repeat == repeatTrack {
-		a.start(a.current)
-		return
-	}
-	a.advance()
-}
-
-// nextIndex returns the place of the track that follows the current one in
-// the queue, and false when the queue is over.
-func (a *app) nextIndex() (int, bool) {
-	limit := len(a.queue)
-	if !a.settings.AutoPlay && a.recommendationStart >= 0 {
-		limit = a.recommendationStart
-	}
-	if a.playNextID != "" {
-		for i := max(a.index+1, 0); i < len(a.queue); i++ {
-			if a.queue[i].VideoID == a.playNextID {
-				return i, true
-			}
-		}
-	}
-	switch {
-	case limit == 0 || (!a.settings.AutoPlay && a.recommendationStart >= 0 && a.index >= limit):
-		return 0, false
-	case a.index+1 < limit:
-		return a.index + 1, true
-	case a.repeat == repeatQueue:
-		return 0, true
-	}
-	return 0, false
 }

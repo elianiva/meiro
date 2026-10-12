@@ -47,7 +47,10 @@ targets, and validates scripts and workflows.
 ## Make a focused change
 
 - Keep each pull request focused on one issue or closely related change.
-- Follow the existing Go style. CI checks `gofmt` and `gofumpt` formatting.
+- Follow the existing Go style. CI checks `gofmt` and `gofumpt` formatting,
+  and runs golangci-lint with the rules in `.golangci.yml`.
+- Read [`AGENTS.md`](AGENTS.md) before changing the app. It describes where
+  code goes, how background work reaches the UI, and how pages are added.
 - Add or update tests for behavior users or other packages rely on. Prefer
   deterministic tests that do not need a live YouTube session, network access,
   or an audio device.

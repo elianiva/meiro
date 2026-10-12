@@ -81,7 +81,7 @@ func loadingIndicator(c *ui.Context, size float32, shape, disc ui.Color) ui.Elem
 		}
 		var path ui.Path
 		const points = 120
-		for k := 0; k < points; k++ {
+		for k := range points {
 			t := float64(k) / points * 2 * math.Pi
 			rad := 1 + (1-s)*from.a*math.Cos(float64(from.n)*t+spin*float64(from.n)) +
 				s*to.a*math.Cos(float64(to.n)*t+spin*float64(to.n))
@@ -110,7 +110,7 @@ func Equalizer(c *ui.Context, size float32, playing bool, color ui.Color) ui.Ele
 		}
 		now := float64(p.Now().UnixMilli()) / 1000
 		bar := r.W / 5
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			h := float32(0.2)
 			if playing {
 				h = float32(0.35 + 0.65*(0.5+0.5*math.Sin(now*(5+float64(i)*1.7)+float64(i)*1.9)))

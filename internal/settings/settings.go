@@ -1,4 +1,5 @@
-package main
+// Package settings is what the user chose, kept between runs.
+package settings
 
 import (
 	"encoding/json"
@@ -6,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,11 +15,14 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/audio"
+	"github.com/elianiva/meiro/internal/fsutil"
 	"github.com/elianiva/meiro/m3"
 )
 
-// settings is what the user chose, kept between runs.
-type settings struct {
+// Settings is what the user chose. The zero value is not the defaults; use
+// Defaults or Load.
+type Settings struct {
 	// Seed is the colour the theme grows from, as "#rrggbb".
 	Seed string `json:"seed"`
 	// Mode is "system", "light" or "dark".
@@ -59,22 +62,23 @@ type settings struct {
 	OpenAtLogin bool `json:"openAtLogin"`
 }
 
-func defaultSettings() settings {
-	return settings{Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: defaultAudioCacheLimit, NotifyTrack: true, ShowTray: true}
+// Defaults is what a first run starts with.
+func Defaults() Settings {
+	return Settings{Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: true, ShowTray: true}
 }
 
 // clone returns a copy that shares no memory with s, for work that outlives
 // the caller's use of the settings.
-func (s *settings) clone() settings {
+func (s *Settings) clone() Settings {
 	c := *s
 	c.Recent = slices.Clone(s.Recent)
 	return c
 }
 
-// config returns the theme configuration the settings describe.
-func (s *settings) config() m3.Config {
+// Theme returns the theme configuration the settings describe, set in font.
+func (s *Settings) Theme(font string) m3.Config {
 	seed := m3.DefaultSeed
-	if parsed, ok := parseSeed(s.Seed); ok {
+	if parsed, ok := ParseSeed(s.Seed); ok {
 		seed = parsed
 	}
 	mode := m3.System
@@ -88,15 +92,16 @@ func (s *settings) config() m3.Config {
 	if style < 0 || int(style) >= len(m3.Styles()) {
 		style = m3.TonalSpot
 	}
-	return m3.Config{Seed: seed, Mode: mode, Style: style, Font: uiFont}
+	return m3.Config{Seed: seed, Mode: mode, Style: style, Font: font}
 }
 
-func (s *settings) setMode(mode m3.Mode) {
+// SetMode keeps a theme mode.
+func (s *Settings) SetMode(mode m3.Mode) {
 	s.Mode = strings.ToLower(mode.String())
 }
 
-// parseSeed reads "#rrggbb", and says no to anything else a file may hold.
-func parseSeed(text string) (ui.Color, bool) {
+// ParseSeed reads "#rrggbb", and says no to anything else a file may hold.
+func ParseSeed(text string) (ui.Color, bool) {
 	digits, ok := strings.CutPrefix(text, "#")
 	if !ok || len(digits) != 6 {
 		return ui.Color{}, false
@@ -108,12 +113,13 @@ func parseSeed(text string) (ui.Color, bool) {
 	return ui.RGB(uint8(rgb>>16), uint8(rgb>>8), uint8(rgb)), true
 }
 
-func seedHex(c ui.Color) string {
+// SeedHex writes a colour as "#rrggbb".
+func SeedHex(c ui.Color) string {
 	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
 }
 
-// remember puts a submitted search at the top of the recent ones.
-func (s *settings) remember(query string) {
+// Remember puts a submitted search at the top of the recent ones.
+func (s *Settings) Remember(query string) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return
@@ -128,10 +134,15 @@ func (s *settings) remember(query string) {
 // maxRecent is how many submitted searches the settings keep.
 const maxRecent = 8
 
-// loadSettings reads the settings file, and returns the defaults for one that
-// is missing or unreadable.
-func loadSettings(path string) settings {
-	s := defaultSettings()
+// Forget takes a search out of the recent ones.
+func (s *Settings) Forget(query string) {
+	s.Recent = slices.DeleteFunc(s.Recent, func(q string) bool { return q == query })
+}
+
+// Load reads the settings file, and returns the defaults for one that is
+// missing or unreadable.
+func Load(path string) Settings {
+	s := Defaults()
 	if path == "" {
 		return s
 	}
@@ -156,8 +167,8 @@ func loadSettings(path string) settings {
 	if read.Volume < 0 || read.Volume > 100 {
 		read.Volume = s.Volume
 	}
-	read.CacheSongs = validAudioCacheLimit(read.CacheSongs)
-	if _, ok := parseSeed(read.Seed); !ok {
+	read.CacheSongs = audio.ValidLimit(read.CacheSongs)
+	if _, ok := ParseSeed(read.Seed); !ok {
 		read.Seed = s.Seed
 	}
 	if read.Mode == "" {
@@ -166,45 +177,42 @@ func loadSettings(path string) settings {
 	return read
 }
 
-// save writes the settings atomically: see writeFileAtomic.
-func (s *settings) save(path string) error {
-	if path == "" {
-		return nil
-	}
+// save writes the settings atomically.
+func (s *Settings) save(path string) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	return writeFileAtomic(path, data, 0o600)
+	return fsutil.WriteFileAtomic(path, data, 0o600)
 }
 
-// settingsWriteDelay gives a burst of settings changes time to settle before
+// writeDelay gives a burst of settings changes time to settle before
 // writing the final state to disk.
-const settingsWriteDelay = 400 * time.Millisecond
+const writeDelay = 400 * time.Millisecond
 
-// settingsWriter saves settings off the main thread, one write at a time. A
-// save asked for while another runs replaces any waiting one, and the writer
-// waits for settingsWriteDelay before each write so a slider drag costs one
-// write instead of one for each frame.
-type settingsWriter struct {
+// Writer saves settings off the main thread, one write at a time. A save
+// asked for while another runs replaces any waiting one, and the writer waits
+// for writeDelay before each write so a slider drag costs one write instead
+// of one for each frame. The zero value writes nowhere; set Path.
+type Writer struct {
+	// Path is where the settings are written; empty keeps them in memory.
+	Path string
+
 	mu      sync.Mutex
-	next    *settings
-	path    string
+	next    *Settings
 	running bool
 	done    chan struct{}
 	flush   chan struct{}
-	write   func(*settings, string) error
-	after   func(time.Duration) <-chan time.Time
 }
 
-// save writes s to path soon. It keeps its own copy of s.
-func (w *settingsWriter) save(s *settings, path string) {
+// Save writes s soon. It keeps its own copy of s.
+func (w *Writer) Save(s *Settings) {
+	if w.Path == "" {
+		return
+	}
 	c := s.clone()
 	w.mu.Lock()
-	w.next, w.path = &c, path
+	w.next = &c
 	if w.running {
 		w.mu.Unlock()
 		return
@@ -217,7 +225,7 @@ func (w *settingsWriter) save(s *settings, path string) {
 	go w.drain(done)
 }
 
-func (w *settingsWriter) drain(done chan struct{}) {
+func (w *Writer) drain(done chan struct{}) {
 	defer close(done)
 	for {
 		w.mu.Lock()
@@ -226,34 +234,26 @@ func (w *settingsWriter) drain(done chan struct{}) {
 			w.mu.Unlock()
 			return
 		}
-		after := w.after
 		flush := w.flush
 		w.mu.Unlock()
-		if after == nil {
-			after = time.After
-		}
 		select {
-		case <-after(settingsWriteDelay):
+		case <-time.After(writeDelay):
 		case <-flush:
 		}
 
 		w.mu.Lock()
-		s, path := w.next, w.path
+		s := w.next
 		w.next = nil
-		write := w.write
 		w.mu.Unlock()
-		if write == nil {
-			write = (*settings).save
-		}
-		if err := write(s, path); err != nil {
+		if err := s.save(w.Path); err != nil {
 			log.Printf("saving settings: %v", err)
 		}
 	}
 }
 
-// wait flushes the latest pending settings state and returns once its write is
+// Wait flushes the latest pending settings state and returns once its write is
 // complete.
-func (w *settingsWriter) wait() {
+func (w *Writer) Wait() {
 	w.mu.Lock()
 	if !w.running {
 		w.mu.Unlock()

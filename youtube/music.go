@@ -33,15 +33,15 @@ type SearchOptions struct {
 // MusicItem is the common subset of YouTube Music song, video, album, artist,
 // and playlist renderers.
 type MusicItem struct {
-	ID         string `json:"id,omitempty"`
-	VideoID    string `json:"videoId,omitempty"`
-	BrowseID   string `json:"browseId,omitempty"`
-	PlaylistID string `json:"playlistId,omitempty"`
-	Title      string `json:"title,omitempty"`
-	Subtitle   string `json:"subtitle,omitempty"`
-	Kind       string `json:"kind,omitempty"`
-	Duration   string `json:"duration,omitempty"`
-	Thumbnail  string `json:"thumbnail,omitempty"`
+	ID         string   `json:"id,omitempty"`
+	VideoID    string   `json:"videoId,omitempty"`
+	BrowseID   string   `json:"browseId,omitempty"`
+	PlaylistID string   `json:"playlistId,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Subtitle   string   `json:"subtitle,omitempty"`
+	Kind       ItemKind `json:"kind,omitempty"`
+	Duration   string   `json:"duration,omitempty"`
+	Thumbnail  string   `json:"thumbnail,omitempty"`
 }
 
 // SearchResult contains the parsed music items of a search.
@@ -1062,7 +1062,7 @@ type itemIdentity struct {
 // the artist's browse endpoint sits in the subtitle runs, and the length
 // trails the subtitle.
 func parseMusicCardShelf(renderer *jsonObject) (MusicItem, bool) {
-	item := MusicItem{Kind: "video"}
+	item := MusicItem{Kind: KindVideo}
 	item.Title = rendererText(renderer.get("title"))
 	item.Subtitle = rendererText(renderer.get("subtitle"))
 	if duration := trailingDuration(item.Subtitle); duration != "" {
@@ -1165,30 +1165,26 @@ func trailingDuration(subtitle string) string {
 	return ""
 }
 
-func rendererKind(key string) (string, bool) {
+func rendererKind(key string) (ItemKind, bool) {
 	switch key {
 	case "musicResponsiveListItemRenderer":
-		return "track", true
+		return KindTrack, true
 	case "musicTwoRowItemRenderer":
-		return "music_item", true
-	case "musicVideoRenderer":
-		return "video", true
-	case "videoRenderer":
-		return "video", true
-	case "playlistVideoRenderer", "playlistPanelVideoRenderer":
-		return "video", true
+		return KindMusicItem, true
+	case "musicVideoRenderer", "videoRenderer", "playlistVideoRenderer", "playlistPanelVideoRenderer":
+		return KindVideo, true
 	case "gridPlaylistRenderer":
-		return "playlist", true
+		return KindPlaylist, true
 	case "gridAlbumRenderer":
-		return "album", true
+		return KindAlbum, true
 	case "gridArtistRenderer":
-		return "artist", true
+		return KindArtist, true
 	default:
 		return "", false
 	}
 }
 
-func parseMusicItem(kind string, renderer *jsonObject) MusicItem {
+func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	item := MusicItem{Kind: kind}
 	item.Title = rendererText(renderer.get("title"))
 	if item.Title == "" {
@@ -1219,16 +1215,17 @@ func parseMusicItem(kind string, renderer *jsonObject) MusicItem {
 	}
 	item.PlaylistID, _ = renderer.get("playlistId").(string)
 	item.BrowseID = navigationID(renderer.get("navigationEndpoint"))
-	if kind == "track" || kind == "video" {
+	if kind == KindTrack || kind == KindVideo {
 		if artistID := rendererArtistBrowseID(renderer); artistID != "" {
 			item.BrowseID = artistID
 		}
 	}
-	if item.VideoID != "" {
+	switch {
+	case item.VideoID != "":
 		item.ID = item.VideoID
-	} else if item.BrowseID != "" {
+	case item.BrowseID != "":
 		item.ID = item.BrowseID
-	} else {
+	default:
 		item.ID = item.PlaylistID
 	}
 	if item.Thumbnail == "" {
@@ -1450,13 +1447,6 @@ func navigationID(value any) string {
 	}
 	walk(value)
 	return result
-}
-
-// isBrowsablePlaylist reports whether an ID names a page the app can open.
-// Mix and radio queues ride along in taps and menus, but browsing one is
-// empty: only library, community and product playlists open.
-func isBrowsablePlaylist(id string) bool {
-	return strings.HasPrefix(id, "VL") || strings.HasPrefix(id, "PL")
 }
 
 func rendererThumbnail(value any) string {
