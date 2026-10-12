@@ -381,6 +381,34 @@ func TestQueueEndWaitsForInFlightRecommendation(t *testing.T) {
 	}
 }
 
+// The end of the queue asks YouTube for more even when the recommendations
+// pulled before it have been played out. It used to stop there, leaving
+// shuffle and auto-play with nothing to play after the queue.
+func TestTheQueueEndAsksAgainWhenItsRecommendationsArePlayedOut(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"contents":{"playlistPanelRenderer":{"contents":[{"playlistPanelVideoRenderer":{"videoId":"radio-1","title":{"simpleText":"Radio one"}}}]}}}`))
+	}))
+	defer server.Close()
+	client := youtube.NewClient(youtube.Options{BaseURL: server.URL, APIKey: "test"})
+	a := newTestApp()
+	a.public, a.authed = client, client
+	a.settings.AutoPlay = true
+	current := youtube.MusicItem{VideoID: "seed", Title: "Seed"}
+	a.current, a.queue = current, []youtube.MusicItem{current}
+	a.index = 0
+	a.resetUpNext(youtube.UpNextOptions{VideoID: current.VideoID}, "")
+	// What is left once the recommendations pulled earlier have been played.
+	a.upNextFetched, a.upNextToken = true, ""
+
+	a.advance()
+	if len(a.queue) != 2 || a.queue[1].VideoID != "radio-1" {
+		t.Fatalf("the queue end pulled %#v, want the recommendation after it", a.queue)
+	}
+	if a.index != 1 || a.current.VideoID != "radio-1" {
+		t.Errorf("the queue end left current=%q at index %d", a.current.VideoID, a.index)
+	}
+}
+
 func TestUpNextFailureKeepsTheSelectedQueue(t *testing.T) {
 	client := youtube.NewClient(youtube.Options{
 		APIKey:     "test",

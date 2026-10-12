@@ -107,19 +107,33 @@ func (a *app) ensureUpNext() {
 	}
 	continuation := ""
 	if a.upNextFetched {
-		if a.upNextToken == "" || len(a.queue)-a.index > 2 {
-			return
-		}
-		continuation = a.upNextToken
-		if a.upNextSeen == nil {
+		switch {
+		case a.upNextToken == "":
+			// Everything the recommendations held has been played out, so
+			// there is nothing to continue. At the end of the queue that is
+			// where the music stopped: ask again from the track that is
+			// playing, which is what keeps the queue going.
+			if len(a.queue)-a.index > 1 {
+				return
+			}
+			a.upNextFetched = false
 			a.upNextSeen = make(map[string]struct{})
-		}
-		if _, seen := a.upNextSeen[continuation]; seen {
-			a.upNextToken = ""
+			a.upNextOptions.VideoID = a.current.VideoID
+		case len(a.queue)-a.index > 2:
 			return
+		default:
+			continuation = a.upNextToken
+			if a.upNextSeen == nil {
+				a.upNextSeen = make(map[string]struct{})
+			}
+			if _, seen := a.upNextSeen[continuation]; seen {
+				a.upNextToken = ""
+				return
+			}
+			a.upNextSeen[continuation] = struct{}{}
 		}
-		a.upNextSeen[continuation] = struct{}{}
-	} else {
+	}
+	if !a.upNextFetched {
 		a.upNextFetched = true
 	}
 	a.upNextLoading = true
@@ -163,11 +177,16 @@ func (a *app) ensureUpNext() {
 			}
 			a.appendRecommendations(result.Items)
 			if a.waitingForAuto {
-				if a.index+1 < len(a.queue) {
+				switch {
+				case a.index+1 < len(a.queue):
 					a.waitingForAuto = false
 					a.advance()
-				} else {
-					a.ensureUpNext()
+				case continuation != "":
+					a.ensureUpNext() // the list had more to pull
+				default:
+					// A fresh request found nothing to follow the queue with.
+					a.waitingForAuto = false
+					a.stopAtQueueEnd()
 				}
 			}
 		})
@@ -619,7 +638,10 @@ func (a *app) advance() {
 		a.start(a.queue[a.index])
 		return
 	}
-	if a.settings.AutoPlay && (a.upNextLoading || !a.upNextFetched || a.upNextToken != "") {
+	if a.settings.AutoPlay {
+		// The queue is over and the music should not be. Wait for what
+		// YouTube has to follow it with, which ensureUpNext asks for when the
+		// recommendations pulled so far have been played out.
 		a.waitingForAuto = true
 		a.player.Stop()
 		a.syncSystemMedia()
