@@ -1,4 +1,9 @@
-# Meiro
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/wordmark-dark.svg">
+    <img alt="Meiro" src="docs/brand/wordmark-light.svg" width="300">
+  </picture>
+</h1>
 
 A native desktop player for YouTube Music. Meiro draws its own interface in a
 native window instead of using a Chromium-based web front end.
