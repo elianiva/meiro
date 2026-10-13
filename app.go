@@ -15,6 +15,7 @@ import (
 	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/lru"
+	"github.com/elianiva/meiro/internal/report"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/internal/ytdlp"
 	"github.com/elianiva/meiro/m3"
@@ -114,6 +115,11 @@ type app struct {
 	// reportError what went wrong opening it.
 	report      task
 	reportError string
+	// tools are the versions of the bundled programs, shown in Settings once
+	// toolsLookup has read them.
+	tools       report.Info
+	toolsLoaded bool
+	toolsLookup task
 
 	// stop ends the periodic work; stopOnce closes it once.
 	stop     chan struct{}

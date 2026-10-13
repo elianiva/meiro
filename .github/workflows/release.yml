@@ -26,7 +26,20 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       sha: ${{ steps.resolve.outputs.sha }}
+      ytdlp: ${{ steps.ytdlp.outputs.version }}
     steps:
+      # yt-dlp breaks whenever YouTube changes, so every release bundles the
+      # newest one. It is looked up once here, so all four platform builds
+      # get the same version even if yt-dlp publishes while they run.
+      - name: Find the latest yt-dlp release
+        id: ytdlp
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq .tag_name)"
+          test -n "$version" || { echo "No yt-dlp release found."; exit 1; }
+          echo "Bundling yt-dlp $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Resolve the tag and commit
         id: resolve
         run: |
@@ -201,6 +214,8 @@ jobs:
           name: ffmpeg-${{ matrix.platform }}
           path: resources/${{ matrix.platform }}
       - name: Fetch yt-dlp and QuickJS
+        env:
+          YT_DLP_VERSION: ${{ needs.gate.outputs.ytdlp }}
         run: |
           chmod +x "resources/${{ matrix.platform }}/bin/ffmpeg"
           scripts/fetch-tools.sh "${{ matrix.platform }}"

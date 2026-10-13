@@ -14,14 +14,22 @@ platform="${1:?usage: fetch-tools.sh <darwin-arm64|darwin-amd64|linux-amd64|linu
 
 # yt-dlp ships as the one-directory build: the one-file build unpacks itself to
 # a temporary directory on every launch, which costs about 0.4 s per resolve.
-# yt-dlp breaks whenever YouTube changes, so a release takes the newest one
-# unless YT_DLP_VERSION pins it. Its checksums come from the release itself.
+# yt-dlp breaks whenever YouTube changes, so every release takes the newest one
+# unless YT_DLP_VERSION pins it. "latest" is turned into the release's tag up
+# front, so one run names the version it fetched, and the checksums come from
+# that same release. The release workflow resolves the tag once and passes it
+# in, so every platform of a release bundles the same yt-dlp.
 YT_DLP_VERSION="${YT_DLP_VERSION:-latest}"
 if [[ "$YT_DLP_VERSION" == latest ]]; then
-	ytdlp_url="https://github.com/yt-dlp/yt-dlp/releases/latest/download"
-else
-	ytdlp_url="https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}"
+	# /releases/latest redirects to /releases/tag/<tag>.
+	latest_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/yt-dlp/yt-dlp/releases/latest)"
+	YT_DLP_VERSION="${latest_url##*/}"
+	if [[ -z "$YT_DLP_VERSION" || "$YT_DLP_VERSION" == latest ]]; then
+		printf 'Could not find the latest yt-dlp release\n' >&2
+		exit 1
+	fi
 fi
+ytdlp_url="https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}"
 
 # yt-dlp needs a JavaScript runtime to run the challenge solver scripts that
 # come with it. The app bundles QuickJS rather than depending on one the user

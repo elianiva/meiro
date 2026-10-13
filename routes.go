@@ -143,7 +143,7 @@ func appRoutes() []route {
 		},
 		{
 			id: routeSettings, pattern: "/settings", title: "Settings", rail: &railEntry{label: "Settings", action: keymap.Settings, icon: m3.IconSettings, filled: m3.IconSettings, footer: true}, heading: heading("Settings"), nav: routeSettings,
-			view: (*app).settingsPage,
+			view: (*app).settingsPage, open: (*app).loadToolVersions,
 		},
 		{
 			id: routeStats, pattern: "/stats", title: "Stats", heading: heading("Listening stats"), nav: routeSettings,
