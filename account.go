@@ -476,13 +476,16 @@ type signInState struct {
 	cookie string
 	// browsers is the menu of browsers to import from.
 	browsers bool
+	// importFailed is the browser a session could not be imported from, so the
+	// dialog points at pasting the Cookie header instead; "" otherwise.
+	importFailed string
 	// try checks a pasted or imported session; it is busy while it does.
 	try task
 }
 
 // reset empties the dialog. Its task is the caller's to stop.
 func (s *signInState) reset() {
-	s.open, s.err, s.attempt, s.cookie, s.browsers = false, "", 0, "", false
+	s.open, s.err, s.attempt, s.cookie, s.browsers, s.importFailed = false, "", 0, "", false, ""
 }
 
 // openSignIn opens the dialog that takes the cookie of the user's browser
@@ -558,7 +561,7 @@ func (a *app) importSignIn(browser cookies.Source) {
 func (a *app) trySignIn(from sessionSource, read func(context.Context) (string, error)) {
 	acc := &a.account
 	s := &acc.signIn
-	s.err = ""
+	s.err, s.importFailed = "", ""
 	attempt := s.attempt
 	startTask(a, &s.try, signInTimeout, func(ctx context.Context) (*session, error) {
 		cookie, err := read(ctx)
@@ -573,6 +576,7 @@ func (a *app) trySignIn(from sessionSource, read func(context.Context) (string, 
 	}, func(opened *session, err error) {
 		if err != nil {
 			s.err = err.Error()
+			s.importFailed = from.browser
 			return
 		}
 		s.reset()

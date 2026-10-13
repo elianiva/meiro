@@ -40,7 +40,10 @@ func (a *app) signInDialog(c *ui.Context) {
 			}
 		})
 		m3.Text(c, m3.BodyMedium, "Meiro saves the session in a file in its data folder that only your user can read. Sign out to remove Meiro's saved copy.").TextColor(sc.OnSurfaceVariant)
-		m3.Text(c, m3.BodyMedium, "You can also paste the Cookie request header for music.youtube.com from your browser's developer tools.").TextColor(sc.OnSurfaceVariant)
+		if s.importFailed != "" {
+			m3.EmphasizedText(c, m3.TitleSmall, "Importing from "+s.importFailed+" did not work. Paste the Cookie header instead.").TextColor(sc.Primary)
+		}
+		m3.Text(c, m3.BodyMedium, "To paste it: open music.youtube.com while signed in, open your browser's developer tools (F12) and go to the Network tab, reload, pick a request to music.youtube.com, and copy the value of its Cookie request header.").TextColor(sc.OnSurfaceVariant)
 		box := ui.Column(c.Key("cookie-box")).Padding(12, 16).Radius(m3.Large).Background(sc.SurfaceContainerHighest)
 		if box.FocusWithin() {
 			box.Border(2, sc.Primary)
