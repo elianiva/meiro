@@ -35,6 +35,10 @@ type playback struct {
 	// rawPlayErr is what was reported, which is also what tells one failure
 	// from the next.
 	playErr, rawPlayErr string
+	// skipped counts the tracks in a row that were passed over because they
+	// would not play; a track that plays, or one the listener chooses, ends
+	// the run.
+	skipped int
 
 	// stream finds the current track's audio; it is busy from the moment a
 	// track is chosen until its audio is found.
@@ -157,8 +161,35 @@ func (a *app) queueContext(index int) (youtube.UpNextOptions, string) {
 	return options, source
 }
 
+// maxSkips is how many unplayable tracks in a row the queue moves past
+// before it stops and shows the error, so that a network that is down does
+// not use the whole queue up.
+const maxSkips = 3
+
 // start makes item the current track and finds its audio.
 func (a *app) start(item youtube.MusicItem) {
+	a.skipped = 0
+	a.startTrack(item)
+}
+
+// skipUnplayable moves on to the next track after item failed to play, unless
+// maxSkips tracks were passed over already or nothing follows. Then the
+// track stays where it is, with the reason it failed.
+func (a *app) skipUnplayable(item youtube.MusicItem) {
+	if a.current.VideoID != item.VideoID || a.skipped >= maxSkips {
+		return
+	}
+	next, ok := a.queue.next(a.settings.AutoPlay, a.repeat)
+	if !ok {
+		return
+	}
+	a.skipped++
+	a.notice = "Skipped " + item.Title + ": " + strings.TrimSuffix(a.playErr, ".")
+	a.startTrack(a.queue.moveTo(next))
+}
+
+// startTrack is start without ending a run of skipped tracks.
+func (a *app) startTrack(item youtube.MusicItem) {
 	changed := a.current.VideoID != item.VideoID
 	a.current = item
 	a.total = parseDuration(item.Duration)
@@ -213,6 +244,7 @@ func (a *app) streamAudio(item youtube.MusicItem) {
 	}, func(found resolvedAudio, err error) {
 		if err != nil {
 			a.failPlayback(item, "audio resolution failed", err.Error())
+			a.skipUnplayable(item)
 			return
 		}
 		if found.total > 0 {
@@ -220,9 +252,11 @@ func (a *app) streamAudio(item youtube.MusicItem) {
 		}
 		if found.playErr != nil {
 			a.failPlayback(item, "player could not open", found.playErr.Error())
+			a.skipUnplayable(item)
 			return
 		}
 		log.Printf("playback: audio started video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
+		a.skipped = 0
 		if !found.fromCache {
 			// The direct URL is already in hand, so the cache downloads it as
 			// it is instead of resolving the same track again.

@@ -256,6 +256,57 @@ func TestAnUnplayableTrackShowsAReadableReason(t *testing.T) {
 	}
 }
 
+func TestAnUnplayableTrackIsSkipped(t *testing.T) {
+	a, r := playbackApp(t)
+	r.err["b"] = errors.New("Video unavailable")
+	q := tracks("a", "b", "c")
+	a.play(q[1], q)
+	if a.current.VideoID != "c" || a.playErr != "" {
+		t.Fatalf("current %q, playErr %q: want the track after the unplayable one playing", a.current.VideoID, a.playErr)
+	}
+	if !strings.Contains(a.notice, "Skipped Track b") {
+		t.Errorf("notice = %q, want it to say what was skipped", a.notice)
+	}
+}
+
+// A run of failures, as a network that is down makes, stops at the limit with
+// the error shown, and a track the listener chooses starts the count again.
+func TestSkippingStopsAfterAFewFailuresInARow(t *testing.T) {
+	a, r := playbackApp(t)
+	q := tracks("a", "b", "c", "d", "e", "f", "g")
+	for _, id := range ids(q)[:6] {
+		r.err[id] = errors.New("Temporary failure in name resolution")
+	}
+	a.play(q[0], q)
+	if want := q[maxSkips].VideoID; a.current.VideoID != want {
+		t.Fatalf("current = %q, want %q: the first %d failures are skipped and the next stays", a.current.VideoID, want, maxSkips)
+	}
+	if a.playErr != "Could not reach YouTube. Check your connection." {
+		t.Errorf("playErr = %q, want the error shown once the limit is reached", a.playErr)
+	}
+	if r.asked("e") {
+		t.Error("the queue went on past the limit")
+	}
+	a.playVideoID("e") // chosen by the listener
+	if a.current.VideoID != "g" {
+		t.Errorf("current = %q, want a fresh run of skips to reach g", a.current.VideoID)
+	}
+}
+
+func TestAPlayedTrackEndsTheRunOfSkips(t *testing.T) {
+	a, r := playbackApp(t)
+	q := tracks("a", "b", "c", "d", "e", "f")
+	for _, id := range []string{"a", "b", "d", "e"} {
+		r.err[id] = errors.New("Video unavailable")
+	}
+	a.play(q[0], q)
+	// a, b skipped, c plays; the two failures after it are a new run.
+	a.advance()
+	if a.current.VideoID != "f" || a.playErr != "" {
+		t.Errorf("current %q, playErr %q: want f playing after c", a.current.VideoID, a.playErr)
+	}
+}
+
 func TestVolumeAndMutePersistToSettings(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.setVolume(30)
