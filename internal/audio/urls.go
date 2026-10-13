@@ -73,6 +73,15 @@ func (c *URLs) Get(ctx context.Context, videoID, cookie string) (string, time.Du
 	}
 }
 
+// Forget drops what is remembered of a track, so that the next Get resolves
+// it again. It is for a URL that stopped working before its time, as one that
+// expired while the machine slept.
+func (c *URLs) Forget(videoID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, videoID)
+}
+
 func (c *URLs) run(ctx context.Context, videoID string, e *urlEntry) {
 	ctx, cancel := context.WithTimeout(ctx, ResolveTimeout)
 	defer cancel()

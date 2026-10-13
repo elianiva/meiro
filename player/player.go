@@ -107,6 +107,14 @@ func (p *Player) Play(url string) error {
 	return p.start(url, 0, false)
 }
 
+// PlayAt is Play from the position at, and held when paused. It is how a
+// stream that broke off is picked up again where it stopped.
+func (p *Player) PlayAt(url string, at time.Duration, paused bool) error {
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
+	return p.start(url, max(at, 0), paused)
+}
+
 // Resume starts a paused stream again, and does nothing when it plays or has
 // ended.
 func (p *Player) Resume() {

@@ -29,6 +29,9 @@ type resolved struct {
 	err map[string]error
 	// file, when set, is the audio every track resolves to.
 	file string
+	// url, when set, chooses the URL of a track's nth resolve (from 1), in
+	// place of file, and may fail it.
+	url func(videoID string, n int) (string, error)
 }
 
 func (r *resolved) resolve(_ context.Context, videoID, _ string) (string, time.Duration, error) {
@@ -37,6 +40,16 @@ func (r *resolved) resolve(_ context.Context, videoID, _ string) (string, time.D
 	r.ids = append(r.ids, videoID)
 	if err := r.err[videoID]; err != nil {
 		return "", 0, err
+	}
+	if r.url != nil {
+		n := 0
+		for _, id := range r.ids {
+			if id == videoID {
+				n++
+			}
+		}
+		url, err := r.url(videoID, n)
+		return url, 3 * time.Minute, err
 	}
 	if r.file != "" {
 		return r.file, 3 * time.Second, nil
@@ -626,5 +639,93 @@ func TestEditingTheQueueKeepsPlayingAndFollowsTheEdits(t *testing.T) {
 	a.clearUpcoming()
 	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "d"}) || a.current.VideoID != "d" {
 		t.Errorf("after clearing: %v, playing %q", got, a.current.VideoID)
+	}
+}
+
+// A stream that breaks off mid-song, as the network dropping or an audio URL
+// that expired while the machine slept makes it, is found again and played
+// on from where it stopped.
+func TestABrokenStreamResumesFromItsPosition(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	tone := filepath.Join(t.TempDir(), "tone.wav")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=duration=30", tone).CombinedOutput(); err != nil {
+		t.Fatalf("making a tone: %v: %s", err, out)
+	}
+	expired := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "expired", http.StatusForbidden)
+	}))
+	defer expired.Close()
+
+	a, r := playbackApp(t)
+	// The first URL is dead; resolving again gives one that plays.
+	r.url = func(_ string, n int) (string, error) {
+		if n == 1 {
+			return expired.URL + "/a.m4a", nil
+		}
+		return tone, nil
+	}
+	a.play(tracks("a")[0], nil)
+	a.player.Seek(12 * time.Second) // the track had played to here
+	waitFor(t, func() bool { return a.player.Failure() != "" })
+
+	waitFor(t, func() bool {
+		a.poll()
+		return a.player.Playing() && a.player.Failure() == ""
+	})
+	if got := r.count("a"); got != 2 {
+		t.Errorf("resolved %d times, want 2: the expired URL must not be served from memory", got)
+	}
+	if pos := a.player.Position(); pos < 12*time.Second {
+		t.Errorf("position %v, want playback to go on from 12s", pos)
+	}
+	if a.playErr != "" || a.current.VideoID != "a" {
+		t.Errorf("playErr %q, current %q", a.playErr, a.current.VideoID)
+	}
+}
+
+// A stream that stays broken is tried a bounded number of times, then the
+// reason is shown; a resolve that fails while the network is down counts as
+// a try, and one that works afterwards ends the trouble.
+func TestAStreamThatStaysBrokenGivesUpAfterTheRetries(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	expired := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "expired", http.StatusForbidden)
+	}))
+	defer expired.Close()
+
+	a, r := playbackApp(t)
+	r.url = func(videoID string, n int) (string, error) {
+		if n%2 == 0 {
+			return "", errors.New("Temporary failure in name resolution")
+		}
+		return expired.URL + "/" + videoID + ".m4a", nil
+	}
+	q := tracks("a")
+	a.play(q[0], q)
+	waitFor(t, func() bool {
+		a.poll()
+		return a.playErr != "" && !a.stream.busy()
+	})
+	if got, want := r.count("a"), 1+maxRecoveries; got != want {
+		t.Errorf("resolved %d times, want the first play and %d retries", got, maxRecoveries)
+	}
+	if a.playErr == "" || a.current.VideoID != "a" {
+		t.Errorf("playErr %q, current %q: want the failure shown on the track", a.playErr, a.current.VideoID)
+	}
+}
+
+func waitFor(t *testing.T, done func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for !done() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
