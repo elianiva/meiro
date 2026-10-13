@@ -413,10 +413,13 @@ func TestReportProblemOpensPrefilledIssue(t *testing.T) {
 	if strings.Contains(opened[0], "SAPISID") {
 		t.Error("the link carries the session cookie")
 	}
-	body := u.Query().Get("body")
-	for _, want := range []string{"- Meiro: ", "- OS: " + runtime.GOOS, "- yt-dlp: ", "- ffmpeg: "} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body lacks %q:\n%s", want, body)
+	q := u.Query()
+	if q.Get("template") != "bug_report.yml" || !strings.HasPrefix(q.Get("os-version"), runtime.GOOS+" ") {
+		t.Errorf("form fields = %v", q)
+	}
+	for _, want := range []string{"yt-dlp: ", "ffmpeg: "} {
+		if !strings.Contains(q.Get("tools"), want) {
+			t.Errorf("tools lack %q: %q", want, q.Get("tools"))
 		}
 	}
 }

@@ -30,7 +30,7 @@ func TestParseYtDlp(t *testing.T) {
 
 // The link round-trips the details, including characters that need escaping,
 // and says what is missing instead of leaving a blank.
-func TestURLCarriesTheDetails(t *testing.T) {
+func TestURLFillsTheBugReportForm(t *testing.T) {
 	info := Info{App: "1.2.3", OS: "linux", Arch: "arm64", YtDlp: "2025.01.15", FFmpeg: ""}
 	raw := info.URL()
 	if !strings.HasPrefix(raw, "https://github.com/elianiva/meiro/issues/new?") {
@@ -40,16 +40,22 @@ func TestURLCarriesTheDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := u.Query().Get("body")
-	for _, want := range []string{"- Meiro: 1.2.3\n", "- OS: linux arm64\n", "- yt-dlp: 2025.01.15\n", "- ffmpeg: unknown\n"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body lacks %q:\n%s", want, body)
+	q := u.Query()
+	for key, want := range map[string]string{
+		"template":   "bug_report.yml",
+		"version":    "1.2.3",
+		"os-version": "linux arm64",
+		"tools":      "yt-dlp: 2025.01.15\nffmpeg: unknown",
+	} {
+		if got := q.Get(key); got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
 		}
 	}
 }
 
-func TestBodyNamesDevelopmentBuilds(t *testing.T) {
-	if body := (Info{}).Body(); !strings.Contains(body, "- Meiro: development build\n") {
-		t.Errorf("body:\n%s", body)
+func TestURLNamesDevelopmentBuilds(t *testing.T) {
+	u, _ := url.Parse((Info{}).URL())
+	if got := u.Query().Get("version"); got != "development build" {
+		t.Errorf("version = %q", got)
 	}
 }

@@ -21,7 +21,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -34,6 +33,7 @@ import (
 	"github.com/elianiva/meiro/internal/diskcache"
 	"github.com/elianiva/meiro/internal/memprof"
 	"github.com/elianiva/meiro/internal/proc"
+	"github.com/elianiva/meiro/internal/report"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/player"
@@ -112,27 +112,36 @@ func openLog() (dir string, closeLog func()) {
 		log.Printf("finding the logs folder: %v", err)
 		return "", func() {}
 	}
-	file, err := applog.Open(dir, logHeader)
+	tools := applog.NewLazy("ffmpeg, yt-dlp: looking up")
+	file, err := applog.Open(dir, logHeader(tools))
 	if err != nil {
 		log.Printf("opening the log file: %v", err)
 		return "", func() {}
 	}
 	applog.Install(file)
+	// The tools are asked after the log is open, so launch does not wait on
+	// them; the answer goes into the log, and into the header of the next file.
+	tools.Start(toolVersions, func(v string) { log.Print("tools: ", v) })
 	return dir, func() { _ = file.Close() }
 }
 
-// logHeader names the versions in use, for the top of each log file. The
-// tools are asked once; a later file reuses the answer.
-var logHeader = sync.OnceValue(func() string {
-	ffmpeg := proc.ToolVersion(context.Background(), "ffmpeg", "-version")
-	ytdlp := proc.ToolVersion(context.Background(), "yt-dlp", "--version")
-	version := mygo.App.Version()
-	if version == "" {
-		version = "development build"
+// toolVersions asks the tools the app ships for their versions.
+func toolVersions() string {
+	info := report.Collect(context.Background(), mygo.App.Version())
+	return fmt.Sprintf("ffmpeg %s, yt-dlp %s", info.FFmpeg, info.YtDlp)
+}
+
+// logHeader names the versions in use, for the top of each log file.
+func logHeader(tools *applog.Lazy) func() string {
+	return func() string {
+		version := mygo.App.Version()
+		if version == "" {
+			version = "development build"
+		}
+		return fmt.Sprintf("Meiro %s on %s/%s, %s\n%s",
+			version, runtime.GOOS, runtime.GOARCH, runtime.Version(), tools.Get())
 	}
-	return fmt.Sprintf("Meiro %s on %s/%s, %s\nffmpeg: %s\nyt-dlp: %s",
-		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), ffmpeg, ytdlp)
-})
+}
 
 // playerOptions decode with the ffmpeg the app ships, when there is one.
 func playerOptions() []player.Option {

@@ -84,28 +84,28 @@ func ParseFFmpeg(output string) string {
 	return ""
 }
 
-// Body is the text the issue starts with.
-func (i Info) Body() string {
-	app := i.App
-	if app == "" {
-		app = "development build"
+// Version is the app version, or what stands in for it in a development
+// build.
+func (i Info) Version() string {
+	if i.App == "" {
+		return "development build"
 	}
-	var b strings.Builder
-	b.WriteString("**What happened?**\n\n\n")
-	b.WriteString("**What did you expect?**\n\n\n")
-	b.WriteString("**Steps to reproduce**\n\n1. \n\n")
-	b.WriteString("---\n")
-	b.WriteString("- Meiro: " + app + "\n")
-	b.WriteString("- OS: " + i.OS + " " + i.Arch + "\n")
-	b.WriteString("- yt-dlp: " + orUnknown(i.YtDlp) + "\n")
-	b.WriteString("- ffmpeg: " + orUnknown(i.FFmpeg) + "\n")
-	return b.String()
+	return i.App
 }
 
-// URL is the link that opens a new issue with the details filled in.
+// Tools is the helper program versions, one per line.
+func (i Info) Tools() string {
+	return "yt-dlp: " + orUnknown(i.YtDlp) + "\nffmpeg: " + orUnknown(i.FFmpeg)
+}
+
+// URL is the link that opens the bug report form with the details filled in.
+// The keys are the ids of the fields in .github/ISSUE_TEMPLATE/bug_report.yml.
 func (i Info) URL() string {
 	q := url.Values{}
-	q.Set("body", i.Body())
+	q.Set("template", "bug_report.yml")
+	q.Set("version", i.Version())
+	q.Set("os-version", i.OS+" "+i.Arch)
+	q.Set("tools", i.Tools())
 	return issuesURL + "?" + q.Encode()
 }
 

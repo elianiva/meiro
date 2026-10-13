@@ -66,6 +66,15 @@ body:
       required: true
 
   - type: textarea
+    id: tools
+    attributes:
+      label: Tool versions
+      description: The versions of yt-dlp and ffmpeg that ship with Meiro. Filled in for you if you came from Settings > Support > Report a problem.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
     id: what-happened
     attributes:
       label: What happened?
@@ -87,9 +96,9 @@ body:
     attributes:
       label: Log excerpt
       description: |
-        Paste the relevant lines from where you see Meiro's output, if you have
-        them. Remove cookies and tokens first. If you cannot capture a log,
-        leave this empty.
+        Open Settings > Logs > Open logs folder and paste the relevant lines from
+        meiro.log. Meiro already leaves cookies and tokens out of it, but check
+        before you paste. If you cannot find the log, leave this empty.
       render: text
     validations:
       required: false
