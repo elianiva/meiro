@@ -45,6 +45,7 @@ fi
 
 # Everything is off unless listed. udp is listed because OpenSSL's TLS code
 # calls into it.
+# shellcheck disable=SC2054 # the commas are ffmpeg's own list syntax
 configure=(
 	--disable-everything --disable-autodetect --disable-doc --disable-debug
 	--disable-ffplay --disable-ffprobe --enable-ffmpeg
