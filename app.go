@@ -48,6 +48,8 @@ type app struct {
 	saver    settings.Writer
 
 	account accountState
+	// keyboard is the shortcuts, and the recording of a new one.
+	keyboard keyboardState
 	// notice is a message for the next frame to show as a toast.
 	notice string
 
@@ -117,6 +119,7 @@ func newApp() *app {
 		carousels:  lru.New[string, *m3.CarouselState](pageCacheLimit * 4),
 		stop:       make(chan struct{}),
 		statsRange: 14,
+		keyboard:   keyboardState{hintDelay: hintDelay},
 	}
 	a.playback = newPlayback(audio.NewURLs(ytdlp.Resolve), a.settings.Volume)
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/m3"
 )
 
@@ -21,6 +22,7 @@ const (
 // under its top bar, and the player floating over the foot of the sheet.
 func (a *app) view(c *ui.Context) {
 	m3.Provide(c, a.resolveTheme(c))
+	a.updateHints(c)
 	// The window paints no background of its own: the rail, the sheet's
 	// border and the sheet between them cover it, so a frame fills the window
 	// as the sheet and a thin ring rather than as a full-window quad under
@@ -48,58 +50,28 @@ func (a *app) view(c *ui.Context) {
 	a.shortcuts(c)
 }
 
-// shortcuts are the keys the window answers wherever the keyboard focus is
-// that does not want them itself.
-func (a *app) shortcuts(c *ui.Context) {
-	if c.Shortcut(0, ui.KeySpace) {
-		a.togglePlay()
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyLeft) {
-		a.previous()
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyRight) {
-		a.advance()
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyK) || c.Shortcut(ui.Cmd, ui.KeyF) {
-		a.focusSearch = true
-		a.navigate(routeSearch)
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyComma) {
-		a.navigate(routeSettings)
-	}
-	if a.nowPlaying.open && c.Shortcut(0, ui.KeyEscape) {
-		a.nowPlaying.closing = true
-	}
-}
-
 // navigate opens a page that takes no ID.
 func (a *app) navigate(id routeID) { a.router.Push(routeByID(id).path("")) }
-
-// railItems are the destinations of the rail, in order. The recap is built
-// from the account's play history, so it is only offered with an account.
-var railItems = []struct {
-	route        routeID
-	label        string
-	icon, filled *ui.SVG
-	needsAccount bool
-}{
-	{routeHome, "Home", m3.IconHome, m3.IconHomeFilled, false},
-	{routeSearch, "Search", m3.IconSearch, m3.IconSearch, false},
-	{routeExplore, "Explore", m3.IconExplore, m3.IconExploreFilled, false},
-	{routeLibrary, "Library", m3.IconLibrary, m3.IconLibraryFilled, false},
-	{routeRecap, "Recap", m3.IconTrending, m3.IconTrending, true},
-}
 
 // navID is the rail's name for a destination: its path.
 func navID(id routeID) string { return routeByID(id).path("") }
 
 func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
-	items := make([]m3.NavItem, 0, len(railItems))
-	for _, item := range railItems {
-		if item.needsAccount && !a.signedIn() {
+	var items, footer []m3.NavItem
+	for i := range routes {
+		r := &routes[i]
+		if r.rail == nil || r.rail.withAccount && !a.signedIn() {
 			continue
 		}
-		items = append(items, m3.NavItem{ID: navID(item.route), Label: item.label, Icon: item.icon, Selected: item.filled})
+		item := m3.NavItem{ID: navID(r.id), Label: r.rail.label, Icon: r.rail.icon, Selected: r.rail.filled}
+		if r.rail.action != "" && a.keyboard.hints {
+			item.Hint = a.hintParts(r.rail.action)
+		}
+		if r.rail.footer {
+			footer = append(footer, item)
+		} else {
+			items = append(items, item)
+		}
 	}
 	r, _ := a.route()
 	selected := ""
@@ -108,7 +80,7 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 	}
 	event := m3.Rail(c, m3.RailSpec{
 		Items:    items,
-		Footer:   []m3.NavItem{{ID: navID(routeSettings), Label: "Settings", Icon: m3.IconSettings, Selected: m3.IconSettings}},
+		Footer:   footer,
 		Selected: selected,
 		Expanded: a.settings.RailExpanded,
 		TopInset: bar.Height,
@@ -211,7 +183,8 @@ func (a *app) topBar(c *ui.Context) {
 		}
 		m3.EmphasizedText(c, m3.HeadlineMedium, title).SingleLine().TextColor(sc.OnSurface)
 		ui.Spacer(c)
-		bar := a.searchBar(c)
+		var bar ui.Element
+		a.hinted(c, func() { bar = a.searchBar(c) }, keymap.Search).Grow(1).MinWidth(0).MaxWidth(520)
 		a.searchSuggestions(c, bar)
 		a.accountButton(c)
 	})

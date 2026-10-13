@@ -276,3 +276,31 @@ func Carousel(c *ui.Context, s *CarouselState, key any, gap, padX float32, items
 	s.view = row.Bounds().W
 	return row
 }
+
+// KeyPart is one piece of a KeyBadge: a word or symbol, or an icon.
+type KeyPart struct {
+	Text string
+	Icon *ui.SVG
+}
+
+// KeyBadge is a small tile naming the key that does what the control beside
+// it does, for a view that shows its shortcuts while a modifier is held. It
+// is a tertiary container, so it reads as part of the interface and apart
+// from the primary and secondary controls it sits on, with the lift of a
+// level 1 surface and a fade in. The caller places it: it is an ordinary box,
+// so put it in an absolutely positioned one.
+func KeyBadge(c *ui.Context, parts ...KeyPart) ui.Element {
+	sc := Of(c).Scheme
+	badge := ui.Box(c).Row().Height(22).PaddingX(7).MinWidth(22).Gap(2).Shrink(0).Center().AlignItems(ui.Center).Radius(Full).
+		Background(sc.TertiaryContainer).Transition(Fade(EffectsFast))
+	Elevation(c, badge, 1)
+	return badge.Children(func() {
+		for _, p := range parts {
+			if p.Icon != nil {
+				ui.Icon(c, p.Icon).FontSize(14).TextColor(sc.OnTertiaryContainer).Shrink(0)
+				continue
+			}
+			Text(c, LabelMedium, p.Text).TextColor(sc.OnTertiaryContainer).NoWrap().Shrink(0)
+		}
+	})
+}

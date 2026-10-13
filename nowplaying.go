@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -146,14 +147,18 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 	ui.Row(c).Gap(gap).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
 		spec := small
 		spec.Icon, spec.Label, spec.Toggle, spec.Selected, spec.Key = m3.IconShuffle, "Shuffle", true, a.shuffle, "shuffle"
-		if m3.IconButton(c, spec).Clicked() {
-			a.setShuffle(!a.shuffle)
-		}
+		a.hinted(c, func() {
+			if m3.IconButton(c, spec).Clicked() {
+				a.setShuffle(!a.shuffle)
+			}
+		}, keymap.Shuffle)
 		spec = small
 		spec.Icon, spec.Label, spec.Key = m3.IconPrevious, "Previous", "previous"
-		if m3.IconButton(c, spec).Clicked() {
-			a.previous()
-		}
+		a.hinted(c, func() {
+			if m3.IconButton(c, spec).Clicked() {
+				a.previous()
+			}
+		}, keymap.Previous)
 		loading := a.loading()
 		playing := a.player.Playing() && !loading
 		icon, label := m3.IconPlay, "Play"
@@ -163,25 +168,31 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 		case playing:
 			icon, label = m3.IconPause, "Pause"
 		}
-		if m3.IconButton(c, m3.IconButtonSpec{
-			Icon: icon, Label: label, Kind: m3.FilledIcon, Dimension: size, Morph: true, Selected: playing, Loading: loading, Key: "play-pause",
-		}).Clicked() {
-			a.togglePlay()
-		}
+		a.hinted(c, func() {
+			if m3.IconButton(c, m3.IconButtonSpec{
+				Icon: icon, Label: label, Kind: m3.FilledIcon, Dimension: size, Morph: true, Selected: playing, Loading: loading, Key: "play-pause",
+			}).Clicked() {
+				a.togglePlay()
+			}
+		}, keymap.PlayPause)
 		spec = small
 		spec.Icon, spec.Label, spec.Key = m3.IconNext, "Next", "next"
-		if m3.IconButton(c, spec).Clicked() {
-			a.advance()
-		}
+		a.hinted(c, func() {
+			if m3.IconButton(c, spec).Clicked() {
+				a.advance()
+			}
+		}, keymap.Next)
 		spec = small
 		repeatIcon := m3.IconRepeat
 		if a.repeat == repeatTrack {
 			repeatIcon = m3.IconRepeatOne
 		}
 		spec.Icon, spec.Label, spec.Toggle, spec.Selected, spec.Key = repeatIcon, "Repeat", true, a.repeat != repeatOff, "repeat"
-		if m3.IconButton(c, spec).Clicked() {
-			a.cycleRepeat()
-		}
+		a.hinted(c, func() {
+			if m3.IconButton(c, spec).Clicked() {
+				a.cycleRepeat()
+			}
+		}, keymap.Repeat)
 	})
 }
 
@@ -225,26 +236,30 @@ func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 		icon = m3.IconVolumeDown
 	}
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
-		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: "Mute", Key: "mute"}).Clicked() {
-			a.toggleMute()
-		}
+		a.hinted(c, func() {
+			if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: "Mute", Key: "mute"}).Clicked() {
+				a.toggleMute()
+			}
+		}, keymap.Mute)
 		if sliderWidth <= 0 {
 			return
 		}
-		ui.Row(c).Width(sliderWidth).Children(func() {
-			v := a.volume
-			slider := m3.Slider(c, &v, 0, 100, m3.SliderSpec{Label: "Volume", Key: "volume"})
-			if slider.Changed() {
-				a.setVolume(v)
-			}
-			// The volume is kept once the user lets go, not on every step.
-			if slider.Pressed() {
-				a.nowPlaying.volumeHeld = true
-			} else if a.nowPlaying.volumeHeld {
-				a.nowPlaying.volumeHeld = false
-				a.saveSettings()
-			}
-		})
+		a.hinted(c, func() {
+			ui.Row(c).Width(sliderWidth).Children(func() {
+				v := a.volume
+				slider := m3.Slider(c, &v, 0, 100, m3.SliderSpec{Label: "Volume", Key: "volume"})
+				if slider.Changed() {
+					a.setVolume(v)
+				}
+				// The volume is kept once the user lets go, not on every step.
+				if slider.Pressed() {
+					a.nowPlaying.volumeHeld = true
+				} else if a.nowPlaying.volumeHeld {
+					a.nowPlaying.volumeHeld = false
+					a.saveSettings()
+				}
+			})
+		}, keymap.VolumeUp, keymap.VolumeDown)
 	})
 }
 
@@ -342,9 +357,11 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	}
 	panel.Children(func() {
 		ui.Row(c).Height(76).PaddingX(pageGutter - 8).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconExpandMore, Label: "Close the player", Key: "np-close"}).Clicked() {
-				a.nowPlaying.closing = true
-			}
+			a.hinted(c, func() {
+				if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconExpandMore, Label: "Close the player", Key: "np-close"}).Clicked() {
+					a.nowPlaying.closing = true
+				}
+			}, keymap.ClosePlayer)
 			m3.EmphasizedText(c, m3.TitleMedium, "Now playing").TextColor(sc.OnSurfaceVariant).Grow(1)
 			if !wide {
 				if m3.IconButton(c, m3.IconButtonSpec{

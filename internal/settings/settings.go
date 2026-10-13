@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
 	"runtime"
 	"slices"
@@ -64,6 +65,10 @@ type Settings struct {
 	// WavyProgress draws the position slider as a travelling wave while the
 	// music plays. The wave repaints the player on every frame.
 	WavyProgress bool `json:"wavyProgress"`
+	// Shortcuts holds the keyboard shortcuts the user changed, by action ID
+	// (see package keymap), written as "Shift+Cmd+K". An action not listed
+	// keeps its default.
+	Shortcuts map[string]string `json:"shortcuts,omitempty"`
 }
 
 // Defaults is what a first run starts with.
@@ -88,6 +93,7 @@ func wavyProgressDefault() bool {
 func (s *Settings) clone() Settings {
 	c := *s
 	c.Recent = slices.Clone(s.Recent)
+	c.Shortcuts = maps.Clone(s.Shortcuts)
 	return c
 }
 

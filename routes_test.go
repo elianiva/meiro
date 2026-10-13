@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/elianiva/meiro/youtube"
@@ -58,5 +59,27 @@ func TestMatchRouteRejectsWhatNoPageShows(t *testing.T) {
 func TestMatchRouteAllocatesNothing(t *testing.T) {
 	if n := testing.AllocsPerRun(100, func() { matchRoute("/artist/UCabc") }); n != 0 {
 		t.Errorf("matchRoute allocates %v times", n)
+	}
+}
+
+// The rail lists its destinations in the order of routes, with Settings at
+// its foot.
+func TestRailComesFromRoutes(t *testing.T) {
+	var items, footer []string
+	for _, r := range routes {
+		if r.rail == nil {
+			continue
+		}
+		if r.rail.footer {
+			footer = append(footer, r.rail.label)
+		} else {
+			items = append(items, r.rail.label)
+		}
+	}
+	if got, want := strings.Join(items, ","), "Home,Search,Explore,Library,Recap"; got != want {
+		t.Errorf("rail destinations: %s, want %s", got, want)
+	}
+	if len(footer) != 1 || footer[0] != "Settings" {
+		t.Errorf("rail footer: %v", footer)
 	}
 }

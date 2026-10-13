@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -52,6 +53,9 @@ type route struct {
 	title string
 	// heading is what the top bar says; detail pages leave it to their hero.
 	heading func(now time.Time) string
+	// rail, when set, lists the page as a destination of the navigation rail,
+	// in the order of routes.
+	rail *railEntry
 	// nav is the rail destination the page belongs to, if any.
 	nav routeID
 	// source names a queue played from the page; detail pages use the title
@@ -77,6 +81,18 @@ type route struct {
 	grid bool
 }
 
+// railEntry is how the navigation rail shows a destination.
+type railEntry struct {
+	label        string
+	icon, filled *ui.SVG // the icon at rest, and when the page is shown
+	footer       bool    // at the foot of the rail, not among the destinations
+	// withAccount offers the destination only to a signed-in user.
+	withAccount bool
+	// action is the shortcut that opens the destination, shown over it while
+	// the modifier is held.
+	action keymap.Action
+}
+
 func heading(text string) func(time.Time) string {
 	return func(time.Time) string { return text }
 }
@@ -91,19 +107,23 @@ func init() { routes = appRoutes() }
 func appRoutes() []route {
 	return []route{
 		{
-			id: routeHome, pattern: "/home", title: "Home", heading: greeting, nav: routeHome, source: "Home",
+			id: routeHome, pattern: "/home", title: "Home", rail: &railEntry{label: "Home", action: keymap.Home, icon: m3.IconHome, filled: m3.IconHomeFilled}, heading: greeting, nav: routeHome, source: "Home",
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetHomeFeed(ctx)
 			},
 		},
 		{
-			id: routeExplore, pattern: "/explore", title: "Explore", heading: heading("Explore"), nav: routeExplore, source: "Explore",
+			id: routeSearch, pattern: "/search", title: "Search", rail: &railEntry{label: "Search", action: keymap.Search, icon: m3.IconSearch, filled: m3.IconSearch}, heading: heading("Search"), nav: routeSearch, source: "Search results",
+			view: (*app).searchPage,
+		},
+		{
+			id: routeExplore, pattern: "/explore", title: "Explore", rail: &railEntry{label: "Explore", action: keymap.Explore, icon: m3.IconExplore, filled: m3.IconExploreFilled}, heading: heading("Explore"), nav: routeExplore, source: "Explore",
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetExplore(ctx)
 			},
 		},
 		{
-			id: routeLibrary, pattern: "/library", title: "Library", heading: heading("Library"), nav: routeLibrary, source: "Your library", grid: true,
+			id: routeLibrary, pattern: "/library", title: "Library", rail: &railEntry{label: "Library", action: keymap.Library, icon: m3.IconLibrary, filled: m3.IconLibraryFilled}, heading: heading("Library"), nav: routeLibrary, source: "Your library", grid: true,
 			// The library shows once, whole: a grid that fills in as the rest
 			// arrives redraws every card and its artwork a second time.
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
@@ -112,7 +132,7 @@ func appRoutes() []route {
 			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists."},
 		},
 		{
-			id: routeRecap, pattern: "/recap", title: "Recap", heading: heading("Recap"), nav: routeRecap, source: "Your recap",
+			id: routeRecap, pattern: "/recap", title: "Recap", rail: &railEntry{label: "Recap", icon: m3.IconTrending, filled: m3.IconTrending, withAccount: true}, heading: heading("Recap"), nav: routeRecap, source: "Your recap",
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetRecap(ctx)
 			},
@@ -120,11 +140,7 @@ func appRoutes() []route {
 			needsAccount: &signInPrompt{m3.IconTrending, "Your recap lives here", "Sign in to see the music you have had on repeat."},
 		},
 		{
-			id: routeSearch, pattern: "/search", title: "Search", heading: heading("Search"), nav: routeSearch, source: "Search results",
-			view: (*app).searchPage,
-		},
-		{
-			id: routeSettings, pattern: "/settings", title: "Settings", heading: heading("Settings"), nav: routeSettings,
+			id: routeSettings, pattern: "/settings", title: "Settings", rail: &railEntry{label: "Settings", action: keymap.Settings, icon: m3.IconSettings, filled: m3.IconSettings, footer: true}, heading: heading("Settings"), nav: routeSettings,
 			view: (*app).settingsPage,
 		},
 		{

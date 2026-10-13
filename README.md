@@ -40,8 +40,10 @@ half of the title.
   serves them, in a private cache folder. Set the limit to `0` to turn off the
   cache.
 - **Use keyboard shortcuts.** Press Space to play or pause. Use Command on
-  macOS or Ctrl on Linux with Left or Right to change tracks. Use K or F to
-  open Search, and Comma to open Settings.
+  macOS or Ctrl on Linux and Windows with Left or Right to change tracks, K or
+  F to open Search, and Comma to open Settings. Hold Command or Ctrl for a
+  moment to see its key over each button. Change any of them in Settings, under
+  Keyboard.
 - **Use system media controls.** Control playback from macOS Now Playing or a
   Linux MPRIS client. Meiro publishes track details, cover art, and playback
   state. It accepts play, pause, stop, previous, next, seek, volume, shuffle,

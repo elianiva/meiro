@@ -11,6 +11,9 @@ type NavItem struct {
 	// Icon is drawn while the destination is idle, Selected while it is
 	// chosen: Material fills the icon of the current destination.
 	Icon, Selected *ui.SVG
+	// Hint, when set, is shown over the destination's icon as the key that
+	// opens it.
+	Hint []KeyPart
 }
 
 // Rail widths, in DIPs.
@@ -146,6 +149,15 @@ func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWid
 		if !expanded {
 			LabelMedium.Style(ui.Text(c, item.Label), selected).TextColor(labelColor).Width(RailCollapsed).TextAlign(ui.Center).SingleLine().
 				Margin(4, 0, 0, 0).Opacity(fade)
+		}
+		if len(item.Hint) > 0 {
+			at := ui.Box(c).Absolute().PassThrough()
+			if expanded {
+				at.Top(18).Right(railInset + 14)
+			} else {
+				at.Top(20).Left(RailCollapsed/2 + 6)
+			}
+			at.Children(func() { KeyBadge(c, item.Hint...) })
 		}
 	})
 	return b.Clicked()

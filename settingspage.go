@@ -39,7 +39,7 @@ func (a *app) settingsPage(c *ui.Context) {
 			a.desktopCard(c)
 			a.updatesCard(c)
 			a.accountCard(c)
-			a.aboutCard(c)
+			a.keyboardCard(c)
 		})
 	})
 }
@@ -287,27 +287,6 @@ func (a *app) accountCard(c *ui.Context) {
 		if s := &a.account.signIn; s.err != "" && !s.open {
 			m3.Text(c, m3.BodyMedium, s.err).TextColor(sc.Error).MaxLines(3)
 		}
-	})
-}
-
-func (a *app) aboutCard(c *ui.Context) {
-	sc := m3.Of(c).Scheme
-	a.settingsCard(c, "Keyboard", m3.IconLyrics, func() {
-		ui.Column(c).Gap(10).Children(func() {
-			for _, k := range [][2]string{
-				{"Space", "Play or pause"},
-				{"⌘ ←   ⌘ →", "Previous and next track"},
-				{"⌘ K", "Search"},
-				{"⌘ ,", "Settings"},
-			} {
-				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Padding(4, 10).Radius(m3.Small).Background(sc.SurfaceContainerHighest).Width(110).Shrink(0).Children(func() {
-						m3.Text(c, m3.LabelLarge, k[0]).TextColor(sc.OnSurface).SingleLine()
-					})
-					m3.Text(c, m3.BodyMedium, k[1]).TextColor(sc.OnSurfaceVariant)
-				})
-			}
-		})
 	})
 }
 
