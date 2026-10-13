@@ -112,6 +112,41 @@ download() { # url path
 	fi
 }
 
+# prune_ytdlp drops what Meiro never uses from the one-directory build, which
+# is more than half of it. Meiro only resolves YouTube audio URLs and reads
+# browser cookies. curl_cffi (browser impersonation, 38 MB), Cryptodome and
+# brotli are optional: yt-dlp falls back to its pure-Python AES and to
+# no-brotli responses without them. cryptography stays, as the Linux keyring
+# cookie path needs it through secretstorage.
+prune_ytdlp() { # bin platform
+	local bin="$1" platform="$2"
+	rm -rf "$bin"/_internal/curl_cffi* "$bin"/_internal/Cryptodome* \
+		"$bin"/_internal/_brotli.cpython-*.so "$bin"/_internal/websockets*
+
+	[[ "$platform" == darwin-* ]] || return 0
+
+	# The macOS zip is universal2, and every Mach-O in it carries both
+	# architectures. Keep the one this build runs on.
+	local arch=arm64
+	[[ "$platform" == darwin-amd64 ]] && arch=x86_64
+	local f
+	while IFS= read -r -d '' f; do
+		if [[ "$(lipo -archs "$f" 2>/dev/null)" == *" "* ]]; then
+			lipo -thin "$arch" "$f" -output "$f.thin"
+			mv "$f.thin" "$f"
+			chmod +x "$f" 2>/dev/null || true
+		fi
+	done < <(find "$bin" -type f -print0)
+
+	# _internal/Python is a second copy of the framework's binary.
+	local fw
+	fw="$(find "$bin/_internal/Python.framework/Versions" -maxdepth 2 -name Python -type f 2>/dev/null | head -n 1)"
+	if [[ -n "$fw" && -f "$bin/_internal/Python" ]] && cmp -s "$fw" "$bin/_internal/Python"; then
+		rm "$bin/_internal/Python"
+		ln -s "${fw#"$bin/_internal/"}" "$bin/_internal/Python"
+	fi
+}
+
 echo "ffmpeg ${FFMPEG_VERSION} for ${platform}"
 archive="jellyfin-ffmpeg_${FFMPEG_VERSION}_portable_${ffmpeg_asset}-gpl.tar.xz"
 # The tarball holds the binary, whose checksum is not the archive's, so the
@@ -167,6 +202,7 @@ else
 			ln -s "Versions/Current/Resources" "$fw/Resources"
 		fi
 	fi
+	prune_ytdlp "$out/bin" "$platform"
 	printf '%s\n' "$expected" > "$out/bin/.yt-dlp.sha256"
 fi
 
