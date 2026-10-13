@@ -54,6 +54,9 @@ targets, and validates scripts and workflows.
 - Add or update tests for behavior users or other packages rely on. Prefer
   deterministic tests that do not need a live YouTube session, network access,
   or an audio device.
+- Note user-visible changes under `Unreleased` in
+  [`CHANGELOG.md`](CHANGELOG.md), which follows
+  [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Avoid unrelated cleanup in a bug-fix pull request.
 - Do not include cookies, session data, tokens, or other private account data
   in source files, test fixtures, screenshots, issue reports, or logs.

@@ -42,8 +42,8 @@ prefix through the GitHub API instead.
 
 ## Releasing
 
-1. Add a `## 0.2.0` section to `CHANGELOG.md` (create it if this is the
-   first release). It becomes the release notes of the update window.
+1. Add a `## 0.2.0` section to [`CHANGELOG.md`](../CHANGELOG.md). It
+   becomes the release notes of the update window.
 2. Build and upload:
 
    ```sh

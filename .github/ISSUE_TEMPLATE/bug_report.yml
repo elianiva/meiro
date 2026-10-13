@@ -1,0 +1,103 @@
+name: Bug report
+description: Report something that is not working in Meiro.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Fill in as much of this as
+        you can; the fields below are what a maintainer needs to reproduce the
+        problem.
+
+        > [!WARNING]
+        > Do not paste cookies, session tokens, OAuth tokens, or other
+        > credentials into this issue. They give full access to your YouTube
+        > Music account. Remove them from any log or screenshot before you
+        > attach it. Meiro never needs them to investigate a bug.
+
+  - type: input
+    id: version
+    attributes:
+      label: Meiro version
+      description: The version shown in Settings under Updates, or the release you downloaded.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: The system Meiro runs on, and its version.
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux (Debian or Ubuntu)
+        - Linux (Fedora or another RPM-based distribution)
+        - Linux (other)
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: Operating system version
+      description: For example 15.1, Ubuntu 24.04, or Fedora 41.
+      placeholder: "15.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install Meiro?
+      options:
+        - macOS disk image (.dmg)
+        - Linux .deb
+        - Linux .rpm
+        - Linux .AppImage
+        - Linux .tar.gz
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: |
+        Describe the bug, the steps that lead to it, what you expected to
+        happen, and what happened instead.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Meiro ...
+
+        Expected: ...
+        Instead: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: |
+        Paste the relevant lines from where you see Meiro's output, if you have
+        them. Remove cookies and tokens first. If you cannot capture a log,
+        leave this empty.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I removed cookies, tokens, and other credentials from this report, its logs, and its screenshots.
+          required: true

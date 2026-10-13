@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest an idea or an improvement for Meiro.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape Meiro. Describe the problem you are trying to
+        solve before the solution, so a maintainer can weigh the approach.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the need or the frustration behind this request.
+      placeholder: "When I ... I cannot ..., so I ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      description: Describe the behavior or the change you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approach, workaround, or existing app that already does this well.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Meiro version
+      description: The version shown in Settings under Updates, or the release you use. Optional.
+      placeholder: "0.1.0"
+    validations:
+      required: false
