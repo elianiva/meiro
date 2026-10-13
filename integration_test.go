@@ -369,3 +369,21 @@ func TestHistoryLoadMergesPendingPlays(t *testing.T) {
 		t.Fatalf("history = %+v", a.history)
 	}
 }
+
+func TestOpeningTheLogsFolderFromSettings(t *testing.T) {
+	a := newTestApp()
+	a.logsDir = "/logs"
+	var opened []string
+	a.openPath = func(path string) error {
+		opened = append(opened, path)
+		return nil
+	}
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 4000)
+	if err := tt.Click("Open logs folder"); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 1 || opened[0] != "/logs" {
+		t.Errorf("opened %v, want the logs folder", opened)
+	}
+}

@@ -13,16 +13,22 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
+	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/applog"
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/diskcache"
@@ -47,10 +53,12 @@ func main() {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
+	logsDir, closeLog := openLog()
 	// Signed auto-updates with the updater's native window: in builds made
 	// without update signing it stays idle and says so when asked.
 	mygo.Use(native.Plugin)
 	a := newApp()
+	a.logsDir = logsDir
 	mygo.App.WhenReady(func() {
 		a.setup()
 		a.desktop = &desktop{win: mygo.NewWindow(mygo.WindowOptions{
@@ -61,7 +69,7 @@ func main() {
 			MinHeight:     560,
 			StateKey:      "meiro",
 			TitleBarStyle: mygo.TitleBarHidden,
-			Content:       ui.View(a.view),
+			Content:       ui.View(a.frame),
 		})}
 		session, err := systemmedia.New(a.systemMediaControls())
 		if err != nil {
@@ -87,9 +95,44 @@ func main() {
 	a.shutdown()
 	stopMemprof()
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		closeLog()
+		os.Exit(1)
 	}
+	closeLog()
 }
+
+// openLog sends the standard logger, and slog, to the log file as well as to
+// standard error, and returns the folder the log is in and what closes the
+// file. A log that cannot be
+// opened is not worth stopping for: the app runs without one.
+func openLog() (dir string, closeLog func()) {
+	dir, err := mygo.App.Path(mygo.PathLogs)
+	if err != nil {
+		log.Printf("finding the logs folder: %v", err)
+		return "", func() {}
+	}
+	file, err := applog.Open(dir, logHeader)
+	if err != nil {
+		log.Printf("opening the log file: %v", err)
+		return "", func() {}
+	}
+	applog.Install(file)
+	return dir, func() { _ = file.Close() }
+}
+
+// logHeader names the versions in use, for the top of each log file. The
+// tools are asked once; a later file reuses the answer.
+var logHeader = sync.OnceValue(func() string {
+	ffmpeg := proc.ToolVersion(context.Background(), "ffmpeg", "-version")
+	ytdlp := proc.ToolVersion(context.Background(), "yt-dlp", "--version")
+	version := mygo.App.Version()
+	if version == "" {
+		version = "development build"
+	}
+	return fmt.Sprintf("Meiro %s on %s/%s, %s\nffmpeg: %s\nyt-dlp: %s",
+		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), ffmpeg, ytdlp)
+})
 
 // playerOptions decode with the ffmpeg the app ships, when there is one.
 func playerOptions() []player.Option {
@@ -189,7 +232,7 @@ func (a *app) every(interval time.Duration, fn func()) {
 			case <-a.stop:
 				return
 			case <-ticker.C:
-				fn()
+				a.guarded("periodic work", fn)
 			}
 		}
 	}()

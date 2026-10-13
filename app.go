@@ -50,6 +50,10 @@ type app struct {
 	account accountState
 	// keyboard is the shortcuts, and the recording of a new one.
 	keyboard keyboardState
+	// openPath shows a file or folder in the system; tests replace it.
+	openPath func(path string) error
+	// logsDir is the folder the log file is in; empty when there is none.
+	logsDir string
 	// notice is a message for the next frame to show as a toast.
 	notice string
 
@@ -73,6 +77,7 @@ type app struct {
 	menuOpen    bool // the account menu
 
 	// Dialogs.
+	crash         *crashState
 	newPlaylist   *newPlaylistState
 	addToPlaylist *addToPlaylistState
 	// knownPlaylists are the playlists the library last showed, offered at
@@ -123,8 +128,14 @@ func newApp() *app {
 	}
 	a.playback = newPlayback(audio.NewURLs(ytdlp.Resolve), a.settings.Volume)
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
-	a.run = func(work func()) { go work() }
+	a.run = func(work func()) {
+		go func() {
+			defer a.recoverBackground("background work")
+			work()
+		}()
+	}
 	a.sleep = sleep
+	a.openPath = func(path string) error { return a.desktop.openPath(path) }
 	a.account = newAccountState(func(auth *youtube.CookieAuth) *youtube.Client {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
 	}, cookies.Sources)
@@ -134,7 +145,16 @@ func newApp() *app {
 
 // update runs fn where the view can see its result, on the main thread, and
 // draws a frame. Without a desktop, as in tests, it runs fn at once.
-func (a *app) update(fn func()) { a.desktop.update(fn) }
+func (a *app) update(fn func()) {
+	if a.desktop != nil {
+		inner := fn
+		fn = func() {
+			defer a.recoverMain("updating the window")
+			inner()
+		}
+	}
+	a.desktop.update(fn)
+}
 
 // refresh draws a frame with what background work produced.
 func (a *app) refresh() { a.desktop.invalidate() }

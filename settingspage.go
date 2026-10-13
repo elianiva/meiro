@@ -40,6 +40,7 @@ func (a *app) settingsPage(c *ui.Context) {
 			a.updatesCard(c)
 			a.accountCard(c)
 			a.keyboardCard(c)
+			a.logsCard(c)
 		})
 	})
 }

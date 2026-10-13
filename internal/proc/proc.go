@@ -130,3 +130,23 @@ func SweepTemp() {
 		SweepStale(root, "")
 	}
 }
+
+// ToolVersion returns the first line a helper program prints for the version
+// flag, "unavailable" when it is missing, or "unknown" when it does not say.
+func ToolVersion(ctx context.Context, name string, flag string) string {
+	path, err := Tool(name)
+	if err != nil {
+		return "unavailable"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := Command(ctx, path, flag).Output()
+	if err != nil {
+		return "unknown"
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	if line == "" {
+		return "unknown"
+	}
+	return strings.TrimSpace(line)
+}

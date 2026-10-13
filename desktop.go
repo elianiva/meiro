@@ -42,6 +42,15 @@ func (d *desktop) update(fn func()) {
 	d.win.Update(fn)
 }
 
+// openPath opens a file or folder with the system's default application. It
+// waits for the main thread, so it is called off it.
+func (d *desktop) openPath(path string) error {
+	if d == nil {
+		return nil
+	}
+	return mygo.Shell.OpenPath(path)
+}
+
 // invalidate draws a frame with what background work produced.
 func (d *desktop) invalidate() {
 	if d != nil {
