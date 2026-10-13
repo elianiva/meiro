@@ -113,7 +113,9 @@ prune_ytdlp() { # bin platform
 	[[ "$platform" == darwin-* ]] || return 0
 
 	# The macOS zip is universal2, and every Mach-O in it carries both
-	# architectures. Keep the one this build runs on.
+	# architectures. Keep the one this build runs on. The executable itself
+	# stays whole: PyInstaller finds its embedded archive by the file's layout,
+	# and a thinned x86_64 one no longer starts.
 	local arch=arm64
 	[[ "$platform" == darwin-amd64 ]] && arch=x86_64
 	local f
@@ -123,7 +125,7 @@ prune_ytdlp() { # bin platform
 			mv "$f.thin" "$f"
 			chmod +x "$f" 2>/dev/null || true
 		fi
-	done < <(find "$bin" -type f -print0)
+	done < <(find "$bin/_internal" -type f -print0)
 
 	# _internal/Python is a second copy of the framework's binary.
 	local fw
