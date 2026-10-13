@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"time"
@@ -187,6 +188,11 @@ func (a *app) loadPage(r *route, id string) {
 		if err != nil {
 			p.rowsDirty = true
 			feed.loading, feed.partial, feed.err = false, false, err.Error()
+			// A rejected session is not a page that failed: ask whether the
+			// account is still there, and say so when it is not.
+			if cur := a.account.session; errors.Is(err, youtube.ErrUnauthorized) && cur != nil && cur.client == client {
+				a.checkSession()
+			}
 			return
 		}
 		a.applyPage(p, r, path, client, result, false)

@@ -38,6 +38,8 @@ type loader func(ctx context.Context, client *youtube.Client, id string, partial
 type signInPrompt struct {
 	icon        *ui.SVG
 	title, body string
+	// what is what the account shows, for asking to sign in again.
+	what string
 }
 
 // route is everything the app knows about one page. A page is added by
@@ -129,7 +131,7 @@ func appRoutes() []route {
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.StreamLibrary(ctx, nil)
 			},
-			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists."},
+			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists.", "your songs, albums and playlists"},
 		},
 		{
 			id: routeRecap, pattern: "/recap", title: "Recap", rail: &railEntry{label: "Recap", icon: m3.IconTrending, filled: m3.IconTrending, withAccount: true}, heading: heading("Recap"), nav: routeRecap, source: "Your recap",
@@ -137,7 +139,7 @@ func appRoutes() []route {
 				return c.GetRecap(ctx)
 			},
 			// The recap is built from the account's play history.
-			needsAccount: &signInPrompt{m3.IconTrending, "Your recap lives here", "Sign in to see the music you have had on repeat."},
+			needsAccount: &signInPrompt{m3.IconTrending, "Your recap lives here", "Sign in to see the music you have had on repeat.", "the music you have had on repeat"},
 		},
 		{
 			id: routeSettings, pattern: "/settings", title: "Settings", rail: &railEntry{label: "Settings", action: keymap.Settings, icon: m3.IconSettings, filled: m3.IconSettings, footer: true}, heading: heading("Settings"), nav: routeSettings,

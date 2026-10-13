@@ -259,6 +259,10 @@ func isYouTubeURL(endpoint *url.URL) bool {
 	return host == "youtube.com" || strings.HasSuffix(host, ".youtube.com")
 }
 
+// ErrUnauthorized is YouTube refusing a request's credentials with HTTP 401 or
+// 403, as it does for a session it has stopped accepting.
+var ErrUnauthorized = errors.New("youtube: the session was rejected")
+
 const maxErrorDiagnosticBytes = 256
 
 func responseError(operation string, resp *http.Response) error {
@@ -276,6 +280,9 @@ func responseError(operation string, resp *http.Response) error {
 	}
 	if diagnostic == "" {
 		diagnostic = http.StatusText(resp.StatusCode)
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("youtube: %s returned HTTP %d: %s: %w", operation, resp.StatusCode, diagnostic, ErrUnauthorized)
 	}
 	return fmt.Errorf("youtube: %s returned HTTP %d: %s", operation, resp.StatusCode, diagnostic)
 }

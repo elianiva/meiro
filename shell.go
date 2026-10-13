@@ -199,7 +199,10 @@ func (a *app) routerView(c *ui.Context) {
 		page.Title(r.title)
 		switch {
 		case r.needsAccount != nil && !a.signedIn():
-			prompt := r.needsAccount
+			prompt := *r.needsAccount
+			if a.account.expired != "" {
+				prompt = signInPrompt{m3.IconLogin, "Your session expired", "Sign in again to see " + prompt.what + ".", prompt.what}
+			}
 			ui.Column(c).Fill().Center().Children(func() {
 				a.message(c, prompt.icon, prompt.title, prompt.body, "Sign in", a.openSignIn)
 			})
