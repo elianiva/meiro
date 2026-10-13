@@ -213,16 +213,46 @@ func TestEnqueueOnAnIdleAppStartsPlaying(t *testing.T) {
 
 func TestAnUnplayableTrackSaysWhyAndRetries(t *testing.T) {
 	a, r := playbackApp(t)
-	r.err["bad"] = errors.New("video unavailable")
+	r.err["bad"] = errors.New("yt-dlp could not resolve the audio: Video unavailable")
 	a.play(tracks("bad")[0], nil)
-	if a.playErr != "video unavailable" || a.loading() {
+	if a.playErr != "This track is no longer available." || a.loading() {
 		t.Fatalf("playErr=%q loading=%v", a.playErr, a.loading())
 	}
 	// Pressing play asks for the same track again.
 	delete(r.err, "bad")
 	a.togglePlay()
-	if r.count("bad") != 2 || a.playErr == "video unavailable" {
+	if r.count("bad") != 2 || a.playErr != "" {
 		t.Errorf("play did not resolve the track again: %d resolves, playErr %q", r.count("bad"), a.playErr)
+	}
+}
+
+// Each way a track fails says why in the player bar, in words, not as what
+// yt-dlp printed.
+func TestAnUnplayableTrackShowsAReadableReason(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{"yt-dlp could not resolve the audio: Video unavailable. This video is not available in your country", "This track is not available in your region."},
+		{"yt-dlp could not resolve the audio: Sign in to confirm your age. This video may be inappropriate for some users.", "This track is age-restricted. Sign in to play it."},
+		{"yt-dlp could not resolve the audio: Sign in to confirm you\u2019re not a bot", "YouTube wants you to sign in before it plays this track."},
+		{"yt-dlp could not resolve the audio: Private video. Sign in if you've been granted access", "This track is private."},
+		{"yt-dlp could not resolve the audio: This video has been removed by the uploader", "This track is no longer available."},
+		{"yt-dlp could not resolve the audio: Unable to download webpage: Temporary failure in name resolution", "Could not reach YouTube. Check your connection."},
+		{"context deadline exceeded", "Could not reach YouTube. Check your connection."},
+		{"yt-dlp could not resolve the audio: something new", "This track could not be played: yt-dlp could not resolve the audio: something new"},
+	} {
+		a, r := playbackApp(t)
+		r.err["bad"] = errors.New(tc.raw)
+		tt := ui.NewTester(a.view, 1000, 700)
+		a.play(tracks("bad")[0], nil)
+		tt.Frame()
+		if a.playErr != tc.want {
+			t.Errorf("%q: playErr = %q, want %q", tc.raw, a.playErr, tc.want)
+		}
+		if !tt.HasText(tc.want) {
+			t.Errorf("%q: the player bar does not show %q: %q", tc.raw, tc.want, tt.Texts())
+		}
+		if a.rawPlayErr != tc.raw {
+			t.Errorf("the raw error was not kept for the log: %q", a.rawPlayErr)
+		}
 	}
 }
 
