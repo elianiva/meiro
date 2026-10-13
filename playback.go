@@ -58,6 +58,10 @@ type playback struct {
 	openingKey string
 
 	suspendedWhilePlaying bool
+
+	// resumeID is the restored track that has not played yet; the first play
+	// of it starts at a.scrub, where the last run left it.
+	resumeID string
 }
 
 func newPlayback(streams *audio.URLs, volume float64) playback {
@@ -198,7 +202,12 @@ func (a *app) startTrack(item youtube.MusicItem) {
 	changed := a.current.VideoID != item.VideoID
 	a.current = item
 	a.total = parseDuration(item.Duration)
-	a.scrub, a.playErr, a.rawPlayErr = 0, "", ""
+	startAt := time.Duration(0)
+	if a.resumeID == item.VideoID {
+		startAt = time.Duration(a.scrub * float64(time.Second))
+	}
+	a.resumeID = ""
+	a.scrub, a.playErr, a.rawPlayErr = startAt.Seconds(), "", ""
 	// A position in the track that is ending is not one for the next one, and
 	// the decode the seek was moving is about to be replaced.
 	a.seeking.stop()
@@ -206,7 +215,7 @@ func (a *app) startTrack(item youtube.MusicItem) {
 	// The old stream is stopped by the work that finds the new one: stopping
 	// kills ffmpeg and waits for the audio device, which is not for the main
 	// thread to do.
-	a.streamAudio(item)
+	a.streamAudio(item, startAt)
 	a.ensureUpNext()
 	a.loadPanel()
 	if changed {
@@ -233,7 +242,7 @@ type resolvedAudio struct {
 
 // streamAudio finds a track's audio off the main thread, in the cache or
 // with yt-dlp, and plays it.
-func (a *app) streamAudio(item youtube.MusicItem) {
+func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration) {
 	cookie, cache := a.account.cookie(), a.currentAudioCache()
 	log.Printf("playback: resolving video_id=%s signed_in=%t", item.VideoID, cookie != "")
 	startTask(a, &a.stream, audio.ResolveTimeout, func(ctx context.Context) (resolvedAudio, error) {
@@ -244,7 +253,7 @@ func (a *app) streamAudio(item youtube.MusicItem) {
 		}
 		// Opening the audio device and starting ffmpeg take long enough to
 		// be felt, so they happen here and not on the main thread.
-		found.playErr = a.player.Play(found.url)
+		found.playErr = a.player.PlayAt(found.url, startAt, false)
 		return found, nil
 	}, func(found resolvedAudio, err error) {
 		if err != nil {

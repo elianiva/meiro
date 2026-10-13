@@ -49,6 +49,8 @@ type app struct {
 	// What the user chose, and the writer that keeps it.
 	settings settings.Settings
 	saver    settings.Writer
+	// playSave keeps the queue and position for the next run.
+	playSave playbackSave
 
 	account accountState
 	// keyboard is the shortcuts, and the recording of a new one.

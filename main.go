@@ -84,6 +84,7 @@ func main() {
 		a.restoreAccount()
 		a.loadHistory()
 		a.startTicker()
+		a.every(persistInterval, func() { a.update(a.persistPlayback) })
 		// Browsing decodes and drops pictures in bursts, and the runtime
 		// keeps the freed memory for a while before it gives it back.
 		a.every(30*time.Second, debug.FreeOSMemory)
@@ -159,6 +160,7 @@ func (a *app) setup() {
 		a.settings = settings.Load(a.saver.Path)
 		a.account.creds.store = &cookies.FileStore{Path: filepath.Join(directory, "cookie.txt")}
 		a.historyPath = filepath.Join(directory, "history.json")
+		a.restorePlayback(filepath.Join(directory, "playback.json"))
 	} else {
 		a.account.signIn.err = err.Error()
 	}
@@ -216,7 +218,9 @@ func (a *app) openAudioCache() {
 
 // shutdown flushes the settings, then closes what belongs to the app.
 func (a *app) shutdown() {
+	a.savePlayback(0)
 	a.saver.Wait()
+	a.playSave.writer.Wait()
 	a.desktop.close()
 	if a.media != nil {
 		if err := a.media.Close(); err != nil {
