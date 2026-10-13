@@ -35,14 +35,20 @@ if [[ -z "$deb" || -z "$archive" || ! -f "$dist/meiro.desktop" || ! -f "$dist/me
   exit 1
 fi
 
-cp "$deb" "$archive" "$artifacts/"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+
+# MyGo packs the .deb with gzip. xz makes it about a fifth smaller, and every
+# dpkg reads it.
+deb_root="$tmp/deb-root"
+dpkg-deb --raw-extract "$deb" "$deb_root"
+dpkg-deb --root-owner-group -Zxz -Sextreme --build "$deb_root" "$artifacts/$(basename "$deb")"
+cp "$archive" "$artifacts/"
 
 # Build an RPM with the same installed file layout as MyGo's Debian package.
 rpm_root="$tmp/rpm-root"
 mkdir -p "$rpm_root"
-dpkg-deb --extract "$deb" "$rpm_root"
+dpkg-deb --extract "$artifacts/$(basename "$deb")" "$rpm_root"
 cat > "$tmp/nfpm.yaml" <<'EOF'
 name: meiro
 arch: ${ARCH}
@@ -55,6 +61,8 @@ homepage: https://github.com/elianiva/meiro
 depends:
   - gtk3
   - webkit2gtk4.1
+rpm:
+  compression: xz
 contents:
   - src: ${RPM_ROOT}/
     dst: /
