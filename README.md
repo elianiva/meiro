@@ -144,7 +144,7 @@ macOS Apple Silicon and Intel, plus Linux `amd64` and `arm64` `.deb`, `.rpm`,
 
 - [MyGo](https://mygo.egoist.dev/) by [EGOIST](https://github.com/egoist),
   the framework that draws Meiro's native window and interface.
-- [ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg) decodes the audio,
+- [ffmpeg](https://ffmpeg.org) decodes the audio,
   [yt-dlp](https://github.com/yt-dlp/yt-dlp) finds the streams, and
   [QuickJS](https://github.com/quickjs-ng/quickjs) runs the JavaScript yt-dlp
   needs to solve YouTube's challenges when Node or Bun is not installed. All

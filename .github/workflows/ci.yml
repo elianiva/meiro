@@ -101,7 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Check shell scripts
-        run: shellcheck --severity=warning scripts/fetch-tools.sh scripts/package-linux.sh
+        run: shellcheck --severity=warning scripts/fetch-tools.sh scripts/build-ffmpeg.sh scripts/package-linux.sh
       - name: Check workflows
         run: |
           curl --fail --location --silent --show-error \

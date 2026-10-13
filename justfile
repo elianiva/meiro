@@ -56,7 +56,7 @@ ci:
 
     echo "== scripts and workflows =="
     if command -v shellcheck >/dev/null 2>&1; then
-        shellcheck --severity=warning scripts/fetch-tools.sh scripts/package-linux.sh
+        shellcheck --severity=warning scripts/fetch-tools.sh scripts/build-ffmpeg.sh scripts/package-linux.sh
     else
         echo "warning: shellcheck is missing; the scripts were not checked."
     fi
@@ -68,7 +68,7 @@ ci:
 
     echo "All checks passed."
 
-# Download the ffmpeg and yt-dlp a build ships, for one platform.
+# Get the ffmpeg and yt-dlp a build ships, for one platform.
 tools platform=host:
     scripts/fetch-tools.sh {{platform}}
 

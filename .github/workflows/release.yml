@@ -114,11 +114,61 @@ jobs:
           }
           echo "Version OK: ${{ needs.gate.outputs.version }}"
 
+  # Meiro ships a small ffmpeg built from source (scripts/build-ffmpeg.sh)
+  # instead of a full build. It builds apart from the app, and is cached by
+  # the script's contents, so a release only rebuilds it when it changes.
+  ffmpeg:
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: darwin-arm64, os: macos-latest }
+          - { platform: darwin-amd64, os: macos-latest }
+          - { platform: linux-amd64, os: ubuntu-latest }
+          - { platform: linux-arm64, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: resources/${{ matrix.platform }}
+          key: ffmpeg-${{ matrix.platform }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+      # Linux builds inside Alpine, so the binary is static against musl and
+      # runs on any distribution, where a glibc build needs a recent one.
+      - name: Build ffmpeg in Alpine
+        if: startsWith(matrix.platform, 'linux-') && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src alpine:3.22 sh -euc '
+            apk add --no-cache bash build-base curl nasm openssl-dev openssl-libs-static pkgconf tar xz
+            scripts/build-ffmpeg.sh "${{ matrix.platform }}"
+            chown -R '"$(id -u):$(id -g)"' resources'
+      - name: Build ffmpeg
+        if: startsWith(matrix.platform, 'darwin-') && steps.cache.outputs.cache-hit != 'true'
+        run: scripts/build-ffmpeg.sh "${{ matrix.platform }}"
+      - name: Check the build
+        run: |
+          ffmpeg="resources/${{ matrix.platform }}/bin/ffmpeg"
+          ls -la "$ffmpeg"
+          if [ "${{ matrix.platform }}" != darwin-amd64 ]; then
+            "$ffmpeg" -hide_banner -protocols | grep -x '  https'
+            "$ffmpeg" -hide_banner -decoders | grep -E ' (opus|aac) '
+          fi
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ffmpeg-${{ matrix.platform }}
+          path: resources/${{ matrix.platform }}
+          include-hidden-files: true
+          if-no-files-found: error
+
   build:
     # A tag build waits on version (tag matches mygo.json); a manual
     # branch build skips version, so it always runs and never publishes.
-    needs: [gate, version]
-    if: always() && needs.gate.result == 'success' && (needs.version.result == 'success' || needs.version.result == 'skipped')
+    needs: [gate, version, ffmpeg]
+    if: always() && needs.gate.result == 'success' && needs.ffmpeg.result == 'success' && (needs.version.result == 'success' || needs.version.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -144,8 +194,16 @@ jobs:
           jq --arg v "$version" '.version = $v' mygo.json > mygo.json.new
           mv mygo.json.new mygo.json
 
-      - name: Fetch ffmpeg and yt-dlp
-        run: scripts/fetch-tools.sh "${{ matrix.platform }}"
+      # Artifacts lose the executable bit, and the ffmpeg stamp tells
+      # fetch-tools.sh that ffmpeg is already built.
+      - uses: actions/download-artifact@v5
+        with:
+          name: ffmpeg-${{ matrix.platform }}
+          path: resources/${{ matrix.platform }}
+      - name: Fetch yt-dlp and QuickJS
+        run: |
+          chmod +x "resources/${{ matrix.platform }}/bin/ffmpeg"
+          scripts/fetch-tools.sh "${{ matrix.platform }}"
 
       - name: Build
         run: go tool mygo build -platform "${{ matrix.target }}" -o dist
