@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/artwork"
@@ -42,6 +43,8 @@ type app struct {
 	run func(work func())
 	// sleep waits for a delay, or until ctx ends. Tests do not wait.
 	sleep func(ctx context.Context, delay time.Duration) error
+	// openURL opens a link in the default browser. Tests record it.
+	openURL func(url string) error
 
 	// What the user chose, and the writer that keeps it.
 	settings settings.Settings
@@ -105,6 +108,10 @@ type app struct {
 	cacheLimitError    string
 	cacheDirectoryText string
 	cacheDirError      string
+	// report is the lookup of tool versions for a problem report, and
+	// reportError what went wrong opening it.
+	report      task
+	reportError string
 
 	// stop ends the periodic work; stopOnce closes it once.
 	stop     chan struct{}
@@ -130,6 +137,7 @@ func newApp() *app {
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.run = func(work func()) {
 		go func() {
+			a.openURL = mygo.Shell.OpenExternal
 			defer a.recoverBackground("background work")
 			work()
 		}()

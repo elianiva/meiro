@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -385,5 +387,36 @@ func TestOpeningTheLogsFolderFromSettings(t *testing.T) {
 	}
 	if len(opened) != 1 || opened[0] != "/logs" {
 		t.Errorf("opened %v, want the logs folder", opened)
+	}
+}
+
+// Report a problem opens the issue form with the versions filled in, and
+// never carries the account.
+func TestReportProblemOpensPrefilledIssue(t *testing.T) {
+	a := signedInApp(t)
+	var opened []string
+	a.openURL = func(link string) error { opened = append(opened, link); return nil }
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 5000)
+	tt.Frame()
+
+	if err := tt.Click("Report a problem"); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 1 {
+		t.Fatalf("opened %d links, want 1", len(opened))
+	}
+	u, err := url.Parse(opened[0])
+	if err != nil || u.Host != "github.com" || u.Path != "/elianiva/meiro/issues/new" {
+		t.Fatalf("unexpected link %s (%v)", opened[0], err)
+	}
+	if strings.Contains(opened[0], "SAPISID") {
+		t.Error("the link carries the session cookie")
+	}
+	body := u.Query().Get("body")
+	for _, want := range []string{"- Meiro: ", "- OS: " + runtime.GOOS, "- yt-dlp: ", "- ffmpeg: "} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body lacks %q:\n%s", want, body)
+		}
 	}
 }
