@@ -525,7 +525,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			// button opened points at the button.
 			menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key)
 		})
-		if isSong && (hovered || main.FocusVisible() || a.menu.opened(key)) {
+		if hovered || main.FocusVisible() || a.menu.opened(key) {
 			menuButton = m3.IconButton(c, m3.IconButtonSpec{
 				Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
 			})
@@ -540,7 +540,15 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		}
 	}
 	if hasMenu && a.menu.owns(key) {
-		a.songMenu(c, a.menu.anchor(menuButton, menuAnchor, hasAnchor), key, item, o)
+		anchor := a.menu.anchor(menuButton, menuAnchor, hasAnchor)
+		if isSong {
+			a.songMenu(c, anchor, key, item, o)
+		} else {
+			// A row of an album, an artist or a playlist is a row of
+			// something that opens a page, as a card in a shelf is, and
+			// offers what that card's menu does.
+			a.cardMenu(c, anchor, key, item, queue)
+		}
 	}
 	if main.Clicked() {
 		if o.directQueue {
@@ -624,13 +632,26 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 	card := ui.ButtonBase(c.Key(key))
 	card.Padding(8).Margin(0, pageGutter-8).Gap(20).Radius(m3.ExtraLarge).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(item.Title).
 		Background(m3.StateFill(ui.Transparent, sc.OnSurface, card.Hovered(), card.Pressed(), card.FocusVisible()))
-	played, shuffled := false, false
+	played, shuffled, menuClicked := false, false, false
+	hovered := card.Hovered()
+	var menuButton, menuAnchor ui.Element
+	hasMenu, hasAnchor := false, false
 	card.Children(func() {
 		a.art(c, item.Thumbnail, 256, 132, artRadius(item, m3.LargeIncreased), func() {
 			if a.isOpening(key) {
 				ui.Box(c).Fill().Radius(artRadius(item, m3.LargeIncreased)).Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
 					m3.LoadingIndicatorIn(c, 28, ui.RGB(255, 255, 255))
 				})
+				return
+			}
+			// The menu sits on the artwork, as a card's does.
+			if hovered || card.FocusVisible() || a.menu.opened(key+"-menu") {
+				if target.Kind != youtube.TargetNone {
+					menuButton = m3.IconButton(c, m3.IconButtonSpec{
+						Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
+					}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
+					hasMenu = true
+				}
 			}
 		})
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
@@ -657,16 +678,30 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 			case youtube.TargetNone:
 			}
 		})
+		// A menu the pointer opened points at the pointer; one the menu
+		// button opened points at the button.
+		menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key+"-menu")
 	})
+	if hasMenu {
+		pointer := card.RightClicked() || menuButton.RightClicked()
+		x, y, _ := card.PointerPosition()
+		if menuButton.Clicked() || pointer {
+			a.menu.show(key+"-menu", pointer, x, y)
+			menuClicked = true
+		}
+	}
+	if hasMenu && a.menu.owns(key+"-menu") {
+		a.cardMenu(c, a.menu.anchor(menuButton, menuAnchor, hasAnchor), key+"-menu", item, a.page.playable)
+	}
 	switch {
+	case menuClicked:
+		// The buttons inside the card receive their presses too: the switch
+		// is what keeps a press on the menu from opening the page under it.
 	case played:
 		a.playCollection(item, key, false)
 	case shuffled:
 		a.playCollection(item, key, true)
 	case card.Clicked():
-		// The buttons are inside the card, which receives their presses too:
-		// the switch above is what keeps a press on one from opening the
-		// page under it.
 		a.activate(item, a.page.playable)
 	}
 }

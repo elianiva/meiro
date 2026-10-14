@@ -86,6 +86,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.Contains(asked, "search-more"):
 		searchesMore.Add(1)
 		reply = searchMoreResponse
+	case strings.Contains(asked, "yor mixed"):
+		reply = searchMixedResponse
 	case strings.Contains(asked, `"query"`):
 		searches.Add(1)
 		searchAsked.Store(asked)
@@ -238,6 +240,44 @@ const searchResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"ta
 		}}
 	]}}}}]}}}`
 
+// searchMixedResponse is a search that found one of everything: a top result,
+// and a row each for an album, an artist, a playlist and a song.
+const searchMixedResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
+	"contents":[
+		{"musicCardShelfRenderer":{
+			"title":{"runs":[{"text":"Mixed Album","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_mixed"}}}]},
+			"subtitle":{"runs":[{"text":"Album"},{"text":" • "},{"text":"Someone"}]},
+			"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/mixed=w544-h544-l90-rj"}]}}},
+			"contents":[]
+		}},
+		{"musicShelfRenderer":{"contents":[
+			{"musicResponsiveListItemRenderer":{
+				"navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_row"}},
+				"flexColumns":[
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Row Album"}]}}},
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Album"},{"text":" • "},{"text":"Someone"}]}}}
+				]}},
+			{"musicResponsiveListItemRenderer":{
+				"navigationEndpoint":{"browseEndpoint":{"browseId":"UCrowartist"}},
+				"flexColumns":[
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Row Artist"}]}}},
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Artist"}]}}}
+				]}},
+			{"musicResponsiveListItemRenderer":{
+				"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLrow"}},
+				"flexColumns":[
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Row Playlist"}]}}},
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Playlist"},{"text":" • "},{"text":"Someone"}]}}}
+				]}},
+			{"musicResponsiveListItemRenderer":{
+				"playlistItemData":{"videoId":"vid-row"},
+				"flexColumns":[
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Row Song"}]}}},
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:20"}]}}}
+				]}}
+		]}}
+	]}}}}]}}}`
+
 // searchFilteredResponse is a search narrowed to one of its filters: the chip
 // that clears them leads the row, and the results are the ones of the filter.
 const searchFilteredResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
@@ -271,12 +311,20 @@ const suggestionsResponse = `{"contents":[
 		{"searchSuggestionRenderer":{"suggestion":{"runs":[{"text":"Yorushika"}]}}},
 		{"searchSuggestionRenderer":{"suggestion":{"runs":[{"text":"Yorushika songs"}]}}}
 	]}},
-	{"searchSuggestionsSectionRenderer":{"contents":[{"musicResponsiveListItemRenderer":{
-		"navigationEndpoint":{"browseEndpoint":{"browseId":"UCyorushika"}},
-		"flexColumns":[
-			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Yorushika"}]}}},
-			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"16M monthly audience"}]}}}
-		]}}]}}
+	{"searchSuggestionsSectionRenderer":{"contents":[
+		{"musicResponsiveListItemRenderer":{
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"UCyorushika"}},
+			"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Yorushika"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"16M monthly audience"}]}}}
+			]}},
+		{"musicResponsiveListItemRenderer":{
+			"playlistItemData":{"videoId":"vid-suggest"},
+			"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggested Song"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:20"}]}}}
+			]}}
+	]}}
 ]}`
 
 const recapResponse = `{"contents":{"musicCarouselShelfRenderer":{

@@ -229,13 +229,18 @@ func (a *app) suggestionRow(c *ui.Context, query string) {
 }
 
 // suggestionItem is one item of the panel under the search bar: what YouTube
-// Music already matches the text being typed with.
+// Music already matches the text being typed with. Choosing it opens what it
+// names; a right click offers the menu the item offers wherever else it
+// appears, as a song row or a card does.
 func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, tracks []youtube.MusicItem, position int) {
 	sc := m3.Of(c).Scheme
-	row := ui.ButtonBase(c.Key("suggestion-item-" + strconv.Itoa(position)))
+	key := "suggestion-item-" + strconv.Itoa(position)
+	row := ui.ButtonBase(c.Key(key))
 	row.Height(56).Padding(8, 8).Gap(12).Radius(m3.Medium).AlignItems(ui.Center).
 		Cursor(ui.CursorPointer).Label(item.Title).
 		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+	var menuAnchor ui.Element
+	hasAnchor := false
 	row.Children(func() {
 		a.art(c, item.Thumbnail, 128, 40, artRadius(item, m3.Small))
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
@@ -244,7 +249,24 @@ func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, tracks []you
 				m3.Text(c, m3.BodySmall, item.Subtitle).SingleLine().TextColor(sc.OnSurfaceVariant)
 			}
 		})
+		// A menu the pointer opened points at the pointer, in the row's own
+		// layout.
+		menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key)
 	})
+	if row.RightClicked() {
+		x, y, _ := row.PointerPosition()
+		a.menu.show(key, true, x, y)
+	}
+	if a.menu.owns(key) {
+		// The row has no menu button to point at: the menu follows the
+		// pointer, and the row on the one frame the pointer does not know
+		// about yet.
+		anchor := row
+		if hasAnchor {
+			anchor = menuAnchor
+		}
+		a.cardMenu(c, anchor, key, item, tracks)
+	}
 	if row.Clicked() {
 		a.cancelSuggestions()
 		a.activate(item, tracks)

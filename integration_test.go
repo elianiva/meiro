@@ -111,6 +111,76 @@ func TestSearchFlow(t *testing.T) {
 	}
 }
 
+// An item of the panel under the search bar offers its menu on a right click,
+// as it does wherever else it appears: a song offers the queue and its link,
+// and anything that opens a page offers that. The panel stays open, and a
+// right click must not also choose the item under the menu.
+func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
+	a := newTestApp()
+	a.router.Push("/search")
+	tt := ui.NewTester(a.view, 1000, 700)
+	searches.Store(0)
+
+	if err := tt.Click(searchPlaceholder); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("yor")
+	tt.Frame()
+	if !tt.HasText("Suggested Song") || !tt.HasText("16M monthly audience") {
+		t.Fatalf("the items the query matches are missing: %q", tt.Texts())
+	}
+
+	// A song is the song it is anywhere: the queue actions, and its link.
+	if err := tt.RightClick("Suggested Song"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Play next", "Add to queue", "Add to playlist", "Copy link"} {
+		if !tt.HasText(want) {
+			t.Errorf("right-clicking a song among the suggestions offered no %q: %q", want, tt.Texts())
+		}
+	}
+	if !tt.HasText("Suggested Song") {
+		t.Errorf("the right click closed the panel: %q", tt.Texts())
+	}
+	a.menu.close()
+	tt.Frame()
+
+	// An artist among the suggestions opens its page, or its link.
+	if err := tt.RightClick("16M monthly audience"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Go to artist") || !tt.HasText("Copy link") {
+		t.Fatalf("right-clicking an artist among the suggestions offered %q", tt.Texts())
+	}
+	if err := tt.Click("Copy link"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := tt.Clipboard(); got != "https://music.youtube.com/browse/UCyorushika" {
+		t.Errorf("Copy link copied %q, want the artist's link", got)
+	}
+	if a.menu.open {
+		t.Error("the menu stayed open after one of its items was chosen")
+	}
+
+	// The panel stayed for the next item, and nothing was searched, opened or
+	// played under the menu.
+	if !tt.HasText("16M monthly audience") {
+		t.Errorf("the panel closed: %q", tt.Texts())
+	}
+	if searches.Load() != 0 {
+		t.Errorf("a right click ran %d searches", searches.Load())
+	}
+	if r, _ := a.route(); r.id != routeSearch {
+		t.Errorf("a right click left the search page for %q", r.id)
+	}
+	if a.current.VideoID != "" {
+		t.Errorf("a right click played %q", a.current.VideoID)
+	}
+}
+
 // The search field is in the top bar of every page, and submitting it there
 // shows the search page with what it ran.
 func TestSearchingFromAnotherPage(t *testing.T) {
@@ -210,6 +280,63 @@ func TestSearchLoadsTheNextPageItself(t *testing.T) {
 		if r.kind == rowMore {
 			t.Fatalf("a search offers the button that asks: %q", tt.Texts())
 		}
+	}
+}
+
+// Right-clicking a search result opens its menu, whatever the result is: the
+// top result and a row of an album, an artist or a playlist open the page
+// they name, and a song offers the queue. A right click must not also open or
+// play what it opened the menu for.
+func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/search")
+	tt := ui.NewTester(a.view, 1180, 850)
+	tt.Frame()
+	if err := tt.Click("Search songs, albums, artists, podcasts"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("yor mixed")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	for _, want := range []string{"Mixed Album", "Row Album", "Row Artist", "Row Playlist", "Row Song"} {
+		if !tt.HasText(want) {
+			t.Fatalf("the search did not show %q: %q", want, tt.Texts())
+		}
+	}
+
+	for _, c := range []struct {
+		result string
+		offer  string
+	}{
+		{"Mixed Album", "Open album"},  // the top result
+		{"Row Album", "Open album"},    // an album among the rows
+		{"Row Artist", "Go to artist"}, // an artist among the rows
+		{"Row Playlist", "Open playlist"},
+		{"Row Song", "Add to queue"}, // a song among the rows
+	} {
+		if tt.HasText(c.offer) {
+			t.Fatalf("%q is on screen before right-clicking %q: %q", c.offer, c.result, tt.Texts())
+		}
+		if err := tt.RightClick(c.result); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if !tt.HasText(c.offer) {
+			t.Errorf("right-clicking %q offered no %q: %q", c.result, c.offer, tt.Texts())
+		}
+		if !tt.HasText("Copy link") {
+			t.Errorf("the menu on %q has no Copy link: %q", c.result, tt.Texts())
+		}
+		a.menu.close()
+		tt.Frame()
+	}
+
+	// Opening a menu is not opening the page, or playing the song, under it.
+	if r, _ := a.route(); r.id != routeSearch {
+		t.Errorf("a right click left the search page for %q", r.id)
+	}
+	if a.current.VideoID != "" {
+		t.Errorf("a right click played %q", a.current.VideoID)
 	}
 }
 

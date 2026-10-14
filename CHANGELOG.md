@@ -8,6 +8,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- **Search menus**: right-click a result on the search page, or an item in the
+  panel under the search bar, to open its menu. A song offers Play next, Add to
+  queue, Add to playlist and Copy link; an album, artist or playlist offers the
+  page it names and its link, with Shuffle play for a playlist. The leading
+  result offers the same menu, from a button on its artwork.
+
 ## [0.1.0]
 
 <!-- Add the release date when v0.1.0 is tagged: ## [0.1.0] - YYYY-MM-DD -->
