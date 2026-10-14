@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/elianiva/meiro/internal/fsutil"
@@ -61,11 +62,77 @@ func Read(path string) []Entry {
 
 // Write replaces a history file atomically.
 func Write(path string, entries []Entry) error {
+	if entries == nil {
+		entries = []Entry{} // "[]", not "null"
+	}
 	data, err := json.Marshal(entries)
 	if err != nil {
 		return err
 	}
 	return fsutil.WriteFileAtomic(path, data, 0o600)
+}
+
+// Writer writes the history off the main thread, one write at a time, so that
+// the writes of two quick plays cannot land out of order and leave the older
+// one on disk. A save asked for while another is being written replaces what
+// waits behind it. The zero value is ready to use.
+type Writer struct {
+	mu      sync.Mutex
+	path    string
+	next    []Entry
+	pending bool
+	running bool
+	done    chan struct{}
+}
+
+// Save writes entries to path soon. It keeps its own copy of them. Saving
+// no entries writes an empty history, which is how the history is cleared.
+func (w *Writer) Save(path string, entries []Entry) {
+	if path == "" {
+		return
+	}
+	entries = slices.Clone(entries)
+	w.mu.Lock()
+	w.path, w.next, w.pending = path, entries, true
+	if w.running {
+		w.mu.Unlock()
+		return
+	}
+	w.running = true
+	w.done = make(chan struct{})
+	done := w.done
+	w.mu.Unlock()
+	go w.drain(done)
+}
+
+func (w *Writer) drain(done chan struct{}) {
+	defer close(done)
+	for {
+		w.mu.Lock()
+		if !w.pending {
+			w.running = false
+			w.mu.Unlock()
+			return
+		}
+		path, entries := w.path, w.next
+		w.next, w.pending = nil, false
+		w.mu.Unlock()
+		if err := Write(path, entries); err != nil {
+			log.Printf("saving listening history: %v", err)
+		}
+	}
+}
+
+// Wait returns when every save asked for so far is on disk.
+func (w *Writer) Wait() {
+	w.mu.Lock()
+	if !w.running {
+		w.mu.Unlock()
+		return
+	}
+	done := w.done
+	w.mu.Unlock()
+	<-done
 }
 
 // Day is one day of listening.

@@ -16,6 +16,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/cookies"
+	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -360,6 +361,7 @@ func TestRefusedSessionStaysSignedOut(t *testing.T) {
 func TestHistoryLoadMergesPendingPlays(t *testing.T) {
 	a := newTestApp()
 	a.historyPath = filepath.Join(t.TempDir(), "history.json")
+	t.Cleanup(a.historyWriter.Wait) // the merged history is written in the background
 	var finish func()
 	a.run = func(work func()) { finish = work } // the read is held back
 	a.loadHistory()
@@ -371,6 +373,74 @@ func TestHistoryLoadMergesPendingPlays(t *testing.T) {
 	finish()
 	if len(a.history) != 2 || a.history[0].VideoID != "old" || a.history[1].VideoID != "new" {
 		t.Fatalf("history = %+v", a.history)
+	}
+}
+
+// Clear history asks again, then empties the history in memory and on disk,
+// and the stats page shows nothing played.
+func TestClearHistoryFromSettings(t *testing.T) {
+	a := newTestApp()
+	a.historyPath = filepath.Join(t.TempDir(), "history.json")
+	a.loadHistory()
+	a.recordHistory(youtube.MusicItem{VideoID: "a", Title: "A", Subtitle: "X"})
+	a.recordHistory(youtube.MusicItem{VideoID: "b", Title: "B", Subtitle: "Y"})
+	a.historyWriter.Wait()
+	if got := history.Read(a.historyPath); len(got) != 2 {
+		t.Fatalf("saved %d plays, want 2", len(got))
+	}
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 4000)
+	tt.Frame()
+	if !tt.HasText("2 plays are kept on this device") {
+		t.Fatalf("settings do not count the plays: %q", tt.Texts())
+	}
+	if err := tt.Click("Clear history"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.history) != 2 {
+		t.Fatal("the first click cleared the history without asking")
+	}
+	if err := tt.Click("Keep"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Clear history"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Delete all plays"); err != nil {
+		t.Fatal(err)
+	}
+	a.historyWriter.Wait()
+	if len(a.history) != 0 || len(history.Read(a.historyPath)) != 0 {
+		t.Errorf("history left: %d in memory, %d on disk", len(a.history), len(history.Read(a.historyPath)))
+	}
+	tt.Frame()
+	if !tt.HasText("No plays are kept on this device.") {
+		t.Errorf("settings still show plays: %q", tt.Texts())
+	}
+	a.router.Push("/stats")
+	tt.Frame()
+	if a.statsSummary(time.Now(), 14).Plays != 0 {
+		t.Error("the stats still count cleared plays")
+	}
+}
+
+// Clearing while the history is still being read must not let the read bring
+// the old plays back.
+func TestClearHistoryWhileItLoads(t *testing.T) {
+	a := newTestApp()
+	a.historyPath = filepath.Join(t.TempDir(), "history.json")
+	if err := os.WriteFile(a.historyPath, []byte(`[{"videoId":"old","playedAt":"2026-01-01T00:00:00Z"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var finish func()
+	a.run = func(work func()) { finish = work } // the read is held back
+	a.loadHistory()
+	a.clearHistory()
+	a.run = func(work func()) { work() }
+	finish()
+	a.historyWriter.Wait()
+	if len(a.history) != 0 || len(history.Read(a.historyPath)) != 0 {
+		t.Errorf("the read brought plays back: %d in memory, %d on disk", len(a.history), len(history.Read(a.historyPath)))
 	}
 }
 

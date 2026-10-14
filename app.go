@@ -101,8 +101,15 @@ type app struct {
 	history        []history.Entry
 	historyLoaded  bool
 	historyLoading bool
-	statsRange     int // days the stats page covers: 7, 14 or 30
-	stats          statsMemo
+	// historyDiscard drops the plays the read in flight brings: the user
+	// cleared the history while it was being read.
+	historyDiscard bool
+	// confirmClearHistory is set once the user has asked to clear the history,
+	// until they confirm or keep it.
+	confirmClearHistory bool
+	historyWriter       history.Writer
+	statsRange          int // days the stats page covers: 7, 14 or 30
+	stats               statsMemo
 
 	// audioCache is the cache playback uses now; the settings page swaps it
 	// from the main thread while background work holds on to the one it

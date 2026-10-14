@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"strconv"
 	"time"
 
@@ -40,6 +39,9 @@ func (a *app) loadHistory() {
 	path := a.historyPath
 	spawn(a, func() []history.Entry { return history.Read(path) }, func(entries []history.Entry) {
 		pending := len(a.history) > 0
+		if a.historyDiscard {
+			entries, pending, a.historyDiscard = nil, true, false
+		}
 		a.history = history.Append(entries, a.history...)
 		a.historyLoaded, a.historyLoading = true, false
 		if pending {
@@ -48,19 +50,26 @@ func (a *app) loadHistory() {
 	})
 }
 
-// saveHistory writes the history off the main thread. It writes a copy: the
-// main thread may keep appending while it writes.
+// saveHistory hands the history to the writer, which writes it off the main
+// thread, in order, and keeps its own copy.
 func (a *app) saveHistory() {
-	path := a.historyPath
-	if path == "" || !a.historyLoaded {
+	if a.historyPath == "" || !a.historyLoaded {
 		return
 	}
-	entries := append([]history.Entry(nil), a.history...)
-	a.run(func() {
-		if err := history.Write(path, entries); err != nil {
-			log.Printf("saving listening history: %v", err)
-		}
-	})
+	a.historyWriter.Save(a.historyPath, a.history)
+}
+
+// clearHistory forgets every play, on disk too.
+func (a *app) clearHistory() {
+	a.history = nil
+	if !a.historyLoaded {
+		// The read that is on its way would bring the old plays back: it
+		// drops them and writes the empty history instead.
+		a.historyDiscard = true
+		a.loadHistory()
+		return
+	}
+	a.saveHistory()
 }
 
 // statsMemo holds the summary the stats page last built, and what it was built

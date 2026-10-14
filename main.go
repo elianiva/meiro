@@ -226,6 +226,7 @@ func (a *app) openAudioCache() {
 func (a *app) shutdown() {
 	a.savePlayback(0)
 	a.saver.Wait()
+	a.historyWriter.Wait()
 	a.playSave.writer.Wait()
 	a.desktop.close()
 	if a.media != nil {

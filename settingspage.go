@@ -37,6 +37,7 @@ func (a *app) settingsPage(c *ui.Context) {
 			a.appearanceCard(c)
 			a.playbackCacheCard(c)
 			a.desktopCard(c)
+			a.historyCard(c)
 			a.updatesCard(c)
 			a.toolsCard(c)
 			a.reportCard(c)
