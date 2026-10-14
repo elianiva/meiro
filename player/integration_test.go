@@ -135,3 +135,96 @@ func TestStopForgetsTheStream(t *testing.T) {
 		t.Errorf("a stopped player: active=%v position=%v", p.Active(), p.Position())
 	}
 }
+
+func TestAPreloadedStreamTakesOverWithoutEnding(t *testing.T) {
+	p, wav := newTestPlayer(t)
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Preload("next", wav); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Preloaded(); got != "next" {
+		t.Fatalf("Preloaded = %q, want next", got)
+	}
+	// The first stream ends within a fraction of a second at the fake
+	// speaker's pace; the hand over must not show as an ended stream.
+	deadline := time.Now().Add(10 * time.Second)
+	var tag string
+	for time.Now().Before(deadline) {
+		if p.Ended() {
+			t.Fatal("the stream ended between the tracks")
+		}
+		if got, ok := p.Advanced(); ok {
+			tag = got
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if tag != "next" {
+		t.Fatalf("Advanced = %q, want next", tag)
+	}
+	if _, ok := p.Advanced(); ok {
+		t.Error("Advanced reported the same hand over twice")
+	}
+	if p.Preloaded() != "" {
+		t.Error("the stream that took over is still preloaded")
+	}
+	if p.Position() > time.Second {
+		t.Errorf("position right after the hand over = %v, want the new track's start", p.Position())
+	}
+	waitFor(t, "the second track to end", p.Ended)
+	if !near(p.Position(), 3*time.Second) || p.Failure() != "" {
+		t.Errorf("second track: position %v, failure %q", p.Position(), p.Failure())
+	}
+}
+
+func TestAPreloadThatFailsLeavesTheStreamToEnd(t *testing.T) {
+	p, wav := newTestPlayer(t)
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Preload("next", filepath.Join(t.TempDir(), "missing.wav")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the first track to end", p.Ended)
+	if _, ok := p.Advanced(); ok {
+		t.Error("a stream that failed to open took over")
+	}
+	if p.Failure() != "" {
+		t.Errorf("the first track reports %q", p.Failure())
+	}
+}
+
+func TestPlaySeekAndStopDropThePreload(t *testing.T) {
+	p, wav := newTestPlayer(t)
+	for name, drop := range map[string]func(){
+		"play":   func() { _ = p.Play(wav) },
+		"seek":   func() { p.Seek(time.Second) },
+		"stop":   p.Stop,
+		"cancel": p.CancelPreload,
+	} {
+		p.Pause() // hold the track so it cannot end meanwhile
+		if err := p.Play(wav); err != nil {
+			t.Fatal(err)
+		}
+		p.Pause()
+		if err := p.Preload("next", wav); err != nil {
+			t.Fatal(err)
+		}
+		drop()
+		if got := p.Preloaded(); got != "" {
+			t.Errorf("%s left %q preloaded", name, got)
+		}
+	}
+}
+
+func TestNothingIsPreloadedWithoutAStream(t *testing.T) {
+	p, wav := newTestPlayer(t)
+	if err := p.Preload("next", wav); err != nil {
+		t.Fatal(err)
+	}
+	if p.Preloaded() != "" {
+		t.Error("a stopped player preloaded a stream")
+	}
+}

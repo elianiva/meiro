@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -821,4 +822,162 @@ func TestQueueEditsAtTheEdges(t *testing.T) {
 	if e.remove(0) || e.shift(0, 1) || e.moveRows([]int{0}, 0) || e.len() != 0 {
 		t.Error("edited an empty queue")
 	}
+}
+
+// tonesApp is an app whose every track is one tone of the given
+// length in seconds, to test the hand over between tracks on real audio.
+func tonesApp(t *testing.T, seconds int) (*app, *resolved) {
+	t.Helper()
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	tone := filepath.Join(t.TempDir(), "tone.wav")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=duration="+strconv.Itoa(seconds), tone).CombinedOutput(); err != nil {
+		t.Fatalf("making a tone: %v: %s", err, out)
+	}
+	a, r := playbackApp(t)
+	r.file = tone
+	return a, r
+}
+
+// pollUntil polls the app as its ticker does until cond holds, and fails the
+// test when it does not in time.
+func pollUntil(t *testing.T, a *app, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s (current %s, index %d)", what, a.current.VideoID, a.queue.index)
+		}
+		a.poll()
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// followsWithoutPause plays until the current track is want, and fails if the
+// player let the sound end on the way: a hand over keeps one stream running
+// from the track before to the one after.
+func followsWithoutPause(t *testing.T, a *app, want string) {
+	t.Helper()
+	pollUntil(t, a, "track "+want, func() bool {
+		if a.current.VideoID != want && a.player.Ended() && !a.stream.busy() {
+			t.Fatalf("the stream ended before %s took over", want)
+		}
+		return a.current.VideoID == want
+	})
+}
+
+func TestTheNextTrackIsReadiedAndFollowsWithoutAPause(t *testing.T) {
+	a, r := tonesApp(t, 1)
+	q := tracks("a", "b", "c")
+	a.play(q[0], q)
+	pollUntil(t, a, "the next track to be readied", func() bool { return a.player.Preloaded() == "b" })
+	if a.current.VideoID != "a" {
+		t.Fatalf("b was readied after a ended")
+	}
+	followsWithoutPause(t, a, "b")
+	if a.queue.index != 1 || a.playErr != "" || a.stream.busy() {
+		t.Errorf("after the hand over: index %d, playErr %q, stream busy %v", a.queue.index, a.playErr, a.stream.busy())
+	}
+	if n := r.count("b"); n != 1 {
+		t.Errorf("b was resolved %d times, want once", n)
+	}
+	// And the one after it is readied in turn.
+	pollUntil(t, a, "c to be readied", func() bool { return a.player.Preloaded() == "c" })
+	followsWithoutPause(t, a, "c")
+}
+
+func TestTheLastTrackIsNotFollowedByAnything(t *testing.T) {
+	a, _ := tonesApp(t, 1)
+	q := tracks("a")
+	a.play(q[0], q)
+	pollUntil(t, a, "the track to play", a.player.Playing)
+	time.Sleep(50 * time.Millisecond)
+	a.poll()
+	if got := a.player.Preloaded(); got != "" {
+		t.Fatalf("preloaded %q after the last track", got)
+	}
+	pollUntil(t, a, "the queue to stop", func() bool { return !a.player.Active() })
+	if a.current.VideoID != "a" || a.playErr != "" {
+		t.Errorf("current %s, playErr %q", a.current.VideoID, a.playErr)
+	}
+}
+
+func TestARepeatedTrackIsReadiedAgain(t *testing.T) {
+	a, _ := tonesApp(t, 1)
+	a.repeat = repeatTrack
+	q := tracks("a", "b")
+	a.play(q[0], q)
+	pollUntil(t, a, "the track to be readied again", func() bool { return a.player.Preloaded() == "a" })
+	pollUntil(t, a, "the hand over", func() bool {
+		return a.player.Preloaded() == "" && a.player.Playing() && a.player.Position() < 500*time.Millisecond && !a.stream.busy() && a.preloaded.id == ""
+	})
+	if a.current.VideoID != "a" || a.queue.index != 0 || a.player.Ended() {
+		t.Errorf("repeat: current %s, index %d, ended %v", a.current.VideoID, a.queue.index, a.player.Ended())
+	}
+}
+
+func TestEditingTheQueueChangesWhatIsReadied(t *testing.T) {
+	a, _ := tonesApp(t, 1)
+	q := tracks("a", "b", "c")
+	a.play(q[0], q)
+	pollUntil(t, a, "b to be readied", func() bool { return a.player.Preloaded() == "b" })
+	a.removeFromQueue(1) // b leaves the queue; c follows
+	if got := a.player.Preloaded(); got == "b" {
+		t.Fatal("still holding b after its track left the queue")
+	}
+	followsWithoutPause(t, a, "c")
+	if a.queue.index != 1 {
+		t.Errorf("index %d, want c at 1", a.queue.index)
+	}
+}
+
+func TestATrackThatCannotBeResolvedIsLeftToTheSkip(t *testing.T) {
+	a, r := tonesApp(t, 1)
+	r.err["b"] = errors.New("Video unavailable")
+	q := tracks("a", "b", "c")
+	a.play(q[0], q)
+	pollUntil(t, a, "the failed attempt", func() bool { return a.preloadFailed == "b" })
+	if a.player.Preloaded() != "" {
+		t.Error("something is preloaded for a track that did not resolve")
+	}
+	n := r.count("b")
+	a.poll()
+	a.poll()
+	if r.count("b") != n {
+		t.Error("a failed preload was tried again on every poll")
+	}
+	// At the end of a, b fails as it always did, and the queue moves on to c.
+	pollUntil(t, a, "c to play", func() bool { return a.current.VideoID == "c" && a.player.Playing() })
+	if !strings.Contains(a.notice, "Skipped Track b") {
+		t.Errorf("notice = %q, want b skipped", a.notice)
+	}
+}
+
+func TestSkippingWhileATrackIsReadiedPlaysTheTrackChosen(t *testing.T) {
+	a, _ := tonesApp(t, 3)
+	q := tracks("a", "b", "c")
+	a.play(q[0], q)
+	pollUntil(t, a, "b to be readied", func() bool { return a.player.Preloaded() == "b" })
+	a.playVideoID("c")
+	pollUntil(t, a, "c to play", func() bool { return a.current.VideoID == "c" && a.player.Playing() })
+	if a.queue.index != 2 {
+		t.Errorf("index %d, want 2", a.queue.index)
+	}
+	if _, ok := a.player.Advanced(); ok {
+		t.Error("a hand over to b was left unseen")
+	}
+}
+
+func TestSeekingNearTheEndStillHandsOver(t *testing.T) {
+	a, _ := tonesApp(t, 3)
+	q := tracks("a", "b")
+	a.play(q[0], q)
+	pollUntil(t, a, "b to be readied", func() bool { return a.player.Preloaded() == "b" })
+	a.player.Pause()
+	a.seek(2500 * time.Millisecond) // dropping the readied stream, which the next poll readies again
+	a.player.Resume()
+	pollUntil(t, a, "b to be readied again", func() bool { return a.player.Preloaded() == "b" || a.current.VideoID == "b" })
+	followsWithoutPause(t, a, "b")
 }

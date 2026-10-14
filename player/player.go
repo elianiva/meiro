@@ -56,6 +56,11 @@ type Player struct {
 	mu      sync.Mutex
 	session *session
 	volume  float64
+	// next is the stream decoding ahead of the end of the current one, and
+	// advanced is the tag of the one that took over without a pause, until
+	// Advanced reports it.
+	next     *session
+	advanced string
 
 	lookOnce   sync.Once
 	ffmpegPath string
@@ -113,6 +118,82 @@ func (p *Player) PlayAt(url string, at time.Duration, paused bool) error {
 	p.ctl.Lock()
 	defer p.ctl.Unlock()
 	return p.start(url, max(at, 0), paused)
+}
+
+// Preload starts decoding url in the background, to follow the stream playing
+// the moment that one ends, without the pause of opening it then. tag names
+// what it is, as Advanced reports it. It replaces an earlier Preload, and a
+// Play, PlayAt, Seek or Stop drops it, as the track it was for may no longer
+// be the one that follows. Nothing is preloaded while no stream is loaded.
+//
+// Only a stream that ends cleanly hands over: one that failed, or whose
+// preloaded successor failed to open, ends as it would have, and what follows
+// is for the caller to decide.
+func (p *Player) Preload(tag, url string) error {
+	if strings.TrimSpace(url) == "" {
+		return errors.New("player: stream URL is empty")
+	}
+	ffmpeg, err := p.resolveFFmpeg()
+	if err != nil {
+		return err
+	}
+	p.mu.Lock()
+	loaded := p.session != nil
+	p.mu.Unlock()
+	if !loaded {
+		return nil
+	}
+	next, err := p.decode(ffmpeg, url, 0)
+	if err != nil {
+		return err
+	}
+	next.tag = tag
+	p.mu.Lock()
+	if p.session == nil {
+		p.mu.Unlock()
+		next.discard()
+		return nil
+	}
+	old := p.next
+	p.next = next
+	p.mu.Unlock()
+	if old != nil {
+		old.discard()
+	}
+	return nil
+}
+
+// Preloaded returns the tag of the stream waiting to follow the current one,
+// or an empty string when there is none.
+func (p *Player) Preloaded() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.next == nil {
+		return ""
+	}
+	return p.next.tag
+}
+
+// CancelPreload drops the preloaded stream, if any.
+func (p *Player) CancelPreload() {
+	p.mu.Lock()
+	next := p.next
+	p.next = nil
+	p.mu.Unlock()
+	if next != nil {
+		next.discard()
+	}
+}
+
+// Advanced returns the tag of the preloaded stream that has taken over from
+// the one before it, once, and false when no handover has happened since it
+// was last asked.
+func (p *Player) Advanced() (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	tag := p.advanced
+	p.advanced = ""
+	return tag, tag != ""
 }
 
 // Resume starts a paused stream again, and does nothing when it plays or has
@@ -350,27 +431,11 @@ func (p *Player) start(url string, at time.Duration, paused bool) error {
 	}
 	p.stop()
 
-	cmd := exec.Command(ffmpeg, streamArgs(url, at)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
-	hideWindow(cmd)
-	pipe, writer, err := os.Pipe()
+	s, err := p.decode(ffmpeg, url, at)
 	if err != nil {
-		return fmt.Errorf("player: create audio pipe: %w", err)
+		return err
 	}
-	cmd.Stdout = writer
-	stderr := &boundedBuffer{limit: 4096}
-	cmd.Stderr = stderr
-	if err := cmd.Start(); err != nil {
-		_ = pipe.Close()
-		_ = writer.Close()
-		return fmt.Errorf("player: start ffmpeg: %w", err)
-	}
-	_ = writer.Close()
-
-	s := &session{
-		url: url, cmd: cmd, pipe: pipe, stderr: stderr,
-		source: newCountingReader(pipe),
-		offset: at, paused: paused, done: make(chan struct{}), quit: make(chan struct{}),
-	}
+	s.paused = paused
 	s.out = audioCtx.newPlayer(s.source)
 	p.mu.Lock()
 	s.out.SetVolume(p.volume)
@@ -379,8 +444,35 @@ func (p *Player) start(url string, at time.Duration, paused bool) error {
 	if !paused {
 		s.out.Play()
 	}
-	go p.reap(s)
 	return nil
+}
+
+// decode starts ffmpeg on url from at, and the goroutine that reaps it. The
+// session has no output yet: start gives it one, and a handoff takes over the
+// one of the stream before it.
+func (p *Player) decode(ffmpeg, url string, at time.Duration) (*session, error) {
+	cmd := exec.Command(ffmpeg, streamArgs(url, at)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
+	hideWindow(cmd)
+	pipe, writer, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("player: create audio pipe: %w", err)
+	}
+	cmd.Stdout = writer
+	stderr := &boundedBuffer{limit: 4096}
+	cmd.Stderr = stderr
+	if err := cmd.Start(); err != nil {
+		_ = pipe.Close()
+		_ = writer.Close()
+		return nil, fmt.Errorf("player: start ffmpeg: %w", err)
+	}
+	_ = writer.Close()
+	s := &session{
+		url: url, cmd: cmd, pipe: pipe, stderr: stderr,
+		offset: at, done: make(chan struct{}), quit: make(chan struct{}),
+	}
+	s.source = newCountingReader(pipe, func() io.Reader { return p.handoff(s) })
+	go p.reap(s)
+	return s, nil
 }
 
 // streamArgs is the ffmpeg command line that decodes url from at into signed
@@ -442,6 +534,36 @@ func (p *Player) reap(s *session) {
 	_ = s.pipe.Close()
 }
 
+// handoff is what the output reads on when the stream from ends: the preloaded
+// stream, now the current one, in the same output, so that the sound goes on
+// with no restart of it. It returns nil when there is nothing to hand over to,
+// or from did not end cleanly.
+func (p *Player) handoff(from *session) io.Reader {
+	select {
+	case <-from.done:
+	case <-from.quit:
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	next := p.next
+	if p.session != from || next == nil || from.waitErr != nil || from.stderr.String() != "" {
+		return nil
+	}
+	select {
+	case <-next.done:
+		if next.waitErr != nil || next.stderr.String() != "" {
+			p.next = nil
+			next.discard()
+			return nil
+		}
+	default:
+	}
+	next.out, next.paused = from.out, from.paused
+	p.session, p.next, p.advanced = next, nil, next.tag
+	return next.source
+}
+
 // pendingSamples reports whether ffmpeg exited cleanly without the reader
 // having taken anything yet, so its output may still sit in the pipe.
 func (p *Player) pendingSamples(s *session) bool {
@@ -463,12 +585,15 @@ func (p *Player) pendingSamples(s *session) bool {
 // session is detached under mu, and the slow teardown runs outside it.
 func (p *Player) stop() {
 	p.mu.Lock()
-	s := p.session
-	p.session = nil
+	s, next := p.session, p.next
+	p.session, p.next, p.advanced = nil, nil, ""
 	if s != nil {
 		s.stopped = true
 	}
 	p.mu.Unlock()
+	if next != nil {
+		next.discard()
+	}
 	if s == nil {
 		return
 	}
@@ -481,6 +606,15 @@ func (p *Player) stop() {
 	}
 	_ = s.pipe.Close()
 	s.out.PauseAndStopReading()
+}
+
+// discard ends a decode that never reached the output.
+func (s *session) discard() {
+	close(s.quit)
+	if s.cmd.Process != nil {
+		_ = s.cmd.Process.Kill()
+	}
+	_ = s.pipe.Close()
 }
 
 func (p *Player) resolveFFmpeg() (string, error) {
@@ -576,7 +710,9 @@ func (p *Player) audioFailure(s *session) error {
 // session is one decode: a child ffmpeg, the pipe it writes PCM to, and the
 // oto player reading that pipe.
 type session struct {
-	url    string
+	url string
+	// tag names a preloaded stream to the caller that asked for it.
+	tag    string
 	cmd    *exec.Cmd
 	pipe   io.ReadCloser
 	stderr *boundedBuffer
@@ -603,13 +739,20 @@ type countingReader struct {
 	// finished is closed when a read fails or reaches the end.
 	finished chan struct{}
 	once     sync.Once
+	// follow is asked for the stream to carry on with when this one ends,
+	// and nil means none. Once one is given, reads go on to it.
+	follow func() io.Reader
+	onward io.Reader
 }
 
-func newCountingReader(reader io.Reader) *countingReader {
-	return &countingReader{reader: reader, finished: make(chan struct{})}
+func newCountingReader(reader io.Reader, follow func() io.Reader) *countingReader {
+	return &countingReader{reader: reader, finished: make(chan struct{}), follow: follow}
 }
 
 func (c *countingReader) Read(p []byte) (int, error) {
+	if c.onward != nil {
+		return c.onward.Read(p)
+	}
 	n, err := c.reader.Read(p)
 	c.read.Add(int64(n))
 	if err != nil {
@@ -617,6 +760,12 @@ func (c *countingReader) Read(p []byte) (int, error) {
 			c.eof.Store(true)
 		}
 		c.once.Do(func() { close(c.finished) })
+		if n == 0 && errors.Is(err, io.EOF) && c.follow != nil {
+			if onward := c.follow(); onward != nil {
+				c.onward = onward
+				return c.onward.Read(p)
+			}
+		}
 	}
 	return n, err
 }

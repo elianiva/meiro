@@ -50,7 +50,7 @@ func TestReapObservesExitWhileReaderIsPaused(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = writer.Close()
-	s := &session{cmd: cmd, pipe: pipe, done: make(chan struct{}), quit: make(chan struct{}), source: newCountingReader(pipe)}
+	s := &session{cmd: cmd, pipe: pipe, done: make(chan struct{}), quit: make(chan struct{}), source: newCountingReader(pipe, nil)}
 	go p.reap(s)
 	select {
 	case <-s.done:
@@ -77,7 +77,7 @@ func TestCleanExitWithUnreadOutputIsNotAFailure(t *testing.T) {
 	_ = writer.Close()
 	s := &session{
 		cmd: cmd, pipe: pipe, stderr: &boundedBuffer{limit: 16},
-		done: make(chan struct{}), quit: make(chan struct{}), source: newCountingReader(pipe),
+		done: make(chan struct{}), quit: make(chan struct{}), source: newCountingReader(pipe, nil),
 	}
 	go p.reap(s)
 	<-s.done

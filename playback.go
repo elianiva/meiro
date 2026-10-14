@@ -51,7 +51,15 @@ type playback struct {
 	// seeking moves the player to seekTarget; it is busy while the decode is
 	// being restarted there.
 	seeking task
-	upNext  upNextState
+	// preload resolves the next track and has the player decode it ahead of
+	// the end of the current one; preloaded is what it left with the player,
+	// and preloadFailed the track it could not, which is not tried again
+	// until the track changes.
+	preload       task
+	preloaded     preloadedAudio
+	preloadFailed string
+	preloadFor    string
+	upNext        upNextState
 	// opening is the album or playlist whose songs are being read to play
 	// it, so that a second press does not read them again.
 	opening    task
@@ -198,6 +206,17 @@ func (a *app) skipUnplayable(item youtube.MusicItem) {
 
 // startTrack is start without ending a run of skipped tracks.
 func (a *app) startTrack(item youtube.MusicItem) {
+	startAt, changed := a.enterTrack(item)
+	// The old stream is stopped by the work that finds the new one: stopping
+	// kills ffmpeg and waits for the audio device, which is not for the main
+	// thread to do.
+	a.streamAudio(item, startAt)
+	a.afterEnter(item, changed)
+}
+
+// enterTrack makes item the current track, and says where in it to start and
+// whether it is another track than the one before.
+func (a *app) enterTrack(item youtube.MusicItem) (time.Duration, bool) {
 	a.recoveries = 0
 	changed := a.current.VideoID != item.VideoID
 	a.current = item
@@ -212,10 +231,14 @@ func (a *app) startTrack(item youtube.MusicItem) {
 	// the decode the seek was moving is about to be replaced.
 	a.seeking.stop()
 	a.seekTarget = 0
-	// The old stream is stopped by the work that finds the new one: stopping
-	// kills ffmpeg and waits for the audio device, which is not for the main
-	// thread to do.
-	a.streamAudio(item, startAt)
+	// What was being readied was for the track after the old one.
+	a.preload.stop()
+	a.preloaded, a.preloadFailed = preloadedAudio{}, ""
+	return startAt, changed
+}
+
+// afterEnter is what a track entered asks for besides its audio.
+func (a *app) afterEnter(item youtube.MusicItem, changed bool) {
 	a.ensureUpNext()
 	a.loadPanel()
 	if changed {
@@ -279,6 +302,97 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration) {
 		a.warmNext()
 		a.syncSystemMedia()
 	})
+}
+
+// preloadLead is how long before the end of a track the next one is opened:
+// long enough for ffmpeg to have it decoding when the sound runs out, short
+// enough not to hold a connection to the server open through the whole song.
+const preloadLead = 20 * time.Second
+
+// preloadedAudio is the audio of the track the player holds ready.
+type preloadedAudio struct {
+	id string
+	resolvedAudio
+}
+
+// following is the place in the queue of the track that plays after this
+// one, and the track. A repeated track follows itself, at place -1.
+func (a *app) following() (int, youtube.MusicItem, bool) {
+	if a.repeat == repeatTrack {
+		return -1, a.current, a.current.VideoID != ""
+	}
+	i, ok := a.queue.next(a.settings.AutoPlay, a.repeat)
+	if !ok {
+		return 0, youtube.MusicItem{}, false
+	}
+	return i, a.queue.at(i), true
+}
+
+// syncPreload keeps the player's preloaded stream the one for the track that
+// follows, and starts it once the current track is near its end. It runs on
+// every poll and after anything that can change what follows.
+func (a *app) syncPreload() {
+	_, next, ok := a.following()
+	if held := a.player.Preloaded(); held != "" && (!ok || held != next.VideoID) {
+		a.player.CancelPreload()
+		a.preloaded = preloadedAudio{}
+	}
+	if !ok || a.preload.busy() && a.preloadFor != next.VideoID {
+		a.preload.stop()
+	}
+	if !ok || a.stream.busy() || a.preload.busy() || a.preloadFailed == next.VideoID ||
+		a.player.Preloaded() == next.VideoID || a.total <= 0 || !a.player.Playing() ||
+		a.total-a.player.Position() > preloadLead {
+		return
+	}
+	cookie, cache := a.account.cookie(), a.currentAudioCache()
+	a.preloadFor = next.VideoID
+	startTask(a, &a.preload, audio.ResolveTimeout, func(ctx context.Context) (preloadedAudio, error) {
+		found, err := a.findAudio(ctx, next, cookie, cache)
+		if err == nil {
+			err = ctx.Err()
+		}
+		if err != nil {
+			return preloadedAudio{}, err
+		}
+		return preloadedAudio{next.VideoID, found}, a.player.Preload(next.VideoID, found.url)
+	}, func(found preloadedAudio, err error) {
+		if err != nil {
+			log.Printf("playback: could not preload video_id=%s: %v", next.VideoID, err)
+			a.preloadFailed = next.VideoID
+			return
+		}
+		log.Printf("playback: preloaded video_id=%s from_cache=%t", next.VideoID, found.fromCache)
+		a.preloaded = found
+	})
+}
+
+// followed moves on to the track the player took over with, as the track
+// before it ended. The queue may have changed since the player took it:
+// then what it plays is not what follows, and the right track is started.
+func (a *app) followed(tag string) {
+	i, next, ok := a.following()
+	if !ok || next.VideoID != tag || a.preloaded.id != tag {
+		a.trackEnded()
+		return
+	}
+	found := a.preloaded
+	item := next
+	if i >= 0 {
+		item = a.queue.moveTo(i)
+	}
+	_, changed := a.enterTrack(item)
+	if found.total > 0 {
+		a.total = found.total
+	}
+	log.Printf("playback: audio followed on video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
+	a.skipped = 0
+	if !found.fromCache {
+		a.currentAudioCache().Add(item.VideoID, found.url)
+	}
+	a.warmNext()
+	a.afterEnter(item, changed)
+	a.syncSystemMedia()
 }
 
 // failPlayback records why item did not play: the raw error goes to the log
@@ -504,6 +618,7 @@ func (a *app) setAutoPlay(enabled bool) {
 		a.queue.regenerate()
 		a.ensureUpNext()
 	}
+	a.syncPreload()
 	a.syncSystemMedia()
 }
 
@@ -524,6 +639,7 @@ func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 	} else {
 		a.notice = "Added " + item.Title + " to the queue"
 	}
+	a.syncPreload()
 	a.syncSystemMedia()
 }
 
@@ -568,6 +684,7 @@ func (a *app) clearUpcoming() {
 func (a *app) queueChanged() {
 	a.nowPlaying.queueFollow = "" // the list scrolls to the current track again
 	a.warmNext()
+	a.syncPreload()
 	a.ensureUpNext()
 	a.syncSystemMedia()
 }
@@ -616,6 +733,10 @@ func (a *app) poll() {
 	if !a.player.Active() {
 		return
 	}
+	if tag, ok := a.player.Advanced(); ok {
+		a.followed(tag)
+		return
+	}
 	if failure := a.player.Failure(); failure != "" {
 		if a.stream.busy() {
 			return // a track, or this one again, is on its way
@@ -647,6 +768,7 @@ func (a *app) poll() {
 		if a.recoveries > 0 && a.player.Position() > a.recoveredFrom+recoveryHealthy {
 			a.recoveries = 0 // it held, so the next break gets all its tries
 		}
+		a.syncPreload()
 		a.ensureUpNext()
 		if !a.scrubbing {
 			a.scrub = a.player.Position().Seconds()
@@ -778,6 +900,7 @@ func (a *app) setShuffle(on bool) {
 	if on {
 		a.queue.shuffleUpcoming()
 	}
+	a.syncPreload()
 	a.syncSystemMedia()
 }
 
@@ -804,6 +927,7 @@ func (a *app) toggleMute() {
 // track and back.
 func (a *app) cycleRepeat() {
 	a.repeat = a.repeat.next()
+	a.syncPreload()
 	a.syncSystemMedia()
 }
 
