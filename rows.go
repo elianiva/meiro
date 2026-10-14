@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/elianiva/meiro/youtube"
 )
@@ -97,6 +98,8 @@ type rowsKey struct {
 	// those results lead with.
 	submitted string
 	top       youtube.MusicItem
+	// filter is the playlist search the rows show the matches of.
+	filter string
 }
 
 // syncRows rebuilds the rows when the page's data changed since the last
@@ -113,6 +116,11 @@ func (a *app) syncRows() {
 	}
 	if r.id == routeSearch {
 		key.submitted, key.top = a.search.submitted, a.search.top
+	}
+	if r.id == routePlaylist {
+		// A playlist search is not the page's own data, so the key carries
+		// it: a change asks for the rows again.
+		key.filter = a.detailFilter
 	}
 	if a.page.rows == nil || a.page.rowsDirty || key != a.page.rowsKey {
 		a.page.rowsKey, a.page.rowsDirty = key, false
@@ -165,6 +173,10 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		sections = []youtube.MusicSection{{Items: s.items}}
 	}
 	vertical := collection || r.id == routeSearch
+	// A playlist narrowed to a search shows only the songs that match, and
+	// the queue it gathers is still the whole playlist: playing a match
+	// plays the playlist from that song's own place in it.
+	searching := r.id == routePlaylist && key.filter != ""
 	// placed says whether the library has led with its tile yet.
 	placed := false
 	for index, section := range sections {
@@ -172,26 +184,53 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			continue
 		}
 		shelf := key.path + "#" + strconv.Itoa(index)
+		shown := section.Items
+		var places []int // where each shown song sits in playable, when searching
+		if searching {
+			// Every song of the playlist goes into the queue, whether or not
+			// the search shows it.
+			shown = make([]youtube.MusicItem, 0, len(section.Items))
+			for _, item := range section.Items {
+				if !item.IsTrack() {
+					continue
+				}
+				if matchesSearch(item, key.filter) {
+					shown = append(shown, item)
+					places = append(places, len(playable))
+				}
+				playable = append(playable, item)
+			}
+			if len(shown) == 0 {
+				continue
+			}
+		}
 		songs := 0
-		for _, item := range section.Items {
+		for _, item := range shown {
 			if item.IsTrack() {
 				songs++
 			}
 		}
-		mostlySongs := songs*10 >= len(section.Items)*6
+		mostlySongs := songs*10 >= len(shown)*6
 		if section.Title != "" {
 			rows = append(rows, row{kind: rowHeading, title: section.Title, shelf: shelf, track: -1})
 		}
 		if vertical || (r.isDetail() && mostlySongs) {
-			for position, item := range section.Items {
+			for position, item := range shown {
 				rw := row{kind: rowTrack, shelf: shelf, item: item, track: -1, position: position}
 				if item.IsTrack() {
-					rw.track = len(playable)
+					if searching {
+						// The song keeps its place in the whole playlist,
+						// which the queue already holds, even when the
+						// playlist lists the same video twice.
+						rw.track = places[position]
+					} else {
+						rw.track = len(playable)
+						playable = append(playable, item)
+					}
 					if item.Thumbnail == "" {
 						item.Thumbnail = fallback
 						rw.item = item
 					}
-					playable = append(playable, item)
 				}
 				rows = append(rows, rw)
 			}
@@ -246,10 +285,24 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	}
 	if len(rows) == 0 || (len(rows) == 1 && rows[0].kind == rowHero) {
 		title, body := r.empty.title, r.empty.body
-		if r.id == routeSearch {
+		switch {
+		case r.id == routeSearch:
 			title, body = "No results for “"+key.submitted+"”", "Check the spelling, or try a different search."
+		case searching:
+			title, body = "No songs match “"+key.filter+"”", ""
 		}
 		rows = append(rows, row{kind: rowEmpty, title: title, body: body, track: -1})
 	}
 	return rows, playable
+}
+
+// matchesSearch says whether a song is one a search for filter names: its title
+// or the artist beside it holds the words, whatever their case.
+func matchesSearch(item youtube.MusicItem, filter string) bool {
+	needle := strings.ToLower(strings.TrimSpace(filter))
+	if needle == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(item.Title), needle) ||
+		strings.Contains(strings.ToLower(item.Subtitle), needle)
 }

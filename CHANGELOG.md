@@ -20,6 +20,10 @@ and this project adheres to
   queue, Add to playlist and Copy link; an album, artist or playlist offers the
   page it names and its link, with Shuffle play for a playlist. The leading
   result offers the same menu, from a button on its artwork.
+- **Playlist search**: an icon button beside a playlist page's Play and Shuffle
+  buttons opens a bar that narrows the page to the songs whose title or artist
+  holds what is typed. Play, Shuffle and a song's own place still use the whole
+  playlist, so a match plays from where it sits in it.
 
 ## [0.1.0]
 

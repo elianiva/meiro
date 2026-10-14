@@ -100,6 +100,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = recapResponse
 	case strings.Contains(asked, "VLPL_video"):
 		reply = playlistPage()
+	case strings.Contains(asked, "VLPL_songs"):
+		reply = playlistSongsResponse
 	case strings.Contains(asked, "MPREb_test"):
 		reply = albumPage()
 	case strings.Contains(asked, "FEmusic_library_landing"):
@@ -262,6 +264,32 @@ func playlistPage() string {
 	{"playlistVideoRenderer":{"videoId":"playlist-video","playlistItemData":{"playlistSetVideoId":"set-video-1"},"title":{"simpleText":"Playlist video"},"lengthText":{"simpleText":"5:21"}}}
 ]}}}`
 }
+
+// playlistSongsResponse is a playlist page of three songs, each with an artist
+// beside it, for searching the page.
+const playlistSongsResponse = `{"contents":{"playlistVideoListRenderer":{"contents":[
+	{"musicResponsiveListItemRenderer":{
+		"playlistItemData":{"videoId":"song-one"},
+		"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Ameiro"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Nova"},{"text":" • "},{"text":"3:00"}]}}}
+		]
+	}},
+	{"musicResponsiveListItemRenderer":{
+		"playlistItemData":{"videoId":"song-two"},
+		"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Meteorite"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Kaori"},{"text":" • "},{"text":"4:00"}]}}}
+		]
+	}},
+	{"musicResponsiveListItemRenderer":{
+		"playlistItemData":{"videoId":"song-three"},
+		"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Ameiro Two"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Nova"},{"text":" • "},{"text":"2:00"}]}}}
+		]
+	}}
+]}}}`
 
 // The playlists the fake's pages offer to save. An album is saved as its audio
 // playlist, which is not its browse ID.

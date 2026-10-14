@@ -15,6 +15,10 @@ type SearchSpec struct {
 	Height float32
 	// MaxWidth keeps a wide bar from stretching across the window.
 	MaxWidth float32
+	// Dismiss leads the bar with a back arrow that closes it, for a bar that
+	// opens over the page it narrows rather than standing on a page of its
+	// own.
+	Dismiss bool
 }
 
 // SearchResult is what happened to a search bar this frame.
@@ -23,6 +27,8 @@ type SearchResult struct {
 	Submitted bool
 	Changed   bool
 	Cleared   bool
+	// Dismissed is the back arrow pressed: the search is over.
+	Dismissed bool
 	// Element is the bar, for anchoring what opens under it, as the
 	// suggestions do.
 	Element ui.Element
@@ -53,7 +59,13 @@ func SearchBar(c *ui.Context, spec SearchSpec) SearchResult {
 		bar.MaxWidth(spec.MaxWidth)
 	}
 	bar.Children(func() {
-		ui.Icon(c, IconSearch).FontSize(24).TextColor(sc.OnSurfaceVariant)
+		if spec.Dismiss {
+			if IconButton(c, IconButtonSpec{Icon: IconArrowBack, Label: "Close the search", Size: ExtraSmall32, Key: "dismiss"}).Clicked() {
+				result.Dismissed = true
+			}
+		} else {
+			ui.Icon(c, IconSearch).FontSize(24).TextColor(sc.OnSurfaceVariant)
+		}
 		input := ui.TextInputBase(c.Key("input"), spec.Value).Placeholder(spec.Placeholder).Label(spec.Placeholder).
 			Grow(1).MinWidth(0).FontSize(16).TextColor(sc.OnSurface)
 		if spec.AutoFocus {

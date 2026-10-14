@@ -790,6 +790,9 @@ func (a *app) hero(c *ui.Context) {
 				}
 				a.libraryButton(c)
 				a.subscribeButton(c)
+				if r.id == routePlaylist {
+					a.playlistSearch(c)
+				}
 			})
 		})
 	})
@@ -826,6 +829,71 @@ func (a *app) heroMenu(c *ui.Context, anchor ui.Element) {
 			close()
 		}
 	})
+}
+
+// The playlist search is one control that grows: the button that opens it is
+// the size of a touch target, and the bar it opens reaches at most this wide.
+const (
+	detailSearchButton = 56
+	detailSearchWidth  = 520
+)
+
+// playlistSearch draws the control that narrows a playlist page to the songs
+// that match: an icon button that opens into the bar the Search page uses,
+// beside the buttons that play the page. Closing it puts the page back to its
+// whole list, since a search that showed none of a page's rows would leave
+// nothing to say it was still on.
+func (a *app) playlistSearch(c *ui.Context) {
+	sc := m3.Of(c).Scheme
+	// One element carries both states, so opening grows the control instead
+	// of swapping one thing for another.
+	control := ui.Row(c.Key("playlist-search")).Shrink(0)
+	target := float32(0)
+	if a.detailSearchOpen {
+		target = 1
+	}
+	grown := m3.Animate(control, "open", target, m3.SpatialFast)
+	if !a.detailSearchOpen && grown < 0.02 {
+		control.Children(func() {
+			button := m3.IconButton(c, m3.IconButtonSpec{
+				Icon: m3.IconSearch, Label: "Search in this playlist",
+				Kind: m3.StandardIcon, Size: m3.Medium56, Key: "playlist-search-open",
+			})
+			// The bar's own container, so the button that opens the search
+			// and the bar it opens are one thing growing rather than two
+			// that do not match.
+			button.Background(m3.StateFill(sc.SurfaceContainerHigh, sc.OnSurface,
+				button.Hovered(), button.Pressed(), button.FocusVisible()))
+			if button.Clicked() {
+				a.detailSearchOpen, a.detailFocus = true, true
+			}
+		})
+		return
+	}
+	control.Grow(1).MaxWidth(detailSearchButton + (detailSearchWidth-detailSearchButton)*min(max(grown, 0), 1))
+	control.Children(func() {
+		result := m3.SearchBar(c, m3.SearchSpec{
+			Value:       &a.detailFilter,
+			Placeholder: "Search in this playlist",
+			Key:         "playlist-search-bar",
+			AutoFocus:   a.detailFocus,
+			MaxWidth:    detailSearchWidth,
+			Dismiss:     true,
+		})
+		if result.Dismissed {
+			a.closePlaylistSearch()
+		}
+	})
+	// The bar has taken the keyboard, or the frame it would have was not the
+	// one it opened on.
+	a.detailFocus = false
+}
+
+// closePlaylistSearch puts a playlist page back to its whole list, and the
+// control back to the button that opens the search.
+func (a *app) closePlaylistSearch() {
+	a.detailSearchOpen, a.detailFocus = false, false
+	a.detailFilter = ""
 }
 
 func heroLabel(kind youtube.TargetKind) string {

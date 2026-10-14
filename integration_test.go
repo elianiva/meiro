@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -366,6 +367,115 @@ func TestRightClickingTheHeroArtOffersItsMenu(t *testing.T) {
 	}
 	if a.current.VideoID != "" {
 		t.Errorf("a right click played %q", a.current.VideoID)
+	}
+}
+
+// A playlist page can be searched from the button beside its play buttons.
+// Pressing it opens the bar, typing narrows the songs it shows by title or
+// artist, and the queue stays the whole playlist, so a matching song plays
+// from its own place in it. Closing the bar puts the whole playlist back.
+func TestAPlaylistPageCanBeSearched(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	tt.Frame()
+	if len(a.page.playable) != 3 {
+		t.Fatalf("the playlist page holds %d songs, want 3", len(a.page.playable))
+	}
+	// The search is a button that opens, not a bar that is always there.
+	if _, ok := tt.Find("Search in this playlist"); !ok {
+		t.Fatalf("the playlist page has no search button: %q", tt.Texts())
+	}
+	if a.detailSearchOpen {
+		t.Fatal("the search opened by itself")
+	}
+	shown := func() int {
+		n := 0
+		for _, r := range a.page.rows {
+			if r.kind == rowTrack {
+				n++
+			}
+		}
+		return n
+	}
+	// search opens the bar and types a query into it, emptying whatever the
+	// last one left.
+	search := func(query string) {
+		t.Helper()
+		if !a.detailSearchOpen {
+			if err := tt.Click("Search in this playlist"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+		}
+		if _, ok := tt.Find("Clear search"); ok {
+			if err := tt.Click("Clear search"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+		}
+		// The field must hold the keyboard, which the clear button took.
+		if err := tt.Click("Search in this playlist"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Type(query)
+		tt.Frame()
+		tt.Frame()
+	}
+
+	search("ameiro")
+	if shown() != 2 {
+		t.Errorf("the search shows %d songs, want the 2 whose title matches", shown())
+	}
+	if tt.HasText("Meteorite") {
+		t.Errorf("the search left a song that does not match: %q", tt.Texts())
+	}
+	if len(a.page.playable) != 3 {
+		t.Errorf("the search left %d songs to play, want the whole playlist's 3", len(a.page.playable))
+	}
+
+	// A matching song plays from its own place in the whole playlist.
+	if err := tt.Click("Ameiro Two"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"song-one", "song-two", "song-three"}) {
+		t.Errorf("playing a match queued %v, want the whole playlist", got)
+	}
+	if a.queue.index != 2 || a.current.VideoID != "song-three" {
+		t.Errorf("the match played at %d as %q, want song-three in its own place", a.queue.index, a.current.VideoID)
+	}
+
+	// The artist beside a song is searched too.
+	search("kaori")
+	if shown() != 1 || !tt.HasText("Meteorite") {
+		t.Errorf("the artist search shows %d songs (%q), want the one that matches", shown(), tt.Texts())
+	}
+
+	search("nothing here")
+	if shown() != 0 || !tt.HasText("No songs match “nothing here”") {
+		t.Errorf("a search that matches nothing says %q", tt.Texts())
+	}
+
+	// Closing the bar puts the page back to its whole list, and the button
+	// back in its place.
+	if err := tt.Click("Close the search"); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		tt.Frame()
+	}
+	if a.detailSearchOpen || a.detailFilter != "" {
+		t.Errorf("closing left the search open %v on %q", a.detailSearchOpen, a.detailFilter)
+	}
+	if shown() != 3 {
+		t.Errorf("closing the search left %d songs, want the whole playlist's 3", shown())
+	}
+	if _, ok := tt.Find("Search in this playlist"); !ok {
+		t.Errorf("the search button did not come back: %q", tt.Texts())
 	}
 }
 

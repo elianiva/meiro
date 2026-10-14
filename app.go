@@ -79,11 +79,18 @@ type app struct {
 	listWidth   float32 // width the page's list had in the last frame
 	search      searchState
 	focusSearch bool
-	menu        itemMenu
 	// writing holds the writes to a like, the library or a subscription that
 	// are out, by what they change, so that one is not asked for twice.
 	writing  map[string]bool
 	menuOpen bool // the account menu
+	// detailFilter narrows a playlist page to the songs that match. It is
+	// part of the page's rows key, so a change asks for the rows again.
+	// detailSearchOpen is whether the bar that types it is open, and
+	// detailFocus the frame it opened on, when it takes the keyboard.
+	detailFilter     string
+	detailSearchOpen bool
+	detailFocus      bool
+	menu             itemMenu
 
 	// Dialogs.
 	crash         *crashState
