@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Formats every Go file in the workspace with the gofumpt Bazel built.
+# Formats every Go file in the workspace with the pinned gofumpt.
 set -euo pipefail
 
 tool="$(realpath "$1")"

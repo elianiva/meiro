@@ -21,7 +21,6 @@ go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
 use_repo(
     go_deps,
-    "cc_mvdan_gofumpt",
     "com_github_ebitengine_oto_v3",
     "com_github_egoist_mygo",
     "com_github_go_macos_objc",
@@ -34,3 +33,10 @@ use_repo(
 golangci_lint_repo = use_repo_rule("//tools:golangci_lint.bzl", "golangci_lint")
 
 golangci_lint_repo(name = "golangci_lint")
+
+# The formatter is a pinned release binary for the same reason: the check
+# only reads files, and compiling a formatter to do that costs more than
+# reading them does.
+gofumpt_repo = use_repo_rule("//tools:gofumpt.bzl", "gofumpt")
+
+gofumpt_repo(name = "gofumpt")

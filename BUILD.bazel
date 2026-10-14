@@ -65,8 +65,8 @@ sh_binary(
 sh_binary(
     name = "format",
     srcs = ["//tools:format.sh"],
-    args = ["$(rootpath @cc_mvdan_gofumpt//:gofumpt)"],
-    data = ["@cc_mvdan_gofumpt//:gofumpt"],
+    args = ["$(rootpath @gofumpt//:gofumpt)"],
+    data = ["@gofumpt//:gofumpt"],
     visibility = ["//visibility:public"],
 )
 
@@ -75,8 +75,8 @@ sh_test(
     name = "format_test",
     size = "small",
     srcs = ["//tools:format_test.sh"],
-    args = ["$(rootpath @cc_mvdan_gofumpt//:gofumpt)"],
-    data = GO_SOURCES + ["@cc_mvdan_gofumpt//:gofumpt"],
+    args = ["$(rootpath @gofumpt//:gofumpt)"],
+    data = GO_SOURCES + ["@gofumpt//:gofumpt"],
 )
 
 # Lint with the pinned golangci-lint: `bazel run //:lint`.
