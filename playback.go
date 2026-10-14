@@ -463,6 +463,7 @@ func (a *app) ensureUpNext() {
 			}
 			u.options.PlaylistID = result.QueuePlaylistID
 		}
+		a.learnLikes(result.Items)
 		u.token = result.ContinuationToken
 		if u.token == continuation {
 			u.token = ""

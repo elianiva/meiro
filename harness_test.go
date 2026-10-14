@@ -27,6 +27,12 @@ var (
 	fakePageID      atomic.Value
 	libraryLoads    atomic.Int32
 	playlistCreates atomic.Int32
+	// likeWrites counts the like writes the fake has been asked for, and
+	// refuseWrites makes it answer them, and the library and subscription
+	// writes after them, as YouTube answers a request it rejects: with a 400.
+	likeWrites    atomic.Int32
+	refuseWrites  atomic.Bool
+	fakeLikeState atomic.Value // what /next says of vid-3, as a string; "" says nothing
 	// lastWrite is the last playlist write the fake YouTube was asked for:
 	// which endpoint, and the fields of its body.
 	lastWrite atomic.Value
@@ -58,7 +64,17 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		fakePageID.Store(id)
 	}
 	reply := homeResponse
+	status := http.StatusOK
 	switch {
+	case strings.HasSuffix(request.URL.Path, "/like/like"), strings.HasSuffix(request.URL.Path, "/like/removelike"):
+		likeWrites.Add(1)
+		recordWrite(request.URL.Path, asked)
+		reply = likeResponse
+		if refuseWrites.Load() {
+			reply, status = rejectedResponse, http.StatusBadRequest
+		}
+	case strings.HasSuffix(request.URL.Path, "/next") && fakeLikes() != "" && strings.Contains(asked, "vid-3"):
+		reply = nextResponse(fakeLikes())
 	case strings.HasSuffix(request.URL.Path, "/account/accounts_list"):
 		reply = accountsResponse
 	case strings.HasSuffix(request.URL.Path, "/music/get_search_suggestions"):
@@ -96,11 +112,33 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		}
 	}
 	return &http.Response{
-		StatusCode: http.StatusOK,
+		StatusCode: status,
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader(reply)),
 		Request:    request,
 	}, nil
+}
+
+// fakeLikes is the like the fake's /next reports for vid-3, or "".
+func fakeLikes() youtube.LikeStatus {
+	status, _ := fakeLikeState.Load().(string)
+	return youtube.LikeStatus(status)
+}
+
+// likeResponse is what YouTube answers a like it took: the toast its own
+// client shows. Meiro reads nothing from it.
+const likeResponse = `{"responseContext":{},"actions":[{"addToToastAction":{"item":{"notificationActionRenderer":{"responseText":{"runs":[{"text":"Added to liked songs"}]}}}}}]}`
+
+// rejectedResponse is what YouTube answers a write it rejects.
+const rejectedResponse = `{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}`
+
+// nextResponse is what YouTube answers for the track vid-3 in the player: the
+// track itself, first in the panel, with the like button its menu carries.
+func nextResponse(like youtube.LikeStatus) string {
+	return `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"playlistId":"RDAMVM","contents":[
+		{"playlistPanelVideoRenderer":{"videoId":"vid-3","title":{"runs":[{"text":"Album Track One"}]},
+			"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"target":{"videoId":"vid-3"},"likeStatus":"` + string(like) + `"}}]}}}}
+	]}}}}}}]}}}}}`
 }
 
 // newTestApp builds an app whose work runs inline, and whose YouTube and

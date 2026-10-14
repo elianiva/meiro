@@ -80,7 +80,9 @@ type app struct {
 	search      searchState
 	focusSearch bool
 	menu        itemMenu
-	menuOpen    bool // the account menu
+	// rating holds the tracks whose like is being written.
+	rating   map[string]bool
+	menuOpen bool // the account menu
 
 	// Dialogs.
 	crash         *crashState

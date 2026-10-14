@@ -386,7 +386,10 @@ func (a *app) nowPlayingView(c *ui.Context) {
 // stacked in a tall window, side by side in a short one.
 func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 	controls := func() {
-		a.trackLine(c, m3.HeadlineSmall, m3.TitleMedium)
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			a.trackLine(c, m3.HeadlineSmall, m3.TitleMedium).Grow(1)
+			a.likeButton(c)
+		})
 		a.scrubber(c)
 		ui.Row(c).Justify(ui.Center).Children(func() {
 			a.transport(c, 72, 10)

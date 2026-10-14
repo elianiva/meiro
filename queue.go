@@ -46,6 +46,14 @@ func (q *queue) current() youtube.MusicItem {
 	return q.items[q.index]
 }
 
+// each calls fn with every track of the queue, which may change the track's
+// fields but not which track it is.
+func (q *queue) each(fn func(*youtube.MusicItem)) {
+	for i := range q.items {
+		fn(&q.items[i])
+	}
+}
+
 // at is the track at a place in the queue.
 func (q *queue) at(index int) youtube.MusicItem { return q.items[index] }
 

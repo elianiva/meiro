@@ -37,6 +37,9 @@ type MusicItem struct {
 	Kind          ItemKind `json:"kind,omitempty"`
 	Duration      string   `json:"duration,omitempty"`
 	Thumbnail     string   `json:"thumbnail,omitempty"`
+	// Like is whether the account has liked the track, when the page that
+	// held it said. It is not saved with the item: a like changes elsewhere.
+	Like LikeStatus `json:"-"`
 }
 
 // SearchResult contains the parsed music items of a search.
@@ -1281,6 +1284,7 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	}
 	item.PlaylistID, _ = renderer.get("playlistId").(string)
 	item.PlaylistSetID = nestedString(renderer.get("playlistItemData"), "playlistSetVideoId")
+	item.Like = likeStatus(renderer)
 	item.BrowseID = navigationID(renderer.get("navigationEndpoint"))
 	if item.BrowseID == "" && (kind == KindTrack || kind == KindVideo) {
 		// A song or a video names no page of its own: the artist beside it
