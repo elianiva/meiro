@@ -1,15 +1,6 @@
 load("@gazelle//:def.bzl", "gazelle", "gazelle_binary")
 load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-# Every Go file in the repository, which is what the formatting check reads.
-# Sources are listed rather than walked so the test only ever sees files Bazel
-# knows about.
-GO_SOURCES = glob(
-    ["**/*.go"],
-    exclude = ["bazel-*/**"],
-)
 
 # Gazelle writes and updates every BUILD file under the workspace, so the Go
 # targets stay in step with go.mod and the packages on disk.
@@ -32,15 +23,15 @@ gazelle(
 
 # --- The commands a contributor runs -----------------------------------------
 #
-# One Bazel command stands in for each recipe the justfile used to hold. The
-# targets that only arrange work (dev, fetch-tools, format, lint, tidy, dist,
-# clean) run outside the sandbox, because they need the network, the host
-# toolchain, or the platform's own packaging tools; the targets that check
-# something (test, format_test) are hermetic and cached.
+# One Bazel command stands in for each recipe the justfile used to hold. They
+# arrange work rather than check it: they need the network, the host
+# toolchain, or the platform's own packaging tools, so they run outside the
+# sandbox. The checks are the go_test targets, which `bazel test` runs
+# hermetically and caches.
 #
-# They are shell commands for the machine you run Bazel on, so they carry the
-# host-only tag: a release-target build leaves them out (see .bazelrc), where
-# building one for a Windows target platform would ask for the launcher
+# They are also shell commands for the machine you run Bazel on, so they carry
+# the host-only tag: a release-target build leaves them out (see .bazelrc),
+# where building one for a Windows target platform would ask for the launcher
 # rules_shell makes for it, which wants a C++ toolchain this project does not
 # carry.
 
@@ -79,14 +70,19 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
-# Fail when a file is not formatted: `bazel test //:format_test`.
-sh_test(
-    name = "format_test",
-    size = "small",
-    srcs = ["//tools:format_test.sh"],
-    args = ["$(rootpath @gofumpt//:gofumpt)"],
-    data = GO_SOURCES + ["@gofumpt//:gofumpt"],
+# Fail when a file is not formatted: `bazel run //:format-check`. It walks the
+# workspace rather than a Bazel file list, because a glob stops at a package
+# boundary and every directory of Go files here is its own package.
+sh_binary(
+    name = "format-check",
+    srcs = ["//tools:format.sh"],
+    args = [
+        "$(rootpath @gofumpt//:gofumpt)",
+        "--check",
+    ],
+    data = ["@gofumpt//:gofumpt"],
     tags = ["host-only"],
+    visibility = ["//visibility:public"],
 )
 
 # Lint with the pinned golangci-lint: `bazel run //:lint`.

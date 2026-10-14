@@ -50,9 +50,9 @@ jobs:
           go-version-file: go.mod
       - name: Check formatting
         # gofumpt is gofmt with more rules, so it is the one check to make: it
-        # rejects everything gofmt rejects, and more. The check is a hermetic
-        # Bazel test, so the runner only pays for it when a Go file changes.
-        run: bazel test //:format_test
+        # rejects everything gofmt rejects, and more. It walks the workspace,
+        # which is what a Bazel file list cannot do across packages.
+        run: bazel run //:format-check
       - name: Check go.mod and go.sum are tidy
         # tidy -diff exits non-zero when the files are not tidy, so it asks the
         # whole question; a `git diff` after it would ask the same one again.
@@ -118,7 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Check shell scripts
-        run: shellcheck --severity=warning scripts/fetch-tools.sh scripts/build-ffmpeg.sh scripts/package-linux.sh tools/clean.sh tools/dist.sh tools/format.sh tools/format_test.sh tools/lint.sh tools/workspace.sh
+        run: shellcheck --severity=warning scripts/fetch-tools.sh scripts/build-ffmpeg.sh scripts/package-linux.sh tools/clean.sh tools/dist.sh tools/format.sh tools/lint.sh tools/workspace.sh
       - name: Check workflows
         run: |
           curl --fail --location --silent --show-error \

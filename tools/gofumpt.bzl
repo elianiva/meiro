@@ -1,4 +1,5 @@
-"""Downloads the gofumpt that `bazel test //:format_test` runs.
+"""Downloads the gofumpt that `bazel run //:format` and `bazel run
+//:format-check` run.
 
 The version is pinned here the way .golangci.yml pins the linters, and it is
 fetched as the release binary rather than compiled from go.mod. Reading a few

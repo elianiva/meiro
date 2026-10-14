@@ -7,7 +7,6 @@ exports_files(
         "clean.sh",
         "dist.sh",
         "format.sh",
-        "format_test.sh",
         "lint.sh",
         "workspace.sh",
     ],

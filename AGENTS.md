@@ -11,10 +11,10 @@ read `.agents/skills/mygo-maintenance/SKILL.md` first.
 ## Checks
 
 ```sh
-bazel test //...                 # every test, and the formatting check
+bazel test //...                 # every test
 bazel test --config=race //...   # the same tests under the race detector, as CI runs them
 bazel run //:lint                # the rules below, and the vet checks
-bazel run //:format              # gofumpt, in place
+bazel run //:format-check        # formatting; bazel run //:format writes it
 bazel build --config=linux-arm64 //...   # type-check another release target
 ```
 
