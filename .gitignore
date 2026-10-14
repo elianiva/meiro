@@ -1,4 +1,5 @@
 /build/
+/dist/
 *.test
 /.mygo/
 mygo_windows_*.syso

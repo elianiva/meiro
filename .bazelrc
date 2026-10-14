@@ -19,8 +19,14 @@ build:release --compilation_mode=opt
 
 # Cross-compile the app for one release target:
 #   bazel build --config=darwin-arm64 //:meiro
-build:linux-amd64 --platforms=//platforms:linux_amd64
-build:linux-arm64 --platforms=//platforms:linux_arm64
-build:darwin-amd64 --platforms=//platforms:darwin_amd64
-build:darwin-arm64 --platforms=//platforms:darwin_arm64
-build:windows-amd64 --platforms=//platforms:windows_amd64
+#
+# Such a build is the app for that target only: the commands a contributor
+# runs are shell scripts for the machine you run Bazel on (see host-only in
+# the BUILD files), and building one for a Windows target platform would ask
+# for the launcher rules_shell makes for it, which wants a C++ toolchain this
+# project does not carry.
+build:linux-amd64 --platforms=//platforms:linux_amd64 --build_tag_filters=-host-only
+build:linux-arm64 --platforms=//platforms:linux_arm64 --build_tag_filters=-host-only
+build:darwin-amd64 --platforms=//platforms:darwin_amd64 --build_tag_filters=-host-only
+build:darwin-arm64 --platforms=//platforms:darwin_arm64 --build_tag_filters=-host-only
+build:windows-amd64 --platforms=//platforms:windows_amd64 --build_tag_filters=-host-only

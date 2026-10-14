@@ -37,6 +37,12 @@ gazelle(
 # clean) run outside the sandbox, because they need the network, the host
 # toolchain, or the platform's own packaging tools; the targets that check
 # something (test, format_test) are hermetic and cached.
+#
+# They are shell commands for the machine you run Bazel on, so they carry the
+# host-only tag: a release-target build leaves them out (see .bazelrc), where
+# building one for a Windows target platform would ask for the launcher
+# rules_shell makes for it, which wants a C++ toolchain this project does not
+# carry.
 
 # Live reload: `bazel run //:dev`.
 sh_binary(
@@ -48,6 +54,7 @@ sh_binary(
         "mygo",
         "dev",
     ],
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 
@@ -58,6 +65,7 @@ sh_binary(
     name = "fetch-tools",
     srcs = ["//tools:workspace.sh"],
     args = ["scripts/fetch-tools.sh"],
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 
@@ -67,6 +75,7 @@ sh_binary(
     srcs = ["//tools:format.sh"],
     args = ["$(rootpath @gofumpt//:gofumpt)"],
     data = ["@gofumpt//:gofumpt"],
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 
@@ -77,6 +86,7 @@ sh_test(
     srcs = ["//tools:format_test.sh"],
     args = ["$(rootpath @gofumpt//:gofumpt)"],
     data = GO_SOURCES + ["@gofumpt//:gofumpt"],
+    tags = ["host-only"],
 )
 
 # Lint with the pinned golangci-lint: `bazel run //:lint`.
@@ -85,6 +95,7 @@ sh_binary(
     srcs = ["//tools:lint.sh"],
     args = ["$(rootpath @golangci_lint//:bin)"],
     data = ["@golangci_lint//:bin"],
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 
@@ -100,18 +111,21 @@ sh_binary(
         "tidy",
         "-diff",
     ],
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "dist",
     actual = "//tools:dist",
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "clean",
     actual = "//tools:clean",
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 

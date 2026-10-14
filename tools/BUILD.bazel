@@ -18,6 +18,7 @@ exports_files(
 sh_binary(
     name = "dist",
     srcs = ["dist.sh"],
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
 
@@ -25,5 +26,6 @@ sh_binary(
 sh_binary(
     name = "clean",
     srcs = ["clean.sh"],
+    tags = ["host-only"],
     visibility = ["//visibility:public"],
 )
