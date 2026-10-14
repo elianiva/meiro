@@ -3,11 +3,20 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/youtube"
 )
+
+// afterAnimations draws frames until the player's entry animation is over,
+// which a click would otherwise land in the middle of.
+func afterAnimations(tt *ui.Tester) {
+	for end := time.Now().Add(500 * time.Millisecond); time.Now().Before(end); {
+		tt.Frame()
+	}
+}
 
 // openTrackMenu opens the menu of the row of a track on the page shown.
 func openTrackMenu(t *testing.T, tt *ui.Tester, title string) {
@@ -34,8 +43,7 @@ func likeWrite() (endpoint, videoID string) {
 }
 
 func TestLikingATrackFromItsMenu(t *testing.T) {
-	likeWrites.Store(0)
-	refuseWrites.Store(false)
+	resetFakes()
 	a := signedInApp(t)
 	a.router.Push("/album/MPREb_test")
 	tt := ui.NewTester(a.view, 1000, 700)
@@ -73,7 +81,7 @@ func TestLikingATrackFromItsMenu(t *testing.T) {
 }
 
 func TestSignedOutHasNoLike(t *testing.T) {
-	likeWrites.Store(0)
+	resetFakes()
 	a, _ := playbackApp(t)
 	a.router.Push("/album/MPREb_test")
 	tt := ui.NewTester(a.view, 1000, 700)
@@ -87,7 +95,7 @@ func TestSignedOutHasNoLike(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.openPlayer(tabQueue, false)
-	tt.Frame()
+	afterAnimations(tt)
 	for _, text := range tt.Texts() {
 		if strings.HasPrefix(text, "Like ") || strings.HasPrefix(text, "Unlike ") {
 			t.Fatalf("the signed-out player has a heart: %q", text)
@@ -100,10 +108,9 @@ func TestSignedOutHasNoLike(t *testing.T) {
 }
 
 func TestThePlayerHeartShowsWhatYouTubeSaid(t *testing.T) {
-	likeWrites.Store(0)
-	refuseWrites.Store(false)
-	fakeLikeState.Store(string(youtube.Liked))
-	t.Cleanup(func() { fakeLikeState.Store("") })
+	resetFakes()
+	fakeLikeState.Store("LIKE")
+	t.Cleanup(resetFakes)
 	a, _ := playbackApp(t)
 	a.settings.AutoPlay = true
 	a.account.session = signedInApp(t).account.session
@@ -114,7 +121,7 @@ func TestThePlayerHeartShowsWhatYouTubeSaid(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.openPlayer(tabQueue, false)
-	tt.Frame()
+	afterAnimations(tt)
 	if !tt.HasText("Unlike Album Track One") {
 		t.Fatalf("the player did not show the like /next reported: %q", tt.Texts())
 	}
@@ -132,9 +139,9 @@ func TestThePlayerHeartShowsWhatYouTubeSaid(t *testing.T) {
 }
 
 func TestARejectedLikeIsTakenBack(t *testing.T) {
-	likeWrites.Store(0)
+	resetFakes()
 	refuseWrites.Store(true)
-	t.Cleanup(func() { refuseWrites.Store(false) })
+	t.Cleanup(resetFakes)
 	a, _ := playbackApp(t)
 	a.account.session = signedInApp(t).account.session
 	a.router.Push("/album/MPREb_test")
@@ -144,7 +151,7 @@ func TestARejectedLikeIsTakenBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.openPlayer(tabQueue, false)
-	tt.Frame()
+	afterAnimations(tt)
 
 	// Hold the write back, to see the heart before YouTube answers.
 	var held []func()
@@ -163,7 +170,7 @@ func TestARejectedLikeIsTakenBack(t *testing.T) {
 	}
 	tt.Frame()
 	if len(held) != 1 || a.current.Like != youtube.Liked {
-		t.Fatalf("a second press while the first was out: %d writes held, like %q", len(held), a.current.Like)
+		t.Fatalf("a second press while the first was out: %d writes held, like %d", len(held), a.current.Like)
 	}
 	a.run = run
 	for _, work := range held {
@@ -173,7 +180,7 @@ func TestARejectedLikeIsTakenBack(t *testing.T) {
 	if likeWrites.Load() != 1 {
 		t.Fatalf("writes = %d", likeWrites.Load())
 	}
-	if !tt.HasText("Like Album Track One") || tt.HasText("Unlike Album Track One") || a.current.Like != "" {
+	if !tt.HasText("Like Album Track One") || tt.HasText("Unlike Album Track One") || a.current.Like != youtube.LikeUnknown {
 		t.Fatalf("the heart stayed filled after a rejection: %q %q", a.current.Like, tt.Texts())
 	}
 	if !tt.HasText("Could not like “Album Track One”") {

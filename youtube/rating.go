@@ -9,19 +9,34 @@ import (
 )
 
 // LikeStatus is whether the signed-in account has liked a track, as YouTube's
-// like buttons name it. The zero value says the page that held the track did
-// not say.
-type LikeStatus string
+// like buttons name it. It is a byte, since every item of every page carries
+// one.
+type LikeStatus uint8
 
 const (
+	// LikeUnknown is a track whose page did not say.
+	LikeUnknown LikeStatus = iota
 	// Liked is a track the account has given a thumbs-up.
-	Liked LikeStatus = "LIKE"
+	Liked
 	// Indifferent is a track the account has rated neither way.
-	Indifferent LikeStatus = "INDIFFERENT"
+	Indifferent
 	// Disliked is a track the account has given a thumbs-down. Meiro reads it
 	// but does not write it.
-	Disliked LikeStatus = "DISLIKE"
+	Disliked
 )
+
+// parseLikeStatus reads the name YouTube's like button gives a status.
+func parseLikeStatus(name string) LikeStatus {
+	switch name {
+	case "LIKE":
+		return Liked
+	case "INDIFFERENT":
+		return Indifferent
+	case "DISLIKE":
+		return Disliked
+	}
+	return LikeUnknown
+}
 
 // RateTrack likes a track or takes the like back, for the account the client
 // speaks for. It is the call behind the thumb of YouTube Music's player:
@@ -89,10 +104,10 @@ func likeStatus(renderer *jsonObject) LikeStatus {
 	for _, value := range buttons {
 		button, _ := value.(*jsonObject)
 		like, _ := button.get("likeButtonRenderer").(*jsonObject)
-		switch status, _ := like.get("likeStatus").(string); LikeStatus(status) {
-		case Liked, Indifferent, Disliked:
-			return LikeStatus(status)
+		name, _ := like.get("likeStatus").(string)
+		if status := parseLikeStatus(name); status != LikeUnknown {
+			return status
 		}
 	}
-	return ""
+	return LikeUnknown
 }

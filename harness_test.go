@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -72,6 +74,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = likeResponse
 		if refuseWrites.Load() {
 			reply, status = rejectedResponse, http.StatusBadRequest
+		} else if id := writtenPlaylist(); id != "" {
+			fakeLibrary.Store(id, strings.HasSuffix(request.URL.Path, "/like/like"))
 		}
 	case strings.HasSuffix(request.URL.Path, "/next") && fakeLikes() != "" && strings.Contains(asked, "vid-3"):
 		reply = nextResponse(fakeLikes())
@@ -84,12 +88,12 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.Contains(asked, "FEmusic_listening_review"):
 		reply = recapResponse
 	case strings.Contains(asked, "VLPL_video"):
-		reply = playlistResponse
+		reply = playlistPage()
 	case strings.Contains(asked, "MPREb_test"):
-		reply = albumResponse
+		reply = albumPage()
 	case strings.Contains(asked, "FEmusic_library_landing"):
 		libraryLoads.Add(1)
-		reply = libraryResponse
+		reply = libraryPage()
 	case strings.HasSuffix(request.URL.Path, "/playlist/create"):
 		playlistCreates.Add(1)
 		recordWrite(request.URL.Path, asked)
@@ -119,10 +123,11 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// fakeLikes is the like the fake's /next reports for vid-3, or "".
-func fakeLikes() youtube.LikeStatus {
+// fakeLikes is the like the fake's /next reports for vid-3, as YouTube names
+// it, or "".
+func fakeLikes() string {
 	status, _ := fakeLikeState.Load().(string)
-	return youtube.LikeStatus(status)
+	return status
 }
 
 // likeResponse is what YouTube answers a like it took: the toast its own
@@ -134,10 +139,10 @@ const rejectedResponse = `{"error":{"code":400,"message":"Request contains an in
 
 // nextResponse is what YouTube answers for the track vid-3 in the player: the
 // track itself, first in the panel, with the like button its menu carries.
-func nextResponse(like youtube.LikeStatus) string {
+func nextResponse(like string) string {
 	return `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"playlistId":"RDAMVM","contents":[
 		{"playlistPanelVideoRenderer":{"videoId":"vid-3","title":{"runs":[{"text":"Album Track One"}]},
-			"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"target":{"videoId":"vid-3"},"likeStatus":"` + string(like) + `"}}]}}}}
+			"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"target":{"videoId":"vid-3"},"likeStatus":"` + like + `"}}]}}}}
 	]}}}}}}]}}}}}`
 }
 
@@ -217,7 +222,12 @@ const exploreResponse = `{"contents":{"sectionListRenderer":{"contents":[
 	}}
 ]}}}`
 
-const albumResponse = `{"contents":{"musicShelfRenderer":{"contents":[
+// albumPage is an album as YouTube Music answers one: a header with the
+// button that saves it, and the rows of its tracks. The button says whether the
+// fake account has the album saved.
+func albumPage() string {
+	return `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Deep Focus"}]},"buttons":[` + libraryToggleButton(fakeAlbumPlaylist) + `]}},` +
+		`"contents":{"musicShelfRenderer":{"contents":[
 	{"musicResponsiveListItemRenderer":{
 		"playlistItemData":{"videoId":"vid-3"},
 		"flexColumns":[
@@ -226,10 +236,73 @@ const albumResponse = `{"contents":{"musicShelfRenderer":{"contents":[
 		]
 	}}
 ]}}}`
+}
 
-const playlistResponse = `{"contents":{"playlistVideoListRenderer":{"contents":[
+// playlistPage is a playlist the account does not own: a header with the
+// button that saves it, and its videos.
+func playlistPage() string {
+	return `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Road Trip"}]},"buttons":[` + libraryToggleButton(fakePlaylist) + `]}},` +
+		`"contents":{"playlistVideoListRenderer":{"contents":[
 	{"playlistVideoRenderer":{"videoId":"playlist-video","playlistItemData":{"playlistSetVideoId":"set-video-1"},"title":{"simpleText":"Playlist video"},"lengthText":{"simpleText":"5:21"}}}
 ]}}}`
+}
+
+// The playlists the fake's pages offer to save. An album is saved as its audio
+// playlist, which is not its browse ID.
+const (
+	fakeAlbumPlaylist = "OLAK5uy_test"
+	fakePlaylist      = "PL_video"
+)
+
+// fakeLibrary is the playlists the fake account has saved, by ID. The fake's
+// like writes change it, and its pages read it, as YouTube's do.
+var fakeLibrary sync.Map
+
+// resetFakes puts the fake YouTube back as a test found it: no write refused,
+// nothing counted, and the library holding the two playlists its landing page
+// starts with.
+func resetFakes() {
+	likeWrites.Store(0)
+	refuseWrites.Store(false)
+	fakeLikeState.Store("")
+	fakeLibrary.Clear()
+	fakeLibrary.Store("PLhype", true)
+	fakeLibrary.Store("PLcar", true)
+}
+
+func init() { resetFakes() }
+
+func fakeSaved(id string) bool {
+	saved, _ := fakeLibrary.Load(id)
+	return saved == true
+}
+
+// writtenPlaylist is the playlist the last write named as its target, or "".
+func writtenPlaylist() string {
+	target, _ := written().body["target"].(map[string]any)
+	id, _ := target["playlistId"].(string)
+	return id
+}
+
+// libraryToggleButton is the save button of a header, a toggle that likes the
+// playlist and says whether it is toggled.
+func libraryToggleButton(id string) string {
+	return fmt.Sprintf(`{"toggleButtonRenderer":{"isToggled":%t,
+		"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"playlistId":%q}}},
+		"toggledServiceEndpoint":{"likeEndpoint":{"status":"INDIFFERENT","target":{"playlistId":%q}}}}}`, fakeSaved(id), id, id)
+}
+
+// libraryToggleMenu is the menu of a card that can be saved: an item whose
+// default endpoint is the write the item offers now.
+func libraryToggleMenu(id string) string {
+	offered, other := "LIKE", "INDIFFERENT"
+	if fakeSaved(id) {
+		offered, other = other, offered
+	}
+	return fmt.Sprintf(`"menu":{"menuRenderer":{"items":[{"toggleMenuServiceItemRenderer":{
+		"defaultServiceEndpoint":{"likeEndpoint":{"status":%q,"target":{"playlistId":%q}}},
+		"toggledServiceEndpoint":{"likeEndpoint":{"status":%q,"target":{"playlistId":%q}}}}}]}}`, offered, id, other, id)
+}
 
 // artistResponse carries the heading an artist page puts over its content.
 const artistResponse = `{"header":{"musicImmersiveHeaderRenderer":{
@@ -383,8 +456,18 @@ func written() playlistWrite {
 
 // libraryResponse is a library landing page: the playlist a thumb fills, two
 // playlists, and an artist.
-const libraryResponse = `{"contents":{"musicCarouselShelfRenderer":{
-	"contents":[
+func libraryPage() string {
+	album := ""
+	if fakeSaved(fakeAlbumPlaylist) {
+		album = `{"musicTwoRowItemRenderer":{
+			"title":{"runs":[{"text":"Deep Focus"}]},
+			"subtitle":{"runs":[{"text":"Album"}]},
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_test"}},
+			` + libraryToggleMenu(fakeAlbumPlaylist) + `
+		}},`
+	}
+	return `{"contents":{"musicCarouselShelfRenderer":{
+	"contents":[` + album + `
 		{"musicTwoRowItemRenderer":{
 			"title":{"runs":[{"text":"Liked Music"}]},
 			"subtitle":{"runs":[{"text":"Auto playlist"}]},
@@ -395,7 +478,8 @@ const libraryResponse = `{"contents":{"musicCarouselShelfRenderer":{
 			"title":{"runs":[{"text":"Hype"}]},
 			"subtitle":{"runs":[{"text":"Nuarth · 37 tracks"}]},
 			"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/hype=w544-h544-l90-rj"}]}}},
-			"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLhype"}}
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLhype"}},
+			` + libraryToggleMenu("PLhype") + `
 		}},
 		{"musicTwoRowItemRenderer":{
 			"title":{"runs":[{"text":"car radio"}]},
@@ -411,6 +495,7 @@ const libraryResponse = `{"contents":{"musicCarouselShelfRenderer":{
 		}}
 	]
 }}}`
+}
 
 // memoryStore is a cookie store held in memory.
 type memoryStore struct {

@@ -335,7 +335,7 @@ func (a *app) stopAccountWork() {
 func (a *app) accountChanged() {
 	a.cancelSuggestions()
 	a.pages.Clear()
-	a.forgetLikes()
+	a.forgetAccountState()
 	if r, _ := a.route(); r.load != nil {
 		a.reloadPage()
 	}

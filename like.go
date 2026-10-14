@@ -31,17 +31,17 @@ func (a *app) canLike(item youtube.MusicItem) bool {
 // arrive in another order than the presses.
 func (a *app) toggleLike(item youtube.MusicItem) {
 	id := item.VideoID
-	if !a.canLike(item) || a.rating[id] {
+	if !a.canLike(item) || a.writing["like:"+id] {
 		return
 	}
 	before, after := item.Like, youtube.Liked
 	if before == youtube.Liked {
 		after = youtube.Indifferent
 	}
-	if a.rating == nil {
-		a.rating = make(map[string]bool)
+	if a.writing == nil {
+		a.writing = make(map[string]bool)
 	}
-	a.rating[id] = true
+	a.writing["like:"+id] = true
 	a.setLike(id, after, false)
 	client := a.client()
 	spawn(a, func() error {
@@ -52,7 +52,7 @@ func (a *app) toggleLike(item youtube.MusicItem) {
 		if a.client() != client {
 			return // another account is in use now: its tracks say their own
 		}
-		delete(a.rating, id)
+		delete(a.writing, "like:"+id)
 		if err == nil {
 			return
 		}
@@ -65,22 +65,16 @@ func (a *app) toggleLike(item youtube.MusicItem) {
 	})
 }
 
-// setLike gives every copy of a track the app holds the status: the track
-// playing, the queue, the page shown and the related songs. A kept page is
-// dropped from the cache rather than edited, as it will be read again from
-// YouTube. With unknownOnly, only copies that do not know their status take
-// it, which is how a status YouTube sent is learned.
-func (a *app) setLike(videoID string, status youtube.LikeStatus, unknownOnly bool) {
-	set := func(item *youtube.MusicItem) {
-		if item.VideoID == videoID && (!unknownOnly || item.Like == "") {
-			item.Like = status
-		}
-	}
-	set(&a.current)
-	a.queue.each(set)
+// eachItem calls fn with every copy of a track or an item the app holds: the
+// one playing, the queue, the page shown and the related songs. A kept page is
+// not among them: callers that change what they hold drop the cache instead,
+// as a page it holds is read again from YouTube.
+func (a *app) eachItem(fn func(*youtube.MusicItem)) {
+	fn(&a.current)
+	a.queue.each(fn)
 	each := func(items []youtube.MusicItem) {
 		for i := range items {
-			set(&items[i])
+			fn(&items[i])
 		}
 	}
 	for _, feed := range []*pageState{&a.page.feed, &a.search.pageState} {
@@ -91,6 +85,17 @@ func (a *app) setLike(videoID string, status youtube.LikeStatus, unknownOnly boo
 	}
 	each(a.nowPlaying.related.items)
 	a.page.rowsDirty = true
+}
+
+// setLike gives every copy of a track the status. With unknownOnly, only
+// copies that do not know their status take it, which is how a status
+// YouTube sent is learned.
+func (a *app) setLike(videoID string, status youtube.LikeStatus, unknownOnly bool) {
+	a.eachItem(func(item *youtube.MusicItem) {
+		if item.VideoID == videoID && (!unknownOnly || item.Like == youtube.LikeUnknown) {
+			item.Like = status
+		}
+	})
 	if !unknownOnly {
 		a.pages.Clear()
 	}
@@ -100,22 +105,18 @@ func (a *app) setLike(videoID string, status youtube.LikeStatus, unknownOnly boo
 // copies of them the app holds without one.
 func (a *app) learnLikes(items []youtube.MusicItem) {
 	for _, item := range items {
-		if item.Like != "" && !a.rating[item.VideoID] {
+		if item.Like != youtube.LikeUnknown && !a.writing["like:"+item.VideoID] {
 			a.setLike(item.VideoID, item.Like, true)
 		}
 	}
 }
 
-// forgetLikes drops what the tracks held say about the account that has just
+// forgetAccountState drops what the items held say about the account that has just
 // gone: another account has its own.
-func (a *app) forgetLikes() {
-	clear(a.rating)
-	forget := func(item *youtube.MusicItem) { item.Like = "" }
-	forget(&a.current)
-	a.queue.each(forget)
-	for i := range a.nowPlaying.related.items {
-		forget(&a.nowPlaying.related.items[i])
-	}
+func (a *app) forgetAccountState() {
+	clear(a.writing)
+	a.page.library = youtube.LibraryState{}
+	a.eachItem(func(item *youtube.MusicItem) { item.Like, item.Library = youtube.LikeUnknown, nil })
 }
 
 // likeButton is the heart of the full player: filled while the track is liked.

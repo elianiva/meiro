@@ -48,8 +48,10 @@ type pageState struct {
 // heading, and the rows built from them. The page cache keeps it whole, so a
 // field added here is cached and restored with the rest.
 type pageData struct {
-	feed     pageState
-	detail   detail
+	feed   pageState
+	detail detail
+	// library is whether an album or a playlist page is in the library.
+	library  youtube.LibraryState
 	loadedAt time.Time
 	rows     []row
 	playable []youtube.MusicItem
@@ -216,6 +218,9 @@ func (a *app) applyPage(p *pageData, r *route, path string, client *youtube.Clie
 			p.detail.art = result.Thumbnail
 		}
 		a.details.Put(path, p.detail)
+		if result.Library.ID != "" {
+			p.library = result.Library
+		}
 	}
 	p.feed.sections = result.Sections
 	// Items are the page's songs, cards and rows all together, which its

@@ -82,10 +82,10 @@ func TestPanelItemsCarryTheirLikeStatus(t *testing.T) {
 	for _, item := range result.Items {
 		got[item.VideoID] = item.Like
 	}
-	want := map[string]LikeStatus{"a": Liked, "b": Indifferent, "c": "", "d": ""}
+	want := map[string]LikeStatus{"a": Liked, "b": Indifferent, "c": LikeUnknown, "d": LikeUnknown}
 	for id, status := range want {
 		if got[id] != status {
-			t.Errorf("track %s: like %q, want %q", id, got[id], status)
+			t.Errorf("track %s: like %d, want %d", id, got[id], status)
 		}
 	}
 }
