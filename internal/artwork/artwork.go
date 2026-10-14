@@ -804,3 +804,25 @@ func dominantColour(img image.Image) (ui.Color, bool) {
 	}
 	return ui.RGB(uint8(sumR[best]/weight[best]), uint8(sumG[best]/weight[best]), uint8(sumB[best]/weight[best])), true
 }
+
+// Stats is how much the cache holds, for measuring that it stays bounded.
+type Stats struct {
+	// Bitmaps and Bytes are the decoded pictures kept, and their pixels.
+	Bitmaps, Bytes int
+	// Sources and SourceBytes are the compressed pictures kept for rebuilding
+	// evicted bitmaps.
+	Sources, SourceBytes int
+	// Queued, Failed, Keys and Colours are the sizes of the other indexes.
+	Queued, Failed, Keys, Colours int
+}
+
+// Stats reports what the cache holds now.
+func (t *Cache) Stats() Stats {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return Stats{
+		Bitmaps: len(t.bitmaps), Bytes: t.held,
+		Sources: len(t.sources), SourceBytes: t.sourceHeld,
+		Queued: len(t.queue), Failed: len(t.failed), Keys: len(t.keys), Colours: len(t.colours),
+	}
+}

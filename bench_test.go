@@ -47,6 +47,7 @@ func BenchmarkFrame(b *testing.B) {
 		{"home", "/home", "Shelf0 0", nil},
 		{"album-500", "/album/MPREb_big", "Album Track 0", nil},
 		{"library-600", "/library", "Playlist 0", nil},
+		{"settings", "/settings", "Appearance", nil},
 		{"now-playing-queue-500", "/album/MPREb_big", "Playing from", func(a *app) {
 			a.playAll()
 			a.openPlayer(tabQueue, false)
