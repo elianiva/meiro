@@ -512,7 +512,7 @@ func (a *app) queueView(c *ui.Context) {
 	}
 	ui.Row(c).Padding(0, 16, 4).AlignItems(ui.Center).Children(func() {
 		m3.Text(c, m3.BodySmall, strconv.Itoa(q.remaining())+" up next").Grow(1).TextColor(sc.OnSurfaceVariant)
-		if m3.Button(c, m3.ButtonSpec{Label: "Clear", Kind: m3.TextOnly, Size: m3.ExtraSmall32, Disabled: q.remaining() < 1, Key: "queue-clear"}).Clicked() {
+		if m3.Button(c, m3.ButtonSpec{Label: "Clear queue", Kind: m3.TextOnly, Size: m3.ExtraSmall32, Disabled: q.remaining() < 1, Key: "queue-clear"}).Clicked() {
 			a.clearUpcoming()
 		}
 	})

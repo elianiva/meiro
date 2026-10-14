@@ -146,3 +146,33 @@ func TestQueueShiftAndClear(t *testing.T) {
 		t.Error("cleared an empty queue")
 	}
 }
+
+func TestQueueDragKeepsPlayNextAndBoundary(t *testing.T) {
+	q := newQueue()
+	chosen := tracks("a", "b", "c", "d")
+	q.replace(chosen[0], chosen, 0, "")
+	q.appendGenerated(tracks("r1", "r2"))
+	q.insert(youtube.MusicItem{VideoID: "n"}, true, true) // a n b c d r1 r2
+
+	// Drag d, the last chosen track, to the top of the upcoming tracks.
+	if !q.moveRows([]int{q.rowOf(4)}, q.rowOf(1)) || !slices.Equal(ids(q.items), []string{"a", "d", "n", "b", "c", "r1", "r2"}) {
+		t.Fatalf("drag: %v", ids(q.items))
+	}
+	if q.playNext != "n" {
+		t.Errorf("play-next mark %q, want n", q.playNext)
+	}
+	if next, ok := q.next(true, repeatOff); !ok || q.at(next).VideoID != "n" {
+		t.Errorf("next = %d, %v; play-next must still play first", next, ok)
+	}
+	if q.at(q.recStart).VideoID != "r1" || q.index != 0 {
+		t.Errorf("boundary on %q, place %d", q.at(q.recStart).VideoID, q.index)
+	}
+
+	// A generated track dragged among the chosen ones stays generated.
+	if !q.moveRows([]int{q.rowOf(6)}, 1) || q.hasDivider() == false {
+		t.Fatalf("drag generated: %v, recStart %d", ids(q.items), q.recStart)
+	}
+	if _, ok := q.generated["r2"]; !ok || q.at(q.recStart).VideoID != "r2" {
+		t.Errorf("after: %v, recStart %d", ids(q.items), q.recStart)
+	}
+}

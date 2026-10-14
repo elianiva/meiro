@@ -460,8 +460,8 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	if playing {
 		container = sc.SecondaryContainer
 	}
-	var main, menuButton, menuAnchor ui.Element
-	hasMenu, hasAnchor := false, false
+	var main, menuButton, menuAnchor, removeButton ui.Element
+	hasMenu, hasAnchor, hasRemove := false, false, false
 	row.Children(func() {
 		main = ui.ButtonBase(c.Key(key + "-activate"))
 		hovered := row.Hovered()
@@ -531,7 +531,19 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			})
 			hasMenu = true
 		}
+		// A row of the queue has its own remove button; the track playing
+		// stays.
+		if o.list == "queue" && o.position != a.queue.index {
+			removeButton = m3.IconButton(c, m3.IconButtonSpec{
+				Icon: m3.IconClose, Label: "Remove " + item.Title + " from the queue", Key: key + "-remove",
+			})
+			hasRemove = true
+		}
 	})
+	if hasRemove && removeButton.Clicked() {
+		a.removeFromQueue(o.position)
+		return
+	}
 	if hasMenu {
 		pointer := main.RightClicked() || menuButton.RightClicked()
 		x, y, _ := main.PointerPosition()
