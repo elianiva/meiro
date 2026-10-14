@@ -75,6 +75,8 @@ type route struct {
 	open func(a *app)
 	// view builds the page; nil builds the page's list of rows.
 	view func(a *app, c *ui.Context)
+	// empty is what the page says when it loaded and has nothing on it.
+	empty emptyMessage
 	// needsAccount, when set, is shown instead of the page to a signed-out
 	// user, and the page loads nothing until one signs in.
 	needsAccount *signInPrompt
@@ -82,6 +84,9 @@ type route struct {
 	// shelves that scroll sideways.
 	grid bool
 }
+
+// emptyMessage is the title and the line under it of a page with no content.
+type emptyMessage struct{ title, body string }
 
 // railEntry is how the navigation rail shows a destination.
 type railEntry struct {
@@ -109,7 +114,7 @@ func init() { routes = appRoutes() }
 func appRoutes() []route {
 	return []route{
 		{
-			id: routeHome, pattern: "/home", title: "Home", rail: &railEntry{label: "Home", action: keymap.Home, icon: m3.IconHome, filled: m3.IconHomeFilled}, heading: greeting, nav: routeHome, source: "Home",
+			id: routeHome, empty: emptyMessage{"Nothing to show yet", "YouTube Music returned an empty home page."}, pattern: "/home", title: "Home", rail: &railEntry{label: "Home", action: keymap.Home, icon: m3.IconHome, filled: m3.IconHomeFilled}, heading: greeting, nav: routeHome, source: "Home",
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetHomeFeed(ctx)
 			},
@@ -119,13 +124,13 @@ func appRoutes() []route {
 			view: (*app).searchPage,
 		},
 		{
-			id: routeExplore, pattern: "/explore", title: "Explore", rail: &railEntry{label: "Explore", action: keymap.Explore, icon: m3.IconExplore, filled: m3.IconExploreFilled}, heading: heading("Explore"), nav: routeExplore, source: "Explore",
+			id: routeExplore, empty: emptyMessage{"Nothing to explore yet", "YouTube Music returned an empty page."}, pattern: "/explore", title: "Explore", rail: &railEntry{label: "Explore", action: keymap.Explore, icon: m3.IconExplore, filled: m3.IconExploreFilled}, heading: heading("Explore"), nav: routeExplore, source: "Explore",
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetExplore(ctx)
 			},
 		},
 		{
-			id: routeLibrary, pattern: "/library", title: "Library", rail: &railEntry{label: "Library", action: keymap.Library, icon: m3.IconLibrary, filled: m3.IconLibraryFilled}, heading: heading("Library"), nav: routeLibrary, source: "Your library", grid: true,
+			id: routeLibrary, empty: emptyMessage{"Your library is empty", "Songs, albums and playlists you save will show up here."}, pattern: "/library", title: "Library", rail: &railEntry{label: "Library", action: keymap.Library, icon: m3.IconLibrary, filled: m3.IconLibraryFilled}, heading: heading("Library"), nav: routeLibrary, source: "Your library", grid: true,
 			// The library shows once, whole: a grid that fills in as the rest
 			// arrives redraws every card and its artwork a second time.
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
@@ -134,7 +139,7 @@ func appRoutes() []route {
 			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists.", "your songs, albums and playlists"},
 		},
 		{
-			id: routeRecap, pattern: "/recap", title: "Recap", rail: &railEntry{label: "Recap", icon: m3.IconTrending, filled: m3.IconTrending, withAccount: true}, heading: heading("Recap"), nav: routeRecap, source: "Your recap",
+			id: routeRecap, empty: emptyMessage{"No recap yet", "Listen to some music and your recap will fill in."}, pattern: "/recap", title: "Recap", rail: &railEntry{label: "Recap", icon: m3.IconTrending, filled: m3.IconTrending, withAccount: true}, heading: heading("Recap"), nav: routeRecap, source: "Your recap",
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetRecap(ctx)
 			},
@@ -150,19 +155,19 @@ func appRoutes() []route {
 			view: (*app).statsPage, open: (*app).loadHistory,
 		},
 		{
-			id: routeAlbum, pattern: "/album/{id}", title: "Album", target: youtube.TargetAlbum,
+			id: routeAlbum, empty: emptyMessage{"This album is empty", "YouTube Music returned no songs for it."}, pattern: "/album/{id}", title: "Album", target: youtube.TargetAlbum,
 			load: func(ctx context.Context, c *youtube.Client, id string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetAlbum(ctx, id)
 			},
 		},
 		{
-			id: routePlaylist, pattern: "/playlist/{id}", title: "Playlist", target: youtube.TargetPlaylist,
+			id: routePlaylist, empty: emptyMessage{"This playlist is empty", "YouTube Music returned no songs for it."}, pattern: "/playlist/{id}", title: "Playlist", target: youtube.TargetPlaylist,
 			load: func(ctx context.Context, c *youtube.Client, id string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetPlaylist(ctx, id)
 			},
 		},
 		{
-			id: routeArtist, pattern: "/artist/{id}", title: "Artist", target: youtube.TargetArtist,
+			id: routeArtist, empty: emptyMessage{"Nothing here yet", "YouTube Music returned nothing for this artist."}, pattern: "/artist/{id}", title: "Artist", target: youtube.TargetArtist,
 			load: func(ctx context.Context, c *youtube.Client, id string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.GetArtist(ctx, id)
 			},

@@ -97,9 +97,13 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 			m3.LoadingIndicator(c, 40, true)
 		})
 	case rowError:
-		a.message(c, m3.IconError, "Something went wrong", firstLine(r.title), "Try again", a.retry)
+		if r.offline {
+			a.message(c, m3.IconError, "You are offline", "Check your connection, then retry.", "Retry", a.retry)
+		} else {
+			a.message(c, m3.IconError, "Could not load this page", firstLine(r.title), "Retry", a.retry)
+		}
 	case rowEmpty:
-		a.message(c, m3.IconMusicNote, r.title, "", "", nil)
+		a.message(c, m3.IconMusicNote, r.title, r.body, "Retry", a.retry)
 	}
 }
 

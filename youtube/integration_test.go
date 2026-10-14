@@ -3,6 +3,7 @@ package youtube
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -101,3 +102,20 @@ func TestClientSessionAgainstFakeInnerTube(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A request that gets no answer is told apart from YouTube answering badly,
+// so the app can say the network is out of reach.
+func TestUnreachableIsToldFromABadAnswer(t *testing.T) {
+	status := http.StatusInternalServerError
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", status)
+	}))
+	client := NewClient(Options{BaseURL: server.URL, APIKey: "k"})
+	if _, err := client.GetHomeFeed(context.Background()); err == nil || errors.Is(err, ErrUnreachable) {
+		t.Fatalf("HTTP 500: err = %v, want a failure that is not ErrUnreachable", err)
+	}
+	server.Close()
+	if _, err := client.GetHomeFeed(context.Background()); !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("server gone: err = %v, want ErrUnreachable", err)
+	}
+}

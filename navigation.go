@@ -31,8 +31,11 @@ type detail struct {
 
 // pageState is what a page has loaded, whichever page it is.
 type pageState struct {
-	loading  bool
-	err      string
+	loading bool
+	err     string
+	// offline says err is the network being out of reach, not a page that
+	// failed: the message tells the user to check the connection.
+	offline  bool
 	sections []youtube.MusicSection
 	items    []youtube.MusicItem
 	more     string
@@ -163,7 +166,7 @@ func (a *app) loadPage(r *route, id string) {
 	// The result goes to the page that asked for it, wherever the router
 	// has moved since.
 	p := a.page
-	p.feed.loading, p.feed.err = true, ""
+	p.feed.loading, p.feed.err, p.feed.offline = true, "", false
 	p.rowsDirty = true
 	a.pageMore.stop()
 	startProgress(a, &a.pageLoad, noTimeout, func(ctx context.Context, progress func(func())) (*youtube.BrowseResult, error) {
@@ -187,7 +190,8 @@ func (a *app) loadPage(r *route, id string) {
 		}
 		if err != nil {
 			p.rowsDirty = true
-			feed.loading, feed.partial, feed.err = false, false, err.Error()
+			feed.loading, feed.partial = false, false
+			feed.err, feed.offline = failure(err)
 			// A rejected session is not a page that failed: ask whether the
 			// account is still there, and say so when it is not.
 			if cur := a.account.session; errors.Is(err, youtube.ErrUnauthorized) && cur != nil && cur.client == client {
@@ -293,6 +297,12 @@ func (a *app) loadMore() {
 		}
 		s.more = more.next
 	})
+}
+
+// failure is how a failed load is shown: the first line of what went wrong,
+// and whether it was the network being out of reach.
+func failure(err error) (msg string, offline bool) {
+	return firstLine(err.Error()), errors.Is(err, youtube.ErrUnreachable)
 }
 
 // retry loads the page shown again.

@@ -85,7 +85,7 @@ func (a *app) runSearch(query, params string) {
 		a.page.rowsDirty = true
 		s.loading = false
 		if err != nil {
-			s.err = err.Error()
+			s.err, s.offline = failure(err)
 			return
 		}
 		s.items, s.more = result.Items, result.ContinuationToken

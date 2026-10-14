@@ -233,7 +233,7 @@ func (c *Client) executeForClient(ctx context.Context, endpoint string, payload 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("youtube: %s request: %w", endpoint, err)
 		}
-		return nil, fmt.Errorf("youtube: %s request failed", endpoint)
+		return nil, fmt.Errorf("youtube: %s request failed: %w", endpoint, ErrUnreachable)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -258,6 +258,11 @@ func isYouTubeURL(endpoint *url.URL) bool {
 	host := strings.ToLower(endpoint.Hostname())
 	return host == "youtube.com" || strings.HasSuffix(host, ".youtube.com")
 }
+
+// ErrUnreachable is a request that got no answer at all: no network, no DNS,
+// a refused connection. The cause is left out of the error, which would name
+// the URL asked; callers only need to tell it from YouTube answering badly.
+var ErrUnreachable = errors.New("could not reach YouTube Music")
 
 // ErrUnauthorized is YouTube refusing a request's credentials with HTTP 401 or
 // 403, as it does for a session it has stopped accepting.

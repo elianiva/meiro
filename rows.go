@@ -28,6 +28,8 @@ const (
 type row struct {
 	kind  rowKind
 	title string
+	// body is the line under an empty page's title.
+	body string
 	// shelf names the carousel a heading steers, and a shelf draws.
 	shelf string
 	// items are the cards or songs of a shelf; item is the one of a track row.
@@ -39,6 +41,8 @@ type row struct {
 	// track is the place of a song among the page's songs, or -1.
 	track    int
 	position int
+	// offline says an error row is the network being out of reach.
+	offline bool
 }
 
 // key identifies a row across frames, so the list keeps its place when the
@@ -75,6 +79,7 @@ type rowsKey struct {
 	detail  detail
 	loading bool
 	err     string
+	offline bool
 	more    string
 	moreErr string
 	// moreBusy says the next part of the page is on its way, which the list
@@ -101,7 +106,7 @@ func (a *app) syncRows() {
 	s := a.pageState()
 	key := rowsKey{
 		path: a.path(), detail: a.page.detail,
-		loading: s.loading, partial: s.partial, err: s.err, more: s.more, moreErr: s.moreErr,
+		loading: s.loading, partial: s.partial, err: s.err, offline: s.offline, more: s.more, moreErr: s.moreErr,
 		moreBusy: a.pageMore.busy(),
 		shelves:  shelfShape(s.sections), loose: len(s.items),
 		columns: a.gridColumns(r),
@@ -142,7 +147,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	case s.loading:
 		return append(rows, row{kind: rowLoading, track: -1}), playable
 	case s.err != "":
-		return append(rows, row{kind: rowError, title: s.err, track: -1}), playable
+		return append(rows, row{kind: rowError, title: s.err, offline: s.offline, track: -1}), playable
 	}
 	if top.Title != "" {
 		rows = append(rows, row{kind: rowTopResult, item: top, track: -1})
@@ -240,11 +245,11 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		rows = append(rows, row{kind: rowMore, title: "Show more", track: -1})
 	}
 	if len(rows) == 0 || (len(rows) == 1 && rows[0].kind == rowHero) {
-		title := "Nothing here yet"
+		title, body := r.empty.title, r.empty.body
 		if r.id == routeSearch {
-			title = "No results for “" + key.submitted + "”"
+			title, body = "No results for “"+key.submitted+"”", "Check the spelling, or try a different search."
 		}
-		rows = append(rows, row{kind: rowEmpty, title: title, track: -1})
+		rows = append(rows, row{kind: rowEmpty, title: title, body: body, track: -1})
 	}
 	return rows, playable
 }

@@ -116,6 +116,12 @@ func (a *app) statsPage(c *ui.Context) {
 					a.statsRange = statsRanges[picked]
 				}
 			})
+			if summary.Plays == 0 && a.historyLoaded {
+				// Nothing to retry: the history is read from this device, and
+				// only listening fills it.
+				a.message(c, m3.IconTrending, "No plays yet", "Songs you listen to in Meiro are counted here, for the last "+strconv.Itoa(a.statsRange)+" days.", "", nil)
+				return
+			}
 			a.statsTotals(c, summary)
 			a.playsChart(c, summary)
 			a.topList(c, "Most played", summary.TopTracks, true)
