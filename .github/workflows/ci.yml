@@ -41,7 +41,14 @@ jobs:
       - uses: bazel-contrib/setup-bazel@0.19.0
         with:
           bazelisk-cache: true
-          disk-cache: verify
+          # One disk cache per job, named after the job, because a cache
+          # entry cannot be replaced: three jobs saving one key would leave
+          # whichever finishes first — the lint job, which compiles almost
+          # nothing — as the only cache there is.
+          disk-cache: ${{ github.job }}
+          # The repositories Bazel unpacks, the Go SDK first, are restored
+          # rather than unpacked again.
+          external-cache: true
           repository-cache: true
       # go.mod is still where the Go dependencies are written down, so the
       # toolchain that reads it has to be here.
@@ -75,7 +82,14 @@ jobs:
       - uses: bazel-contrib/setup-bazel@0.19.0
         with:
           bazelisk-cache: true
-          disk-cache: lint
+          # One disk cache per job, named after the job, because a cache
+          # entry cannot be replaced: three jobs saving one key would leave
+          # whichever finishes first — the lint job, which compiles almost
+          # nothing — as the only cache there is.
+          disk-cache: ${{ github.job }}
+          # The repositories Bazel unpacks, the Go SDK first, are restored
+          # rather than unpacked again.
+          external-cache: true
           repository-cache: true
       # golangci-lint type-checks the packages, so it reads the module cache
       # the Go toolchain keeps.
@@ -95,7 +109,14 @@ jobs:
       - uses: bazel-contrib/setup-bazel@0.19.0
         with:
           bazelisk-cache: true
-          disk-cache: test
+          # One disk cache per job, named after the job, because a cache
+          # entry cannot be replaced: three jobs saving one key would leave
+          # whichever finishes first — the lint job, which compiles almost
+          # nothing — as the only cache there is.
+          disk-cache: ${{ github.job }}
+          # The repositories Bazel unpacks, the Go SDK first, are restored
+          # rather than unpacked again.
+          external-cache: true
           repository-cache: true
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
