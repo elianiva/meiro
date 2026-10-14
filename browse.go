@@ -504,10 +504,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			} else {
 				a.art(c, item.Thumbnail, 128, 48, artRadius(item, m3.Medium), func() {
 					if isSong && (playing || hovered) {
-						// The scrim covers the artwork: attached, it leaves
-						// the flow the picture is laid out in.
-						ui.Box(c).Size(48, 48).Radius(artRadius(item, m3.Medium)).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
-							Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
+						ui.Box(c).Fill().Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).Radius(artRadius(item, m3.Medium)).Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
 							switch {
 							case playing && a.loading():
 								m3.LoadingIndicatorIn(c, 24, ui.RGB(255, 255, 255))

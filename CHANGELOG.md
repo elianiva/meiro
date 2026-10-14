@@ -8,6 +8,11 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- **Playlist track controls**: keep the hover play overlay centered inside the
+  track artwork instead of placing it below the row.
+
 ### Added
 
 - **Search menus**: right-click a result on the search page, or an item in the
