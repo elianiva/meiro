@@ -51,10 +51,12 @@ type pageData struct {
 	feed   pageState
 	detail detail
 	// library is whether an album or a playlist page is in the library.
-	library  youtube.LibraryState
-	loadedAt time.Time
-	rows     []row
-	playable []youtube.MusicItem
+	library youtube.LibraryState
+	// subscription is whether an artist's page is followed.
+	subscription youtube.Subscription
+	loadedAt     time.Time
+	rows         []row
+	playable     []youtube.MusicItem
 	// rowsDirty marks the rows stale. A change of the page's data sets it,
 	// and the next frame rebuilds them; otherwise they are reused. rowsKey
 	// is the shape they were built from, so a change a caller did not mark
@@ -220,6 +222,9 @@ func (a *app) applyPage(p *pageData, r *route, path string, client *youtube.Clie
 		a.details.Put(path, p.detail)
 		if result.Library.ID != "" {
 			p.library = result.Library
+		}
+		if result.Subscription.ChannelID != "" {
+			p.subscription = result.Subscription
 		}
 	}
 	p.feed.sections = result.Sections

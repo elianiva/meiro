@@ -115,7 +115,7 @@ func (a *app) learnLikes(items []youtube.MusicItem) {
 // gone: another account has its own.
 func (a *app) forgetAccountState() {
 	clear(a.writing)
-	a.page.library = youtube.LibraryState{}
+	a.page.library, a.page.subscription = youtube.LibraryState{}, youtube.Subscription{}
 	a.eachItem(func(item *youtube.MusicItem) { item.Like, item.Library = youtube.LikeUnknown, nil })
 }
 

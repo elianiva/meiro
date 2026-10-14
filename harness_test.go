@@ -32,9 +32,11 @@ var (
 	// likeWrites counts the like writes the fake has been asked for, and
 	// refuseWrites makes it answer them, and the library and subscription
 	// writes after them, as YouTube answers a request it rejects: with a 400.
-	likeWrites    atomic.Int32
-	refuseWrites  atomic.Bool
-	fakeLikeState atomic.Value // what /next says of vid-3, as a string; "" says nothing
+	likeWrites atomic.Int32
+	// subscribeWrites counts the subscription writes, refused the same way.
+	subscribeWrites atomic.Int32
+	refuseWrites    atomic.Bool
+	fakeLikeState   atomic.Value // what /next says of vid-3, as a string; "" says nothing
 	// lastWrite is the last playlist write the fake YouTube was asked for:
 	// which endpoint, and the fields of its body.
 	lastWrite atomic.Value
@@ -77,6 +79,15 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		} else if id := writtenPlaylist(); id != "" {
 			fakeLibrary.Store(id, strings.HasSuffix(request.URL.Path, "/like/like"))
 		}
+	case strings.HasSuffix(request.URL.Path, "/subscription/subscribe"), strings.HasSuffix(request.URL.Path, "/subscription/unsubscribe"):
+		subscribeWrites.Add(1)
+		recordWrite(request.URL.Path, asked)
+		reply = subscribeResponse
+		if refuseWrites.Load() {
+			reply, status = rejectedResponse, http.StatusBadRequest
+		} else {
+			fakeLibrary.Store(fakeArtist, strings.HasSuffix(request.URL.Path, "/subscription/subscribe"))
+		}
 	case strings.HasSuffix(request.URL.Path, "/next") && fakeLikes() != "" && strings.Contains(asked, "vid-3"):
 		reply = nextResponse(fakeLikes())
 	case strings.HasSuffix(request.URL.Path, "/account/accounts_list"):
@@ -99,7 +110,7 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		recordWrite(request.URL.Path, asked)
 		reply = createPlaylistResponse
 	case strings.Contains(asked, "UCartist"):
-		reply = artistResponse
+		reply = artistPage()
 	case strings.HasSuffix(request.URL.Path, "/browse/edit_playlist"):
 		recordWrite(request.URL.Path, asked)
 		reply = editPlaylistResponse
@@ -133,6 +144,9 @@ func fakeLikes() string {
 // likeResponse is what YouTube answers a like it took: the toast its own
 // client shows. Meiro reads nothing from it.
 const likeResponse = `{"responseContext":{},"actions":[{"addToToastAction":{"item":{"notificationActionRenderer":{"responseText":{"runs":[{"text":"Added to liked songs"}]}}}}}]}`
+
+// subscribeResponse is what YouTube answers a subscription it took.
+const subscribeResponse = `{"responseContext":{},"actions":[{"updateSubscribeButtonAction":{"subscribed":true}}]}`
 
 // rejectedResponse is what YouTube answers a write it rejects.
 const rejectedResponse = `{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}`
@@ -254,8 +268,9 @@ const (
 	fakePlaylist      = "PL_video"
 )
 
-// fakeLibrary is the playlists the fake account has saved, by ID. The fake's
-// like writes change it, and its pages read it, as YouTube's do.
+// fakeLibrary is what the fake account has saved or follows, by playlist ID
+// or channel ID. The fake's writes change it, and its pages read it, as
+// YouTube's do.
 var fakeLibrary sync.Map
 
 // resetFakes puts the fake YouTube back as a test found it: no write refused,
@@ -263,6 +278,7 @@ var fakeLibrary sync.Map
 // starts with.
 func resetFakes() {
 	likeWrites.Store(0)
+	subscribeWrites.Store(0)
 	refuseWrites.Store(false)
 	fakeLikeState.Store("")
 	fakeLibrary.Clear()
@@ -304,10 +320,17 @@ func libraryToggleMenu(id string) string {
 		"toggledServiceEndpoint":{"likeEndpoint":{"status":%q,"target":{"playlistId":%q}}}}}]}}`, offered, id, other, id)
 }
 
-// artistResponse carries the heading an artist page puts over its content.
-const artistResponse = `{"header":{"musicImmersiveHeaderRenderer":{
+// fakeArtist is the channel of the artist the fake's artist page is about.
+const fakeArtist = "UCartist"
+
+// artistPage carries the heading an artist page puts over its content, with
+// the subscribe button in it, which says whether the fake account follows the
+// artist.
+func artistPage() string {
+	return `{"header":{"musicImmersiveHeaderRenderer":{
 	"title":{"runs":[{"text":"Aurora Vale"}]},
-	"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.example/aurora"}]}}}}},
+	"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.example/aurora"}]}}},
+	"subscriptionButton":{"subscribeButtonRenderer":{"subscribed":` + fmt.Sprint(fakeSaved(fakeArtist)) + `,"channelId":"` + fakeArtist + `","enabled":true}}}},
 	"contents":{"musicShelfRenderer":{"contents":[
 	{"musicResponsiveListItemRenderer":{
 		"playlistItemData":{"videoId":"vid-9"},
@@ -317,6 +340,7 @@ const artistResponse = `{"header":{"musicImmersiveHeaderRenderer":{
 		]
 	}}
 ]}}}`
+}
 
 // searchResponse is a search page as YouTube Music answers one: the filters it
 // offers for the query, the card the results lead with, the rows of the
@@ -464,6 +488,13 @@ func libraryPage() string {
 			"subtitle":{"runs":[{"text":"Album"}]},
 			"navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_test"}},
 			` + libraryToggleMenu(fakeAlbumPlaylist) + `
+		}},`
+	}
+	if fakeSaved(fakeArtist) {
+		album += `{"musicTwoRowItemRenderer":{
+			"title":{"runs":[{"text":"Aurora Vale Trio"}]},
+			"subtitle":{"runs":[{"text":"Artist"}]},
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"UCartist"}}
 		}},`
 	}
 	return `{"contents":{"musicCarouselShelfRenderer":{

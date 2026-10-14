@@ -729,6 +729,7 @@ func (a *app) hero(c *ui.Context) {
 					a.shufflePage()
 				}
 				a.libraryButton(c)
+				a.subscribeButton(c)
 			})
 		})
 	})

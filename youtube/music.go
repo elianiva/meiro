@@ -81,6 +81,10 @@ type BrowseResult struct {
 	// the page is in the library, and what to write to change it. Its ID is
 	// empty for a page that offers none.
 	Library LibraryState `json:"-"`
+	// Subscription is the subscribe button of an artist's header: whether the
+	// account follows the artist, and the channel to write. Its ChannelID is
+	// empty for a page that offers none.
+	Subscription Subscription `json:"-"`
 	// QueuePlaylistID is the playlist panel's ID, used to continue radio queues.
 	QueuePlaylistID string `json:"queuePlaylistId,omitempty"`
 }
@@ -768,6 +772,7 @@ func browseResult(root any) *BrowseResult {
 		Items: items, Sections: sections,
 		ContinuationToken: pageContinuationToken(root),
 		Library:           headerLibraryState(root),
+		Subscription:      headerSubscription(root),
 	}
 }
 
