@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "applog",
+    srcs = [
+        "applog.go",
+        "lazy.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/applog",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "applog_test",
+    srcs = [
+        "applog_test.go",
+        "lazy_test.go",
+    ],
+    embed = [":applog"],
+)

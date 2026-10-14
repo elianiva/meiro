@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "diskcache",
+    srcs = ["diskcache.go"],
+    importpath = "github.com/elianiva/meiro/internal/diskcache",
+    visibility = ["//:__subpackages__"],
+    deps = ["//internal/fsutil"],
+)
+
+go_test(
+    name = "diskcache_test",
+    srcs = ["diskcache_test.go"],
+    embed = [":diskcache"],
+)

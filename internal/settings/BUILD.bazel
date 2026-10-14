@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "settings",
+    srcs = ["settings.go"],
+    importpath = "github.com/elianiva/meiro/internal/settings",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/audio",
+        "//internal/fsutil",
+        "//m3",
+        "@com_github_egoist_mygo//ui",
+    ],
+)
+
+go_test(
+    name = "settings_test",
+    srcs = ["settings_test.go"],
+    embed = [":settings"],
+)

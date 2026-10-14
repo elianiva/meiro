@@ -24,31 +24,35 @@ before duplicating the effort.
 
 ## Set up the project
 
-Install the Go version listed in [`go.mod`](go.mod) and
-[`just`](https://just.systems/). For local development, `ffmpeg` and `yt-dlp`
-must be available on `PATH`.
+Install [Bazel](https://bazel.build/) through
+[bazelisk](https://github.com/bazelbuild/bazelisk), which reads the pinned
+version from [`.bazelversion`](.bazelversion); Bazel downloads the Go toolchain
+listed in [`go.mod`](go.mod) itself. For local development, `ffmpeg` and
+`yt-dlp` must be available on `PATH`.
 
 ```sh
-just dev
+bazel run //:dev
 ```
 
-Run `just` to see the available commands. Before opening a pull request, run
-the test recipe:
+`bazel run //:clean` removes the build output and the downloaded tools. Before
+opening a pull request, run the tests:
 
 ```sh
-just test
+bazel test --config=race //...
 ```
 
-This runs `go vet ./...` and `go test -race ./...`. You can run a focused test
-while working, for example `go test ./youtube/...`, then run the full recipe
-before you submit. The CI workflow also checks formatting, builds supported
-targets, and validates scripts and workflows.
+You can run a focused test while working, for example
+`bazel test //youtube:youtube_test`, then run the full set before you submit.
+`bazel run //:lint` runs the linters, `bazel run //:format` formats the code,
+and `bazel build --config=linux-arm64 //...` type-checks another release
+target. The CI workflow runs the same commands, and also builds every release
+target and validates the scripts and the workflows.
 
 ## Make a focused change
 
 - Keep each pull request focused on one issue or closely related change.
-- Follow the existing Go style. CI checks `gofmt` and `gofumpt` formatting,
-  and runs golangci-lint with the rules in `.golangci.yml`.
+- Follow the existing Go style. CI checks gofumpt formatting and runs
+  golangci-lint with the rules in `.golangci.yml`.
 - Read [`AGENTS.md`](AGENTS.md) before changing the app. It describes where
   code goes, how background work reaches the UI, and how pages are added.
 - Add or update tests for behavior users or other packages rely on. Prefer

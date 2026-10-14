@@ -16,6 +16,11 @@ and this project adheres to
   page it names and its link, with Shuffle play for a playlist. The leading
   result offers the same menu, from a button on its artwork.
 
+### Changed
+
+- macOS releases are one universal download that runs on Apple Silicon and
+  Intel, instead of a separate download for each.
+
 ## [0.1.0]
 
 <!-- Add the release date when v0.1.0 is tagged: ## [0.1.0] - YYYY-MM-DD -->

@@ -1,0 +1,229 @@
+load("@gazelle//:def.bzl", "gazelle", "gazelle_binary")
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# Every Go file in the repository, which is what the formatting check reads.
+# Sources are listed rather than walked so the test only ever sees files Bazel
+# knows about.
+GO_SOURCES = glob(
+    ["**/*.go"],
+    exclude = ["bazel-*/**"],
+)
+
+# Gazelle writes and updates every BUILD file under the workspace, so the Go
+# targets stay in step with go.mod and the packages on disk.
+gazelle_binary(
+    name = "gazelle_binary",
+    languages = ["@gazelle//language/go"],
+)
+
+gazelle(
+    name = "gazelle",
+    gazelle = ":gazelle_binary",
+)
+
+# bazel run //:gazelle_update_repos follows go.mod into MODULE.bazel.
+gazelle(
+    name = "gazelle_update_repos",
+    command = "update-repos",
+    gazelle = ":gazelle_binary",
+)
+
+# --- The commands a contributor runs -----------------------------------------
+#
+# One Bazel command stands in for each recipe the justfile used to hold. The
+# targets that only arrange work (dev, fetch-tools, format, lint, tidy, dist,
+# clean) run outside the sandbox, because they need the network, the host
+# toolchain, or the platform's own packaging tools; the targets that check
+# something (test, format_test) are hermetic and cached.
+
+# Live reload: `bazel run //:dev`.
+sh_binary(
+    name = "dev",
+    srcs = ["//tools:workspace.sh"],
+    args = [
+        "go",
+        "tool",
+        "mygo",
+        "dev",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# The playback tools a full build ships: `bazel run //:fetch-tools -- linux-amd64`.
+# (The name cannot be `tools`: a target of that name in the root package would
+# collide with the tools/ package's output directory.)
+sh_binary(
+    name = "fetch-tools",
+    srcs = ["//tools:workspace.sh"],
+    args = ["scripts/fetch-tools.sh"],
+    visibility = ["//visibility:public"],
+)
+
+# Format in place: `bazel run //:format`.
+sh_binary(
+    name = "format",
+    srcs = ["//tools:format.sh"],
+    args = ["$(rootpath @cc_mvdan_gofumpt//:gofumpt)"],
+    data = ["@cc_mvdan_gofumpt//:gofumpt"],
+    visibility = ["//visibility:public"],
+)
+
+# Fail when a file is not formatted: `bazel test //:format_test`.
+sh_test(
+    name = "format_test",
+    size = "small",
+    srcs = ["//tools:format_test.sh"],
+    args = ["$(rootpath @cc_mvdan_gofumpt//:gofumpt)"],
+    data = GO_SOURCES + ["@cc_mvdan_gofumpt//:gofumpt"],
+)
+
+# Lint with the pinned golangci-lint: `bazel run //:lint`.
+sh_binary(
+    name = "lint",
+    srcs = ["//tools:lint.sh"],
+    args = ["$(rootpath @golangci_lint//:bin)"],
+    data = ["@golangci_lint//:bin"],
+    visibility = ["//visibility:public"],
+)
+
+# Check go.mod and go.sum: `bazel run //:tidy`. go.mod is still where the Go
+# dependencies are written down, so it has to stay tidy for //:gazelle to
+# follow it.
+sh_binary(
+    name = "tidy",
+    srcs = ["//tools:workspace.sh"],
+    args = [
+        "go",
+        "mod",
+        "tidy",
+        "-diff",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "dist",
+    actual = "//tools:dist",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "clean",
+    actual = "//tools:clean",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "meiro_lib",
+    srcs = [
+        "account.go",
+        "accountview.go",
+        "app.go",
+        "browse.go",
+        "crash.go",
+        "desktop.go",
+        "fonts.go",
+        "historysettings.go",
+        "itemmenu.go",
+        "library.go",
+        "like.go",
+        "logssettings.go",
+        "main.go",
+        "navigation.go",
+        "nowplaying.go",
+        "playback.go",
+        "playbackstate.go",
+        "playerror.go",
+        "playlist.go",
+        "queue.go",
+        "reportpage.go",
+        "routes.go",
+        "rows.go",
+        "search.go",
+        "settingspage.go",
+        "shell.go",
+        "shortcuts.go",
+        "stats.go",
+        "subscription.go",
+        "task.go",
+        "toolscard.go",
+        "updatesettings.go",
+    ],
+    embedsrcs = ["fonts/GoogleSans.ttf"],
+    importpath = "github.com/elianiva/meiro",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//internal/applog",
+        "//internal/artwork",
+        "//internal/audio",
+        "//internal/cookies",
+        "//internal/diskcache",
+        "//internal/history",
+        "//internal/keymap",
+        "//internal/lru",
+        "//internal/memprof",
+        "//internal/playstate",
+        "//internal/proc",
+        "//internal/report",
+        "//internal/settings",
+        "//internal/ytdlp",
+        "//m3",
+        "//player",
+        "//systemmedia",
+        "//youtube",
+        "@com_github_egoist_mygo//:mygo",
+        "@com_github_egoist_mygo//plugins/updater",
+        "@com_github_egoist_mygo//plugins/updater/native",
+        "@com_github_egoist_mygo//ui",
+        "@com_github_egoist_mygo//ui/chart",
+    ],
+)
+
+go_binary(
+    name = "meiro",
+    embed = [":meiro_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "meiro_test",
+    srcs = [
+        "bench_test.go",
+        "benchfixture_test.go",
+        "cpu_other_test.go",
+        "cpu_unix_test.go",
+        "crash_test.go",
+        "harness_test.go",
+        "idle_test.go",
+        "integration_test.go",
+        "library_test.go",
+        "like_test.go",
+        "playback_integration_test.go",
+        "playbackstate_test.go",
+        "queue_test.go",
+        "routes_test.go",
+        "shortcuts_test.go",
+        "soak_test.go",
+        "startup_test.go",
+        "states_test.go",
+        "subscription_test.go",
+    ],
+    embed = [":meiro_lib"],
+    deps = [
+        "//internal/applog",
+        "//internal/artwork",
+        "//internal/audio",
+        "//internal/cookies",
+        "//internal/history",
+        "//internal/keymap",
+        "//internal/playstate",
+        "//internal/proc",
+        "//internal/settings",
+        "//player",
+        "//youtube",
+        "@com_github_egoist_mygo//:mygo",
+        "@com_github_egoist_mygo//ui",
+    ],
+)

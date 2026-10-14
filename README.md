@@ -129,22 +129,26 @@ Public browsing and playback do not need an account.
 
 ## Build it yourself
 
-You need the Go version listed in [`go.mod`](go.mod) and
-[just](https://just.systems/).
+You need [Bazel](https://bazel.build/), installed through
+[bazelisk](https://github.com/bazelbuild/bazelisk) so it reads the pinned
+version from `.bazelversion`.
 
 ```sh
-just dev     # run with live reload; ffmpeg and yt-dlp must be on PATH
-just run     # build the production app with bundled tools, then open it
-just run-minimal # build and open with system ffmpeg, yt-dlp, and Node.js/Bun
+bazel run //:dev                          # live reload; ffmpeg and yt-dlp must be on PATH
+bazel run //:dist -- --run linux-amd64    # build the production app with bundled tools, then open it
+bazel run //:dist -- --run --minimal linux-amd64   # build and open with system ffmpeg, yt-dlp, and Node.js/Bun
 ```
+
+`bazel run //:dist -- <platform>` builds into `build/<platform>/`. The
+platforms are `darwin-universal`, `darwin-arm64`, `darwin-amd64`,
+`linux-amd64` and `linux-arm64`.
 
 The minimal build expects `ffmpeg`, `yt-dlp`, and either Node.js or Bun on
 `PATH`. It does not bundle any of these tools or a JavaScript runtime.
 
-Run `just` to list the other commands. Releases include full and minimal
-builds: DMGs for macOS Apple Silicon and Intel, plus Linux `amd64` and `arm64`
-`.deb`, `.rpm`, `.AppImage`, and `.tar.gz` downloads. Minimal downloads include
-`-minimal` in the filename. See
+Releases include full and minimal builds: one universal DMG for macOS, plus
+Linux `amd64` and `arm64` `.deb`, `.rpm`, `.AppImage`, and `.tar.gz`
+downloads. Minimal downloads include `-minimal` in the filename. See
 [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 ## Credits

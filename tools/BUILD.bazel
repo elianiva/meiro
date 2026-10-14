@@ -1,0 +1,29 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+# The scripts the root package's targets point at. They are here rather than in
+# the root package so the root BUILD stays about the app.
+exports_files(
+    srcs = [
+        "clean.sh",
+        "dist.sh",
+        "format.sh",
+        "format_test.sh",
+        "lint.sh",
+        "workspace.sh",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Builds an app bundle and its packages for one platform.
+sh_binary(
+    name = "dist",
+    srcs = ["dist.sh"],
+    visibility = ["//visibility:public"],
+)
+
+# Removes build output and the downloaded tools.
+sh_binary(
+    name = "clean",
+    srcs = ["clean.sh"],
+    visibility = ["//visibility:public"],
+)

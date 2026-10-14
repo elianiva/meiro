@@ -8,3 +8,4 @@ mygo_windows_*.syso
 /resources/linux-*/
 /resources/windows-*/
 /meiro
+/bazel-*

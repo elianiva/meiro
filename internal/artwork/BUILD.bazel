@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "artwork",
+    srcs = [
+        "artwork.go",
+        "fit.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/artwork",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//m3",
+        "@com_github_egoist_mygo//ui",
+        "@org_golang_x_image//draw",
+    ],
+)
+
+go_test(
+    name = "artwork_test",
+    srcs = ["fit_test.go"],
+    embed = [":artwork"],
+)

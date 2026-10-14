@@ -1,0 +1,13 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "ytdlp",
+    srcs = ["ytdlp.go"],
+    importpath = "github.com/elianiva/meiro/internal/ytdlp",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/fsutil",
+        "//internal/proc",
+        "//youtube",
+    ],
+)

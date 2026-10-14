@@ -1,0 +1,26 @@
+# Every build flag lives here, so a local run and a CI run pass the same ones.
+
+common --enable_platform_specific_config
+
+# A build never reaches the network: everything it needs is a declared input,
+# a pinned download, or in the module cache.
+common --sandbox_default_allow_network=false
+
+# Tests print their log only when they fail, which is what a person reading a
+# failed run wants.
+test --test_output=errors
+
+# -race, as `go test -race` would spell it. rules_go exposes the flag as a
+# build setting, so it has to be turned on explicitly.
+test:race --@rules_go//go/config:race=true
+
+# A release is an optimized build.
+build:release --compilation_mode=opt
+
+# Cross-compile the app for one release target:
+#   bazel build --config=darwin-arm64 //:meiro
+build:linux-amd64 --platforms=//platforms:linux_amd64
+build:linux-arm64 --platforms=//platforms:linux_arm64
+build:darwin-amd64 --platforms=//platforms:darwin_amd64
+build:darwin-arm64 --platforms=//platforms:darwin_arm64
+build:windows-amd64 --platforms=//platforms:windows_amd64

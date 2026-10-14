@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "report",
+    srcs = ["report.go"],
+    importpath = "github.com/elianiva/meiro/internal/report",
+    visibility = ["//:__subpackages__"],
+    deps = ["//internal/proc"],
+)
+
+go_test(
+    name = "report_test",
+    srcs = ["report_test.go"],
+    embed = [":report"],
+)

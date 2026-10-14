@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "audio",
+    srcs = [
+        "cache.go",
+        "probe.go",
+        "urls.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/audio",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/fsutil",
+        "//internal/proc",
+    ],
+)
+
+go_test(
+    name = "audio_test",
+    srcs = ["cache_test.go"],
+    embed = [":audio"],
+)

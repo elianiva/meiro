@@ -2,6 +2,10 @@
 # job, so they all run at the same time. Tag pushes skip this workflow:
 # the release workflow only builds a tag whose commit already passed here
 # as a branch push, so re-checking the same commit would waste CI time.
+#
+# Every job drives Bazel, so it runs the same actions a contributor runs
+# locally, from the same pinned toolchains, and the caches carry across jobs
+# and runs, so an unchanged part of the graph is never built twice.
 name: CI
 
 on:
@@ -20,66 +24,79 @@ permissions:
   contents: read
 
 env:
-  GOLANGCI_LINT_VERSION: v2.14.0
   # The release tag has the v; the asset name does not, so the version is
   # kept without one and the tag adds it.
   ACTIONLINT_VERSION: 1.7.9
 
 jobs:
   # Every static check on one runner: they are all quick, and splitting them
-  # only paid for the checkout and the toolchain again per job. The compile
+  # only paid for the checkout and the Bazel caches again per job. The compile
   # of each target is here too, so a break in a platform file fails the
   # pull request rather than the release.
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: verify
+          repository-cache: true
+      # go.mod is still where the Go dependencies are written down, so the
+      # toolchain that reads it has to be here.
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Check formatting
         # gofumpt is gofmt with more rules, so it is the one check to make: it
-        # rejects everything gofmt rejects, and more.
-        run: test -z "$(go tool gofumpt -l .)" || { echo "Files needing gofumpt:"; go tool gofumpt -l .; exit 1; }
+        # rejects everything gofmt rejects, and more. The check is a hermetic
+        # Bazel test, so the runner only pays for it when a Go file changes.
+        run: bazel test //:format_test
       - name: Check go.mod and go.sum are tidy
         # tidy -diff exits non-zero when the files are not tidy, so it asks the
         # whole question; a `git diff` after it would ask the same one again.
-        run: go mod tidy -diff
-      - name: Vet and build every target
-        env:
-          CGO_ENABLED: "0"
+        run: bazel run //:tidy
+      - name: Build every target the release ships
+        # macOS ships one universal app, so both of its architectures are
+        # compiled here to catch a break in a platform file before the release.
         run: |
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            goos="${target%%/*}"; goarch="${target##*/}"
-            echo "::group::vet and build $target"
-            GOOS="$goos" GOARCH="$goarch" go vet ./...
-            GOOS="$goos" GOARCH="$goarch" go build ./...
+          for config in linux-amd64 linux-arm64 darwin-arm64 darwin-amd64 windows-amd64; do
+            echo "::group::build $config"
+            bazel build --config="$config" //...
             echo "::endgroup::"
           done
 
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: lint
+          repository-cache: true
+      # golangci-lint type-checks the packages, so it reads the module cache
+      # the Go toolchain keeps.
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-          args: ./...
+        # The version is pinned in tools/golangci_lint.bzl, next to the
+        # checksums of the release it downloads.
+        run: bazel run //:lint
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: bazel-contrib/setup-bazel@0.19.0
         with:
-          go-version-file: go.mod
+          bazelisk-cache: true
+          disk-cache: test
+          repository-cache: true
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       # The Linux media session talks to the session bus, so its tests need
@@ -89,10 +106,10 @@ jobs:
       - name: Test
         run: |
           if command -v dbus-run-session >/dev/null 2>&1; then
-            dbus-run-session -- go test -race -count=1 ./...
+            bazel test --config=race --run_under='dbus-run-session --' //...
           else
             echo "::warning::dbus-run-session is missing; D-Bus tests will skip themselves."
-            go test -race -count=1 ./...
+            bazel test --config=race //...
           fi
 
   scripts:
@@ -101,7 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Check shell scripts
-        run: shellcheck --severity=warning scripts/fetch-tools.sh scripts/build-ffmpeg.sh scripts/package-linux.sh
+        run: shellcheck --severity=warning scripts/fetch-tools.sh scripts/build-ffmpeg.sh scripts/package-linux.sh tools/clean.sh tools/dist.sh tools/format.sh tools/format_test.sh tools/lint.sh tools/workspace.sh
       - name: Check workflows
         run: |
           curl --fail --location --silent --show-error \

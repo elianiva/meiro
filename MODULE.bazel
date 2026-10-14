@@ -1,0 +1,36 @@
+module(
+    name = "meiro",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+bazel_dep(name = "gazelle", version = "0.54.0")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "rules_go", version = "0.64.2")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+
+# The Go SDK is pinned here, not by whatever `go` happens to be on PATH, so a
+# local build and CI compile with the same toolchain in the same sandbox.
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
+go_sdk.download(version = "1.27.1")
+
+# go.mod stays the one place the dependencies are written down; this turns it
+# into Bazel repositories. The use_repo list is the direct requirements, which
+# is what `bazel mod tidy` keeps it to.
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//:go.mod")
+use_repo(
+    go_deps,
+    "cc_mvdan_gofumpt",
+    "com_github_ebitengine_oto_v3",
+    "com_github_egoist_mygo",
+    "com_github_go_macos_objc",
+    "com_github_godbus_dbus_v5",
+    "org_golang_x_image",
+)
+
+# The linter is a pinned release archive rather than a `go run` of a module
+# version, so `bazel run //:lint` starts at once and reports what CI reports.
+golangci_lint_repo = use_repo_rule("//tools:golangci_lint.bzl", "golangci_lint")
+
+golangci_lint_repo(name = "golangci_lint")

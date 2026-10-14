@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "player",
+    srcs = [
+        "null.go",
+        "player.go",
+        "silent.go",
+        "window_unix.go",
+        "window_windows.go",
+    ],
+    importpath = "github.com/elianiva/meiro/player",
+    visibility = ["//visibility:public"],
+    deps = ["@com_github_ebitengine_oto_v3//:oto"],
+)
+
+go_test(
+    name = "player_test",
+    srcs = [
+        "integration_test.go",
+        "player_test.go",
+    ],
+    embed = [":player"],
+)

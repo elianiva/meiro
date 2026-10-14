@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "playstate",
+    srcs = ["playstate.go"],
+    importpath = "github.com/elianiva/meiro/internal/playstate",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/fsutil",
+        "//youtube",
+    ],
+)
+
+go_test(
+    name = "playstate_test",
+    srcs = ["playstate_test.go"],
+    embed = [":playstate"],
+    deps = ["//youtube"],
+)

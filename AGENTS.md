@@ -11,10 +11,16 @@ read `.agents/skills/mygo-maintenance/SKILL.md` first.
 ## Checks
 
 ```sh
-just test                 # go vet ./... and go test -race ./...
-golangci-lint run ./...   # the stricter rules below
-go tool gofumpt -l .      # formatting, also checked in CI
+bazel test //...                 # every test, and the formatting check
+bazel test --config=race //...   # the same tests under the race detector, as CI runs them
+bazel run //:lint                # the rules below, and the vet checks
+bazel run //:format              # gofumpt, in place
+bazel build --config=linux-arm64 //...   # type-check another release target
 ```
+
+The BUILD.bazel files follow go.mod and the packages on disk, so after adding,
+moving or deleting a Go file, run `bazel run //:gazelle` to update them. A
+dependency that go.mod does not name yet is a `go get` first.
 
 ## Where code goes
 

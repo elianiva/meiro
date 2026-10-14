@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "m3",
+    srcs = [
+        "button.go",
+        "color.go",
+        "field.go",
+        "icons.go",
+        "misc.go",
+        "motion.go",
+        "nav.go",
+        "progress.go",
+        "slider.go",
+        "theme.go",
+    ],
+    importpath = "github.com/elianiva/meiro/m3",
+    visibility = ["//visibility:public"],
+    deps = ["@com_github_egoist_mygo//ui"],
+)

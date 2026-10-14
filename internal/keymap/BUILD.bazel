@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "keymap",
+    srcs = [
+        "keymap.go",
+        "keys.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/keymap",
+    visibility = ["//:__subpackages__"],
+    deps = ["@com_github_egoist_mygo//ui"],
+)
+
+go_test(
+    name = "keymap_test",
+    srcs = ["keymap_test.go"],
+    embed = [":keymap"],
+    deps = ["@com_github_egoist_mygo//ui"],
+)

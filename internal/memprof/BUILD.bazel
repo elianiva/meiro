@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "memprof",
+    srcs = ["memprof.go"],
+    importpath = "github.com/elianiva/meiro/internal/memprof",
+    visibility = ["//:__subpackages__"],
+)

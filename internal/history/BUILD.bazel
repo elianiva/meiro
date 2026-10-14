@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "history",
+    srcs = ["history.go"],
+    importpath = "github.com/elianiva/meiro/internal/history",
+    visibility = ["//:__subpackages__"],
+    deps = ["//internal/fsutil"],
+)
+
+go_test(
+    name = "history_test",
+    srcs = ["history_test.go"],
+    embed = [":history"],
+)

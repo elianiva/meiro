@@ -1,0 +1,48 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "systemmedia",
+    srcs = [
+        "artwork.go",
+        "media.go",
+        "session_darwin.go",
+        "session_linux.go",
+        "session_other.go",
+    ],
+    importpath = "github.com/elianiva/meiro/systemmedia",
+    visibility = ["//visibility:public"],
+    deps = select({
+        "@rules_go//go/platform:android": [
+            "@com_github_godbus_dbus_v5//:dbus",
+            "@com_github_godbus_dbus_v5//introspect",
+            "@com_github_godbus_dbus_v5//prop",
+        ],
+        "@rules_go//go/platform:darwin": [
+            "@com_github_go_macos_objc//:objc",
+        ],
+        "@rules_go//go/platform:ios": [
+            "@com_github_go_macos_objc//:objc",
+        ],
+        "@rules_go//go/platform:linux": [
+            "@com_github_godbus_dbus_v5//:dbus",
+            "@com_github_godbus_dbus_v5//introspect",
+            "@com_github_godbus_dbus_v5//prop",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "systemmedia_test",
+    srcs = ["session_linux_test.go"],
+    embed = [":systemmedia"],
+    deps = select({
+        "@rules_go//go/platform:android": [
+            "@com_github_godbus_dbus_v5//:dbus",
+        ],
+        "@rules_go//go/platform:linux": [
+            "@com_github_godbus_dbus_v5//:dbus",
+        ],
+        "//conditions:default": [],
+    }),
+)

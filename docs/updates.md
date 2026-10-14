@@ -47,7 +47,7 @@ prefix through the GitHub API instead.
 2. Build and upload:
 
    ```sh
-   just build
+   bazel run //:dist -- darwin-universal
    go tool mygo build -upload
    ```
 

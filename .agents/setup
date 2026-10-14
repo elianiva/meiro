@@ -7,12 +7,11 @@ GO_VERSION="1.27.1"
 GO_ROOT="$HOME/.local/share/go/$GO_VERSION"
 GO_ARCHIVE_DIR="$HOME/.cache/amp/downloads"
 GO_ARCHIVE="$GO_ARCHIVE_DIR/go${GO_VERSION}.linux-$(uname -m).tar.gz"
-JUST_VERSION="1.58.0"
-JUST_ROOT="$HOME/.local/share/just/$JUST_VERSION"
-JUST_ARCHIVE_DIR="$GO_ARCHIVE_DIR"
-# The version CI lints with, so a local run reports what CI will.
-GOLANGCI_VERSION="2.14.0"
-GOLANGCI_ROOT="$HOME/.local/share/golangci-lint/$GOLANGCI_VERSION"
+# Bazelisk reads the repository's .bazelversion, so this is the only Bazel
+# version the repository needs to agree on.
+BAZELISK_VERSION="1.29.0"
+BAZELISK_ROOT="$HOME/.local/share/bazelisk/$BAZELISK_VERSION"
+BAZELISK_ARCHIVE_DIR="$GO_ARCHIVE_DIR"
 
 log() {
 	printf '[meiro setup] %s %s\n' "$(date --iso-8601=seconds)" "$*"
@@ -36,16 +35,14 @@ case "$(uname -m)" in
 	x86_64)
 		GO_SHA256="63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
 		GO_PLATFORM="amd64"
-		JUST_PLATFORM="x86_64"
-		JUST_SHA256="4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d"
-		GOLANGCI_SHA256="ab90aeb7b066f92a33415b638a50fe5344bbb75a0d32ad30cc248d88f81032ab"
+		BAZELISK_PLATFORM="amd64"
+		BAZELISK_SHA256="5a408715e932c0250d28bd84555f12edbf70117de42f9181691c736eacc4a992"
 		;;
 	aarch64 | arm64)
 		GO_SHA256="3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec"
 		GO_PLATFORM="arm64"
-		JUST_PLATFORM="aarch64"
-		JUST_SHA256="748237128c4c40cbdabc65e841d05ceba13cc23a91eaba395495894c1d9764df"
-		GOLANGCI_SHA256="ee7ec5f3453d15ddf106fae5a4d6c71737712348a979d1fe9cd52ec7ea299bae"
+		BAZELISK_PLATFORM="arm64"
+		BAZELISK_SHA256="e20e8b0f4f240091b7a55bf17b9398bd4f40ee70ae0208dff95dd4c445fb4010"
 		;;
 	*)
 		printf 'Unsupported Go architecture: %s\n' "$(uname -m)" >&2
@@ -75,49 +72,31 @@ fi
 ln -sfn "$GO_ROOT/bin/go" "$HOME/.local/bin/go"
 ln -sfn "$GO_ROOT/bin/gofmt" "$HOME/.local/bin/gofmt"
 
-JUST_ARCHIVE="$JUST_ARCHIVE_DIR/just-${JUST_VERSION}-${JUST_PLATFORM}-unknown-linux-musl.tar.gz"
-if [[ ! -x "$JUST_ROOT/just" ]] || [[ "$("$JUST_ROOT/just" --version 2>/dev/null || true)" != "just ${JUST_VERSION}" ]]; then
-	log "Installing just ${JUST_VERSION}"
-	if [[ ! -f "$JUST_ARCHIVE" ]] || [[ "$(sha256sum "$JUST_ARCHIVE" | cut -d ' ' -f 1)" != "$JUST_SHA256" ]]; then
-		curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-${JUST_PLATFORM}-unknown-linux-musl.tar.gz" -o "$JUST_ARCHIVE"
+# A single release binary, so there is no archive to unpack.
+bazelisk="$BAZELISK_ROOT/bazelisk"
+if [[ ! -x "$bazelisk" ]] || [[ "$("$bazelisk" version 2>/dev/null | head -n 1 || true)" != "Bazelisk version: v${BAZELISK_VERSION}" ]]; then
+	BAZELISK_ARCHIVE="$BAZELISK_ARCHIVE_DIR/bazelisk-linux-${BAZELISK_PLATFORM}"
+	log "Installing bazelisk ${BAZELISK_VERSION}"
+	if [[ ! -f "$BAZELISK_ARCHIVE" ]] || [[ "$(sha256sum "$BAZELISK_ARCHIVE" | cut -d ' ' -f 1)" != "$BAZELISK_SHA256" ]]; then
+		curl -fsSL "https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-linux-${BAZELISK_PLATFORM}" -o "$BAZELISK_ARCHIVE"
 	fi
-	echo "$JUST_SHA256  $JUST_ARCHIVE" | sha256sum --check --status || {
-		rm -f "$JUST_ARCHIVE"
-		printf 'just archive checksum verification failed.\n' >&2
+	echo "$BAZELISK_SHA256  $BAZELISK_ARCHIVE" | sha256sum --check --status || {
+		rm -f "$BAZELISK_ARCHIVE"
+		printf 'bazelisk checksum verification failed.\n' >&2
 		exit 1
 	}
-	mkdir -p "$JUST_ROOT"
-	tar -xzf "$JUST_ARCHIVE" -C "$JUST_ROOT" just
-	chmod 0755 "$JUST_ROOT/just"
+	mkdir -p "$BAZELISK_ROOT"
+	install -m 0755 "$BAZELISK_ARCHIVE" "$bazelisk"
 fi
-ln -sfn "$JUST_ROOT/just" "$HOME/.local/bin/just"
-
-GOLANGCI_ARCHIVE_DIR="$GO_ARCHIVE_DIR"
-GOLANGCI_PLATFORM="$GO_PLATFORM"
-GOLANGCI_ARCHIVE="$GOLANGCI_ARCHIVE_DIR/golangci-lint-${GOLANGCI_VERSION}-linux-${GOLANGCI_PLATFORM}.tar.gz"
-if [[ ! -x "$GOLANGCI_ROOT/golangci-lint" ]] || [[ "$("$GOLANGCI_ROOT/golangci-lint" --version 2>/dev/null || true)" != *"$GOLANGCI_VERSION"* ]]; then
-	log "Installing golangci-lint ${GOLANGCI_VERSION}"
-	if [[ ! -f "$GOLANGCI_ARCHIVE" ]] || [[ "$(sha256sum "$GOLANGCI_ARCHIVE" | cut -d ' ' -f 1)" != "$GOLANGCI_SHA256" ]]; then
-		curl -fsSL "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_VERSION}/golangci-lint-${GOLANGCI_VERSION}-linux-${GOLANGCI_PLATFORM}.tar.gz" -o "$GOLANGCI_ARCHIVE"
-	fi
-	echo "$GOLANGCI_SHA256  $GOLANGCI_ARCHIVE" | sha256sum --check --status || {
-		rm -f "$GOLANGCI_ARCHIVE"
-		printf 'golangci-lint archive checksum verification failed.\n' >&2
-		exit 1
-	}
-	mkdir -p "$GOLANGCI_ROOT"
-	tar -xzf "$GOLANGCI_ARCHIVE" -C "$GOLANGCI_ROOT" --strip-components=1 \
-		"golangci-lint-${GOLANGCI_VERSION}-linux-${GOLANGCI_PLATFORM}/golangci-lint"
-	chmod 0755 "$GOLANGCI_ROOT/golangci-lint"
-fi
-ln -sfn "$GOLANGCI_ROOT/golangci-lint" "$HOME/.local/bin/golangci-lint"
+ln -sfn "$bazelisk" "$HOME/.local/bin/bazelisk"
+ln -sfn "$bazelisk" "$HOME/.local/bin/bazel"
 
 PROFILE="$HOME/.bash_profile"
-PROFILE_MARKER='# meiro Go and just toolchains'
+PROFILE_MARKER='# meiro Go and Bazel toolchains'
 if ! grep -Fqx "$PROFILE_MARKER" "$PROFILE" 2>/dev/null && ! grep -Fqx '# meiro Go toolchain' "$PROFILE" 2>/dev/null; then
 	cat >> "$PROFILE" <<'EOF'
 
-# meiro Go and just toolchains
+# meiro Go and Bazel toolchains
 case ":$PATH:" in
 	*:"$HOME/.local/bin":*) ;;
 	*) export PATH="$HOME/.local/bin:$PATH" ;;
@@ -126,4 +105,4 @@ EOF
 fi
 export PATH="$HOME/.local/bin:$PATH"
 log "Go toolchain ready: $(go version)"
-log "just toolchain ready: $(just --version)"
+log "Bazel toolchain ready: bazelisk ${BAZELISK_VERSION} for Bazel $(cat .bazelversion)"

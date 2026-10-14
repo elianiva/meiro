@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "proc",
+    srcs = [
+        "proc.go",
+        "proc_unix.go",
+        "proc_windows.go",
+        "window_unix.go",
+        "window_windows.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/proc",
+    visibility = ["//:__subpackages__"],
+    deps = ["@com_github_egoist_mygo//:mygo"],
+)

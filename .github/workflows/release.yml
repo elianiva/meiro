@@ -29,7 +29,7 @@ jobs:
       ytdlp: ${{ steps.ytdlp.outputs.version }}
     steps:
       # yt-dlp breaks whenever YouTube changes, so every release bundles the
-      # newest one. It is looked up once here, so all four platform builds
+      # newest one. It is looked up once here, so all the platform builds
       # get the same version even if yt-dlp publishes while they run.
       - name: Find the latest yt-dlp release
         id: ytdlp
@@ -130,6 +130,11 @@ jobs:
   # Meiro ships a small ffmpeg built from source (scripts/build-ffmpeg.sh)
   # instead of a full build. It builds apart from the app, and is cached by
   # the script's contents, so a release only rebuilds it when it changes.
+  #
+  # This stays a C build outside Bazel: the Linux one has to run inside
+  # Alpine so the binary is static against musl, which is a container
+  # concern rather than a build-graph one, and the per-architecture results
+  # are exactly what the universal macOS app combines.
   ffmpeg:
     needs: gate
     strategy:
@@ -186,19 +191,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: darwin-arm64, target: darwin/arm64, os: macos-latest, variant: full }
-          - { platform: darwin-amd64, target: darwin/amd64, os: macos-latest, variant: full }
-          - { platform: linux-amd64, target: linux/amd64, os: ubuntu-latest, variant: full }
-          - { platform: linux-arm64, target: linux/arm64, os: ubuntu-latest, variant: full }
-          - { platform: darwin-arm64, target: darwin/arm64, os: macos-latest, variant: minimal }
-          - { platform: darwin-amd64, target: darwin/amd64, os: macos-latest, variant: minimal }
-          - { platform: linux-amd64, target: linux/amd64, os: ubuntu-latest, variant: minimal }
-          - { platform: linux-arm64, target: linux/arm64, os: ubuntu-latest, variant: minimal }
+          # macOS ships one universal app for both processor architectures
+          # rather than one per architecture.
+          - { platform: darwin-universal, os: macos-latest, variant: full }
+          - { platform: linux-amd64, os: ubuntu-latest, variant: full }
+          - { platform: linux-arm64, os: ubuntu-latest, variant: full }
+          - { platform: darwin-universal, os: macos-latest, variant: minimal }
+          - { platform: linux-amd64, os: ubuntu-latest, variant: minimal }
+          - { platform: linux-arm64, os: ubuntu-latest, variant: minimal }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.gate.outputs.sha }}
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -211,26 +220,35 @@ jobs:
           jq --arg v "$version" '.version = $v' mygo.json > mygo.json.new
           mv mygo.json.new mygo.json
 
+      # A universal macOS app is combined from both architecture directories,
+      # so it takes both halves of the ffmpeg build.
+      - uses: actions/download-artifact@v5
+        if: matrix.variant == 'full' && matrix.platform == 'darwin-universal'
+        with:
+          name: ffmpeg-darwin-arm64
+          path: resources/darwin-arm64
+      - uses: actions/download-artifact@v5
+        if: matrix.variant == 'full' && matrix.platform == 'darwin-universal'
+        with:
+          name: ffmpeg-darwin-amd64
+          path: resources/darwin-amd64
       # Only the full build downloads the ffmpeg artifact; minimal resolves
       # ffmpeg and yt-dlp from PATH at runtime.
       - uses: actions/download-artifact@v5
-        if: matrix.variant == 'full'
+        if: matrix.variant == 'full' && matrix.platform != 'darwin-universal'
         with:
           name: ffmpeg-${{ matrix.platform }}
           path: resources/${{ matrix.platform }}
-      - name: Fetch playback tools
-        env:
-          YT_DLP_VERSION: ${{ needs.gate.outputs.ytdlp }}
-        run: |
-          if [ "${{ matrix.variant }}" = full ]; then
-            chmod +x "resources/${{ matrix.platform }}/bin/ffmpeg"
-            scripts/fetch-tools.sh "${{ matrix.platform }}"
-          else
-            scripts/fetch-tools.sh --minimal "${{ matrix.platform }}"
-          fi
 
       - name: Build
-        run: go tool mygo build -platform "${{ matrix.target }}" -o dist
+        if: matrix.variant == 'full'
+        env:
+          YT_DLP_VERSION: ${{ needs.gate.outputs.ytdlp }}
+        run: bazel run //:dist -- --out dist "${{ matrix.platform }}"
+
+      - name: Build minimal
+        if: matrix.variant == 'minimal'
+        run: bazel run //:dist -- --out dist --minimal "${{ matrix.platform }}"
 
       - name: Set up Linux package tools
         if: startsWith(matrix.platform, 'linux-')
