@@ -60,6 +60,10 @@ type Settings struct {
 	GlobalShortcut bool `json:"globalShortcut"`
 	// ShowTray keeps an icon in the menu bar with transport controls.
 	ShowTray bool `json:"showTray"`
+	// CloseToTray hides the window instead of quitting when the user closes
+	// it, while the tray icon is shown. Empty means the user has not chosen
+	// yet, so closing asks.
+	CloseToTray *bool `json:"closeToTray,omitempty"`
 	// OpenAtLogin starts Meiro when the user logs in.
 	OpenAtLogin bool `json:"openAtLogin"`
 	// WavyProgress draws the position slider as a travelling wave while the

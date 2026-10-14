@@ -30,6 +30,13 @@ type desktop struct {
 	// trayFailed is set when the system refused the tray, so it is not
 	// asked again until the user turns the tray off and on.
 	trayFailed bool
+	// closeChoice reads the CloseToTray setting; setCloseChoice saves the
+	// user's remembered answer to the close dialog.
+	closeChoice    func() *bool
+	setCloseChoice func(bool)
+	// quitting is set while App.Quit closes the windows, so OnClose hides
+	// nothing and the quit goes through.
+	quitting bool
 }
 
 // update runs fn on the main thread and draws a frame with what it changed.
@@ -224,6 +231,49 @@ func (d *desktop) trayMenu(state trayState, actions trayActions) *mygo.Menu {
 	})
 }
 
+// closeToTray wires what closing the window does to the CloseToTray setting:
+// hide the window while the tray icon is shown, quit, or ask once and keep
+// the answer. It runs once the window is there.
+func (d *desktop) closeToTray(setting func() *bool, set func(bool)) {
+	if d == nil {
+		return
+	}
+	d.closeChoice, d.setCloseChoice = setting, set
+	d.win.OnClose(func(e *mygo.CloseEvent) { d.onClose(e) })
+}
+
+// onClose decides between hiding the window and letting the close through.
+// An unset setting asks once; the dialog's checkbox keeps the answer. It
+// runs on the main thread.
+func (d *desktop) onClose(e *mygo.CloseEvent) {
+	if d.quitting {
+		return
+	}
+	choice := d.closeChoice()
+	if choice == nil {
+		res, err := mygo.Dialog.Message(mygo.MessageOptions{
+			Parent:        d.win,
+			Title:         "Close Meiro?",
+			Message:       "Keep Meiro running in the tray, or quit it?",
+			Buttons:       []string{"Minimize to tray", "Close Meiro"},
+			CancelButton:  -1,
+			CheckboxLabel: "Remember my choice",
+		})
+		if err != nil {
+			return // the dialog failed; the close goes on
+		}
+		toTray := res.Button == 0
+		if res.CheckboxChecked {
+			d.setCloseChoice(toTray)
+		}
+		choice = &toTray
+	}
+	if *choice {
+		e.PreventDefault()
+		d.win.Hide()
+	}
+}
+
 // close releases what the desktop holds, for shutdown.
 func (d *desktop) close() {
 	if d == nil {
@@ -261,6 +311,8 @@ func (a *app) setupDesktop() {
 	mygo.Power.OnSuspend(func() { a.update(a.onSuspend) })
 	mygo.Power.OnResume(func() { a.update(a.onResume) })
 	mygo.App.OnDidBecomeActive(func() { mygo.ClearNotifications() })
+	a.desktop.closeToTray(func() *bool { return a.settings.CloseToTray }, a.setCloseToTray)
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.desktop.quitting = true })
 	a.syncDesktop()
 	a.syncShortcut()
 	a.desktop.setOpenAtLogin(a.settings.OpenAtLogin)
@@ -284,6 +336,22 @@ func (a *app) syncShortcut() {
 		a.settings.GlobalShortcut = false
 		a.saveSettings()
 	}
+}
+
+// setCloseToTray keeps the user's answer to the close dialog. The choice to
+// hide needs the tray, so it turns the tray on when the tray was refused or
+// is off, and answers no when the system will not show one.
+func (a *app) setCloseToTray(toTray bool) {
+	if toTray {
+		a.settings.ShowTray = true
+		a.syncDesktop()
+		if a.desktop.trayFailed {
+			return
+		}
+	}
+	on := toTray
+	a.settings.CloseToTray = &on
+	a.saveSettings()
 }
 
 // trayTip names the track playing, or the app when nothing plays.

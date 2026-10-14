@@ -67,6 +67,10 @@ func (a *app) desktopCard(c *ui.Context) {
 					a.settings.ShowTray = on
 					a.syncDesktop()
 				})
+			a.desktopSwitch(c, "Close to tray", "Closing the window keeps Meiro running in the tray instead of quitting.",
+				a.settings.CloseToTray != nil && *a.settings.CloseToTray, func(on bool) {
+					a.setCloseToTray(on)
+				})
 			a.desktopSwitch(c, "Global shortcut", "Play or pause from anywhere with "+toggleShortcut+".",
 				a.settings.GlobalShortcut, func(on bool) {
 					a.settings.GlobalShortcut = on
