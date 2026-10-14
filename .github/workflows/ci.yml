@@ -96,6 +96,16 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      # It type-checks by compiling, into Go's build cache, and keeps its own
+      # analysis cache: a run after the first reads both and looks at what
+      # changed. The linter's version is in the key, as is the rules file.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', '.golangci.yml', 'tools/golangci_lint.bzl') }}
+          restore-keys: go-build-${{ runner.os }}-
       - name: golangci-lint
         # The version is pinned in tools/golangci_lint.bzl, next to the
         # checksums of the release it downloads.
