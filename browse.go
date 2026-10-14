@@ -422,6 +422,10 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 				close()
 			}
 		}
+		if (target.Kind == youtube.TargetAlbum || target.Kind == youtube.TargetPlaylist) && m3.MenuItem(c, "Start radio", m3.IconShuffle).Clicked() {
+			a.startRadio(item, key)
+			close()
+		}
 		if target.ID != "" && m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
 			c.WriteClipboard(youtube.BrowseURL(target.ID))
 			c.Toast("Link copied")
@@ -500,7 +504,10 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			} else {
 				a.art(c, item.Thumbnail, 128, 48, artRadius(item, m3.Medium), func() {
 					if isSong && (playing || hovered) {
-						ui.Box(c).Fill().Radius(artRadius(item, m3.Medium)).Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
+						// The scrim covers the artwork: attached, it leaves
+						// the flow the picture is laid out in.
+						ui.Box(c).Size(48, 48).Radius(artRadius(item, m3.Medium)).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
+							Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
 							switch {
 							case playing && a.loading():
 								m3.LoadingIndicatorIn(c, 24, ui.RGB(255, 255, 255))
@@ -614,6 +621,10 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 				close()
 			}
 		}
+		if m3.MenuItem(c, "Start radio", m3.IconShuffle).Clicked() {
+			a.startRadio(item, key)
+			close()
+		}
 		if item.VideoID != "" && m3.MenuItem(c, "Add to playlist", m3.IconLibrary).Clicked() {
 			a.openAddToPlaylist(item)
 			close()
@@ -669,7 +680,10 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 	card.Children(func() {
 		a.art(c, item.Thumbnail, 256, 132, artRadius(item, m3.LargeIncreased), func() {
 			if a.isOpening(key) {
-				ui.Box(c).Fill().Radius(artRadius(item, m3.LargeIncreased)).Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
+				// The scrim covers the artwork: attached, it leaves the flow
+				// the picture is laid out in.
+				ui.Box(c).Size(132, 132).Radius(artRadius(item, m3.LargeIncreased)).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
+					Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
 					m3.LoadingIndicatorIn(c, 28, ui.RGB(255, 255, 255))
 				})
 				return
@@ -747,8 +761,18 @@ func (a *app) hero(c *ui.Context) {
 		artRadius = m3.Full
 	}
 	wash := sc.PrimaryContainer.Mix(sc.Surface, 0.45)
+	// The artwork opens the context menu YouTube Music's does, on a
+	// right-click. The catcher is an attached, transparent button over the
+	// picture: attached, it leaves the layout to the artwork it covers.
+	var art, catcher ui.Element
+	var menuAnchor ui.Element
+	hasAnchor := false
 	ui.Row(c).Padding(8, pageGutter, 28).Gap(28).AlignItems(ui.End).Gradient(wash, sc.Surface, 180).Children(func() {
-		art := a.art(c, d.art, 448, 220, artRadius)
+		art = a.art(c, d.art, 448, 220, artRadius, func() {
+			catcher = ui.ButtonBase(c.Key("hero-art")).Size(220, 220).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
+				Background(ui.Transparent).Label("More options for " + d.title)
+			menuAnchor, hasAnchor = a.menu.pointerAnchor(c, "hero")
+		})
 		m3.Elevation(c, art, 2)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 			if label := heroLabel(r.target); label != "" {
@@ -771,6 +795,39 @@ func (a *app) hero(c *ui.Context) {
 				a.subscribeButton(c)
 			})
 		})
+	})
+	if catcher.RightClicked() {
+		x, y, _ := catcher.PointerPosition()
+		a.menu.show("hero", true, x, y)
+	}
+	if a.menu.owns("hero") {
+		a.heroMenu(c, a.menu.anchor(art, menuAnchor, hasAnchor))
+	}
+}
+
+// heroMenu offers what YouTube Music's menu on the artwork of an album, a
+// playlist or an artist does: start its radio, shuffle it, or copy the page's
+// link.
+func (a *app) heroMenu(c *ui.Context, anchor ui.Element) {
+	if !a.menu.owns("hero") {
+		return
+	}
+	_, id := a.route()
+	m3.Menu(c, anchor, &a.menu.open, 232, func() {
+		close := func() { a.menu.close() }
+		if m3.MenuItem(c, "Start radio", m3.IconShuffle).Clicked() {
+			a.startRadioPage()
+			close()
+		}
+		if m3.MenuItem(c, "Shuffle play", m3.IconShuffle).Clicked() {
+			a.shufflePage()
+			close()
+		}
+		if id != "" && m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
+			c.WriteClipboard(youtube.BrowseURL(id))
+			c.Toast("Link copied")
+			close()
+		}
 	})
 }
 

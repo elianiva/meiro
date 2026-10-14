@@ -343,6 +343,32 @@ func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
 	}
 }
 
+func TestRightClickingTheHeroArtOffersItsMenu(t *testing.T) {
+	a, _ := playbackApp(t)
+	tt := open(a, "/album/MPREb_test")
+	mustShow(t, tt, "Deep Focus")
+	if tt.HasText("Start radio") {
+		t.Fatalf("Start radio is on screen before right-clicking: %q", tt.Texts())
+	}
+	if err := tt.RightClick("More options for Deep Focus"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Start radio", "Shuffle play", "Copy link"} {
+		if !tt.HasText(want) {
+			t.Errorf("right-clicking the artwork offered no %q: %q", want, tt.Texts())
+		}
+	}
+	a.menu.close()
+	tt.Frame()
+	if !tt.HasText("Album Track One") {
+		t.Errorf("the menu left the album page: %q", tt.Texts())
+	}
+	if a.current.VideoID != "" {
+		t.Errorf("a right click played %q", a.current.VideoID)
+	}
+}
+
 func TestBrowsingFromHomeIntoAnAlbum(t *testing.T) {
 	a := newTestApp()
 	a.router.Push("/home")

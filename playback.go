@@ -147,6 +147,17 @@ func (a *app) shufflePage() {
 	a.playFrom(tracks[0], tracks, 0, options, source)
 }
 
+// startRadioPage plays a track drawn at random from the page shown and lets
+// YouTube Music generate the queue behind it, as the hero's Start radio does.
+func (a *app) startRadioPage() {
+	if len(a.page.playable) == 0 {
+		return
+	}
+	seed := a.page.playable[rand.IntN(len(a.page.playable))]
+	_, source := a.queueContext(0)
+	a.playFrom(seed, nil, 0, youtube.UpNextOptions{}, source)
+}
+
 // drawFirst draws a track at random to open a queue on, with the rest
 // shuffled behind it, and says where the drawn track was.
 func drawFirst(tracks []youtube.MusicItem) (int, []youtube.MusicItem) {
@@ -956,6 +967,41 @@ func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 		a.play(item, []youtube.MusicItem{item})
 		return
 	}
+	a.withCollectionTracks(item, key, func(songs []youtube.MusicItem) {
+		// What the playlist is read from follows the song drawn to open it,
+		// so the queue YouTube is asked for keeps the same place.
+		start := 0
+		if shuffle && len(songs) > 1 {
+			start, songs = drawFirst(songs)
+		}
+		options := youtube.UpNextOptions{}
+		if target.Kind == youtube.TargetPlaylist {
+			playlistIndex := start
+			options.PlaylistID, options.PlaylistIndex = target.ID, &playlistIndex
+		}
+		a.playFrom(songs[0], songs, 0, options, item.Title)
+	})
+}
+
+// startRadio plays a seed from what the item names — the track itself, or one
+// drawn from the album, the playlist or the artist — and lets YouTube Music
+// generate the queue behind it, as the radio and mix entries of its menus do.
+func (a *app) startRadio(item youtube.MusicItem, key string) {
+	if target := item.Target(); target.Kind == youtube.TargetTrack {
+		a.playFrom(item, nil, 0, youtube.UpNextOptions{}, item.Title)
+		return
+	}
+	a.withCollectionTracks(item, key, func(songs []youtube.MusicItem) {
+		seed := songs[rand.IntN(len(songs))]
+		a.playFrom(seed, nil, 0, youtube.UpNextOptions{}, item.Title)
+	})
+}
+
+// withCollectionTracks reads the page of the album, the playlist or the artist
+// an item names and hands its tracks to then, keeping a second press on the
+// same card from reading it again.
+func (a *app) withCollectionTracks(item youtube.MusicItem, key string, then func([]youtube.MusicItem)) {
+	target := item.Target()
 	if target.Kind != youtube.TargetAlbum && target.Kind != youtube.TargetPlaylist && target.Kind != youtube.TargetArtist {
 		return
 	}
@@ -988,18 +1034,7 @@ func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 		if len(songs) == 0 {
 			return
 		}
-		// What the playlist is read from follows the song drawn to open it,
-		// so the queue YouTube is asked for keeps the same place.
-		start := 0
-		if shuffle && len(songs) > 1 {
-			start, songs = drawFirst(songs)
-		}
-		options := youtube.UpNextOptions{}
-		if target.Kind == youtube.TargetPlaylist {
-			playlistIndex := start
-			options.PlaylistID, options.PlaylistIndex = target.ID, &playlistIndex
-		}
-		a.playFrom(songs[0], songs, 0, options, item.Title)
+		then(songs)
 	})
 }
 
