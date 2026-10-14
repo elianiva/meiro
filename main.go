@@ -175,18 +175,24 @@ func (a *app) setup() {
 const artworkCacheLimit = 256 << 20
 
 // openArtworkCache keeps downloaded artwork in the cache folder, so covers
-// that leave memory are read back instead of downloaded again.
+// that leave memory are read back instead of downloaded again. Opening reads
+// the details of every file in the folder, thousands of them once it is full,
+// so it goes off the main thread: covers asked for before it is done are
+// downloaded, as they are without a cache.
 func (a *app) openArtworkCache() {
 	root, err := mygo.App.Path(mygo.PathCache)
 	if err != nil {
 		return
 	}
-	store, err := diskcache.Open(filepath.Join(root, "Meiro Artwork Cache"), artworkCacheLimit)
-	if err != nil {
-		log.Printf("setting up artwork cache: %v", err)
-		return
-	}
-	a.thumbs.UseStore(store)
+	dir := filepath.Join(root, "Meiro Artwork Cache")
+	a.run(func() {
+		store, err := diskcache.Open(dir, artworkCacheLimit)
+		if err != nil {
+			log.Printf("setting up artwork cache: %v", err)
+			return
+		}
+		a.thumbs.UseStore(store)
+	})
 }
 
 // openAudioCache opens the audio cache where the settings say, or at the
