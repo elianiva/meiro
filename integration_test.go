@@ -824,6 +824,13 @@ func TestFailedBrowserImportOffersPastingTheCookieHeader(t *testing.T) {
 	a.openSignIn()
 	tt := ui.NewTester(a.view, 1000, 900)
 	tt.Frame()
+	if tt.HasText("To paste it:") || tt.HasText("Import from a browser") {
+		t.Fatalf("the advanced ways to sign in show before they are asked for: %q", tt.Texts())
+	}
+	if err := tt.Click("Advanced"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if !tt.HasText("To paste it:") {
 		t.Fatalf("the dialog does not say where to copy the header from: %q", tt.Texts())
 	}
@@ -846,6 +853,47 @@ func TestFailedBrowserImportOffersPastingTheCookieHeader(t *testing.T) {
 	tt.Frame()
 	if !a.signedIn() || a.account.signIn.open {
 		t.Errorf("the pasted header did not sign in: signedIn=%v open=%v err=%q", a.signedIn(), a.account.signIn.open, a.account.signIn.err)
+	}
+}
+
+// The browser window signs in without naming a browser, so nothing re-reads
+// the user's own browser for it later, and a window that fails says why.
+func TestSignInWithABrowserWindow(t *testing.T) {
+	a := newTestApp()
+	a.account.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
+		return youtube.NewClient(youtube.Options{
+			APIKey:     "test",
+			CookieAuth: auth,
+			HTTPClient: &http.Client{Transport: refusingMusic{fresh: "SAPISID=window"}},
+		})
+	}
+	a.account.window = func(context.Context) (string, error) { return "", cookies.ErrWindowClosed }
+	// An earlier import from a browser must not outlive a window sign-in.
+	a.settings.SignInSource = "Fakefox"
+	a.openSignIn()
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Sign in with a browser window"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.signedIn() || !tt.HasText(cookies.ErrWindowClosed.Error()) {
+		t.Fatalf("a closed window did not say so: signedIn=%v %q", a.signedIn(), tt.Texts())
+	}
+	if tt.HasText("Importing from") {
+		t.Error("a window that failed points at importing from a browser")
+	}
+
+	a.account.window = func(context.Context) (string, error) { return "SAPISID=window; SID=1", nil }
+	if err := tt.Click("Sign in with a browser window"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.signedIn() || a.account.signIn.open {
+		t.Fatalf("the window did not sign in: signedIn=%v open=%v err=%q", a.signedIn(), a.account.signIn.open, a.account.signIn.err)
+	}
+	if got := a.settings.SignInSource; got != "" {
+		t.Errorf("the session names the browser %q, which would be read again when it goes stale", got)
 	}
 }
 

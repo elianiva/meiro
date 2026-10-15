@@ -25,33 +25,45 @@ func (a *app) signInDialog(c *ui.Context) {
 			ui.Icon(c, m3.IconLogin).FontSize(28).TextColor(sc.OnPrimaryContainer)
 		})
 		m3.EmphasizedText(c, m3.HeadlineSmall, "Sign in to YouTube Music")
-		m3.Text(c, m3.BodyMedium, "Meiro imports your browser's reusable YouTube session, which gives it the same account access as that browser. Sign in at music.youtube.com in your browser first, then pick it:").TextColor(sc.OnSurfaceVariant)
-		ui.Link(c, musicURL, "Open YouTube Music").TextColor(sc.Primary)
-		picker := m3.Button(c, m3.ButtonSpec{Label: "Import from a browser", Icon: m3.IconExpandMore, Kind: m3.Tonal, Size: m3.Medium56, Disabled: busy, Key: "import-from"})
-		if picker.Clicked() {
-			s.browsers = !s.browsers
+		m3.Text(c, m3.BodyMedium, "Meiro opens a separate browser window where you sign in to your Google account. Meiro never sees your password. It keeps the session of that window, which gives it the same account access as a browser, and closes the window. Your own browser is not used.").TextColor(sc.OnSurfaceVariant)
+		if m3.Button(c, m3.ButtonSpec{Label: "Sign in with a browser window", Icon: m3.IconLogin, Size: m3.Medium56, Disabled: busy, Key: "sign-in-window"}).Clicked() {
+			a.windowSignIn()
 		}
-		m3.Menu(c, picker, &s.browsers, 240, func() {
-			for _, source := range a.account.sources() {
-				if m3.MenuItem(c, source.Label, nil).Clicked() {
-					s.browsers = false
-					a.importSignIn(source)
-				}
+		if s.inWindow {
+			m3.Text(c, m3.BodyMedium, "Finish signing in in the window that opened. Meiro closes it for you.").TextColor(sc.Primary)
+		}
+		toggle := m3.Button(c, m3.ButtonSpec{Label: "Advanced", Icon: advancedIcon(s.advanced), Kind: m3.TextOnly, Key: "sign-in-advanced"})
+		if toggle.Clicked() {
+			s.advanced = !s.advanced
+		}
+		if s.advanced {
+			m3.Text(c, m3.BodyMedium, "Or use a browser you are already signed in with. This copy can stop working when that browser renews its cookies. Sign in at "+musicURL+" there first, then pick it:").TextColor(sc.OnSurfaceVariant)
+			picker := m3.Button(c, m3.ButtonSpec{Label: "Import from a browser", Icon: m3.IconExpandMore, Kind: m3.Tonal, Size: m3.Medium56, Disabled: busy, Key: "import-from"})
+			if picker.Clicked() {
+				s.browsers = !s.browsers
 			}
-		})
+			m3.Menu(c, picker, &s.browsers, 240, func() {
+				for _, source := range a.account.sources() {
+					if m3.MenuItem(c, source.Label, nil).Clicked() {
+						s.browsers = false
+						a.importSignIn(source)
+					}
+				}
+			})
+			if s.importFailed != "" {
+				m3.EmphasizedText(c, m3.TitleSmall, "Importing from "+s.importFailed+" did not work. Paste the Cookie header instead.").TextColor(sc.Primary)
+			}
+			m3.Text(c, m3.BodyMedium, "To paste it: open music.youtube.com while signed in, open your browser's developer tools (F12) and go to the Network tab, reload, pick a request to music.youtube.com, and copy the value of its Cookie request header.").TextColor(sc.OnSurfaceVariant)
+			box := ui.Column(c.Key("cookie-box")).Padding(12, 16).Radius(m3.Large).Background(sc.SurfaceContainerHighest)
+			if box.FocusWithin() {
+				box.Border(2, sc.Primary)
+			}
+			box.Children(func() {
+				ui.TextAreaBase(c.Key("cookie"), &s.cookie).Placeholder("Paste the Cookie header").Label("Cookie header").
+					Password().Height(96).FontSize(14).TextColor(sc.OnSurface).AutoFocus()
+			})
+		}
 		m3.Text(c, m3.BodyMedium, "Meiro saves the session in a file in its data folder that only your user can read. Sign out to remove Meiro's saved copy.").TextColor(sc.OnSurfaceVariant)
-		if s.importFailed != "" {
-			m3.EmphasizedText(c, m3.TitleSmall, "Importing from "+s.importFailed+" did not work. Paste the Cookie header instead.").TextColor(sc.Primary)
-		}
-		m3.Text(c, m3.BodyMedium, "To paste it: open music.youtube.com while signed in, open your browser's developer tools (F12) and go to the Network tab, reload, pick a request to music.youtube.com, and copy the value of its Cookie request header.").TextColor(sc.OnSurfaceVariant)
-		box := ui.Column(c.Key("cookie-box")).Padding(12, 16).Radius(m3.Large).Background(sc.SurfaceContainerHighest)
-		if box.FocusWithin() {
-			box.Border(2, sc.Primary)
-		}
-		box.Children(func() {
-			ui.TextAreaBase(c.Key("cookie"), &s.cookie).Placeholder("Paste the Cookie header").Label("Cookie header").
-				Password().Height(96).FontSize(14).TextColor(sc.OnSurface).AutoFocus()
-		})
 		if s.err != "" {
 			m3.Text(c, m3.BodyMedium, s.err).TextColor(sc.Error).MaxLines(4)
 		}
@@ -62,7 +74,9 @@ func (a *app) signInDialog(c *ui.Context) {
 			if m3.Button(c, m3.ButtonSpec{Label: "Cancel", Kind: m3.TextOnly, Key: "cancel-sign-in"}).Clicked() {
 				a.dismissSignIn()
 			}
-			if m3.Button(c, m3.ButtonSpec{Label: "Sign in", Disabled: busy || strings.TrimSpace(s.cookie) == "", Key: "submit-sign-in"}).Clicked() {
+			// Only the pasted Cookie header needs a button of its own: the
+			// window and an import start as soon as they are picked.
+			if s.advanced && m3.Button(c, m3.ButtonSpec{Label: "Sign in", Disabled: busy || strings.TrimSpace(s.cookie) == "", Key: "submit-sign-in"}).Clicked() {
 				a.submitSignIn()
 			}
 		})
@@ -149,4 +163,13 @@ func (a *app) channelItems(c *ui.Context, current *session) {
 		}
 	}
 	ui.Divider(c)
+}
+
+// advancedIcon points down while the advanced sign-in options are folded away
+// and up while they show.
+func advancedIcon(open bool) *ui.SVG {
+	if open {
+		return m3.IconExpandLess
+	}
+	return m3.IconExpandMore
 }

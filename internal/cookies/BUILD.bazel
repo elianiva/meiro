@@ -5,7 +5,10 @@ go_library(
     srcs = [
         "browsers.go",
         "chromium.go",
+        "devtools.go",
         "store.go",
+        "websocket.go",
+        "window.go",
     ],
     importpath = "github.com/elianiva/meiro/internal/cookies",
     visibility = ["//:__subpackages__"],
@@ -18,6 +21,9 @@ go_library(
 
 go_test(
     name = "cookies_test",
-    srcs = ["cookies_test.go"],
+    srcs = [
+        "cookies_test.go",
+        "window_test.go",
+    ],
     embed = [":cookies"],
 )

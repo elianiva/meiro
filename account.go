@@ -42,6 +42,9 @@ type accountState struct {
 	public    *youtube.Client
 	newClient func(*youtube.CookieAuth) *youtube.Client
 	sources   func() []cookies.Source
+	// window has the user sign in in a browser window of its own and gives
+	// the session's cookie; tests replace it.
+	window func(ctx context.Context) (string, error)
 
 	// session is the account in use, nil while signed out.
 	session *session
@@ -62,7 +65,12 @@ type accountState struct {
 }
 
 func newAccountState(newClient func(*youtube.CookieAuth) *youtube.Client, sources func() []cookies.Source) accountState {
-	return accountState{public: youtube.NewClient(youtube.Options{}), newClient: newClient, sources: sources}
+	return accountState{
+		public: youtube.NewClient(youtube.Options{}), newClient: newClient, sources: sources,
+		window: func(ctx context.Context) (string, error) {
+			return cookies.SignInWindow(ctx, cookies.WindowOptions{})
+		},
+	}
 }
 
 // cookie is the cookie of the session in use, or "" while signed out.
@@ -480,13 +488,19 @@ type signInState struct {
 	// importFailed is the browser a session could not be imported from, so the
 	// dialog points at pasting the Cookie header instead; "" otherwise.
 	importFailed string
-	// try checks a pasted or imported session; it is busy while it does.
+	// try checks a pasted, imported or window session; it is busy while it
+	// does.
 	try task
+	// inWindow is set while the browser window waits for the user.
+	inWindow bool
+	// advanced shows the ways to sign in that copy a session from a browser
+	// the user keeps using: importing it, and pasting its Cookie header.
+	advanced bool
 }
 
 // reset empties the dialog. Its task is the caller's to stop.
 func (s *signInState) reset() {
-	s.open, s.err, s.attempt, s.cookie, s.browsers, s.importFailed = false, "", 0, "", false, ""
+	s.open, s.err, s.attempt, s.cookie, s.browsers, s.importFailed, s.inWindow, s.advanced = false, "", 0, "", false, "", false, false
 }
 
 // openSignIn opens the dialog that takes the cookie of the user's browser
@@ -546,7 +560,20 @@ func (a *app) submitSignIn() {
 		return
 	}
 	// A pasted session came from no browser, so it names none.
-	a.trySignIn(sessionSource{channel: a.settings.Channel}, func(context.Context) (string, error) { return cookie, nil })
+	a.trySignIn(sessionSource{channel: a.settings.Channel}, signInTimeout, func(context.Context) (string, error) { return cookie, nil })
+}
+
+// windowSignIn has the user sign in in a browser window that Meiro opens, and
+// takes the session from it. The session names no browser: the window is gone
+// once it is read, so there is nowhere to read it from again, and nothing
+// else renews its cookies.
+func (a *app) windowSignIn() {
+	s := &a.account.signIn
+	if s.try.busy() {
+		return
+	}
+	s.inWindow = true
+	a.trySignIn(sessionSource{channel: a.settings.Channel}, cookies.SignInTimeout+signInTimeout, a.account.window)
 }
 
 // importSignIn takes the session of a browser the user is signed in with.
@@ -554,17 +581,17 @@ func (a *app) importSignIn(browser cookies.Source) {
 	if a.account.signIn.try.busy() {
 		return
 	}
-	a.trySignIn(sessionSource{channel: a.settings.Channel, browser: browser.Label}, browser.Read)
+	a.trySignIn(sessionSource{channel: a.settings.Channel, browser: browser.Label}, signInTimeout, browser.Read)
 }
 
 // trySignIn reads a cookie, asks YouTube whom it signs in, and keeps it as
-// the sign-in when YouTube takes it.
-func (a *app) trySignIn(from sessionSource, read func(context.Context) (string, error)) {
+// the sign-in when YouTube takes it. timeout bounds the read and the check.
+func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(context.Context) (string, error)) {
 	acc := &a.account
 	s := &acc.signIn
 	s.err, s.importFailed = "", ""
 	attempt := s.attempt
-	startTask(a, &s.try, signInTimeout, func(ctx context.Context) (*session, error) {
+	startTask(a, &s.try, timeout, func(ctx context.Context) (*session, error) {
 		cookie, err := read(ctx)
 		if err != nil {
 			return nil, err
@@ -575,6 +602,7 @@ func (a *app) trySignIn(from sessionSource, read func(context.Context) (string, 
 		}
 		return opened, acc.creds.saveForDialog(ctx, cookie, attempt)
 	}, func(opened *session, err error) {
+		s.inWindow = false
 		if err != nil {
 			s.err = err.Error()
 			s.importFailed = from.browser

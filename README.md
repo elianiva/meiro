@@ -56,8 +56,8 @@ half of the title.
   state. It accepts play, pause, stop, previous, next, seek, volume, shuffle,
   and repeat commands.
 
-Browse and play public music without signing in. Meiro imports a browser
-session to show your personalized Home feed and Library.
+Browse and play public music without signing in. Meiro signs in with a
+browser session to show your personalized Home feed and Library.
 
 ## Screenshots
 
@@ -122,14 +122,59 @@ builds and bug reports are not planned for 0.1.
 
 ## Signing in
 
-To see your personalized Home feed and Library, sign in at
-[music.youtube.com](https://music.youtube.com) in a supported browser. In Meiro,
-choose **Sign in** and select that browser. Meiro imports the browser's YouTube
-Music session. It does not use an app-scoped OAuth token, so it has the same
-account access as the browser session.
+To see your personalized Home feed and Library, choose **Sign in** and then
+**Sign in with a browser window**. Meiro opens a separate browser window with a
+new, empty profile, and you sign in to your Google account there. Meiro never
+sees your password. When the sign-in finishes, Meiro takes the YouTube Music
+session from that window, closes it, and deletes its profile.
 
-Meiro can import from Chrome, Safari, Firefox, Brave, or Edge. It can also
-import from Helium when it finds a browser profile.
+Meiro opens the window in your system's default browser when that browser is
+Chrome, Edge, Brave, Helium, Chromium or Vivaldi. If your default browser is
+something else, such as Safari or Firefox, Meiro uses the first of those
+browsers that it finds installed.
+
+YouTube Music has no sign-in that lets another app act for you. Meiro does not
+use an app-scoped OAuth token, so the session has the same account access as a
+browser session. Treat it like a password.
+
+### Limits of the browser window
+
+- **A Chromium-based browser must be installed.** The window needs Chrome,
+  Edge, Brave, Helium, Chromium or Vivaldi. Safari and Firefox cannot be used
+  for it, even when one of them is your default browser. If you have none of
+  the supported browsers, use one of the other ways below.
+- **Google can refuse the sign-in.** Google sometimes shows "This browser or
+  app may not be secure" for a browser that it thinks software controls. Meiro
+  controls the window only to read the session, and it starts the window so
+  that the page does not report itself as automated. Google can still decide
+  to refuse, and it can change its checks at any time. If it refuses, use one
+  of the other ways below.
+- **Linux Snap and Flatpak browsers may not work.** They can be blocked from
+  the temporary profile folder that Meiro uses.
+- **The window is not your browser.** Your bookmarks, extensions, saved
+  passwords and other sessions are not there. You may need to complete a
+  second-factor step.
+- **Close the window only after it finishes.** If you close it early, the
+  sign-in stops and you can try again. A sign-in that takes more than five
+  minutes stops by itself.
+- **The session can still end.** YouTube can end a session at any time, for
+  example when you sign out everywhere or change your password. Meiro then asks
+  you to sign in again. A session that you took from the sign-in window is
+  never opened in a browser again, so it is not renewed behind your back.
+
+### Other ways to sign in
+
+These are under **Advanced** in the sign-in dialog. Sign in at
+[music.youtube.com](https://music.youtube.com) in a browser first, then choose
+**Import from a browser** in Meiro. Meiro can import from Chrome,
+Safari, Firefox, Brave or Edge. It can also import from Helium when it finds a
+browser profile. You can also paste the `Cookie` header of a request to
+music.youtube.com.
+
+These two ways copy a session that your own browser keeps using. YouTube
+replaces the cookies of a session while a browser has it open, and the older
+copy then stops working. A copy like this can end within hours, and you have to
+sign in again. Prefer the browser window.
 
 Meiro stores the session in the system credential store where available. If
 the system has no credential store, Meiro uses a file that only your user can
@@ -147,7 +192,13 @@ removes passwords and cookies from log lines before it writes them, but read a
 log before you post it.
 
 **I can't sign in.**
-- Sign in at [music.youtube.com](https://music.youtube.com) in the browser
+- If the browser window does not open, or Google says the browser is not
+  secure, install Chrome, Edge, Brave, Helium, Chromium or Vivaldi, or use one of the
+  other ways to sign in.
+- If you imported a session and it ended, sign in again with the browser
+  window. An imported session stops working when your browser renews its
+  cookies.
+- To import, sign in at [music.youtube.com](https://music.youtube.com) in the browser
   first, then pick that same browser in Meiro. Use a profile where you are
   signed in to YouTube Music.
 - Close the browser, or try again after it has been open for a moment. Some
@@ -190,8 +241,10 @@ relevant part of the log.
 - Windows has no release (see [Install](#install)).
 - The macOS app is not notarized, so the first launch needs the manual step
   above.
-- Signing in works by importing a browser's session, so you must be signed in
-  in a supported browser first. There is no in-app login.
+- Sign-in uses a browser session, because YouTube Music offers no OAuth
+  sign-in to other apps. The browser window needs a Chromium-based browser and
+  can be refused by Google (see [Limits of the browser window](#limits-of-the-browser-window)).
+  Sessions that you import from your own browser can stop working within hours.
 - Tracks that YouTube restricts for your region or account may not play.
 
 See the [open issues](https://github.com/elianiva/meiro/issues) for the rest.
@@ -223,8 +276,9 @@ What Meiro keeps on your device:
   limit to `0` to turn the audio cache off.
 - **Logs**, with secrets removed, in the logs folder.
 
-Meiro reads your browser's cookies only when you choose **Sign in**, and only
-to take the YouTube Music session.
+Meiro reads cookies only when you choose to sign in, and only to take the
+YouTube Music session. With the browser window, it reads them from the window
+that it opened. With an import, it reads them from the browser that you pick.
 
 ## Build it yourself
 
