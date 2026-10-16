@@ -88,7 +88,10 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 			Key:   "rail-menu",
 		})
 		if expanded {
-			menu.Margin(0, 0, 0, RailCollapsed/2-16)
+			// The button's pointer target is MinTarget wide and its shape
+			// is narrower: the shape sits on the collapsed icon's centre line.
+			reachBy := slop(32)
+			menu.Margin(-reachBy, -reachBy, -reachBy, RailCollapsed/2-MinTarget/2)
 		}
 		if menu.Clicked() {
 			event.Toggle = true

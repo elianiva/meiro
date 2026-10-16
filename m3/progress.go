@@ -117,7 +117,13 @@ func Equalizer(c *ui.Context, size float32, playing bool, color ui.Color) ui.Ele
 			}
 			bh := r.H * h
 			x := r.X + bar*float32(2*i) + bar*0.0
-			p.Fill(ui.Rect{X: x, Y: r.Y + r.H - bh, W: bar, H: bh}, color, bar/2)
+			// Dancing bars grow from the floor; at rest they are dots in the
+			// middle, where the row's text is centred.
+			y := r.Y + r.H - bh
+			if !playing {
+				y = r.Y + (r.H-bh)/2
+			}
+			p.Fill(ui.Rect{X: x, Y: y, W: bar, H: bh}, color, bar/2)
 		}
 	})
 	return e

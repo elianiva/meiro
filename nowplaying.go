@@ -286,6 +286,7 @@ func (a *app) playerBar(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	w, _ := c.Size()
 	wide := w > 1180
+	roomy := w > 800
 	bar := ui.Row(c.Key("player")).Absolute().Left(playerGutter).Right(playerGutter).Bottom(playerGutter).
 		Height(playerHeight).Padding(10, 20, 10, 12).Gap(16).AlignItems(ui.Center).
 		Radius(m3.ExtraLarge).Background(sc.SurfaceContainerHigh)
@@ -312,12 +313,25 @@ func (a *app) playerBar(c *ui.Context) {
 			a.loadPanel()
 		}
 
-		ui.Column(c).Grow(2).Basis(0).MinWidth(260).MaxWidth(580).Gap(0).Children(func() {
+		// In a narrow window the track keeps its share: the transport takes
+		// what it needs and the buttons on the right take no more than they
+		// are wide.
+		transportGrow := float32(2)
+		if !roomy {
+			transportGrow = 1
+		}
+		ui.Column(c).Grow(transportGrow).Basis(0).MinWidth(220).MaxWidth(580).Gap(0).Children(func() {
 			a.transport(c, 48, 4)
 			a.scrubber(c)
 		})
 
-		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Gap(2).Children(func() {
+		end := ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(2)
+		if roomy {
+			end.Grow(1).Basis(0).MinWidth(0)
+		} else {
+			end.Shrink(0)
+		}
+		end.Children(func() {
 			if wide {
 				a.volumeControl(c, 108)
 			}
@@ -426,7 +440,9 @@ func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius fl
 		}
 		menuButton = m3.IconButton(c, m3.IconButtonSpec{
 			Icon: m3.IconMore, Label: "More options for " + a.current.Title, Key: key + "-button",
-		}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
+			// On a picture the dots need a ground of their own.
+			Container: m3.Of(c).Scheme.SurfaceContainerHighest.Alpha(0.85),
+		}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(0).Right(0)
 	})
 	m3.Elevation(c, artwork, 3)
 	if menuButton.Clicked() {
@@ -470,7 +486,7 @@ func (a *app) nowPlayingTabs(c *ui.Context) {
 				container, content = sc.SecondaryContainer, sc.OnSecondaryContainer
 			}
 			button := ui.ButtonBase(c.Key("np-tab-" + t.label))
-			button.Grow(1).Basis(0).MinWidth(0).Height(40).PaddingX(4).Center().Radius(m3.Full).
+			button.Grow(1).Basis(0).MinWidth(0).Height(m3.MinTarget).PaddingX(4).Center().Radius(m3.Full).
 				Cursor(ui.CursorPointer).Label(t.label).Tooltip(t.label).
 				Background(m3.StateFill(container, content, button.Hovered(), button.Pressed(), button.FocusVisible()))
 			button.Children(func() {

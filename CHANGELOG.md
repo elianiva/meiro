@@ -10,6 +10,28 @@ and this project adheres to
 
 ### Fixed
 
+- **Small buttons are easier to hit.** Icon buttons, chips, switches and
+  sliders now react to a press up to 48 pixels around them, as large as their
+  look is small. The search bar keeps one width on every page, the
+  playlist page lines its "Songs" heading up with the other pages, and the
+  equaliser sliders spread across their card.
+- **Cards line up with their heading, and the player bar fits narrow windows.**
+  The name and details under a card's picture start at the picture's edge, as
+  the section heading does. In a narrow window the player bar keeps room for
+  the track's name instead of showing "…".
+- **Album, playlist and artist pages fit narrow windows.** The picture and the
+  buttons shrink, so Play, Shuffle and the rest stay on one line. The pictures
+  of the songs now start where the page's picture and headings do.
+- **The expanded navigation rail lines up.** Its menu button sits over the
+  icons below it and no longer pushes them down when the rail opens. The twelve
+  colours in Settings fit on one line.
+- **The menu button on a picture can be seen.** On the large picture of the
+  player and on cards, the three dots sat straight on the artwork and
+  vanished against a bright cover. They now have a soft round ground.
+- **Song lengths no longer jump.** A song's length stayed put only until the
+  pointer reached its row, when the menu button pushed it to the left. The
+  button now has its place held, and the dots of the song that is paused sit in
+  the middle of its row.
 - **Songs in the queue no longer show as videos.** The recommended tracks after
   a song now show as songs. Only real music videos carry the video badge.
 

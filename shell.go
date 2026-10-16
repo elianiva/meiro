@@ -182,10 +182,10 @@ func (a *app) topBar(c *ui.Context) {
 		if r.heading != nil {
 			title = r.heading(c.Now())
 		}
-		m3.EmphasizedText(c, m3.HeadlineMedium, title).SingleLine().TextColor(sc.OnSurface)
+		m3.EmphasizedText(c, m3.HeadlineMedium, title).SingleLine().TextColor(sc.OnSurface).Shrink(0)
 		ui.Spacer(c)
 		var bar ui.Element
-		a.hinted(c, func() { bar = a.searchBar(c) }, keymap.Search).Grow(1).MinWidth(0).MaxWidth(520)
+		a.hinted(c, func() { bar = a.searchBar(c) }, keymap.Search).Width(520).Shrink(1).MinWidth(0)
 		a.searchSuggestions(c, bar)
 		a.accountButton(c)
 	})
