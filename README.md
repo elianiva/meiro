@@ -101,9 +101,12 @@ compatible RPM-based distribution. You can also make the `.AppImage` executable
 and run it, or unpack the `.tar.gz` and run its `install.sh`. All Linux builds
 need GTK 3 and WebKitGTK 4.1.
 
-**Windows**: there is no Windows release. The code is type-checked for Windows
-in CI, but nobody tests it there, and Windows is not supported yet. Windows
-builds and bug reports are not planned for 0.1.
+**Windows**: run the `.exe` installer. It installs Meiro for the current user,
+with a Start Menu entry and an uninstaller, and it bundles ffmpeg, yt-dlp and
+QuickJS, so nothing else has to be installed. The installer is not code-signed
+yet, so Windows asks you to confirm the first time (**More info** then **Run
+anyway**). The Windows build is newer than the others and has been verified
+under Wine, not on Windows itself.
 
 ## Signing in
 
@@ -223,7 +226,8 @@ relevant part of the log.
 
 - Meiro depends on YouTube's private interfaces and on yt-dlp, so a change on
   YouTube's side can break browsing, playback or sign-in until a fix ships.
-- Windows has no release (see [Install](#install)).
+- The Windows build is new: it has been verified under Wine rather than on
+  Windows, and its installer is not code-signed yet.
 - The macOS app is not notarized, so the first launch needs the manual step
   above.
 - Sign-in uses a browser session, because YouTube Music offers no OAuth
@@ -279,14 +283,16 @@ bazel run //:dist -- --run --minimal linux-amd64   # build and open with system 
 
 `bazel run //:dist -- <platform>` builds into `build/<platform>/`. The
 platforms are `darwin-universal`, `darwin-arm64`, `darwin-amd64`,
-`linux-amd64` and `linux-arm64`.
+`linux-amd64`, `linux-arm64` and `windows-amd64`.
 
 The minimal build expects `ffmpeg`, `yt-dlp`, and either Node.js or Bun on
 `PATH`. It does not bundle any of these tools or a JavaScript runtime.
 
 Releases include full and minimal builds: one universal DMG for macOS, plus
 Linux `amd64` and `arm64` `.deb`, `.rpm`, `.AppImage`, and `.tar.gz`
-downloads. Minimal downloads include `-minimal` in the filename. See
+downloads. Minimal downloads include `-minimal` in the filename. Windows
+`amd64` gets an `.exe` installer, which is always a full build: the tools it
+bundles are the ones a Windows user has no easy way to install. See
 [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 ## Credits

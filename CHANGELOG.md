@@ -8,6 +8,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- **Windows.** Every release now has a Windows `amd64` `.exe` installer. It
+  installs Meiro for the current user, with a Start Menu entry and an
+  uninstaller, and it is always a full build: ffmpeg, yt-dlp and QuickJS ship
+  inside it, as the macOS and Linux full builds do.
+
 ### Fixed
 
 - **Songs in the queue no longer show as videos.** The recommended tracks after

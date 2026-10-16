@@ -201,6 +201,11 @@ jobs:
           - { platform: darwin-universal, os: macos-latest, variant: minimal }
           - { platform: linux-amd64, os: ubuntu-latest, variant: minimal }
           - { platform: linux-arm64, os: ubuntu-latest, variant: minimal }
+          # Windows builds on Linux, like the other platforms MyGo does not
+          # need cgo for; its installer needs NSIS, which the step below
+          # installs. There is no minimal Windows build: the tools are what a
+          # Windows user has no way to install as easily.
+          - { platform: windows-amd64, os: ubuntu-latest, variant: full }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -266,12 +271,30 @@ jobs:
           name: ffmpeg-darwin-amd64
           path: resources/darwin-amd64
       # Only the full build downloads the ffmpeg artifact; minimal resolves
-      # ffmpeg and yt-dlp from PATH at runtime.
+      # ffmpeg and yt-dlp from PATH at runtime. The Windows build fetches its
+      # own ffmpeg, which is a release of another project rather than a build
+      # of this one (see scripts/fetch-tools.sh).
       - uses: actions/download-artifact@v8
-        if: matrix.variant == 'full' && matrix.platform != 'darwin-universal'
+        if: matrix.variant == 'full' && matrix.platform != 'darwin-universal' && matrix.platform != 'windows-amd64'
         with:
           name: ffmpeg-${{ matrix.platform }}
           path: resources/${{ matrix.platform }}
+
+      # NSIS makes the Windows installer, and it runs on the system it builds
+      # for. The Debian package ships makensis alone, so the rest of NSIS comes
+      # from the official archive of the same version, which NSISDIR points
+      # makensis at.
+      - name: Set up the Windows installer
+        if: matrix.platform == 'windows-amd64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nsis unzip
+          version="$(makensis -VERSION | tr -d v)"
+          curl --fail --location --silent --show-error \
+            "https://downloads.sourceforge.net/project/nsis/NSIS%203/${version}/nsis-${version}.zip" \
+            --output "$RUNNER_TEMP/nsis.zip"
+          unzip -q "$RUNNER_TEMP/nsis.zip" -d "$RUNNER_TEMP/nsis"
+          echo "NSISDIR=$RUNNER_TEMP/nsis/nsis-${version}" >> "$GITHUB_ENV"
 
       - name: Build
         if: matrix.variant == 'full'
@@ -319,6 +342,10 @@ jobs:
               ;;
             linux-*)
               scripts/package-linux.sh "${{ matrix.platform }}" "$VERSION" artifacts "${{ matrix.variant }}"
+              ;;
+            windows-*)
+              setup="$(find "dist/${{ matrix.platform }}" -maxdepth 1 -name '*Setup*.exe')"
+              cp "$setup" "artifacts/Meiro-${VERSION}-windows-${arch}-setup.exe"
               ;;
           esac
           # The signed update archive, deltas and manifest. The full
@@ -386,6 +413,7 @@ jobs:
             echo
             echo "- **macOS**: the universal \`.dmg\` (Apple Silicon and Intel)."
             echo "- **Linux** (\`amd64\`, \`arm64\`): \`.deb\`, \`.rpm\`, \`.AppImage\` or \`.tar.gz\`."
+            echo "- **Windows** (\`amd64\`): the \`.exe\` installer, which installs for the current user."
             echo "- Full builds bundle ffmpeg and yt-dlp; \`minimal\` builds use the ones on your system."
             echo "- Verify downloads with \`SHA256SUMS.txt\`."
             echo
