@@ -238,7 +238,7 @@ func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 	case a.volume < 45:
 		icon = m3.IconVolumeDown
 	}
-	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
+	ui.Row(c).Gap(16).AlignItems(ui.Center).Shrink(0).Children(func() {
 		a.hinted(c, func() {
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: "Mute", Key: "mute"}).Clicked() {
 				a.toggleMute()
@@ -321,11 +321,11 @@ func (a *app) playerBar(c *ui.Context) {
 			transportGrow = 1
 		}
 		ui.Column(c).Grow(transportGrow).Basis(0).MinWidth(220).MaxWidth(580).Gap(0).Children(func() {
-			a.transport(c, 48, 4)
+			a.transport(c, 48, 8)
 			a.scrubber(c)
 		})
 
-		end := ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(2)
+		end := ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(16)
 		if roomy {
 			end.Grow(1).Basis(0).MinWidth(0)
 		} else {

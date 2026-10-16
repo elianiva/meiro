@@ -12,7 +12,8 @@ and this project adheres to
 
 - **Small buttons are easier to hit.** Icon buttons, chips, switches and
   sliders now react to a press up to 48 pixels around them, as large as their
-  look is small. The search bar keeps one width on every page, the
+  look is small. The player's buttons sit a little further apart, so a press
+  on one never lands on the next. The search bar keeps one width on every page, the
   playlist page lines its "Songs" heading up with the other pages, and the
   equaliser sliders spread across their card.
 - **Cards line up with their heading, and the player bar fits narrow windows.**
