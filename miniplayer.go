@@ -48,7 +48,7 @@ func (a *app) miniPlayer(c *ui.Context) {
 			a.trackLine(c, m3.TitleMedium, m3.BodyMedium).Grow(1)
 		})
 		a.scrubber(c)
-		a.transport(c, 52, 8)
+		a.transport(c, 52, 4)
 		if a.nowPlaying.miniExpanded {
 			a.sidePanel(c, false)
 		}

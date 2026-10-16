@@ -252,7 +252,7 @@ func (a *app) soundCard(c *ui.Context) {
 		// or cut fills between the two.
 		ui.Row(c).FillWidth().MaxWidth(640).Gap(4).Justify(ui.SpaceBetween).Children(func() {
 			for i := range player.EQBandCount {
-				ui.Column(c).Gap(6).Width(46).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Gap(6).Width(m3.MinTarget).AlignItems(ui.Center).Children(func() {
 					slider := m3.Slider(c, &a.settings.EQBands[i], -eqBoostRange, eqBoostRange, m3.SliderSpec{
 						Label: eqLabels[i] + " dB", Key: "eq-" + strconv.Itoa(i),
 						Thickness: 6, Vertical: true, Disabled: !a.settings.EQOn,
