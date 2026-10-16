@@ -8,6 +8,12 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- **Windows release (untested).** Each release now includes a Windows
+  installer (`amd64`) in a full and a minimal build. Windows support is
+  untested: the author has no Windows machine, and no one has run Meiro there.
+
 ### Fixed
 
 - **Small buttons are easier to hit.** Icon buttons, chips, switches and
@@ -33,6 +39,9 @@ and this project adheres to
   pointer reached its row, when the menu button pushed it to the left. The
   button now has its place held, and the dots of the song that is paused sit in
   the middle of its row.
+- **Window buttons on Windows sit on the grey frame.** The page
+  surface now starts below them instead of running under them, and the
+  navigation rail no longer keeps an empty band at its top.
 - **Songs in the queue no longer show as videos.** The recommended tracks after
   a song now show as songs. Only real music videos carry the video badge.
 

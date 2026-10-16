@@ -17,7 +17,7 @@ cd "${BUILD_WORKSPACE_DIRECTORY:?run this with bazel run //:dist}"
 
 usage() {
 	echo "usage: bazel run //:dist -- [--minimal] [--out DIR] [--run] <platform>" >&2
-	echo "platforms: darwin-universal darwin-arm64 darwin-amd64 linux-amd64 linux-arm64" >&2
+	echo "platforms: darwin-universal darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64" >&2
 }
 
 minimal=false
@@ -108,5 +108,6 @@ fi
 dir="${out:-build}/$platform"
 case "$platform" in
 darwin-*) open "$dir/Meiro.app" ;;
+windows-*) "$dir/Meiro.exe" ;;
 *) "$dir/meiro" ;;
 esac

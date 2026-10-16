@@ -101,9 +101,9 @@ compatible RPM-based distribution. You can also make the `.AppImage` executable
 and run it, or unpack the `.tar.gz` and run its `install.sh`. All Linux builds
 need GTK 3 and WebKitGTK 4.1.
 
-**Windows**: there is no Windows release. The code is type-checked for Windows
-in CI, but nobody tests it there, and Windows is not supported yet. Windows
-builds and bug reports are not planned for 0.1.
+**Windows**: run the `-setup.exe` installer. **Windows support is untested.**
+I don't have Windows to test it, but it's there if you want it. Feel free to
+open any issues though.
 
 ## Signing in
 
@@ -223,7 +223,7 @@ relevant part of the log.
 
 - Meiro depends on YouTube's private interfaces and on yt-dlp, so a change on
   YouTube's side can break browsing, playback or sign-in until a fix ships.
-- Windows has no release (see [Install](#install)).
+- The Windows build is untested (see [Install](#install)).
 - The macOS app is not notarized, so the first launch needs the manual step
   above.
 - Sign-in uses a browser session, because YouTube Music offers no OAuth

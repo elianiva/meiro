@@ -40,7 +40,7 @@ func (a *app) view(c *ui.Context) {
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 		a.rail(c, bar)
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			a.sheet(c)
+			a.sheet(c, bar)
 		})
 	})
 	a.signInDialog(c)
@@ -79,12 +79,17 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 	if r.nav != routeNotFound {
 		selected = navID(r.nav)
 	}
+	// Only controls on the left (the traffic lights) sit over the rail.
+	topInset := float32(0)
+	if bar.Left > 0 {
+		topInset = bar.Height
+	}
 	event := m3.Rail(c, m3.RailSpec{
 		Items:    items,
 		Footer:   footer,
 		Selected: selected,
 		Expanded: a.settings.RailExpanded,
-		TopInset: bar.Height,
+		TopInset: topInset,
 	})
 	if event.Toggle {
 		a.settings.RailExpanded = !a.settings.RailExpanded
@@ -110,17 +115,23 @@ const sheetCorner = sheetInset + m3.ExtraLarge*1.528665
 // full-window fill under it: the sheet covers all of the window but that
 // edge and the corners its rounding cuts, so a full-window quad is the
 // largest thing a frame would paint.
-func (a *app) sheet(c *ui.Context) {
+func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 	sc := m3.Of(c).Scheme
 	tint := sc.SurfaceContainerLow
-	ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(sheetInset).Background(tint)
+	// Window buttons on the right (Windows) sit on the tint, so the
+	// sheet starts below them.
+	top := float32(sheetInset)
+	if bar.Right > 0 {
+		top = max(top, bar.Height)
+	}
+	ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(top).Background(tint).DragWindow()
 	ui.Box(c).Absolute().Top(0).Right(0).Bottom(0).Width(sheetInset).Background(tint)
 	ui.Box(c).Absolute().Bottom(0).Left(0).Right(0).Height(sheetInset).Background(tint)
 	ui.Box(c).Absolute().Top(0).Left(0).Size(sheetCorner, sheetCorner).Background(tint)
 	ui.Box(c).Absolute().Top(0).Right(0).Size(sheetCorner, sheetCorner).Background(tint)
 	ui.Box(c).Absolute().Bottom(0).Left(0).Size(sheetCorner, sheetCorner).Background(tint)
 	ui.Box(c).Absolute().Bottom(0).Right(0).Size(sheetCorner, sheetCorner).Background(tint)
-	sheet := ui.Column(c.Key("sheet")).Absolute().Top(sheetInset).Left(0).Right(sheetInset).Bottom(sheetInset).
+	sheet := ui.Column(c.Key("sheet")).Absolute().Top(top).Left(0).Right(sheetInset).Bottom(sheetInset).
 		Radius(m3.ExtraLarge)
 	if !a.nowPlaying.open {
 		sheet.Background(sc.Surface)

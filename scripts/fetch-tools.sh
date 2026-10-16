@@ -7,7 +7,7 @@
 #   scripts/fetch-tools.sh darwin-arm64
 #   scripts/fetch-tools.sh --minimal darwin-arm64
 #
-# Platforms: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64.
+# Platforms: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64, windows-amd64.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
@@ -17,7 +17,7 @@ if [[ "${1:-}" == --minimal ]]; then
 	minimal=true
 	shift
 fi
-platform="${1:?usage: fetch-tools.sh [--minimal] <darwin-arm64|darwin-amd64|linux-amd64|linux-arm64>}"
+platform="${1:?usage: fetch-tools.sh [--minimal] <darwin-arm64|darwin-amd64|linux-amd64|linux-arm64|windows-amd64>}"
 
 # yt-dlp ships as the one-directory build: the one-file build unpacks itself to
 # a temporary directory on every launch, which costs about 0.4 s per resolve.
@@ -67,11 +67,25 @@ case "$platform" in
 		quickjs_asset="qjs-linux-aarch64"
 		quickjs_sha256="3372133484edf50a69f3c67903af41206d22a061e930e3cfb63269272ef56d2e"
 		;;
+	windows-amd64)
+		ytdlp_asset="yt-dlp_win.zip"
+		quickjs_asset="qjs-windows-x86_64.exe"
+		quickjs_sha256="2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77"
+		;;
 	*)
 		printf 'Unsupported platform: %s\n' "$platform" >&2
 		exit 1
 		;;
 esac
+
+# Windows programs end in .exe. The yt-dlp zip names its executable the same
+# way on every system except Windows, where it is yt-dlp.exe.
+exe=""
+ytdlp_file="${ytdlp_asset%.zip}"
+if [[ "$platform" == windows-* ]]; then
+	exe=".exe"
+	ytdlp_file="yt-dlp.exe"
+fi
 
 sha256() {
 	if command -v sha256sum >/dev/null 2>&1; then
@@ -125,7 +139,8 @@ download() { # url path
 prune_ytdlp() { # bin platform
 	local bin="$1" platform="$2"
 	rm -rf "$bin"/_internal/curl_cffi* "$bin"/_internal/Cryptodome* \
-		"$bin"/_internal/_brotli.cpython-*.so "$bin"/_internal/websockets*
+		"$bin"/_internal/_brotli.cpython-*.so "$bin"/_internal/_brotli.*.pyd \
+		"$bin"/_internal/websockets*
 
 	[[ "$platform" == darwin-* ]] || return 0
 
@@ -157,6 +172,7 @@ if [[ "$minimal" == true ]]; then
 	# Reuse of a resource directory must not accidentally carry full-build
 	# tools into a minimal app.
 	rm -rf "$out/bin/ffmpeg" "$out/bin/yt-dlp" "$out/bin/_internal" \
+		"$out/bin/ffmpeg.exe" "$out/bin/yt-dlp.exe" "$out/bin/qjs.exe" \
 		"$out/bin/qjs" "$out/bin/.ffmpeg.stamp" "$out/bin/.yt-dlp.sha256" \
 		"$out/licenses/ffmpeg-COPYING.LGPLv3" "$out/licenses/quickjs-MIT.txt"
 	echo "ready in ${out}"
@@ -172,15 +188,15 @@ expected="$(awk -v name="$ytdlp_asset" '$2 == name || $2 == "*" name { print $1 
 # The zip holds the executable and an _internal/ directory it finds beside
 # itself, so both are installed into bin/. The zip's checksum is recorded to
 # tell a later run that the download is current.
-if [[ -x "$out/bin/yt-dlp" && -d "$out/bin/_internal" && "$(cat "$out/bin/.yt-dlp.sha256" 2>/dev/null)" == "$expected" ]]; then
+if [[ -x "$out/bin/yt-dlp$exe" && -d "$out/bin/_internal" && "$(cat "$out/bin/.yt-dlp.sha256" 2>/dev/null)" == "$expected" ]]; then
 	echo "  already downloaded"
 else
 	download "${ytdlp_url}/${ytdlp_asset}" "$work/yt-dlp.zip"
 	verify "$work/yt-dlp.zip" "$expected"
 	unzip -q "$work/yt-dlp.zip" -d "$work/yt-dlp"
-	rm -rf "$out/bin/_internal" "$out/bin/yt-dlp"
+	rm -rf "$out/bin/_internal" "$out/bin/yt-dlp$exe"
 	cp -R "$work/yt-dlp/_internal" "$out/bin/_internal"
-	install -m 0755 "$work/yt-dlp/${ytdlp_asset%.zip}" "$out/bin/yt-dlp"
+	install -m 0755 "$work/yt-dlp/$ytdlp_file" "$out/bin/yt-dlp$exe"
 	# The macOS zip flattens the versioned-framework symlinks of
 	# _internal/Python.framework into duplicate real files, which codesign
 	# rejects as an ambiguous bundle format. Restore the canonical layout
@@ -207,12 +223,12 @@ else
 fi
 
 echo "quickjs ${QUICKJS_VERSION} for ${platform}"
-if cached "$out/bin/qjs" "$quickjs_sha256"; then
+if cached "$out/bin/qjs$exe" "$quickjs_sha256"; then
 	echo "  already downloaded"
 else
 	download "${quickjs_url}/${quickjs_asset}" "$work/qjs"
 	verify "$work/qjs" "$quickjs_sha256"
-	install -m 0755 "$work/qjs" "$out/bin/qjs"
+	install -m 0755 "$work/qjs" "$out/bin/qjs$exe"
 fi
 if [[ ! -f "$out/licenses/quickjs-MIT.txt" ]]; then
 	curl -fsSL -o "$out/licenses/quickjs-MIT.txt" \
