@@ -127,7 +127,7 @@ func (a *app) sectionHeading(c *ui.Context, r row, paged, first bool) {
 	if first {
 		top = 4
 	}
-	ui.Row(c).Padding(top, pageGutter-8, 8, pageGutter).Gap(4).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Padding(top, pageGutter-8, 8, pageGutter).Gap(16).AlignItems(ui.Center).Children(func() {
 		m3.EmphasizedText(c, m3.TitleLarge, r.title).SingleLine().Grow(1).MinWidth(0).TextColor(sc.OnSurface)
 		if !paged {
 			return
@@ -566,6 +566,9 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		// A row of the queue has its own remove button; the track playing
 		// stays.
 		if o.list == "queue" {
+			// Two buttons side by side need their shapes 16 apart, or the
+			// pointer targets overlap.
+			ui.Box(c).Size(8, 0).Shrink(0)
 			if o.position != a.queue.index {
 				m3.IconButton(c, m3.IconButtonSpec{
 					Icon: m3.IconClose, Label: "Remove " + item.Title + " from the queue", Key: key + "-remove",
