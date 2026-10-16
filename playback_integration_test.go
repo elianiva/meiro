@@ -1106,3 +1106,33 @@ func TestSeekingNearTheEndStillHandsOver(t *testing.T) {
 	pollUntil(t, a, "b to be readied again", func() bool { return a.player.Preloaded() == "b" || a.current.VideoID == "b" })
 	followsWithoutPause(t, a, "b")
 }
+
+// The 48 DIP targets of two neighbouring buttons must not cover each other's
+// drawn shape: a press just inside the edge of "Up next" is its own, not the
+// next button's.
+func TestPlayerBarButtonsKeepTheirOwnEdges(t *testing.T) {
+	const shape = 32 // the drawn side of both buttons
+	for _, side := range []string{"left", "right"} {
+		a, _ := playbackApp(t)
+		a.router.Push("/album/MPREb_test")
+		tt := ui.NewTester(a.view, 1000, 700)
+		if err := tt.Click("Album Track One"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		r, ok := tt.Find("Up next")
+		if !ok {
+			t.Fatalf("no Up next: %q", tt.Texts())
+		}
+		inset := (r.W - shape) / 2
+		x := r.X + inset + 2
+		if side == "right" {
+			x = r.X + r.W - inset - 2
+		}
+		tt.ClickAt(x, r.Y+r.H/2)
+		if !a.nowPlaying.open || !a.nowPlaying.queueOnly {
+			t.Errorf("a press 2 px inside the %s edge of Up next did not open Up next (open=%v, queueOnly=%v)",
+				side, a.nowPlaying.open, a.nowPlaying.queueOnly)
+		}
+	}
+}

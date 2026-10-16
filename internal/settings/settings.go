@@ -55,6 +55,8 @@ type Settings struct {
 	// the browser goes on using it, so this is where the session is read again
 	// when YouTube stops accepting the saved one.
 	SignInSource string `json:"signInSource,omitempty"`
+	// StaticLyrics shows lyrics as plain text even when a track has them timed.
+	StaticLyrics bool `json:"staticLyrics,omitempty"`
 	// NotifyTrack shows a desktop notification when a new track starts.
 	NotifyTrack bool `json:"notifyTrack"`
 	// GlobalShortcut plays or pauses from anywhere with

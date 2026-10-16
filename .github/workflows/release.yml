@@ -147,6 +147,8 @@ jobs:
           - { platform: darwin-amd64, os: macos-latest }
           - { platform: linux-amd64, os: ubuntu-latest }
           - { platform: linux-arm64, os: ubuntu-24.04-arm }
+          # Cross-compiled on Linux with MinGW-w64.
+          - { platform: windows-amd64, os: ubuntu-latest }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -166,14 +168,23 @@ jobs:
             apk add --no-cache bash build-base curl nasm openssl-dev openssl-libs-static pkgconf tar xz
             scripts/build-ffmpeg.sh "${{ matrix.platform }}"
             chown -R '"$(id -u):$(id -g)"' resources'
+      - name: Build ffmpeg with MinGW-w64
+        if: startsWith(matrix.platform, 'windows-') && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 nasm xz-utils
+          scripts/build-ffmpeg.sh "${{ matrix.platform }}"
       - name: Build ffmpeg
         if: startsWith(matrix.platform, 'darwin-') && steps.cache.outputs.cache-hit != 'true'
         run: scripts/build-ffmpeg.sh "${{ matrix.platform }}"
       - name: Check the build
         run: |
           ffmpeg="resources/${{ matrix.platform }}/bin/ffmpeg"
+          if [ "${{ matrix.platform }}" = windows-amd64 ]; then ffmpeg="$ffmpeg.exe"; fi
           ls -la "$ffmpeg"
-          if [ "${{ matrix.platform }}" != darwin-amd64 ]; then
+          # A Windows binary cannot run on this runner, and neither can the
+          # Intel macOS one built on Apple Silicon.
+          if [ "${{ matrix.platform }}" != darwin-amd64 ] && [ "${{ matrix.platform }}" != windows-amd64 ]; then
             "$ffmpeg" -hide_banner -protocols | grep -x '  https'
             "$ffmpeg" -hide_banner -decoders | grep -E ' (opus|aac) '
           fi
@@ -198,9 +209,11 @@ jobs:
           - { platform: darwin-universal, os: macos-latest, variant: full }
           - { platform: linux-amd64, os: ubuntu-latest, variant: full }
           - { platform: linux-arm64, os: ubuntu-latest, variant: full }
+          - { platform: windows-amd64, os: ubuntu-latest, variant: full }
           - { platform: darwin-universal, os: macos-latest, variant: minimal }
           - { platform: linux-amd64, os: ubuntu-latest, variant: minimal }
           - { platform: linux-arm64, os: ubuntu-latest, variant: minimal }
+          - { platform: windows-amd64, os: ubuntu-latest, variant: minimal }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -306,6 +319,11 @@ jobs:
           chmod +x "$RUNNER_TEMP/appimagetool"
           echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
 
+      # MyGo makes the Windows installer with NSIS, which Linux can run.
+      - name: Set up the Windows installer tool
+        if: startsWith(matrix.platform, 'windows-')
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
+
       - name: Collect the downloads
         run: |
           mkdir artifacts
@@ -316,6 +334,12 @@ jobs:
               suffix=""
               if [ "${{ matrix.variant }}" = minimal ]; then suffix=-minimal; fi
               cp "$dmg" "artifacts/Meiro-${VERSION}-macos-${arch}${suffix}.dmg"
+              ;;
+            windows-*)
+              installer="$(find "dist/${{ matrix.platform }}" -maxdepth 1 -name '*Setup*.exe')"
+              suffix=""
+              if [ "${{ matrix.variant }}" = minimal ]; then suffix=-minimal; fi
+              cp "$installer" "artifacts/Meiro-${VERSION}-windows-${arch}${suffix}-setup.exe"
               ;;
             linux-*)
               scripts/package-linux.sh "${{ matrix.platform }}" "$VERSION" artifacts "${{ matrix.variant }}"
@@ -385,6 +409,7 @@ jobs:
             echo "## Downloads"
             echo
             echo "- **macOS**: the universal \`.dmg\` (Apple Silicon and Intel)."
+            echo "- **Windows** (\`amd64\`): the \`-setup.exe\` installer. Untested: the author has no Windows machine."
             echo "- **Linux** (\`amd64\`, \`arm64\`): \`.deb\`, \`.rpm\`, \`.AppImage\` or \`.tar.gz\`."
             echo "- Full builds bundle ffmpeg and yt-dlp; \`minimal\` builds use the ones on your system."
             echo "- Verify downloads with \`SHA256SUMS.txt\`."

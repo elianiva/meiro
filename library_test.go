@@ -186,3 +186,20 @@ func TestTakingAPlaylistOutOfTheLibraryFromItsCard(t *testing.T) {
 		t.Fatalf("a card that carried no toggle offers the library: %q", tt.Texts())
 	}
 }
+
+// A control that looks small still takes a press 48 DIPs wide and high.
+func TestSmallControlsHaveAFullSizeTarget(t *testing.T) {
+	a := newTestApp()
+	a.router.Push("/home")
+	a.router.Push("/album/MPREb_test")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	back, ok := tt.Find("Back")
+	if !ok || back.W < 48 || back.H < 48 {
+		t.Fatalf("the back button is %+v, want at least 48x48", back)
+	}
+	tt.ClickAt(back.X+back.W/2+20, back.Y+back.H/2+20)
+	if p := a.router.Path(); p != "/home" {
+		t.Errorf("a press beside the button's drawn shape went to %q, want /home", p)
+	}
+}

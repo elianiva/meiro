@@ -163,6 +163,14 @@ type innerTubeClient string
 const (
 	musicClient innerTubeClient = "YTMUSIC"
 	webClient   innerTubeClient = "WEB"
+	// androidMusicClient is the YouTube Music app for Android, the only one
+	// that is given a track's lyrics with the time each line is sung.
+	androidMusicClient innerTubeClient = "ANDROID_MUSIC"
+)
+
+const (
+	androidMusicVersion   = "7.21.50"
+	androidMusicUserAgent = "com.google.android.apps.youtube.music/" + androidMusicVersion + " (Linux; U; Android 14) gzip"
 )
 
 func (c *Client) execute(ctx context.Context, endpoint string, payload map[string]any) (json.RawMessage, error) {
@@ -176,6 +184,8 @@ func (c *Client) executeForClient(ctx context.Context, endpoint string, payload 
 		clientName, clientID, clientVersion = defaultMusicContext, defaultMusicClientID, c.clientVersion
 	case webClient:
 		clientName, clientID, clientVersion = "WEB", "1", c.webClientVersion
+	case androidMusicClient:
+		clientName, clientID, clientVersion = "ANDROID_MUSIC", "21", androidMusicVersion
 	}
 	requestContext := c.context()
 	requestContext.Client.ClientName = clientName
@@ -211,6 +221,9 @@ func (c *Client) executeForClient(ctx context.Context, endpoint string, payload 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", browserUserAgent)
+	if client == androidMusicClient {
+		req.Header.Set("User-Agent", androidMusicUserAgent)
+	}
 	origin := parsedURL.Scheme + "://" + parsedURL.Host
 	req.Header.Set("Origin", origin)
 	req.Header.Set("Referer", origin+"/")

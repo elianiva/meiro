@@ -84,7 +84,7 @@ func (a *app) subscribeButton(c *ui.Context) {
 	if s.Subscribed {
 		label, icon, kind = "Subscribed", m3.IconCheck, m3.Outlined
 	}
-	if m3.Button(c, m3.ButtonSpec{Label: label, Icon: icon, Kind: kind, Size: m3.Medium56, Key: "hero-subscribe"}).Clicked() {
+	if m3.Button(c, m3.ButtonSpec{Label: label, Icon: icon, Kind: kind, Size: a.heroButtonSize(), Key: "hero-subscribe"}).Clicked() {
 		a.toggleSubscription()
 	}
 }

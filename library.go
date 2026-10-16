@@ -124,7 +124,7 @@ func (a *app) libraryButton(c *ui.Context) {
 	if library.Saved {
 		kind = m3.Outlined
 	}
-	if m3.Button(c, m3.ButtonSpec{Label: label, Icon: icon, Kind: kind, Size: m3.Medium56, Key: "hero-library"}).Clicked() {
+	if m3.Button(c, m3.ButtonSpec{Label: label, Icon: icon, Kind: kind, Size: a.heroButtonSize(), Key: "hero-library"}).Clicked() {
 		a.toggleLibrary(library, a.page.detail.title)
 	}
 }

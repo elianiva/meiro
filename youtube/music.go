@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // SearchFilter is one of the filters YouTube Music offers for a search: the
@@ -162,6 +165,15 @@ type AccountList struct {
 type Lyrics struct {
 	Description string `json:"description,omitempty"`
 	Footer      string `json:"footer,omitempty"`
+	// Timed is the lyrics line by line with when each is sung, when YouTube
+	// Music has them timed. It is empty when it has only the plain text.
+	Timed []TimedLine `json:"timed,omitempty"`
+}
+
+// TimedLine is one line of lyrics and the moment it starts.
+type TimedLine struct {
+	Start time.Duration `json:"start"`
+	Text  string        `json:"text"`
 }
 
 // UpNextOptions identifies the playback queue whose next items are requested.
@@ -667,10 +679,19 @@ func searchSuggestions(root any) []string {
 }
 
 // GetLyrics loads the lyrics tab for a track. Availability depends on the
-// track and YouTube Music account/region.
+// track and YouTube Music account/region. The web client gives the lyrics as
+// plain text; the timed ones, which only the Android app is given, are asked
+// for as well, and a track that has none, or a failure to read them, leaves
+// the plain text alone.
 func (c *Client) GetLyrics(ctx context.Context, videoID string) (*Lyrics, error) {
-	raw, err := c.getTrackTab(ctx, videoID, "MUSIC_PAGE_TYPE_TRACK_LYRICS")
+	browseID, err := c.trackTabBrowseID(ctx, videoID, "MUSIC_PAGE_TYPE_TRACK_LYRICS")
 	if err != nil {
+		log.Printf("lyrics: youtube video_id=%s: no lyrics tab: %v", videoID, err)
+		return nil, err
+	}
+	raw, err := c.executeForClient(ctx, "browse", map[string]any{"browseId": browseID}, musicClient)
+	if err != nil {
+		log.Printf("lyrics: youtube video_id=%s browse_id=%s: web browse failed: %v", videoID, browseID, err)
 		return nil, err
 	}
 	lyrics := &Lyrics{}
@@ -679,7 +700,63 @@ func (c *Client) GetLyrics(ctx context.Context, videoID string) (*Lyrics, error)
 		lyrics.Description = rendererText(renderer.get("description"))
 		lyrics.Footer = rendererText(renderer.get("footer"))
 	}
+	timed, err := c.executeForClient(ctx, "browse", map[string]any{"browseId": browseID}, androidMusicClient)
+	if err != nil {
+		log.Printf("lyrics: youtube video_id=%s browse_id=%s: android browse failed: %v", videoID, browseID, err)
+	} else {
+		lyrics.Timed = parseTimedLyrics(decodeResponse(timed))
+	}
+	log.Printf("lyrics: youtube video_id=%s browse_id=%s plain_chars=%d timed_lines=%d", videoID, browseID, len(lyrics.Description), len(lyrics.Timed))
 	return lyrics, nil
+}
+
+// parseTimedLyrics reads the lines of a timedLyricsModel, which the Android
+// client's lyrics page buries in its element tree.
+func parseTimedLyrics(root any) []TimedLine {
+	var walk func(any) []TimedLine
+	walk = func(value any) []TimedLine {
+		switch node := value.(type) {
+		case []any:
+			for _, child := range node {
+				if lines := walk(child); lines != nil {
+					return lines
+				}
+			}
+		case *jsonObject:
+			if data, ok := node.get("timedLyricsData").([]any); ok {
+				var lines []TimedLine
+				for _, item := range data {
+					entry, _ := item.(*jsonObject)
+					cue, _ := entry.get("cueRange").(*jsonObject)
+					text, _ := entry.get("lyricLine").(string)
+					start, ok := milliseconds(cue.get("startTimeMilliseconds"))
+					if ok {
+						lines = append(lines, TimedLine{Start: start, Text: strings.TrimSpace(text)})
+					}
+				}
+				return lines
+			}
+			for _, member := range node.members {
+				if lines := walk(member.value); lines != nil {
+					return lines
+				}
+			}
+		}
+		return nil
+	}
+	return walk(root)
+}
+
+// milliseconds reads a time that YouTube sends as a number or as a string.
+func milliseconds(value any) (time.Duration, bool) {
+	switch v := value.(type) {
+	case float64:
+		return time.Duration(v) * time.Millisecond, true
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		return time.Duration(n) * time.Millisecond, err == nil
+	}
+	return 0, false
 }
 
 // GetRelated loads the related music tab for a track.
@@ -697,19 +774,27 @@ func (c *Client) GetRecap(ctx context.Context) (*BrowseResult, error) {
 }
 
 func (c *Client) getTrackTab(ctx context.Context, videoID, pageType string) (json.RawMessage, error) {
-	if strings.TrimSpace(videoID) == "" {
-		return nil, errors.New("youtube: video ID is required")
-	}
-	raw, err := c.execute(ctx, "next", map[string]any{"videoId": videoID})
+	browseID, err := c.trackTabBrowseID(ctx, videoID, pageType)
 	if err != nil {
 		return nil, err
 	}
-	root := decodeResponse(raw)
-	browseID := musicTabBrowseID(root, pageType)
-	if browseID == "" {
-		return nil, fmt.Errorf("youtube: track response has no %s tab", pageType)
-	}
 	return c.execute(ctx, "browse", map[string]any{"browseId": browseID})
+}
+
+// trackTabBrowseID finds the page of a track's tab, such as its lyrics.
+func (c *Client) trackTabBrowseID(ctx context.Context, videoID, pageType string) (string, error) {
+	if strings.TrimSpace(videoID) == "" {
+		return "", errors.New("youtube: video ID is required")
+	}
+	raw, err := c.execute(ctx, "next", map[string]any{"videoId": videoID})
+	if err != nil {
+		return "", err
+	}
+	browseID := musicTabBrowseID(decodeResponse(raw), pageType)
+	if browseID == "" {
+		return "", fmt.Errorf("youtube: track response has no %s tab", pageType)
+	}
+	return browseID, nil
 }
 
 func musicTabBrowseID(root any, pageType string) string {

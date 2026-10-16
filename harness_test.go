@@ -13,6 +13,7 @@ import (
 
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/cookies"
+	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
@@ -181,6 +182,7 @@ func newTestApp() *app {
 	// answer without waiting.
 	a.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 	a.thumbs = artwork.New(&http.Client{Transport: noArtwork{}}, func() {})
+	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) { return nil, nil }
 	a.account.newClient = newFakeClient
 	a.account.public = newFakeClient(nil)
 	return a

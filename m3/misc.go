@@ -21,7 +21,7 @@ func pick[T any](b bool, yes, no T) T {
 // mark in the thumb when on. It toggles *on by itself.
 func Switch(c *ui.Context, on *bool, label string) ui.Element {
 	sc := Of(c).Scheme
-	s := ui.SwitchBase(c.Key("switch-"+label), on).Size(52, 32).Radius(Full).Label(label).
+	s := ui.SwitchBase(c.Key("switch-"+label), on).Size(52, MinTarget).Margin(-slop(32), 0).Label(label).
 		Cursor(ui.CursorPointer).Shrink(0)
 	v := *on
 	progress := Animate(s, "on", pick(v, float32(1), 0), SpatialFast)
@@ -33,6 +33,8 @@ func Switch(c *ui.Context, on *bool, label string) ui.Element {
 		track, outline, thumb, glyph = sc.Primary, sc.Primary, sc.OnPrimary, sc.OnPrimaryContainer
 	}
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
+		// The track is 32 high in the middle of the taller pointer target.
+		r = ui.Rect{X: r.X, Y: r.Y + (r.H-32)/2, W: r.W, H: 32}
 		p.Fill(r, track, r.H/2)
 		if !v {
 			p.Stroke(r, outline, r.H/2, 2)
@@ -89,7 +91,7 @@ func Snackbars(c *ui.Context, inset float32) {
 				}
 				BodyMedium.Style(ui.Text(c, t.Title), false).TextColor(sc.InverseOnSurface).Grow(1).MaxLines(2)
 				if t.Action != "" {
-					action := toast.ActionButton().Padding(0, 12).Height(40).Radius(Full).Center().
+					action := toast.ActionButton().Padding(0, 12).Height(MinTarget).Radius(Full).Center().
 						Cursor(ui.CursorPointer).TextColor(sc.InversePrimary)
 					action.Background(StateFill(ui.Transparent, sc.InversePrimary, action.Hovered(), action.Pressed(), false))
 					action.Children(func() {

@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "lrclib",
+    srcs = ["lrclib.go"],
+    importpath = "github.com/elianiva/meiro/internal/lrclib",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "lrclib_test",
+    srcs = ["lrclib_test.go"],
+    embed = [":lrclib"],
+)

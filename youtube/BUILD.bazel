@@ -24,6 +24,7 @@ go_test(
         "credits_test.go",
         "integration_test.go",
         "library_test.go",
+        "lyrics_test.go",
         "playback_test.go",
         "playlists_test.go",
         "rating_test.go",

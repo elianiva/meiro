@@ -8,14 +8,57 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- **Synced lyrics.** The Lyrics tab now shows timed lyrics, from YouTube Music
+  when it has them and from LRCLIB otherwise. The line being sung is lit and
+  glides to the middle as the song plays, lines fade the further they are from
+  it, and a click on a line jumps to it. Choose **Synced** or **Static** above
+  the lyrics, where the source of the lyrics also shows; Meiro remembers the
+  choice. A lookup that fails is tried again the next time the tab opens.
+- **Windows release (untested).** Each release now includes a Windows
+  installer (`amd64`) in a full and a minimal build. Windows support is
+  untested: the author has no Windows machine, and no one has run Meiro there.
+
 ### Fixed
 
+- **The menu button no longer slides.** When the side menu opens or closes,
+  the button stays above the icons instead of drifting while the menu grows.
+- **Small buttons are easier to hit.** Icon buttons, chips, switches and
+  sliders now react to a press up to 48 pixels around them, as large as their
+  look is small. Neighbouring buttons (the player's, the queue's and a shelf's
+  arrows) sit a little further apart, so a press on one never lands on the
+  next. The search bar keeps one width on every page, the playlist page lines its "Songs" heading up with the other pages, and the
+  equaliser sliders spread across their card.
+- **Cards line up with their heading, and the player bar fits narrow windows.**
+  The name and details under a card's picture start at the picture's edge, as
+  the section heading does. In a narrow window the player bar keeps room for
+  the track's name instead of showing "…".
+- **Album, playlist and artist pages fit narrow windows.** The picture and the
+  buttons shrink, so Play, Shuffle and the rest stay on one line. The pictures
+  of the songs now start where the page's picture and headings do.
+- **The expanded navigation rail lines up.** Its menu button sits over the
+  icons below it and no longer pushes them down when the rail opens. The twelve
+  colours in Settings fit on one line.
+- **The menu button on a picture can be seen.** On the large picture of the
+  player and on cards, the three dots sat straight on the artwork and
+  vanished against a bright cover. They now have a soft round ground.
+- **Song lengths no longer jump.** A song's length stayed put only until the
+  pointer reached its row, when the menu button pushed it to the left. The
+  button now has its place held, and the dots of the song that is paused sit in
+  the middle of its row.
+- **Window buttons on Windows sit on the grey frame.** The page
+  surface now starts below them instead of running under them, and the
+  navigation rail no longer keeps an empty band at its top.
 - **Songs in the queue no longer show as videos.** The recommended tracks after
   a song now show as songs. Only real music videos carry the video badge.
 - **The playlist search bar grows and shrinks with its control.** It now
   expands beside the buttons that play the page, and closes back into the
   button that opened it. It used to open in a row of its own above them, at
   full size, and then jump straight into the button when it closed.
+- **The playlist sort menu closes when its control is pressed again.** The
+  button that opened the menu now closes it too, as the account menu's button
+  does.
 
 ## [0.2.0] - 2026-10-15
 

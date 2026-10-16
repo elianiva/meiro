@@ -14,6 +14,7 @@ import (
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/history"
+	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lru"
 	"github.com/elianiva/meiro/internal/report"
 	"github.com/elianiva/meiro/internal/settings"
@@ -150,6 +151,9 @@ type app struct {
 	// changed bands restart the decode.
 	eqDebounce task
 
+	// lyricsSource finds a track's lyrics on LRCLIB; tests replace it.
+	lyricsSource lyricsSource
+
 	// stop ends the periodic work; stopOnce closes it once.
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -186,6 +190,7 @@ func newApp() *app {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
 	}, cookies.Sources)
 	a.thumbs = artwork.New(&http.Client{Timeout: 30 * time.Second}, a.refresh)
+	a.lyricsSource = new(lrclib.Client).Get
 	return a
 }
 

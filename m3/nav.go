@@ -74,11 +74,7 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 	fade := min(abs32(2*p-1)*railFadeGain, 1)
 	rail.Width(railWidth).Shrink(0).FillHeight().ClipX().PaddingY(12).Gap(4).
 		Background(sc.SurfaceContainerLow)
-	align := ui.Center
-	if expanded {
-		align = ui.Start
-	}
-	rail.AlignItems(align).Children(func() {
+	rail.AlignItems(ui.Start).Children(func() {
 		if spec.TopInset > 0 {
 			ui.Box(c).Height(spec.TopInset).FillWidth().Shrink(0).DragWindow()
 		}
@@ -87,9 +83,12 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 			Label: pick(expanded, "Collapse navigation", "Expand navigation"),
 			Key:   "rail-menu",
 		})
-		if expanded {
-			menu.Margin(0, 0, 0, RailCollapsed/2-16)
-		}
+		// The button sits on the collapsed icon's centre line at every width:
+		// centring it in the rail would slide it while the rail grows.
+		// Its pointer target is MinTarget wide and its shape is
+		// narrower, so it reaches past the shape without moving it.
+		reachBy := slop(32)
+		menu.Margin(-reachBy, -reachBy, -reachBy, RailCollapsed/2-MinTarget/2)
 		if menu.Clicked() {
 			event.Toggle = true
 		}

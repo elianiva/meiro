@@ -74,8 +74,9 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 	case rowHeading:
 		next := i+1 < len(rows) && (rows[i+1].kind == rowCards || rows[i+1].kind == rowColumns)
 		if r.shelf == "playlist-sort-header" {
-			ui.Row(c).Padding(8, 16).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, r.title).Grow(1)
+			sc := m3.Of(c).Scheme
+			ui.Row(c).Padding(8, pageGutter-8, 8, pageGutter).AlignItems(ui.Center).Children(func() {
+				m3.EmphasizedText(c, m3.TitleLarge, r.title).SingleLine().Grow(1).MinWidth(0).TextColor(sc.OnSurface)
 				a.playlistSort(c)
 			})
 		} else {
@@ -126,7 +127,7 @@ func (a *app) sectionHeading(c *ui.Context, r row, paged, first bool) {
 	if first {
 		top = 4
 	}
-	ui.Row(c).Padding(top, pageGutter-8, 8, pageGutter).Gap(4).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Padding(top, pageGutter-8, 8, pageGutter).Gap(8).AlignItems(ui.Center).Children(func() {
 		m3.EmphasizedText(c, m3.TitleLarge, r.title).SingleLine().Grow(1).MinWidth(0).TextColor(sc.OnSurface)
 		if !paged {
 			return
@@ -342,7 +343,9 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 				if kind != youtube.TargetNone {
 					menuButton = m3.IconButton(c, m3.IconButtonSpec{
 						Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
-					}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
+						// On a picture the dots need a ground of their own.
+						Container: sc.SurfaceContainerHighest.Alpha(0.85),
+					}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(0).Right(0)
 					hasMenu = true
 				}
 			}
@@ -357,9 +360,9 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 				}
 			}
 		})
-		m3.EmphasizedText(c, m3.TitleSmall, item.Title).Width(cardArt-8).SingleLine().TextColor(sc.OnSurface).Margin(0, 4)
+		m3.EmphasizedText(c, m3.TitleSmall, item.Title).Width(cardArt).SingleLine().TextColor(sc.OnSurface)
 		if item.Subtitle != "" {
-			m3.Text(c, m3.BodySmall, item.Subtitle).Width(cardArt-8).SingleLine().TextColor(sc.OnSurfaceVariant).Margin(-6, 4, 0)
+			m3.Text(c, m3.BodySmall, item.Subtitle).Width(cardArt).SingleLine().TextColor(sc.OnSurfaceVariant).Margin(-6, 0, 0)
 		}
 		// A menu the pointer opened points at the pointer; one the menu
 		// button opened points at the button.
@@ -490,7 +493,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	row.Children(func() {
 		main = ui.ButtonBase(c.Key(key + "-activate"))
 		hovered := row.Hovered()
-		main.Grow(1).Basis(0).MinWidth(0).Height(rowHeight - 16).PaddingX(8).Gap(12).AlignItems(ui.Center).
+		main.Grow(1).Basis(0).MinWidth(0).Height(rowHeight - 16).Gap(12).AlignItems(ui.Center).
 			Radius(m3.Large).Cursor(ui.CursorPointer).Label(item.Title).Background(ui.Transparent)
 		row.Background(m3.StateFill(container, sc.OnSurface, hovered && !playing, main.Pressed(), main.FocusVisible()))
 		main.Children(func() {
@@ -555,13 +558,24 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 				Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
 			})
 			hasMenu = true
+		} else {
+			// The button's place stays, so the length does not move when the
+			// pointer arrives.
+			rowButtonSlot(c)
 		}
 		// A row of the queue has its own remove button; the track playing
 		// stays.
-		if o.list == "queue" && o.position != a.queue.index {
-			m3.IconButton(c, m3.IconButtonSpec{
-				Icon: m3.IconClose, Label: "Remove " + item.Title + " from the queue", Key: key + "-remove",
-			}).OnClick(func() { a.removeFromQueue(o.position) })
+		if o.list == "queue" {
+			// Two buttons side by side need their shapes 8 apart, or the
+			// pointer targets overlap.
+			ui.Box(c).Size(4, 0).Shrink(0)
+			if o.position != a.queue.index {
+				m3.IconButton(c, m3.IconButtonSpec{
+					Icon: m3.IconClose, Label: "Remove " + item.Title + " from the queue", Key: key + "-remove",
+				}).OnClick(func() { a.removeFromQueue(o.position) })
+			} else {
+				rowButtonSlot(c)
+			}
 		}
 	})
 	if hasMenu {
@@ -596,6 +610,11 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			a.activate(item, queue)
 		}
 	}
+}
+
+// rowButtonSlot holds the place of a row's icon button while it is not shown.
+func rowButtonSlot(c *ui.Context) {
+	ui.Box(c).Size(32, 32).Shrink(0)
 }
 
 // songMenu offers local queue actions and read-only actions for a track.
@@ -706,7 +725,9 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 				if target.Kind != youtube.TargetNone {
 					menuButton = m3.IconButton(c, m3.IconButtonSpec{
 						Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
-					}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
+						// On a picture the dots need a ground of their own.
+						Container: sc.SurfaceContainerHighest.Alpha(0.85),
+					}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(0).Right(0)
 					hasMenu = true
 				}
 			}
@@ -774,15 +795,22 @@ func (a *app) hero(c *ui.Context) {
 		artRadius = m3.Full
 	}
 	wash := sc.PrimaryContainer.Mix(sc.Surface, 0.45)
+	// In a narrow window the artwork and the buttons shrink, so that the
+	// buttons that play the page stay on one line beside the picture.
+	artSize, gap, titleRole := float32(220), float32(28), m3.DisplaySmall
+	if a.narrowHero() {
+		artSize, gap, titleRole = 150, 20, m3.HeadlineMedium
+	}
+	buttons := a.heroButtonSize()
 	// The artwork opens the context menu YouTube Music's does, on a
 	// right-click. The catcher is an attached, transparent button over the
 	// picture: attached, it leaves the layout to the artwork it covers.
 	var art, catcher ui.Element
 	var menuAnchor ui.Element
 	hasAnchor := false
-	ui.Row(c).Padding(8, pageGutter, 28).Gap(28).AlignItems(ui.End).Gradient(wash, sc.Surface, 180).Children(func() {
-		art = a.art(c, d.art, 448, 220, artRadius, func() {
-			catcher = ui.ButtonBase(c.Key("hero-art")).Size(220, 220).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
+	ui.Row(c).Padding(8, pageGutter, 28).Gap(gap).AlignItems(ui.End).Gradient(wash, sc.Surface, 180).Children(func() {
+		art = a.art(c, d.art, 448, artSize, artRadius, func() {
+			catcher = ui.ButtonBase(c.Key("hero-art")).Size(artSize, artSize).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
 				Background(ui.Transparent).Label("More options for " + d.title)
 			menuAnchor, hasAnchor = a.menu.pointerAnchor(c, "hero")
 		})
@@ -791,17 +819,17 @@ func (a *app) hero(c *ui.Context) {
 			if label := heroLabel(r.target); label != "" {
 				m3.EmphasizedText(c, m3.LabelLarge, strings.ToUpper(label)).LetterSpacing(1.2).TextColor(sc.Primary)
 			}
-			m3.EmphasizedText(c, m3.DisplaySmall, d.title).MaxLines(2).TextColor(sc.OnSurface)
+			m3.EmphasizedText(c, titleRole, d.title).MaxLines(2).TextColor(sc.OnSurface)
 			if d.subtitle != "" {
 				m3.Text(c, m3.BodyLarge, d.subtitle).MaxLines(2).TextColor(sc.OnSurfaceVariant)
 			}
 			ui.Box(c).Height(10)
 			ui.Row(c).Gap(8).Wrap().Children(func() {
 				none := len(a.page.playable) == 0
-				if m3.Button(c, m3.ButtonSpec{Label: "Play", Icon: m3.IconPlay, Size: m3.Medium56, Disabled: none, Key: "hero-play"}).Clicked() {
+				if m3.Button(c, m3.ButtonSpec{Label: "Play", Icon: m3.IconPlay, Size: buttons, Disabled: none, Key: "hero-play"}).Clicked() {
 					a.playAll()
 				}
-				if m3.Button(c, m3.ButtonSpec{Label: "Shuffle", Icon: m3.IconShuffle, Kind: m3.Tonal, Size: m3.Medium56, Disabled: none, Key: "hero-shuffle"}).Clicked() {
+				if m3.Button(c, m3.ButtonSpec{Label: "Shuffle", Icon: m3.IconShuffle, Kind: m3.Tonal, Size: buttons, Disabled: none, Key: "hero-shuffle"}).Clicked() {
 					a.shufflePage()
 				}
 				a.libraryButton(c)
@@ -822,6 +850,19 @@ func (a *app) hero(c *ui.Context) {
 	if a.menu.owns("hero") {
 		a.heroMenu(c, a.menu.anchor(art, menuAnchor, hasAnchor))
 	}
+}
+
+// narrowHero is whether the page is too narrow for the hero at its full size.
+func (a *app) narrowHero() bool {
+	return a.listWidth > 0 && a.listWidth < 720
+}
+
+// heroButtonSize is the size of the buttons of the hero.
+func (a *app) heroButtonSize() m3.ButtonSize {
+	if a.narrowHero() {
+		return m3.Small40
+	}
+	return m3.Medium56
 }
 
 // heroMenu offers what YouTube Music's menu on the artwork of an album, a
@@ -850,12 +891,18 @@ func (a *app) heroMenu(c *ui.Context, anchor ui.Element) {
 	})
 }
 
-// The playlist search is one control that grows: the button that opens it is
-// the size of a touch target, and the bar it opens reaches at most this wide.
-const (
-	detailSearchButton = 56
-	detailSearchWidth  = 520
-)
+// detailSearchWidth is how wide the bar the playlist search opens into reaches
+// at most.
+const detailSearchWidth = 520
+
+// detailSearchButton is the side of the button that opens the playlist search,
+// which is the height of the buttons beside it.
+func (a *app) detailSearchButton() float32 {
+	if a.narrowHero() {
+		return 40
+	}
+	return 56
+}
 
 // playlistSearch draws the control that narrows a playlist page to the songs
 // that match: an icon button that opens into the bar the Search page uses,
@@ -876,17 +923,16 @@ func (a *app) playlistSearch(c *ui.Context) {
 	}
 	grown := m3.Animate(control, "open", target, m3.SpatialFast)
 	if !a.detailSearchOpen && grown < 0.02 {
-		control.MaxWidth(detailSearchButton)
+		control.MaxWidth(a.detailSearchButton())
 		control.Children(func() {
 			button := m3.IconButton(c, m3.IconButtonSpec{
 				Icon: m3.IconSearch, Label: "Search in this playlist",
-				Kind: m3.StandardIcon, Size: m3.Medium56, Key: "playlist-search-open",
+				Kind: m3.StandardIcon, Size: a.heroButtonSize(), Key: "playlist-search-open",
+				// The bar's own container, so the button that opens the
+				// search and the bar it opens are one thing growing rather
+				// than two that do not match.
+				Container: sc.SurfaceContainerHigh,
 			})
-			// The bar's own container, so the button that opens the search
-			// and the bar it opens are one thing growing rather than two
-			// that do not match.
-			button.Background(m3.StateFill(sc.SurfaceContainerHigh, sc.OnSurface,
-				button.Hovered(), button.Pressed(), button.FocusVisible()))
 			if button.Clicked() {
 				a.detailSearchOpen = true
 				a.detailSearchField.Focus()
@@ -899,7 +945,7 @@ func (a *app) playlistSearch(c *ui.Context) {
 	if a.listWidth > 0 {
 		maxWidth = min(maxWidth, a.listWidth-48)
 	}
-	control.MaxWidth(detailSearchButton + (maxWidth-detailSearchButton)*min(max(grown, 0), 1))
+	control.MaxWidth(a.detailSearchButton() + (maxWidth-a.detailSearchButton())*min(max(grown, 0), 1))
 	control.Children(func() {
 		result, _ := m3.SearchBar(c, m3.SearchSpec{
 			Value:       &a.detailFilter,
@@ -938,8 +984,10 @@ func (a *app) playlistSort(c *ui.Context) {
 		rotation = 180
 	}
 	anchor := m3.Button(c, m3.ButtonSpec{Label: label, Icon: m3.IconExpandMore, IconRotation: rotation, Kind: m3.Outlined, Size: m3.Medium56, Key: "playlist-sort"})
+	// A menu ignores the press that lands on the button that opened it, so
+	// the button closes it, as the account menu's button does.
 	if anchor.Clicked() {
-		a.detailSortOpen = true
+		a.detailSortOpen = !a.detailSortOpen
 	}
 	if a.detailSortOpen {
 		m3.Menu(c, anchor, &a.detailSortOpen, 280, func() {

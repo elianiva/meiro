@@ -119,6 +119,16 @@ func StateFill(container, content ui.Color, hovered, pressed, focused bool) ui.C
 	return Layer(container, content, op)
 }
 
+// MinTarget is the smallest side of a pointer target in DIPs, as Material 3
+// asks of every control.
+const MinTarget = 48
+
+// slop is how far a control of the given side must reach past its drawn shape
+// on each side to make a target of MinTarget.
+func slop(side float32) float32 {
+	return max((MinTarget-side)/2, 0)
+}
+
 func newButtonBase(c *ui.Context, key any) ui.Element {
 	if key != nil {
 		return ui.ButtonBase(c.Key(key))
@@ -165,26 +175,33 @@ func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 	}
 	radius := max(Animate(b, "radius", rest, SpatialFast), 0)
 
-	b.Height(d.height).PaddingX(d.pad).Gap(d.gap).Radius(radius).Background(fill).
-		Justify(ui.Center).AlignItems(ui.Center).Shrink(0).
-		TextColor(content).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast))
+	b.Shrink(0).Justify(ui.Center).AlignItems(ui.Center).TextColor(content).Cursor(ui.CursorPointer)
 	if spec.Label != "" {
 		b.Label(spec.Label)
 	}
-	if outline.A != 0 {
-		b.Border(1, outline)
-	}
-	if spec.Kind == Elevated && !spec.Disabled {
-		Elevation(c, b, 1)
-	}
+	// The drawn shape keeps its height; the pointer target around it is at
+	// least MinTarget high, and a negative margin keeps the extra out of the
+	// layout.
+	reachBy := slop(d.height)
+	b.Height(d.height+2*reachBy).Margin(-reachBy, 0)
 	iconRotation := Animate(b, "icon-rotation", spec.IconRotation, SpatialFast)
 	b.Children(func() {
-		if spec.Icon != nil {
-			ui.Icon(c, spec.Icon).FontSize(d.icon).TextColor(content).Rotate(iconRotation)
+		shape := ui.Row(c).Height(d.height).PaddingX(d.pad).Gap(d.gap).Radius(radius).Background(fill).
+			Justify(ui.Center).AlignItems(ui.Center).TextColor(content).Transition(Fade(EffectsFast))
+		if outline.A != 0 {
+			shape.Border(1, outline)
 		}
-		if spec.Label != "" {
-			buttonLabel(c, d.label, spec.Label, true, 0).TextColor(content).SingleLine()
+		if spec.Kind == Elevated && !spec.Disabled {
+			Elevation(c, shape, 1)
 		}
+		shape.Children(func() {
+			if spec.Icon != nil {
+				ui.Icon(c, spec.Icon).FontSize(d.icon).TextColor(content).Rotate(iconRotation)
+			}
+			if spec.Label != "" {
+				buttonLabel(c, d.label, spec.Label, true, 0).TextColor(content).SingleLine()
+			}
+		})
 	})
 	return b
 }
@@ -206,6 +223,9 @@ type IconButtonSpec struct {
 	// while the button's action is under way.
 	Loading bool
 	Key     any
+	// Container gives a standard icon button a resting container of its own,
+	// as the search that opens into a bar has.
+	Container ui.Color
 	// Dimension sets the button's side in DIPs where none of the five sizes
 	// fits, as a play button in a player bar.
 	Dimension float32
@@ -240,7 +260,10 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	case OutlinedIcon:
 		container, content, outline = containerColors(sc, Outlined, spec.Toggle, spec.Selected)
 	default:
-		container, content = ui.Transparent, sc.OnSurfaceVariant
+		container, content = spec.Container, sc.OnSurfaceVariant
+		if spec.Container.A != 0 {
+			content = sc.OnSurface
+		}
 		if spec.Toggle && spec.Selected {
 			content = sc.Primary
 		}
@@ -264,23 +287,33 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	}
 	radius := max(Animate(b, "radius", rest, SpatialFast), 0)
 
-	b.Size(d.height, d.height).Radius(radius).Background(fill).Center().Shrink(0).
-		TextColor(content).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast))
+	// The drawn shape is d.height wide; the pointer target around it is at least
+	// MinTarget. A negative margin keeps the extra out of the layout.
+	side, reachBy := d.height, slop(d.height)
+	b.Center().Shrink(0).TextColor(content).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast))
+	if reachBy > 0 {
+		b.Size(MinTarget, MinTarget).Margin(-reachBy)
+	} else {
+		b.Size(side, side)
+	}
 	if spec.Label != "" {
 		b.Label(spec.Label).Tooltip(spec.Label)
-	}
-	if outline.A != 0 {
-		b.Border(1, outline)
 	}
 	if spec.Loading {
 		b.Disabled(true)
 	}
 	b.Children(func() {
-		if spec.Loading {
-			loadingIndicator(c, d.icon*1.4, content, ui.Transparent)
-			return
+		shape := ui.Box(c).Size(side, side).Radius(radius).Background(fill).Center()
+		if outline.A != 0 {
+			shape.Border(1, outline)
 		}
-		ui.Icon(c, spec.Icon).FontSize(d.icon).TextColor(content)
+		shape.Children(func() {
+			if spec.Loading {
+				loadingIndicator(c, d.icon*1.4, content, ui.Transparent)
+				return
+			}
+			ui.Icon(c, spec.Icon).FontSize(d.icon).TextColor(content)
+		})
 	})
 	return b
 }
@@ -374,17 +407,21 @@ func Chip(c *ui.Context, label string, selected bool, key any) ui.Element {
 	if selected {
 		container, content, outline = sc.SecondaryContainer, sc.OnSecondaryContainer, ui.Transparent
 	}
-	b.Height(32).PaddingX(12).Gap(8).Radius(Small).Justify(ui.Center).AlignItems(ui.Center).Shrink(0).
-		Background(StateFill(container, content, b.Hovered(), b.Pressed(), b.FocusVisible())).
-		TextColor(content).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast)).Label(label)
-	if outline.A != 0 {
-		b.Border(1, outline)
-	}
+	b.Height(MinTarget).Margin(-slop(32), 0).Shrink(0).Justify(ui.Center).AlignItems(ui.Center).
+		Cursor(ui.CursorPointer).Label(label)
 	b.Children(func() {
-		if selected {
-			ui.Icon(c, IconCheck).FontSize(18).TextColor(content)
+		shape := ui.Row(c).Height(32).PaddingX(12).Gap(8).Radius(Small).Justify(ui.Center).AlignItems(ui.Center).
+			Background(StateFill(container, content, b.Hovered(), b.Pressed(), b.FocusVisible())).
+			TextColor(content).Transition(Fade(EffectsFast))
+		if outline.A != 0 {
+			shape.Border(1, outline)
 		}
-		buttonLabel(c, LabelLarge, label, false, 0).TextColor(content).SingleLine()
+		shape.Children(func() {
+			if selected {
+				ui.Icon(c, IconCheck).FontSize(18).TextColor(content)
+			}
+			buttonLabel(c, LabelLarge, label, false, 0).TextColor(content).SingleLine()
+		})
 	})
 	return b
 }
@@ -397,12 +434,13 @@ func Chip(c *ui.Context, label string, selected bool, key any) ui.Element {
 func IconChip(c *ui.Context, icon *ui.SVG, label string, key any) ui.Element {
 	sc := Of(c).Scheme
 	b := newButtonBase(c, key)
-	b.Size(32, 32).Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Radius(Small).
-		Background(StateFill(ui.Transparent, sc.OnSurfaceVariant, b.Hovered(), b.Pressed(), b.FocusVisible())).
-		TextColor(sc.OnSurfaceVariant).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast)).Label(label)
-	b.Border(1, sc.OutlineVariant)
+	b.Size(MinTarget, MinTarget).Margin(-slop(32)).Center().Shrink(0).Cursor(ui.CursorPointer).Label(label)
 	b.Children(func() {
-		ui.Icon(c, icon).FontSize(18).TextColor(sc.OnSurfaceVariant)
+		ui.Box(c).Size(32, 32).Radius(Small).Center().TextColor(sc.OnSurfaceVariant).Transition(Fade(EffectsFast)).
+			Background(StateFill(ui.Transparent, sc.OnSurfaceVariant, b.Hovered(), b.Pressed(), b.FocusVisible())).
+			Border(1, sc.OutlineVariant).Children(func() {
+			ui.Icon(c, icon).FontSize(18).TextColor(sc.OnSurfaceVariant)
+		})
 	})
 	return b
 }
@@ -435,15 +473,17 @@ func ButtonGroup(c *ui.Context, key any, selected *int, labels []string, icons [
 			}
 			tl := max(Animate(seg, "l", left, SpatialFast), 0)
 			tr := max(Animate(seg, "r", right, SpatialFast), 0)
-			seg.Height(40).PaddingX(16).Gap(8).Justify(ui.Center).AlignItems(ui.Center).
-				Radius(tl, tr, tr, tl).
-				Background(StateFill(container, content, seg.Hovered(), seg.Pressed(), seg.FocusVisible())).
-				TextColor(content).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast)).Label(label)
+			seg.Height(MinTarget).Margin(-slop(40), 0).PaddingX(0).Justify(ui.Center).AlignItems(ui.Center).
+				Cursor(ui.CursorPointer).Label(label)
 			seg.Children(func() {
-				if i < len(icons) && icons[i] != nil {
-					ui.Icon(c, icons[i]).FontSize(18).TextColor(content)
-				}
-				buttonLabel(c, LabelLarge, label, on, 0).TextColor(content).SingleLine()
+				ui.Row(c).Height(40).PaddingX(16).Gap(8).Radius(tl, tr, tr, tl).Justify(ui.Center).AlignItems(ui.Center).
+					Background(StateFill(container, content, seg.Hovered(), seg.Pressed(), seg.FocusVisible())).
+					TextColor(content).Transition(Fade(EffectsFast)).Children(func() {
+					if i < len(icons) && icons[i] != nil {
+						ui.Icon(c, icons[i]).FontSize(18).TextColor(content)
+					}
+					buttonLabel(c, LabelLarge, label, on, 0).TextColor(content).SingleLine()
+				})
 			})
 		}
 	})

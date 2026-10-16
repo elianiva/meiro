@@ -110,7 +110,7 @@ func (a *app) appearanceCard(c *ui.Context) {
 		// The seed: twelve colours, and any hue between.
 		ui.Column(c).Gap(14).Children(func() {
 			settingLabel(c, "Colour", "Every colour in the app grows from this one.")
-			ui.Row(c).Gap(12).Wrap().Children(func() {
+			ui.Row(c).Gap(8).Wrap().Children(func() {
 				for _, swatch := range swatches {
 					if a.swatch(c, swatch.name, swatch.hex) {
 						a.settings.Seed, a.settings.Dynamic = swatch.hex, false
@@ -250,9 +250,9 @@ func (a *app) soundCard(c *ui.Context) {
 		// The bands, one upright slider each above its frequency, the way an
 		// equaliser is drawn: the handle rests on the 0 dB mark, and a boost
 		// or cut fills between the two.
-		ui.Row(c).Gap(4).Children(func() {
+		ui.Row(c).FillWidth().MaxWidth(640).Gap(4).Justify(ui.SpaceBetween).Children(func() {
 			for i := range player.EQBandCount {
-				ui.Column(c).Gap(6).Width(46).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Gap(6).Width(m3.MinTarget).AlignItems(ui.Center).Children(func() {
 					slider := m3.Slider(c, &a.settings.EQBands[i], -eqBoostRange, eqBoostRange, m3.SliderSpec{
 						Label: eqLabels[i] + " dB", Key: "eq-" + strconv.Itoa(i),
 						Thickness: 6, Vertical: true, Disabled: !a.settings.EQOn,

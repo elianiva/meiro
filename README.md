@@ -37,6 +37,10 @@ half of the title.
   current track or queue.
   After you select a track, the compact player stays available while you
   browse. Open the full player to view the queue, lyrics, and related tracks.
+- **Follow the lyrics.** The Lyrics tab shows timed lyrics from YouTube Music,
+  or from [LRCLIB](https://lrclib.net) when YouTube Music has none. The line
+  being sung is lit and glides to the middle as the song plays; click a line to
+  jump to it. Switch to Static for the plain text.
 - **Auto-play.** Auto-play is on by default. It adds YouTube Music
   recommendations after the current queue ends. Toggle it in the queue.
 - **Choose an appearance.** Follow the system theme, or choose light or dark.
@@ -55,6 +59,10 @@ half of the title.
   Linux MPRIS client. Meiro publishes track details, cover art, and playback
   state. It accepts play, pause, stop, previous, next, seek, volume, shuffle,
   and repeat commands.
+
+<p align="center">
+  <a href="docs/screenshots/lyrics.png"><img src="docs/screenshots/lyrics.png" alt="Full player with synced lyrics, the sung line lit in the middle" width="720"></a>
+</p>
 
 Browse and play public music without signing in. Meiro signs in with a
 browser session to show your personalized Home feed and Library.
@@ -101,9 +109,9 @@ compatible RPM-based distribution. You can also make the `.AppImage` executable
 and run it, or unpack the `.tar.gz` and run its `install.sh`. All Linux builds
 need GTK 3 and WebKitGTK 4.1.
 
-**Windows**: there is no Windows release. The code is type-checked for Windows
-in CI, but nobody tests it there, and Windows is not supported yet. Windows
-builds and bug reports are not planned for 0.1.
+**Windows**: run the `-setup.exe` installer. **Windows support is untested.**
+I don't have Windows to test it, but it's there if you want it. Feel free to
+open any issues though.
 
 ## Signing in
 
@@ -223,7 +231,7 @@ relevant part of the log.
 
 - Meiro depends on YouTube's private interfaces and on yt-dlp, so a change on
   YouTube's side can break browsing, playback or sign-in until a fix ships.
-- Windows has no release (see [Install](#install)).
+- The Windows build is untested (see [Install](#install)).
 - The macOS app is not notarized, so the first launch needs the manual step
   above.
 - Sign-in uses a browser session, because YouTube Music offers no OAuth

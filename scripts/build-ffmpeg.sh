@@ -2,6 +2,7 @@
 # Builds the ffmpeg a release ships, into resources/<platform>/bin/ffmpeg.
 #
 #   scripts/build-ffmpeg.sh darwin-arm64
+#   scripts/build-ffmpeg.sh windows-amd64
 #
 # Meiro uses ffmpeg for one thing: decoding the audio of one stream (Opus in
 # WebM, AAC in MP4, and the files of the audio cache) to raw PCM, and reading
@@ -12,12 +13,14 @@
 # Build tools: a C compiler, make, curl, xz, and on x86 nasm. Linux also needs
 # OpenSSL's static libraries (libssl.a), and links them in. Linux releases
 # build inside an Alpine container (see release.yml), so the binary is static
-# against musl and runs on any distribution.
+# against musl and runs on any distribution. The Windows build is cross-compiled
+# on Linux with MinGW-w64 (gcc-mingw-w64-x86-64) and uses Windows' own TLS
+# (Schannel), so it needs no OpenSSL.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
-platform="${1:?usage: build-ffmpeg.sh <darwin-arm64|darwin-amd64|linux-amd64|linux-arm64>}"
+platform="${1:?usage: build-ffmpeg.sh <darwin-arm64|darwin-amd64|linux-amd64|linux-arm64|windows-amd64>}"
 
 # Bump the version and the checksum together.
 FFMPEG_VERSION="8.1"
@@ -31,6 +34,13 @@ sha256() {
 	fi
 }
 
+exe=""
+strip="strip"
+if [[ "$platform" == windows-* ]]; then
+	exe=".exe"
+	strip="x86_64-w64-mingw32-strip"
+fi
+
 out="resources/${platform}"
 mkdir -p "$out/bin" "$out/licenses"
 
@@ -38,7 +48,7 @@ mkdir -p "$out/bin" "$out/licenses"
 # a build that already got the binary from the release's ffmpeg job, can tell
 # it need not build again.
 stamp="${ffmpeg_sha256}-$(sha256 "${BASH_SOURCE[0]}")"
-if [[ -x "$out/bin/ffmpeg" && "$(cat "$out/bin/.ffmpeg.stamp" 2>/dev/null)" == "$stamp" ]]; then
+if [[ -x "$out/bin/ffmpeg$exe" && "$(cat "$out/bin/.ffmpeg.stamp" 2>/dev/null)" == "$stamp" ]]; then
 	echo "ffmpeg ${FFMPEG_VERSION} for ${platform}: already built"
 	exit 0
 fi
@@ -72,6 +82,14 @@ case "$platform" in
 			--disable-x86asm --extra-cflags="-arch x86_64" --extra-ldflags="-arch x86_64"
 		)
 		;;
+	windows-amd64)
+		# Cross-compiled with MinGW-w64, and linked static so the one file
+		# runs without any DLL beside it.
+		configure+=(
+			--enable-schannel --enable-cross-compile --arch=x86_64 --target-os=mingw32
+			--cross-prefix=x86_64-w64-mingw32- --extra-ldflags=-static
+		)
+		;;
 	*)
 		printf 'Unsupported platform: %s\n' "$platform" >&2
 		exit 1
@@ -91,10 +109,10 @@ tar -xJf "$work/ffmpeg.tar.xz" -C "$work"
 
 src="$work/ffmpeg-${FFMPEG_VERSION}"
 jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)"
-(cd "$src" && ./configure "${configure[@]}" && make -j"$jobs" ffmpeg)
+(cd "$src" && ./configure "${configure[@]}" && make -j"$jobs" "ffmpeg$exe")
 
-install -m 0755 "$src/ffmpeg" "$out/bin/ffmpeg"
-strip "$out/bin/ffmpeg"
+install -m 0755 "$src/ffmpeg$exe" "$out/bin/ffmpeg$exe"
+"$strip" "$out/bin/ffmpeg$exe"
 cp "$src/COPYING.LGPLv3" "$out/licenses/ffmpeg-COPYING.LGPLv3"
 printf '%s\n' "$stamp" > "$out/bin/.ffmpeg.stamp"
-echo "  built $(du -h "$out/bin/ffmpeg" | cut -f 1)"
+echo "  built $(du -h "$out/bin/ffmpeg$exe" | cut -f 1)"

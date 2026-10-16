@@ -216,7 +216,7 @@ func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
 func (a *app) suggestionRow(c *ui.Context, query string) {
 	sc := m3.Of(c).Scheme
 	row := ui.ButtonBase(c.Key("suggestion-" + query))
-	row.Height(44).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).
+	row.Height(m3.MinTarget).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).
 		Cursor(ui.CursorPointer).Label(query).
 		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
 	row.Children(func() {
