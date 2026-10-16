@@ -19,6 +19,7 @@ import (
 	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -409,6 +410,60 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 	}
 }
 
+// Closing the search shrinks the bar back into the button that opened it. The
+// control's size is a cap the animation moves: a width would only be the flex
+// base, which the control's Grow fills, so the bar stayed at its full size and
+// then jumped into the button.
+func TestAPlaylistSearchShrinksIntoItsButton(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1400, 900)
+	tt.Frame()
+	button, ok := tt.Find("Search in this playlist")
+	if !ok || button.W < 1 {
+		t.Fatalf("the playlist page has no search button: %q", tt.Texts())
+	}
+	// The bar opens at once: this test watches it close.
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
+	if err := tt.Click("Search in this playlist"); err != nil {
+		t.Fatal(err)
+	}
+	tt.SetPreferences(ui.Preferences{})
+	open, ok := tt.Find("Search in this playlist")
+	if !ok || open.W <= button.W {
+		t.Fatalf("the open bar is %.0f wide, no wider than its button's %.0f", open.W, button.W)
+	}
+	// The closing runs slower than the usual motion, so that a frame sees the
+	// bar part-way: MyGo's clock is the real one, and settling a frame builds
+	// many of them, so the usual 0.3 s animation can pass between two frames
+	// unseen.
+	fast := m3.SpatialFast
+	m3.SpatialFast = m3.Spring{Stiffness: 10, Damping: 1}
+	t.Cleanup(func() { m3.SpatialFast = fast })
+
+	if err := tt.Click("Close the search"); err != nil {
+		t.Fatal(err)
+	}
+	// The bar goes back into the button, taking widths between the two.
+	between, closed := false, false
+	for i := 0; i < 400 && !closed; i++ {
+		time.Sleep(10 * time.Millisecond)
+		tt.Frame()
+		bar, ok := tt.Find("Search in this playlist")
+		if !ok {
+			t.Fatalf("the search control went away: %q", tt.Texts())
+		}
+		between = between || bar.W > button.W+2 && bar.W < open.W-2
+		closed = bar.W <= button.W+2
+	}
+	if !between {
+		t.Errorf("the bar never took a width between the button's %.0f and its own %.0f: closing skipped the animation", button.W, open.W)
+	}
+	if !closed {
+		t.Error("the search control never came back to its button")
+	}
+}
+
 func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.router.Push("/playlist/VLPL_songs")
@@ -459,6 +514,19 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 
 	search("ameiro")
+	// The bar grows in place, on the row of the buttons that play the page:
+	// opening it must not move it to a row of its own.
+	play, ok := tt.Find("Play")
+	if !ok {
+		t.Fatalf("the page has no Play button: %q", tt.Texts())
+	}
+	bar, ok := tt.Find("Search in this playlist")
+	if !ok {
+		t.Fatalf("the open search has no bar: %q", tt.Texts())
+	}
+	if bar.Y >= play.Y+play.H || bar.Y+bar.H <= play.Y {
+		t.Fatalf("the search bar is not on the Play row: bar %v, Play %v", bar, play)
+	}
 	if !slices.ContainsFunc(a.page.rows, func(r row) bool { return r.shelf == "playlist-sort-header" }) {
 		t.Errorf("filtering hid the playlist sort header: %#v", a.page.rows)
 	}

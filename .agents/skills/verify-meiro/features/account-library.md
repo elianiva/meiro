@@ -31,6 +31,7 @@ Preconditions:
 - **Like.** `p.openMenu("Album Track One", "menu")`, then `p.click("Like", "liked")`. `likeWrite()` returns `/like/like` and `vid-3`. Verified: after Save and Like in one test, `likeWrites.Load()` is `2`.
 - **Subscribe.** On `/artist/UCartist`, click `Subscribe`. It reads `Subscribed` and `subscribeWrites.Load()` is `1`.
 - **New playlist.** On `/library`, `p.click("New playlist", "dialog")`, type a name, `p.click("Create", "created")`. `playlistCreates.Load()` is `1`.
+- **Search a playlist page.** On `/playlist/VLPL_songs` the control reads `Search in this playlist`. Clicking it opens the bar in place: `tt.Find("Search in this playlist")` must overlap the `Play` row, not a row of its own above it. The bar grows and shrinks through widths between the button's and its own, so pressing `Close the search` must show widths between the two on the way back. Typing `ameiro` narrows the rows to the 2 songs whose title matches, while `a.page.playable` keeps all 3, and a match plays from its own place in the whole playlist.
 - **Refused.** `resetFakes()`, `refuseWrites.Store(true)`, then click `Save to library`. Verified: the button still reads `Save to library`.
 - **Sign in.** Mirror `TestSignInWithABrowserWindow` and `TestFailedBrowserImportOffersPastingTheCookieHeader`.
 

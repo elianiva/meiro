@@ -795,10 +795,6 @@ func (a *app) hero(c *ui.Context) {
 			if d.subtitle != "" {
 				m3.Text(c, m3.BodyLarge, d.subtitle).MaxLines(2).TextColor(sc.OnSurfaceVariant)
 			}
-			if r.id == routePlaylist && a.detailSearchOpen {
-				ui.Box(c).Height(10)
-				ui.Row(c).Padding(0, 24).Children(func() { a.playlistSearch(c) })
-			}
 			ui.Box(c).Height(10)
 			ui.Row(c).Gap(8).Wrap().Children(func() {
 				none := len(a.page.playable) == 0
@@ -810,7 +806,10 @@ func (a *app) hero(c *ui.Context) {
 				}
 				a.libraryButton(c)
 				a.subscribeButton(c)
-				if r.id == routePlaylist && !a.detailSearchOpen {
+				if r.id == routePlaylist {
+					// One call site, beside the buttons that play the page:
+					// the control keeps its place, and its button, while it
+					// opens into the bar.
 					a.playlistSearch(c)
 				}
 			})
@@ -865,8 +864,11 @@ const (
 // nothing to say it was still on.
 func (a *app) playlistSearch(c *ui.Context) {
 	sc := m3.Of(c).Scheme
-	// Animate the parent width so the search expands from its icon button
-	// without relying on Grow inside the shrink-wrapped action group.
+	// One element carries both states, so opening grows the control instead
+	// of swapping one thing for another. Its size is a maximum, which the
+	// animation moves: a width would only set the flex base, and the
+	// control's Grow then fills the rest of the line, so the bar would jump
+	// out at full size and jump back into the button when it closed.
 	control := ui.Row(c.Key("playlist-search")).MinWidth(0).Grow(1).Shrink(1)
 	target := float32(0)
 	if a.detailSearchOpen {
@@ -874,7 +876,7 @@ func (a *app) playlistSearch(c *ui.Context) {
 	}
 	grown := m3.Animate(control, "open", target, m3.SpatialFast)
 	if !a.detailSearchOpen && grown < 0.02 {
-		control.Width(detailSearchButton)
+		control.MaxWidth(detailSearchButton)
 		control.Children(func() {
 			button := m3.IconButton(c, m3.IconButtonSpec{
 				Icon: m3.IconSearch, Label: "Search in this playlist",
@@ -897,7 +899,7 @@ func (a *app) playlistSearch(c *ui.Context) {
 	if a.listWidth > 0 {
 		maxWidth = min(maxWidth, a.listWidth-48)
 	}
-	control.Width(detailSearchButton + (maxWidth-detailSearchButton)*min(max(grown, 0), 1))
+	control.MaxWidth(detailSearchButton + (maxWidth-detailSearchButton)*min(max(grown, 0), 1))
 	control.Children(func() {
 		result, _ := m3.SearchBar(c, m3.SearchSpec{
 			Value:       &a.detailFilter,

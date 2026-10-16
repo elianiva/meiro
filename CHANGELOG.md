@@ -12,6 +12,10 @@ and this project adheres to
 
 - **Songs in the queue no longer show as videos.** The recommended tracks after
   a song now show as songs. Only real music videos carry the video badge.
+- **The playlist search bar grows and shrinks with its control.** It now
+  expands beside the buttons that play the page, and closes back into the
+  button that opened it. It used to open in a row of its own above them, at
+  full size, and then jump straight into the button when it closed.
 
 ## [0.2.0] - 2026-10-15
 
