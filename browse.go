@@ -936,8 +936,10 @@ func (a *app) playlistSort(c *ui.Context) {
 		rotation = 180
 	}
 	anchor := m3.Button(c, m3.ButtonSpec{Label: label, Icon: m3.IconExpandMore, IconRotation: rotation, Kind: m3.Outlined, Size: m3.Medium56, Key: "playlist-sort"})
+	// A menu ignores the press that lands on the button that opened it, so
+	// the button closes it, as the account menu's button does.
 	if anchor.Clicked() {
-		a.detailSortOpen = true
+		a.detailSortOpen = !a.detailSortOpen
 	}
 	if a.detailSortOpen {
 		m3.Menu(c, anchor, &a.detailSortOpen, 280, func() {

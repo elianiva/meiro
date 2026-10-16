@@ -374,6 +374,26 @@ func TestRightClickingTheHeroArtOffersItsMenu(t *testing.T) {
 func TestAPlaylistPageCanBeSorted(t *testing.T) {
 	a, _ := playbackApp(t)
 	tt := open(a, "/playlist/VLPL_songs")
+	// The control closes the menu it opened when it is pressed again, as the
+	// account menu's does.
+	if err := tt.Click("Sort: Original order"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.detailSortOpen {
+		t.Fatal("the sort control did not open its menu")
+	}
+	if err := tt.Click("Sort: Original order"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.detailSortOpen {
+		t.Error("the sort control did not close its own menu")
+	}
+	if tt.HasText("Duration, shortest first") {
+		t.Errorf("the closed menu is still on screen: %q", tt.Texts())
+	}
+
 	if err := tt.Click("Sort: Original order"); err != nil {
 		t.Fatal(err)
 	}
