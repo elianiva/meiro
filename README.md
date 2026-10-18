@@ -1,12 +1,14 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/promo/hero-dark.png">
-    <img alt="Meiro: YouTube Music, without the bloat. Takes only about 100 MB, synced lyrics, keeps playing when closed, dynamic colours from your song." src="docs/promo/hero-light.png" width="800">
+    <img alt="Meiro: YouTube Music, without the bloat. Takes only about 100 MB, no ads, Last.fm scrobbling, synced lyrics, colours that match each song." src="docs/promo/hero-light.png" width="800">
   </picture>
 </p>
 
 A native desktop player for YouTube Music. Meiro draws its own interface in a
-native window instead of using a Chromium-based web front end.
+native window instead of using a Chromium-based web front end. It plays only
+the audio of each song, so there are no ads, and it can send what you play to
+Last.fm.
 
 Meiro is very lightweight. It uses about 100 MB of RAM most of the time, and
 can go as low as about 99 MB, because there is no browser engine behind the
@@ -57,6 +59,8 @@ half of the title.
 
 ### Listen
 
+- **No ads.** Meiro plays the audio of the song itself, not the web page around
+  it, so no ad is ever loaded or played.
 - **Everything you expect from a player.** Play, pause, skip, shuffle, repeat,
   volume, and a queue you can see and change. A small player follows you while
   you browse, and the full player shows the queue, lyrics and related songs.
@@ -92,8 +96,8 @@ half of the title.
 
 ### Keep track of what you hear
 
-- **Last.fm.** Connect your Last.fm account and Meiro adds the songs you listen
-  to your profile. Pause it any time.
+- **Last.fm scrobbling.** Connect your Last.fm account and Meiro adds the songs
+  you listen to your profile. Pause it any time.
 - **Listening stats.** See how much you listened to, day by day. The history
   stays on your computer and you can delete it whenever you like.
 
