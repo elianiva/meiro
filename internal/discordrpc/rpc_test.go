@@ -115,6 +115,41 @@ func TestSessionSendsListeningActivityAndClearsOnPause(t *testing.T) {
 	}
 }
 
+func TestSessionAddsTrackLengthWhenItBecomesKnown(t *testing.T) {
+	id, err := ParseApplicationID("123456789012345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	connections := make(chan net.Conn, 1)
+	session := newSession(id, func(context.Context) (net.Conn, error) {
+		client, server := net.Pipe()
+		connections <- server
+		return client, nil
+	})
+	defer session.Close()
+	session.Update(State{VideoID: "track-1", Title: "Song", Position: 42 * time.Second, Playing: true})
+
+	server := <-connections
+	defer server.Close()
+	acceptTestHandshake(t, server)
+	first := readActivity(t, server)
+	if first.Timestamps == nil || first.Timestamps.End != 0 {
+		t.Fatalf("timestamps before the length is known = %+v, want a start and no end", first.Timestamps)
+	}
+
+	session.Update(State{
+		VideoID: "track-1", Title: "Song", Position: 43 * time.Second,
+		Duration: 3*time.Minute + 30*time.Second + 700*time.Millisecond, Playing: true,
+	})
+	second := readActivity(t, server)
+	if second.Timestamps == nil || second.Timestamps.Start != first.Timestamps.Start {
+		t.Fatalf("timestamps once the length is known = %+v, want the start kept at %d", second.Timestamps, first.Timestamps.Start)
+	}
+	if second.Timestamps.End != first.Timestamps.Start+210 {
+		t.Errorf("end = %d, want start + 210 seconds, the length the player shows (%d)", second.Timestamps.End, first.Timestamps.Start+210)
+	}
+}
+
 func TestSessionAnswersPingWhileIdle(t *testing.T) {
 	id, err := ParseApplicationID("123456789012345678")
 	if err != nil {
@@ -271,6 +306,19 @@ func readActivityRequest(t *testing.T, conn net.Conn) activityRequest {
 		t.Fatalf("activity request = %+v", request)
 	}
 	return activityRequest{Nonce: request.Nonce, Activity: request.Args.Activity}
+}
+
+func readActivity(t *testing.T, conn net.Conn) activity {
+	t.Helper()
+	request := readActivityRequest(t, conn)
+	if err := replyToActivity(conn, request.Nonce); err != nil {
+		t.Fatal(err)
+	}
+	var got activity
+	if err := json.Unmarshal(request.Activity, &got); err != nil {
+		t.Fatal(err)
+	}
+	return got
 }
 
 func replyToActivity(conn net.Conn, nonce string) error {

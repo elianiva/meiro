@@ -13,6 +13,8 @@ and this project adheres to
 - **The Linux tray menu now offers Open Meiro and Quit.** AppIndicator does
   not report icon position, so Meiro does not offer its custom tray mini
   player on Linux; Open Meiro restores the main window.
+- **Discord Rich Presence shows a time bar with the track's length** instead
+  of only the elapsed time.
 
 ### Fixed
 

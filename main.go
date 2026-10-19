@@ -504,18 +504,19 @@ func (a *app) syncDiscordPresence() {
 	if a.discord == nil {
 		a.discord = discordrpc.New(id)
 	}
-	a.discord.Update(discordPresenceState(a.current, a.player.Position(), a.seekVersion))
+	a.discord.Update(discordPresenceState(a.current, a.player.Position(), a.total, a.seekVersion))
 }
 
 // discordPresenceState selects the fields from the current track that belong
 // in Discord's compact activity, rather than forwarding its display subtitle.
-func discordPresenceState(item youtube.MusicItem, position time.Duration, seekVersion uint64) discordrpc.State {
+func discordPresenceState(item youtube.MusicItem, position, total time.Duration, seekVersion uint64) discordrpc.State {
 	return discordrpc.State{
 		VideoID:     item.VideoID,
 		Title:       item.Title,
 		Artist:      item.Artist,
 		ArtworkURL:  item.Thumbnail,
 		Position:    position,
+		Duration:    total,
 		SeekVersion: seekVersion,
 		Playing:     true,
 	}

@@ -46,12 +46,12 @@ func TestDiscordPresenceStateUsesCreditedArtist(t *testing.T) {
 		Artist:    "Artist",
 		Thumbnail: "https://i.ytimg.com/cover.jpg",
 	}
-	got := discordPresenceState(item, 42*time.Second, 3)
+	got := discordPresenceState(item, 42*time.Second, 222*time.Second, 3)
 	if got.VideoID != item.VideoID || got.Title != item.Title || got.Artist != item.Artist || got.ArtworkURL != item.Thumbnail {
 		t.Fatalf("Discord state = %+v, want fields from the track and its credited artist", got)
 	}
-	if got.Position != 42*time.Second || got.SeekVersion != 3 || !got.Playing {
-		t.Errorf("Discord playback state = %+v, want position 42s, seek version 3, playing", got)
+	if got.Position != 42*time.Second || got.Duration != 222*time.Second || got.SeekVersion != 3 || !got.Playing {
+		t.Errorf("Discord playback state = %+v, want position 42s, length 3:42, seek version 3, playing", got)
 	}
 }
 

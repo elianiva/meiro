@@ -54,13 +54,15 @@ func ParseApplicationID(raw string) (ApplicationID, error) {
 }
 
 // State describes the track Discord should show. A state without Playing
-// clears the activity; paused playback is intentionally not shared.
+// clears the activity; paused playback is intentionally not shared. A zero
+// Duration means the length is unknown, so Discord shows only elapsed time.
 type State struct {
 	VideoID     string
 	Title       string
 	Artist      string
 	ArtworkURL  string
 	Position    time.Duration
+	Duration    time.Duration
 	SeekVersion uint64
 	Playing     bool
 }
@@ -221,13 +223,16 @@ type activityKey struct {
 	Title       string
 	Artist      string
 	ArtworkURL  string
+	Duration    time.Duration
 	SeekVersion uint64
 }
 
+// keyFor compares the length in the whole seconds Discord receives, so a more
+// precise length for the same track does not resend the activity.
 func keyFor(state State) activityKey {
 	return activityKey{
 		VideoID: state.VideoID, Title: state.Title, Artist: state.Artist,
-		ArtworkURL: state.ArtworkURL, SeekVersion: state.SeekVersion,
+		ArtworkURL: state.ArtworkURL, Duration: state.Duration.Truncate(time.Second), SeekVersion: state.SeekVersion,
 	}
 }
 
@@ -241,6 +246,7 @@ type activity struct {
 
 type timestamps struct {
 	Start int64 `json:"start"`
+	End   int64 `json:"end,omitempty"`
 }
 
 type assets struct {
@@ -253,6 +259,10 @@ func makeActivity(state State, startedAt int64) *activity {
 		Details:    truncate(state.Title, 128),
 		State:      truncate(state.Artist, 128),
 		Timestamps: &timestamps{Start: startedAt},
+	}
+	if state.Duration > 0 {
+		// Whole seconds, as the player's clock shows the length.
+		a.Timestamps.End = startedAt + int64(state.Duration/time.Second)
 	}
 	if artworkURL := validArtworkURL(state.ArtworkURL); artworkURL != "" {
 		a.Assets = &assets{LargeImage: artworkURL}

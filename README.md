@@ -79,7 +79,8 @@ half of the title.
   widget on Mac, or the media controls on Linux.
 - **Share what you hear on Discord.** With Discord running, enable Discord
   Rich Presence in Settings → Desktop to show the current track, artist, cover
-  and elapsed time. Meiro clears the activity when playback pauses or stops.
+  and a time bar with the elapsed time and the track's length. Meiro clears the
+  activity when playback pauses or stops.
 - **Keyboard shortcuts.** Control music from the keyboard, and change the keys
   to what suits you.
 
