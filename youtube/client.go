@@ -297,7 +297,8 @@ func (c *Client) setIdentityWithVisitorData(req *http.Request, visitorData strin
 	}
 	if c.cookieAuth != nil {
 		req.Header.Set("Cookie", c.cookieAuth.cookie)
-		req.Header.Set("Authorization", c.cookieAuth.authorization(time.Now()))
+		origin := req.URL.Scheme + "://" + req.URL.Host
+		req.Header.Set("Authorization", c.cookieAuth.authorization(time.Now(), origin))
 		req.Header.Set("X-Goog-Authuser", strconv.Itoa(c.cookieAuth.accountIndex))
 		if c.cookieAuth.onBehalfOfUser != "" {
 			req.Header.Set("X-Goog-PageId", c.cookieAuth.onBehalfOfUser)

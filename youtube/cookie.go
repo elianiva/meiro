@@ -66,9 +66,9 @@ func cookieValue(cookie, name string) string {
 	return ""
 }
 
-func (auth *CookieAuth) authorization(at time.Time) string {
+func (auth *CookieAuth) authorization(at time.Time, origin string) string {
 	timestamp := at.Unix()
-	input := fmt.Sprintf("%d %s https://www.youtube.com", timestamp, auth.sapisid)
+	input := fmt.Sprintf("%d %s %s", timestamp, auth.sapisid, origin)
 	digest := sha1.Sum([]byte(input)) //nolint:gosec // SAPISIDHASH is defined as SHA-1
 	return fmt.Sprintf("SAPISIDHASH %d_%s", timestamp, hex.EncodeToString(digest[:]))
 }

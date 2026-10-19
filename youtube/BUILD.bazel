@@ -22,6 +22,7 @@ go_test(
     name = "youtube_test",
     srcs = [
         "accounts_test.go",
+        "cookie_test.go",
         "credits_test.go",
         "integration_test.go",
         "library_test.go",

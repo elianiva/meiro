@@ -27,6 +27,11 @@ and this project adheres to
 
 ### Fixed
 
+- **Signing in works again.** A session was sent to YouTube with an
+  authorization hash that no longer matched where the request went, so YouTube
+  answered as if the session had expired: signing in was refused, a session
+  that worked was reported as expired, and the library, likes and playlist
+  writes failed. The hash now matches the request.
 - **Discord Rich Presence works with a Flatpak Discord.** Meiro finds the
   socket Flatpak exports, so the manual symlink workaround is no longer
   needed.
