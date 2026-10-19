@@ -237,12 +237,17 @@ func keyFor(state State) activityKey {
 }
 
 type activity struct {
-	Type       int         `json:"type"`
-	Details    string      `json:"details,omitempty"`
-	State      string      `json:"state,omitempty"`
-	Timestamps *timestamps `json:"timestamps,omitempty"`
-	Assets     *assets     `json:"assets,omitempty"`
+	Type              int         `json:"type"`
+	StatusDisplayType int         `json:"status_display_type,omitempty"`
+	Details           string      `json:"details,omitempty"`
+	State             string      `json:"state,omitempty"`
+	Timestamps        *timestamps `json:"timestamps,omitempty"`
+	Assets            *assets     `json:"assets,omitempty"`
 }
+
+// statusDisplayState makes the member list show the activity's state, the
+// artist, instead of the application's name.
+const statusDisplayState = 1
 
 type timestamps struct {
 	Start int64 `json:"start"`
@@ -259,6 +264,9 @@ func makeActivity(state State, startedAt int64) *activity {
 		Details:    truncate(state.Title, 128),
 		State:      truncate(state.Artist, 128),
 		Timestamps: &timestamps{Start: startedAt},
+	}
+	if a.State != "" {
+		a.StatusDisplayType = statusDisplayState
 	}
 	if state.Duration > 0 {
 		// Whole seconds, as the player's clock shows the length.

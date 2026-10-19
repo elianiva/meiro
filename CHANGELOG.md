@@ -15,6 +15,8 @@ and this project adheres to
   player on Linux; Open Meiro restores the main window.
 - **Discord Rich Presence shows a time bar with the track's length** instead
   of only the elapsed time.
+- **Discord's member list shows the artist you are listening to** instead of
+  Meiro's name.
 
 ### Fixed
 

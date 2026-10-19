@@ -81,6 +81,9 @@ func TestSessionSendsListeningActivityAndClearsOnPause(t *testing.T) {
 	if got.Type != 2 || got.Details != "Song" || got.State != "Artist" {
 		t.Errorf("activity = %+v", got)
 	}
+	if got.StatusDisplayType != statusDisplayState {
+		t.Errorf("status display type = %d, want %d so the member list names the artist", got.StatusDisplayType, statusDisplayState)
+	}
 	if got.Assets == nil || got.Assets.LargeImage != "https://i.ytimg.com/cover.jpg" {
 		t.Errorf("artwork = %+v", got.Assets)
 	}
@@ -278,6 +281,9 @@ func TestMakeActivityBoundsFieldsAndRejectsNonHTTPSArtwork(t *testing.T) {
 	}
 	if got.Assets != nil {
 		t.Errorf("non-HTTPS artwork was included: %+v", got.Assets)
+	}
+	if got.StatusDisplayType != 0 {
+		t.Errorf("status display type without an artist = %d, want the application's name", got.StatusDisplayType)
 	}
 }
 
