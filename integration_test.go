@@ -391,17 +391,32 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 	if a.detailSortOpen {
 		t.Error("the sort control did not close its own menu")
 	}
-	if tt.HasText("Duration, shortest first") {
+	if tt.HasText("Artist") {
 		t.Errorf("the closed menu is still on screen: %q", tt.Texts())
 	}
 
+	// The direction is the page's, not a field's, so it works before a field
+	// is chosen: descending reads the playlist backwards.
+	if err := tt.Click("Sort descending"); err != nil {
+		t.Fatalf("the original order has no direction button: %v", err)
+	}
+	tt.Frame()
+	if got := ids(a.page.playable); !slices.Equal(got, []string{"song-three", "song-two", "song-one"}) {
+		t.Fatalf("the reversed original order queued %v, want song-three, song-two, song-one", got)
+	}
+	if err := tt.Click("Sort ascending"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := ids(a.page.playable); !slices.Equal(got, []string{"song-one", "song-two", "song-three"}) {
+		t.Fatalf("the original order queued %v, want the playlist's own order", got)
+	}
+
+	// A field sorts the page, and the button reverses it.
 	if err := tt.Click("Sort: Original order"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tt.HasText("Sort descending") {
-		t.Errorf("an unsorted page offers a direction: %q", tt.Texts())
-	}
 	if err := tt.Click("Title"); err != nil {
 		t.Fatal(err)
 	}
@@ -419,24 +434,52 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 	if got := ids(a.page.playable); !slices.Equal(got, []string{"song-two", "song-three", "song-one"}) {
 		t.Fatalf("title descending sort queued %v, want song-two, song-three, song-one", got)
 	}
-	// Choosing the field again keeps the direction.
+
+	// Choosing another field keeps the direction it was given.
 	if err := tt.Click("Sort: Title"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Title"); err != nil {
+	if err := tt.Click("Artist"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !a.detailSort.desc {
-		t.Fatalf("choosing the same field reset the direction: %#v", a.detailSort)
+	if a.detailSort.field != playlistSortArtist || !a.detailSort.desc {
+		t.Fatalf("a new field = %#v, want descending artist", a.detailSort)
+	}
+	if !tt.HasText("Sort: Artist") {
+		t.Errorf("the control does not name the field: %q", tt.Texts())
 	}
 	if err := tt.Click("Sort ascending"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.detailSort.field != playlistSortTitle || a.detailSort.desc {
-		t.Fatalf("direction toggle = %#v, want ascending title", a.detailSort)
+	if a.detailSort.field != playlistSortArtist || a.detailSort.desc {
+		t.Fatalf("direction toggle = %#v, want ascending artist", a.detailSort)
+	}
+
+	// The original order comes back with the direction the page holds, so a
+	// page read backwards keeps reading backwards.
+	if err := tt.Click("Sort descending"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Sort: Artist"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Original order"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.detailSort.field != playlistSortOriginal || !a.detailSort.desc {
+		t.Fatalf("original choice = %#v, want the reversed original order", a.detailSort)
+	}
+	if got := ids(a.page.playable); !slices.Equal(got, []string{"song-three", "song-two", "song-one"}) {
+		t.Fatalf("the original order queued %v, want the direction it kept", got)
+	}
+	if !tt.HasText("Sort ascending") {
+		t.Errorf("the direction button did not follow the original order: %q", tt.Texts())
 	}
 }
 

@@ -987,14 +987,14 @@ func (a *app) closePlaylistSearch() {
 func (a *app) playlistSort(c *ui.Context) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		a.playlistSortField(c)
-		if a.detailSort.active() {
-			label, icon := "Sort descending", m3.IconArrowUp
-			if a.detailSort.desc {
-				label, icon = "Sort ascending", m3.IconArrowDown
-			}
-			if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Kind: m3.OutlinedIcon, Size: m3.Medium56, Key: "playlist-sort-direction"}).Clicked() {
-				a.detailSort.flip()
-			}
+		// The direction belongs to the page rather than to a field, so the
+		// button stays for the original order, which then reads backwards.
+		label, icon := "Sort descending", m3.IconArrowUp
+		if a.detailSort.desc {
+			label, icon = "Sort ascending", m3.IconArrowDown
+		}
+		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Kind: m3.OutlinedIcon, Size: m3.Medium56, Key: "playlist-sort-direction"}).Clicked() {
+			a.detailSort.flip()
 		}
 	})
 }

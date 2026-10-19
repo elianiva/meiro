@@ -173,7 +173,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	if len(sections) == 0 && len(s.items) > 0 {
 		sections = []youtube.MusicSection{{Items: s.items}}
 	}
-	if r.id == routePlaylist && key.sort.active() {
+	if r.id == routePlaylist && key.sort.ordered() {
 		sections = sortPlaylistSections(sections, key.sort)
 	}
 	if r.id == routePlaylist {

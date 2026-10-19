@@ -12,6 +12,11 @@ and this project adheres to
 
 - **The tray mini player keeps its narrow, vertical shape, with smaller tabs
   and auto-play controls and more upcoming tracks visible.**
+- **The playlist sort direction button also reverses the original order.** The
+  button now stays before a field is chosen, and descending reads the whole
+  playlist backwards, across its sections, which is what you want when you look
+  for the songs you added last. Choosing another field also keeps the direction
+  the page was in, instead of resetting it.
 
 ## [0.4.0] - 2026-10-18
 
@@ -28,7 +33,6 @@ and this project adheres to
   the active channel as selected.
 - **Tracks now play while signed in.** Stream URLs resolve without account
   cookies, and YouTube playback history is reported after audio starts.
-
 ## [0.3.3] - 2026-10-18
 
 ### Changed
