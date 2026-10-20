@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/playstate"
+	"github.com/elianiva/meiro/internal/settings"
 )
 
 func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
@@ -53,6 +55,33 @@ func TestLinuxTrayMenuOpensMeiro(t *testing.T) {
 	items[0].Click(items[0], nil)
 	if !opened {
 		t.Fatal("choosing Open Meiro did not restore the main window")
+	}
+}
+
+func TestMinimizeToTrayShowsTheTrayWithoutRememberingTheChoice(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := newTestApp(t)
+	a.saver.Path = path
+	a.settings.ShowTray = false
+
+	if !a.answerClose(true, false) {
+		t.Fatal("Minimize to tray did not hide the window")
+	}
+	a.saver.Wait()
+	saved := settings.Load(path)
+	if !a.settings.ShowTray || !saved.ShowTray {
+		t.Fatalf("the tray is off after choosing it: in memory %v, saved %v", a.settings.ShowTray, saved.ShowTray)
+	}
+	if a.settings.CloseToTray != nil || saved.CloseToTray != nil {
+		t.Fatalf("an answer without Remember was kept: in memory %v, saved %v", a.settings.CloseToTray, saved.CloseToTray)
+	}
+
+	if a.answerClose(false, true) {
+		t.Fatal("Close Meiro hid the window")
+	}
+	a.saver.Wait()
+	if saved := settings.Load(path); saved.CloseToTray == nil || *saved.CloseToTray {
+		t.Fatal("a remembered Close Meiro was not kept")
 	}
 }
 

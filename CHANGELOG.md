@@ -19,6 +19,10 @@ and this project adheres to
 - **Auto-play does not queue music-video recommendations.** It prefers the
   song version when both are recommended, and does not change your chosen
   tracks or the one playing.
+- **The "Close Meiro?" prompt does what you choose.** Dismissing it with
+  Escape or its close button keeps the window open instead of quitting, and
+  **Minimize to tray** shows the tray icon when it was off, so the window can
+  be brought back even without **Remember my choice**.
 
 ## [0.4.2] - 2026-10-20
 
