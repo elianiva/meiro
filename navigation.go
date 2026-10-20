@@ -45,6 +45,12 @@ type pageState struct {
 	// partial says the page shows what has loaded of it so far, and more of
 	// it is still on the way.
 	partial bool
+	// similar is what YouTube suggests under a playlist, which the page shows
+	// after it under a heading of its own: shown is how many of them it shows,
+	// and similarMore is the continuation for more.
+	similar      []youtube.MusicItem
+	similarShown int
+	similarMore  string
 }
 
 // pageData is everything the app holds for a page: what it loaded, its
@@ -215,6 +221,66 @@ func (a *app) loadPage(r *route, id string) {
 			return
 		}
 		a.applyPage(p, r, path, client, result, false)
+		// A playlist page shows its whole playlist and what YouTube suggests
+		// under it, so the page asks for both as it opens.
+		if r.id == routePlaylist && feed.more != "" {
+			token := feed.more
+			p.feed.more = ""
+			a.loadPlaylistRest(p, client, token)
+		}
+	})
+}
+
+// playlistRestPages bounds how many continuations a playlist page follows for
+// its own songs before it stops, which is far more than a playlist holds.
+const playlistRestPages = 20
+
+// loadPlaylistRest follows a playlist page's continuation: the songs of the
+// playlist that came after its first page join it, and the first answer that
+// is a shelf is what YouTube suggests under the playlist, which the page shows
+// after it, a few at a time.
+func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token string) {
+	if token == "" || a.pageSimilar.busy() {
+		return
+	}
+	startTask(a, &a.pageSimilar, moreTimeout, func(ctx context.Context) (moreItems, error) {
+		var tracks []youtube.MusicItem
+		next := token
+		for page := 0; next != "" && page < playlistRestPages; page++ {
+			result, err := client.ContinueBrowse(ctx, next)
+			if err != nil {
+				return moreItems{items: tracks}, err
+			}
+			if len(result.Sections) > 0 {
+				return moreItems{items: tracks, sections: result.Sections, next: result.ContinuationToken}, nil
+			}
+			tracks = append(tracks, result.Items...)
+			next = result.ContinuationToken
+		}
+		return moreItems{items: tracks}, nil
+	}, func(more moreItems, err error) {
+		p.rowsDirty = true
+		if err != nil {
+			log.Printf("loading the rest of a playlist: %v", err)
+			return
+		}
+		feed := &p.feed
+		if len(more.items) > 0 {
+			switch {
+			case len(feed.sections) > 0:
+				last := &feed.sections[len(feed.sections)-1]
+				last.Items = append(last.Items, more.items...)
+			default:
+				feed.items = append(feed.items, more.items...)
+			}
+		}
+		if len(more.sections) > 0 {
+			for _, section := range more.sections {
+				feed.similar = append(feed.similar, section.Items...)
+			}
+			feed.similarMore = more.next
+			feed.similarShown = min(suggestionsShown, len(feed.similar))
+		}
 	})
 }
 
@@ -283,12 +349,22 @@ type moreItems struct {
 // cancel a load in flight.
 func (a *app) loadMore() {
 	s := a.pageState()
-	if s.more == "" || a.pageMore.busy() {
+	r, _ := a.route()
+	// Once a playlist page shows what YouTube suggests under it, its request
+	// for more asks for more suggestions.
+	suggestions := r.id == routePlaylist && len(s.similar) > 0
+	token := s.more
+	if suggestions {
+		token = s.similarMore
+	}
+	if token == "" || a.pageMore.busy() {
 		return
 	}
-	r, _ := a.route()
-	token, searching, home := s.more, r.id == routeSearch, r.id == routeHome
+	searching, home := r.id == routeSearch, r.id == routeHome
 	s.more, s.moreErr = "", ""
+	if suggestions {
+		s.similarMore = ""
+	}
 	p := a.page
 	p.rowsDirty = true
 	client := a.client()
@@ -318,14 +394,41 @@ func (a *app) loadMore() {
 		switch {
 		case home && len(more.sections) > 0:
 			s.sections = append(s.sections, more.sections...)
+		case r.id == routePlaylist && len(more.sections) > 0:
+			// A playlist page's continuation holds what YouTube suggests under
+			// the playlist, not more of the playlist: those songs belong after
+			// it, under a heading of their own.
+			for _, section := range more.sections {
+				s.similar = append(s.similar, section.Items...)
+			}
+			s.similarMore = more.next
+			s.similarShown = max(s.similarShown, min(suggestionsShown, len(s.similar)))
 		case len(s.sections) > 0:
 			last := &s.sections[len(s.sections)-1]
 			last.Items = append(last.Items, more.items...)
 		default:
 			s.items = append(s.items, more.items...)
 		}
-		s.more = more.next
+		if !suggestions {
+			s.more = more.next
+		}
 	})
+}
+
+// suggestionsShown is how many of the songs a playlist page suggests it shows
+// at once; the button under them shows as many again.
+const suggestionsShown = 5
+
+// moreSimilar shows the next songs a playlist page suggests, asking YouTube for
+// more of them when the page has shown all it holds.
+func (a *app) moreSimilar() {
+	s := a.pageState()
+	if s.similarShown < len(s.similar) {
+		s.similarShown = min(s.similarShown+suggestionsShown, len(s.similar))
+		a.page.rowsDirty = true
+		return
+	}
+	a.loadMore()
 }
 
 // failure is how a failed load is shown: the first line of what went wrong,

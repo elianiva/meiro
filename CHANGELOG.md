@@ -15,6 +15,12 @@ and this project adheres to
 
 ### Changed
 
+- **A playlist page shows what YouTube suggests under it as its own part.** The
+  suggested songs are there as the page opens, after the playlist, behind a
+  divider and a **Similar songs** heading, five at a time; the **Show more**
+  button under them shows the next ones. They no longer join the playlist's
+  songs or its queue, so playing a playlist song plays the playlist, and
+  playing a suggested song plays the suggestions.
 - **The player bar keeps its mute button in narrow windows.** Hover it to
   reveal a vertical volume slider without taking space from the track.
 - **The Linux tray menu now offers Open Meiro and Quit.** AppIndicator does

@@ -79,17 +79,20 @@ type app struct {
 
 	// page is the page shown. It moves between here and pages, the cache of
 	// recent ones, so exactly one place holds each.
-	page      *pageData
-	location  string
-	routed    routed
-	pageLoad  task // the load of the page shown
-	pageMore  task // the next part of the page shown
-	pages     *lru.Cache[string, *pageData]
-	details   *lru.Cache[string, detail]
-	carousels *lru.Cache[string, *m3.CarouselState]
-	list      *ui.ListState
-	listWidth float32 // width the page's list had in the last frame
-	search    searchState
+	page     *pageData
+	location string
+	routed   routed
+	pageLoad task // the load of the page shown
+	pageMore task // the next part of the page shown
+	// pageSimilar reads what a playlist page has after its own songs: more of
+	// the playlist, and what YouTube suggests under it.
+	pageSimilar task
+	pages       *lru.Cache[string, *pageData]
+	details     *lru.Cache[string, detail]
+	carousels   *lru.Cache[string, *m3.CarouselState]
+	list        *ui.ListState
+	listWidth   float32 // width the page's list had in the last frame
+	search      searchState
 	// searchField and detailSearchField move the keyboard to the top bar's
 	// search and to the playlist page's, where Focus waits while one is hidden.
 	searchField, detailSearchField ui.Handle

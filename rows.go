@@ -19,6 +19,7 @@ const (
 	rowGrid                     // one line of cards in a grid that wraps across the page
 	rowTrack                    // one song, album, artist or playlist in a column of rows
 	rowMore                     // the button that asks for the next page
+	rowSimilar                  // a divider and the heading over a playlist's suggestions
 	rowLoading                  // the page is loading
 	rowError                    // the page failed
 	rowEmpty                    // the page has nothing on it
@@ -58,7 +59,7 @@ func (r row) key() any {
 		return strconv.Itoa(int(r.kind)) + ":" + r.shelf + "#" + strconv.Itoa(r.position)
 	case rowCards, rowColumns, rowHeading:
 		return strconv.Itoa(int(r.kind)) + ":" + r.shelf
-	case rowHero, rowMore, rowLoading, rowError, rowEmpty, rowStreaming:
+	case rowHero, rowMore, rowLoading, rowError, rowEmpty, rowStreaming, rowSimilar:
 	}
 	return strconv.Itoa(int(r.kind)) + ":" + r.title
 }
@@ -86,6 +87,10 @@ type rowsKey struct {
 	// moreBusy says the next part of the page is on its way, which the list
 	// shows a spinner for.
 	moreBusy bool
+	// similar is how many songs a playlist page suggests and how many of them
+	// it shows; both are zero on a page without suggestions.
+	similar      int
+	similarShown int
 	// shelves folds the sections' titles and item counts into one number, and
 	// loose is how many items a page without sections holds.
 	shelves uint64
@@ -111,8 +116,8 @@ func (a *app) syncRows() {
 	key := rowsKey{
 		path: a.path(), detail: a.page.detail,
 		loading: s.loading, partial: s.partial, err: s.err, offline: s.offline, more: s.more, moreErr: s.moreErr,
-		moreBusy: a.pageMore.busy(),
-		shelves:  shelfShape(s.sections), loose: len(s.items),
+		moreBusy: a.pageMore.busy(), similar: len(s.similar), similarShown: s.similarShown,
+		shelves: shelfShape(s.sections), loose: len(s.items),
 		columns: a.gridColumns(r),
 	}
 	if r.id == routeSearch {
@@ -287,6 +292,17 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	if s.partial {
 		rows = append(rows, row{kind: rowStreaming, track: -1})
 	}
+	// A playlist page shows what YouTube suggests under it after its own
+	// songs, a few at a time, under a heading of its own.
+	if r.id == routePlaylist && len(s.similar) > 0 && key.filter == "" {
+		rows = append(rows, row{kind: rowSimilar, title: "Similar songs", track: -1})
+		for i, item := range s.similar[:min(s.similarShown, len(s.similar))] {
+			rows = append(rows, row{kind: rowTrack, item: item, queue: s.similar, track: i})
+		}
+		if s.similarShown < len(s.similar) || s.similarMore != "" {
+			rows = append(rows, row{kind: rowMore, title: "Show more", shelf: "similar", track: -1})
+		}
+	}
 	// A search asks for the next part of its results itself, as its list
 	// reaches the end of what it has, the way YouTube Music does. Every other
 	// page keeps the button that asks.
@@ -295,7 +311,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		rows = append(rows, row{kind: rowMore, title: "Could not load more. Try again", track: -1})
 	case key.moreBusy:
 		rows = append(rows, row{kind: rowStreaming, title: "more", track: -1})
-	case s.more != "" && r.id != routeSearch:
+	case s.more != "" && r.id != routeSearch && r.id != routePlaylist:
 		rows = append(rows, row{kind: rowMore, title: "Show more", track: -1})
 	}
 	if len(rows) == 0 || (len(rows) == 1 && rows[0].kind == rowHero) ||

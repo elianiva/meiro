@@ -580,6 +580,56 @@ func TestAPlaylistSearchShrinksIntoItsButton(t *testing.T) {
 	}
 }
 
+// A playlist page shows what YouTube suggests under it as it opens, under a
+// heading of its own and five at a time. Those songs are not the playlist: they
+// never join its songs or its queue, and the button under them shows the next
+// ones.
+func TestAPlaylistShowsItsSuggestionsFiveAtATime(t *testing.T) {
+	resetFakes()
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 1200)
+	for i := 0; i < 20 && a.page.feed.similarShown == 0; i++ {
+		tt.Frame()
+	}
+	if !tt.HasText("Similar songs") {
+		t.Fatalf("the suggestions have no heading of their own: %q", tt.Texts())
+	}
+	if got := len(a.page.feed.similar); got != 7 {
+		t.Fatalf("the page holds %d suggestions, want 7", got)
+	}
+	if got := a.page.feed.similarShown; got != 5 {
+		t.Fatalf("the page shows %d suggestions, want 5", got)
+	}
+	if !tt.HasText("Suggestion One") || !tt.HasText("Suggestion Four") {
+		t.Errorf("the first suggestions are not on the page: %q", tt.Texts())
+	}
+	if got := ids(a.page.playable); !slices.Equal(got, []string{"song-one", "song-two", "song-three"}) {
+		t.Errorf("the playlist holds %v, want only its own songs", got)
+	}
+	// A suggestion plays from the suggestions alone, never with the playlist.
+	if err := tt.Click("Suggestion One"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.current.VideoID != "suggestion-one" {
+		t.Fatalf("playing the suggestion left %q current", a.current.VideoID)
+	}
+	for _, id := range ids(a.queue.items) {
+		if id == "song-one" || id == "song-two" || id == "song-three" {
+			t.Fatalf("the queue holds the playlist's %q: %v", id, ids(a.queue.items))
+		}
+	}
+	// The button shows more of them.
+	if err := tt.Click("Show more"); err != nil {
+		t.Fatalf("the suggestions have no Show more button: %v", err)
+	}
+	tt.Frame()
+	if got := a.page.feed.similarShown; got != 7 {
+		t.Errorf("after Show more the page shows %d suggestions, want 7", got)
+	}
+}
+
 func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.router.Push("/playlist/VLPL_songs")
@@ -598,10 +648,12 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	if a.detailSearchOpen {
 		t.Fatal("the search opened by itself")
 	}
+	// shown counts the playlist's own rows: a row of the suggestions that
+	// YouTube keeps under the page plays from its own list.
 	shown := func() int {
 		n := 0
 		for _, r := range a.page.rows {
-			if r.kind == rowTrack {
+			if r.kind == rowTrack && r.queue == nil {
 				n++
 			}
 		}

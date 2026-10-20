@@ -32,10 +32,12 @@ var (
 	searches         atomic.Int32
 	searchesMore     atomic.Int32
 	homeMoreRequests atomic.Int32
-	searchAsked      atomic.Value
-	fakePageID       atomic.Value
-	libraryLoads     atomic.Int32
-	playlistCreates  atomic.Int32
+	// playlistMoreRequests counts the requests for a playlist's suggestions.
+	playlistMoreRequests atomic.Int32
+	searchAsked          atomic.Value
+	fakePageID           atomic.Value
+	libraryLoads         atomic.Int32
+	playlistCreates      atomic.Int32
 	// likeWrites counts the like writes the fake has been asked for, and
 	// refuseWrites makes it answer them, and the library and subscription
 	// writes after them, as YouTube answers a request it rejects: with a 400.
@@ -108,6 +110,9 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.Contains(asked, `"continuation":"home-more"`):
 		homeMoreRequests.Add(1)
 		reply = homeMoreResponse
+	case strings.Contains(asked, `"continuation":"playlist-more"`):
+		playlistMoreRequests.Add(1)
+		reply = playlistSuggestionsResponse
 	case strings.Contains(asked, "FEmusic_listening_review"):
 		reply = recapResponse
 	case strings.Contains(asked, "VLPL_video"):
@@ -324,7 +329,8 @@ const playlistSongsResponse = `{"contents":{"playlistVideoListRenderer":{"conten
 			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Nova"},{"text":" • "},{"text":"2:00"}]}}}
 		]
 	}}
-]}}}`
+]}},
+"continuations":[{"nextContinuationData":{"continuation":"playlist-more"}}]}`
 
 // The playlists the fake's pages offer to save. An album is saved as its audio
 // playlist, which is not its browse ID.
@@ -345,6 +351,7 @@ func resetFakes() {
 	likeWrites.Store(0)
 	subscribeWrites.Store(0)
 	homeMoreRequests.Store(0)
+	playlistMoreRequests.Store(0)
 	refuseWrites.Store(false)
 	fakeLikeState.Store("")
 	fakeLibrary.Clear()
@@ -502,6 +509,35 @@ const searchMoreResponse = `{"contents":{"musicShelfRenderer":{"contents":[{"mus
 		{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Later Song"}]}}},
 		{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"0:59"}]}}}
 	]}}]}}}`
+
+// playlistSuggestionsResponse is what YouTube answers a playlist's
+// continuation with: the songs it suggests under the playlist, in a shelf of
+// their own. Seven of them, so a page that shows five has more to show.
+const playlistSuggestionsResponse = `{"contents":{"musicShelfRenderer":{
+	"title":{"runs":[{"text":"Suggestions"}]},
+	"contents":[
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"suggestion-one"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggestion One"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:00"}]}}}]}},
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"suggestion-two"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggestion Two"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:10"}]}}}]}},
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"suggestion-three"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggestion Three"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:20"}]}}}]}},
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"suggestion-four"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggestion Four"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:30"}]}}}]}},
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"suggestion-five"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggestion Five"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:40"}]}}}]}},
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"suggestion-six"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggestion Six"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"2:50"}]}}}]}},
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"suggestion-seven"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Suggestion Seven"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"3:00"}]}}}]}}
+	]}}}`
 
 // suggestionsResponse is what a query being typed is answered with: the
 // completed queries, and the items the partial query already matches.

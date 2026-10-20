@@ -89,10 +89,24 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 	case rowGrid:
 		a.cardGrid(c, r)
 	case rowTrack:
-		a.songRow(c, r.item, a.page.playable, songOptions{number: r.number(), list: r.shelf, position: r.position, track: r.track, inset: true})
+		queue := r.queue
+		if queue == nil {
+			queue = a.page.playable
+		}
+		a.songRow(c, r.item, queue, songOptions{number: r.number(), list: r.shelf, position: r.position, track: r.track, inset: true})
+	case rowSimilar:
+		sc := m3.Of(c).Scheme
+		ui.Column(c).Padding(24, pageGutter, 4, pageGutter).Children(func() {
+			ui.Box(c).Height(1).Background(sc.OutlineVariant)
+		})
+		a.sectionHeading(c, r, false, false)
 	case rowMore:
 		ui.Row(c).Justify(ui.Center).Padding(16).Children(func() {
 			if m3.Button(c, m3.ButtonSpec{Label: r.title, Kind: m3.Tonal, Size: m3.Medium56, Key: "more"}).Clicked() {
+				if r.shelf == "similar" {
+					a.moreSimilar()
+					return
+				}
 				a.loadMore()
 			}
 		})
