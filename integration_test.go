@@ -104,6 +104,44 @@ func TestEveryPageLoadsAndDraws(t *testing.T) {
 	}
 }
 
+// The top bar searches YouTube Music and holds the account, and neither finds
+// anything on the settings pages: they show the account as their first card,
+// so their bar names the page alone.
+func TestSettingsPagesLeaveTheMusicSearchOutOfTheTopBar(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	// A page of YouTube Music has both, and the account is at the bar's end.
+	account, ok := tt.Find("Account")
+	if !ok {
+		t.Fatalf("the home page has no account button: %q", tt.Texts())
+	}
+	if _, ok := tt.Find(searchPlaceholder); !ok {
+		t.Fatalf("the home page has no music search: %q", tt.Texts())
+	}
+
+	// The settings and their stats are the app's own pages, not YouTube
+	// Music's: their bar names the page and stops there.
+	for _, path := range []string{"/settings", "/stats"} {
+		a.router.Push(path)
+		tt.Frame()
+		if _, ok := tt.Find(searchPlaceholder); ok {
+			t.Errorf("%s shows the music search in its top bar: %q", path, tt.Texts())
+		}
+		if r, ok := tt.Find("Account"); ok && r == account {
+			t.Errorf("%s shows the account in its top bar, at %v", path, r)
+		}
+	}
+
+	// The settings show the account among their rows instead.
+	a.router.Push("/settings")
+	tt.Frame()
+	if !tt.HasText("Sign in") {
+		t.Errorf("the settings have no account card: %q", tt.Texts())
+	}
+}
+
 func TestHomeShowMoreAppendsContinuationSections(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)
@@ -247,11 +285,11 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 	}
 }
 
-// The search field is in the top bar of every page, and submitting it there
-// shows the search page with what it ran.
+// The search field is in the top bar of every page of YouTube Music, and
+// submitting it there shows the search page with what it ran.
 func TestSearchingFromAnotherPage(t *testing.T) {
 	a := newTestApp(t)
-	a.router.Push("/settings")
+	a.router.Push("/explore")
 	tt := ui.NewTester(a.view, 1000, 700)
 	searches.Store(0)
 
@@ -262,7 +300,7 @@ func TestSearchingFromAnotherPage(t *testing.T) {
 	tt.Key(0, ui.KeyEnter)
 	tt.Frame()
 	if r, _ := a.route(); r.id != routeSearch {
-		t.Fatalf("a search from settings left the app on %q", a.path())
+		t.Fatalf("a search from explore left the app on %q", a.path())
 	}
 	if !tt.HasText("Search Result Song") || searches.Load() != 1 {
 		t.Fatalf("the search did not run: %q", tt.Texts())

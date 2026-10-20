@@ -33,5 +33,6 @@ Preconditions:
 ## Gotchas
 
 - Typing alone must not run a search. Assert the counter before Enter or a click.
+- The settings and their stats carry no search field: their top bar names the page alone. Start a search from a page of YouTube Music, such as `Home` or `Explore`.
 - `searchBody()` is the last request body. Read it right after the action.
 - Results for an older query must not replace newer ones. Cover it with two queries in a row when you change the search task.

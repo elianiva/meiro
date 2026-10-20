@@ -18,6 +18,9 @@ and this project adheres to
 
 - **Discord names every artist of a track.** A collaboration shows all of its
   artists, as Spotify does, instead of only the first.
+- **The settings pages leave out the music search and the account.** Their top
+  bar names the page alone: the search finds YouTube Music and nothing on
+  these pages, and the settings show the account as their first card.
 
 ### Fixed
 

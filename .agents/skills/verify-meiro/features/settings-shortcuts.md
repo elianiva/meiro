@@ -11,6 +11,7 @@ A user changes the theme and equaliser, rebinds shortcuts, clears history, opens
 - `settings-history` clears listening history with `Clear history`, then `Delete all plays`.
 - `settings-support` opens `Open logs folder` and `Report a problem` with a prefilled issue.
 - `settings-lastfm` connects, pauses and disconnects Last.fm, and scrobbles qualifying plays.
+- `settings-top-bar` leaves the music search and the account out of the top bar of the settings pages, and keeps both on a page of YouTube Music.
 
 ## How to get to it (user POV)
 
@@ -26,6 +27,7 @@ Preconditions:
 - **Theme.** Verified. `p.click("Dark", "dark")`, `p.click("Rose", "rose")`. Then `a.saver.Save(&a.settings)`, `a.saver.Wait()` and read the file. Mirror `TestSettingsPersistAcrossRestarts`.
 - **Restart.** Build a second `newTestApp(t)` and `settings.Load(path)`. The mode and seed came back.
 - **Shortcut.** Mirror `TestRecordingANewShortcut`. Press the key with `tt.Key(mods, key)`, never by calling the action.
+- **Top bar.** Verified by `TestSettingsPagesLeaveTheMusicSearchOutOfTheTopBar`. `tt.Find(searchPlaceholder)` is absent on `/settings` and `/stats`; the account button there is only the page's own card; `/home` keeps both. The account stays one click away as the settings' first card.
 - **History.** `p.click("Clear history", "confirm")`, `p.click("Delete all plays", "cleared")`. `a.history` is empty and the file on disk is too.
 - **Last.fm.** Mirror `TestConnectingPausingAndDisconnectingInSettings`. Set `MEIRO_LASTFM_API_KEY` and `MEIRO_LASTFM_SECRET` in the test environment only when the test needs a key, with a fake Last.fm transport.
 

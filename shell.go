@@ -181,7 +181,7 @@ func (a *app) clearance() float32 {
 }
 
 // topBar names the page, with a way back on the pages a click opened, the
-// search every page runs from, and the account at its end. It drags the
+// search every music page runs from, and the account at its end. It drags the
 // window.
 func (a *app) topBar(c *ui.Context) {
 	sc := m3.Of(c).Scheme
@@ -208,6 +208,11 @@ func (a *app) topBar(c *ui.Context) {
 		}
 		m3.EmphasizedText(c, m3.HeadlineMedium, title).SingleLine().TextColor(sc.OnSurface).Shrink(0)
 		ui.Spacer(c)
+		if r.bare {
+			// The settings pages have nothing for the search to find, and
+			// show the account themselves.
+			return
+		}
 		var bar ui.Element
 		a.hinted(c, func() { bar = a.searchBar(c) }, keymap.Search).Width(520).Shrink(1).MinWidth(0)
 		a.searchSuggestions(c, bar)

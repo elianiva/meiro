@@ -83,6 +83,10 @@ type route struct {
 	// grid lays the page's cards out in lines that wrap, rather than in
 	// shelves that scroll sideways.
 	grid bool
+	// bare pages are the app's own, not YouTube Music's: the top bar names
+	// them alone, without the search, which finds music and nothing here, and
+	// the account, which the settings already offer as a card.
+	bare bool
 }
 
 // emptyMessage is the title and the line under it of a page with no content.
@@ -147,11 +151,11 @@ func appRoutes() []route {
 			needsAccount: &signInPrompt{m3.IconTrending, "Your recap lives here", "Sign in to see the music you have had on repeat.", "the music you have had on repeat"},
 		},
 		{
-			id: routeSettings, pattern: "/settings", title: "Settings", rail: &railEntry{label: "Settings", action: keymap.Settings, icon: m3.IconSettings, filled: m3.IconSettings, footer: true}, heading: heading("Settings"), nav: routeSettings,
+			id: routeSettings, pattern: "/settings", title: "Settings", rail: &railEntry{label: "Settings", action: keymap.Settings, icon: m3.IconSettings, filled: m3.IconSettings, footer: true}, heading: heading("Settings"), nav: routeSettings, bare: true,
 			view: (*app).settingsPage, open: (*app).loadToolVersions,
 		},
 		{
-			id: routeStats, pattern: "/stats", title: "Stats", heading: heading("Listening stats"), nav: routeSettings,
+			id: routeStats, pattern: "/stats", title: "Stats", heading: heading("Listening stats"), nav: routeSettings, bare: true,
 			view: (*app).statsPage, open: (*app).loadHistory,
 		},
 		{
