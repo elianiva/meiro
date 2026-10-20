@@ -1,0 +1,11 @@
+// Deploy with: npx wrangler@latest deploy
+// Preview locally with: npx wrangler@latest dev
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "meiro",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "single-page-application"
+  }
+}

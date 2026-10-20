@@ -13,6 +13,8 @@ and this project adheres to
 - **A playlist can be deleted from its menu.** The menu on a playlist card, and
   the menu on a playlist page, offers **Delete playlist**. It asks first, and
   names the playlist it would take, because a delete cannot be undone.
+- **Meiro has a website.** It shows what Meiro is, what it does, real
+  screenshots and the download links, in a light or dark theme.
 
 ### Fixed
 

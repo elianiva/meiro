@@ -12,3 +12,6 @@ mygo_windows_*.syso
 /lastfmkeys_gen.go
 /bazel-*
 /zz_proof*_test.go
+
+# Local Cloudflare Workers state for the website.
+website/.wrangler/
