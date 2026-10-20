@@ -8,6 +8,12 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- **A playlist can be deleted from its menu.** The menu on a playlist card, and
+  the menu on a playlist page, offers **Delete playlist**. It asks first, and
+  names the playlist it would take, because a delete cannot be undone.
+
 ## [0.4.2] - 2026-10-20
 
 ### Added

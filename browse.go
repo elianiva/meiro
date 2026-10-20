@@ -455,6 +455,10 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 			c.Toast("Link copied")
 			close()
 		}
+		if target.Kind == youtube.TargetPlaylist && m3.MenuItem(c, "Delete playlist", m3.IconDelete).Clicked() {
+			a.askDeletePlaylist(target.ID, item.Title)
+			close()
+		}
 	})
 }
 
@@ -895,7 +899,7 @@ func (a *app) heroMenu(c *ui.Context, anchor ui.Element) {
 	if !a.menu.owns("hero") {
 		return
 	}
-	_, id := a.route()
+	r, id := a.route()
 	m3.Menu(c, anchor, &a.menu.open, 232, func() {
 		close := func() { a.menu.close() }
 		if m3.MenuItem(c, "Start radio", m3.IconShuffle).Clicked() {
@@ -909,6 +913,10 @@ func (a *app) heroMenu(c *ui.Context, anchor ui.Element) {
 		if id != "" && m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
 			c.WriteClipboard(youtube.BrowseURL(id))
 			c.Toast("Link copied")
+			close()
+		}
+		if r.id == routePlaylist && m3.MenuItem(c, "Delete playlist", m3.IconDelete).Clicked() {
+			a.askDeletePlaylist(id, a.page.detail.title)
 			close()
 		}
 	})

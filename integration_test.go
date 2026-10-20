@@ -1229,3 +1229,105 @@ func TestGoingBackRestoresWhereAPageWasScrolled(t *testing.T) {
 		t.Fatalf("settings did not come back where it was left: first row %d at %q", first, a.router.Path())
 	}
 }
+
+// holdsPlaylist says whether the page's feed still lists the playlist with
+// this ID.
+func holdsPlaylist(a *app, id string) bool {
+	held := func(items []youtube.MusicItem) bool {
+		return slices.ContainsFunc(items, func(item youtube.MusicItem) bool {
+			return strings.TrimPrefix(item.Target().ID, "VL") == id
+		})
+	}
+	if held(a.page.feed.items) {
+		return true
+	}
+	return slices.ContainsFunc(a.page.feed.sections, func(section youtube.MusicSection) bool {
+		return held(section.Items)
+	})
+}
+
+// Deleting a playlist asks first: the question names the playlist, a cancel
+// writes nothing, and only the answer deletes it and takes it off the page.
+func TestDeletingAPlaylistAsksFirst(t *testing.T) {
+	resetFakes()
+	a := signedInApp(t)
+	tt := open(a, "/library")
+	mustShow(t, tt, "Hype")
+	if err := tt.RightClick("Hype"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Delete playlist") {
+		t.Fatalf("the playlist's menu offers no Delete playlist: %q", tt.Texts())
+	}
+	if err := tt.Click("Delete playlist"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.deletePlaylist == nil || !tt.HasText("“Hype” is deleted from your account") {
+		t.Fatalf("the menu item asked no question: %v %q", a.deletePlaylist, tt.Texts())
+	}
+	if playlistDeletes.Load() != 0 {
+		t.Fatal("the question deleted the playlist before it was answered")
+	}
+
+	// A cancel leaves the playlist where it was, and writes nothing.
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.deletePlaylist != nil || playlistDeletes.Load() != 0 || !holdsPlaylist(a, "PLhype") {
+		t.Fatalf("Cancel wrote %d deletes, and the page holds the playlist: %v", playlistDeletes.Load(), holdsPlaylist(a, "PLhype"))
+	}
+
+	// The answer deletes the playlist, and takes it off the page.
+	if err := tt.RightClick("Hype"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Delete playlist"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Delete"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if playlistDeletes.Load() != 1 {
+		t.Fatalf("the answer wrote %d deletes", playlistDeletes.Load())
+	}
+	if write := written(); !strings.HasSuffix(write.endpoint, "/playlist/delete") || write.body["playlistId"] != "PLhype" {
+		t.Fatalf("the delete wrote %s with %v", write.endpoint, write.body)
+	}
+	if a.deletePlaylist != nil || holdsPlaylist(a, "PLhype") || !tt.HasText("Deleted “Hype”") {
+		t.Fatalf("the deleted playlist stayed: %v %q", a.deletePlaylist, tt.Texts())
+	}
+}
+
+// A delete YouTube refuses keeps its question up, with what YouTube said, and
+// leaves the playlist where it was.
+func TestADeclinedPlaylistDeleteKeepsItsQuestion(t *testing.T) {
+	resetFakes()
+	refuseWrites.Store(true)
+	a := signedInApp(t)
+	tt := open(a, "/library")
+	mustShow(t, tt, "Hype")
+	if err := tt.RightClick("Hype"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Delete playlist"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Delete"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.deletePlaylist == nil || a.deletePlaylist.err == "" || a.deletePlaylist.busy {
+		t.Fatalf("a refused delete closed its question: %+v", a.deletePlaylist)
+	}
+	if !holdsPlaylist(a, "PLhype") {
+		t.Fatal("a refused delete took the playlist off the page")
+	}
+}

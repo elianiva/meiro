@@ -38,6 +38,8 @@ var (
 	fakePageID           atomic.Value
 	libraryLoads         atomic.Int32
 	playlistCreates      atomic.Int32
+	// playlistDeletes counts the playlists the fake has been asked to delete.
+	playlistDeletes atomic.Int32
 	// likeWrites counts the like writes the fake has been asked for, and
 	// refuseWrites makes it answer them, and the library and subscription
 	// writes after them, as YouTube answers a request it rejects: with a 400.
@@ -128,6 +130,13 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		playlistCreates.Add(1)
 		recordWrite(request.URL.Path, asked)
 		reply = createPlaylistResponse
+	case strings.HasSuffix(request.URL.Path, "/playlist/delete"):
+		playlistDeletes.Add(1)
+		recordWrite(request.URL.Path, asked)
+		reply = editPlaylistResponse
+		if refuseWrites.Load() {
+			reply, status = rejectedResponse, http.StatusBadRequest
+		}
 	case strings.Contains(asked, "UCartist"):
 		reply = artistPage()
 	case strings.HasSuffix(request.URL.Path, "/browse/edit_playlist"):
@@ -349,6 +358,7 @@ var fakeLibrary sync.Map
 // starts with.
 func resetFakes() {
 	likeWrites.Store(0)
+	playlistDeletes.Store(0)
 	subscribeWrites.Store(0)
 	homeMoreRequests.Store(0)
 	playlistMoreRequests.Store(0)

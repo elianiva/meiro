@@ -97,6 +97,34 @@ func (c *Client) AddToPlaylist(ctx context.Context, playlistID, videoID string) 
 	return nil
 }
 
+// DeletePlaylist deletes a playlist of the account. The write takes the ID
+// with or without the "VL" prefix, as the other writes do. YouTube answers a
+// delete with a body that carries nothing on its own, so only a panel asking
+// the account for something first is read as a refusal.
+func (c *Client) DeletePlaylist(ctx context.Context, playlistID string) error {
+	if c.cookieAuth == nil {
+		return errors.New("youtube: DeletePlaylist requires cookie authentication")
+	}
+	playlistID = strings.TrimPrefix(strings.TrimSpace(playlistID), "VL")
+	if playlistID == "" {
+		return errors.New("youtube: DeletePlaylist needs a playlist")
+	}
+	raw, err := c.execute(ctx, "playlist/delete", map[string]any{"playlistId": playlistID})
+	if err != nil {
+		return err
+	}
+	var response struct {
+		Actions []json.RawMessage `json:"actions"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return fmt.Errorf("youtube: decode playlist/delete response: %w", err)
+	}
+	if len(response.Actions) > 0 {
+		return refusedWrite("playlist/delete", raw)
+	}
+	return nil
+}
+
 // RemoveFromPlaylist removes one occurrence of a video from a playlist. The
 // playlist-set ID names the occurrence, so duplicate songs remain distinct.
 func (c *Client) RemoveFromPlaylist(ctx context.Context, playlistID, playlistSetID string) error {

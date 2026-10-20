@@ -111,10 +111,11 @@ type app struct {
 	menu                 itemMenu
 
 	// Dialogs.
-	crash         *crashState
-	toolHelp      *toolHelpState
-	newPlaylist   *newPlaylistState
-	addToPlaylist *addToPlaylistState
+	crash          *crashState
+	toolHelp       *toolHelpState
+	newPlaylist    *newPlaylistState
+	deletePlaylist *deletePlaylistState
+	addToPlaylist  *addToPlaylistState
 	// knownPlaylists are the playlists the library last showed, offered at
 	// once by the playlist picker.
 	knownPlaylists knownPlaylists

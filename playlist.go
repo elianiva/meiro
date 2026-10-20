@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -147,6 +148,130 @@ func (a *app) showPlaylist(id, name string) {
 	} else {
 		feed.sections[0].Items = append([]youtube.MusicItem{item}, feed.sections[0].Items...)
 	}
+	a.page.rowsDirty = true
+}
+
+// deletePlaylistState is the question a delete asks: which playlist, whether
+// the write is out, and what it answered. The app holds one while the dialog
+// is open, and nil otherwise, so a write that lands after its dialog closed
+// knows it.
+type deletePlaylistState struct {
+	open  bool
+	id    string
+	title string
+	busy  bool
+	err   string
+}
+
+// askDeletePlaylist asks whether a playlist should be deleted. A delete
+// cannot be undone, so the question names the playlist it would take.
+func (a *app) askDeletePlaylist(id, title string) {
+	if id == "" {
+		return
+	}
+	a.deletePlaylist = &deletePlaylistState{open: true, id: id, title: title}
+}
+
+// deletePlaylistDialog asks the question, and shows what YouTube answered.
+func (a *app) deletePlaylistDialog(c *ui.Context) {
+	d := a.deletePlaylist
+	if d == nil {
+		return
+	}
+	if !d.open {
+		a.deletePlaylist = nil // closed by its scrim or the Escape key
+		return
+	}
+	sc := m3.Of(c).Scheme
+	m3.Dialog(c, &d.open, 480, func() {
+		m3.EmphasizedText(c, m3.HeadlineSmall, "Delete playlist")
+		m3.Text(c, m3.BodyMedium, playlistName(d.title)+" is deleted from your account, and this cannot be undone.").TextColor(sc.OnSurfaceVariant)
+		if d.err != "" {
+			m3.Text(c, m3.BodyMedium, d.err).TextColor(sc.Error).MaxLines(4)
+		}
+		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+			if d.busy {
+				m3.LoadingIndicator(c, 40, false)
+			}
+			if m3.Button(c, m3.ButtonSpec{Label: "Cancel", Kind: m3.TextOnly, Key: "cancel-delete-playlist"}).Clicked() {
+				a.deletePlaylist = nil
+			}
+			if m3.Button(c, m3.ButtonSpec{Label: "Delete", Kind: m3.Filled, Disabled: d.busy, Key: "confirm-delete-playlist"}).Clicked() {
+				a.confirmDeletePlaylist()
+			}
+		})
+	})
+}
+
+// confirmDeletePlaylist deletes the playlist the dialog names.
+func (a *app) confirmDeletePlaylist() {
+	d := a.deletePlaylist
+	if d == nil || d.busy {
+		return
+	}
+	client, id, title := a.client(), d.id, d.title
+	d.busy, d.err = true, ""
+	spawn(a, func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), playlistTimeout)
+		defer cancel()
+		return client.DeletePlaylist(ctx, id)
+	}, func(err error) {
+		open := a.deletePlaylist == d
+		d.busy = false
+		switch {
+		case err != nil && open:
+			d.err = writeFailure(err)
+		case err != nil:
+			a.notice = "Could not delete " + playlistName(title) + ": " + writeFailure(err)
+		default:
+			if open {
+				a.deletePlaylist = nil
+			}
+			a.forgetPlaylist(id)
+			switch strings.TrimSpace(title) {
+			case "":
+				a.notice = "Playlist deleted"
+			default:
+				a.notice = "Deleted “" + title + "”"
+			}
+		}
+	})
+}
+
+// playlistName is how a dialog names a playlist: in quotes, or plainly when
+// the page never showed a name.
+func playlistName(title string) string {
+	if title = strings.TrimSpace(title); title == "" {
+		return "This playlist"
+	}
+	return "“" + title + "”"
+}
+
+// writeFailure is what a dialog says of a write that failed: the reason, and
+// not the response body YouTube sent with it, which a person cannot read.
+func writeFailure(err error) string {
+	line := firstLine(err.Error())
+	line, _, _ = strings.Cut(line, ": {")
+	return line
+}
+
+// forgetPlaylist drops a playlist the account no longer holds from what the
+// page shows, and leaves its page when that is the one open.
+func (a *app) forgetPlaylist(id string) {
+	gone := strings.TrimPrefix(id, "VL")
+	same := func(item youtube.MusicItem) bool {
+		return strings.TrimPrefix(item.Target().ID, "VL") == gone
+	}
+	if r, current := a.route(); r.id == routePlaylist && strings.TrimPrefix(current, "VL") == gone {
+		a.navigate(routeLibrary)
+		return
+	}
+	feed := &a.page.feed
+	feed.items = slices.DeleteFunc(feed.items, same)
+	for i := range feed.sections {
+		feed.sections[i].Items = slices.DeleteFunc(feed.sections[i].Items, same)
+	}
+	a.knownPlaylists.items = slices.DeleteFunc(a.knownPlaylists.items, same)
 	a.page.rowsDirty = true
 }
 

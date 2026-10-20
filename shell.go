@@ -56,6 +56,7 @@ func (a *app) view(c *ui.Context) {
 	})
 	a.signInDialog(c)
 	a.newPlaylistDialog(c)
+	a.deletePlaylistDialog(c)
 	a.addToPlaylistDialog(c)
 	a.toolHelpDialog(c)
 	a.crashDialog(c)
