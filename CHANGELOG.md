@@ -14,6 +14,12 @@ and this project adheres to
   the menu on a playlist page, offers **Delete playlist**. It asks first, and
   names the playlist it would take, because a delete cannot be undone.
 
+### Fixed
+
+- **Auto-play does not queue music-video recommendations.** It prefers the
+  song version when both are recommended, and does not change your chosen
+  tracks or the one playing.
+
 ## [0.4.2] - 2026-10-20
 
 ### Added

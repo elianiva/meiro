@@ -270,13 +270,6 @@ func hasVersion(versions map[songID][]time.Duration, item youtube.MusicItem) boo
 	})
 }
 
-// isVersion reports whether two tracks are uploads of the same song.
-func isVersion(a, b youtube.MusicItem) bool {
-	versions := map[songID][]time.Duration{}
-	noteVersion(versions, a)
-	return hasVersion(versions, b)
-}
-
 // appendGenerated adds the recommendations YouTube Music returned that the
 // queue does not already hold, keeping at most autoplayQueueLimit generated
 // tracks: played tracks are dropped first to make room, without touching
@@ -292,7 +285,7 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 	}
 	fresh := make([]youtube.MusicItem, 0, min(len(items), autoplayQueueLimit+1))
 	for _, item := range items {
-		if item.VideoID == "" {
+		if item.VideoID == "" || item.Kind == youtube.KindVideo {
 			continue
 		}
 		if _, exists := seen[item.VideoID]; exists {
@@ -300,15 +293,6 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 		}
 		seen[item.VideoID] = struct{}{}
 		if hasVersion(versions, item) {
-			// A music version takes the place of a video of the same
-			// song that this batch recommended earlier.
-			if item.Kind == youtube.KindTrack {
-				if i := slices.IndexFunc(fresh, func(o youtube.MusicItem) bool {
-					return o.Kind != youtube.KindTrack && isVersion(o, item)
-				}); i >= 0 {
-					fresh[i] = item
-				}
-			}
 			continue
 		}
 		noteVersion(versions, item)

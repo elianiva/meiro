@@ -67,6 +67,12 @@ func (q *queue) restore(s playstate.State) {
 	q.items = slices.Clone(s.Items)
 	q.index, q.recStart, q.playNext, q.source = s.Index, s.RecStart, s.PlayNext, s.Source
 	q.regenerate()
+	for i := len(q.items) - 1; i > q.index; i-- {
+		item := q.items[i]
+		if _, generated := q.generated[item.VideoID]; generated && item.Kind == youtube.KindVideo {
+			q.remove(i)
+		}
+	}
 }
 
 // restorePlayback brings back the queue and the track the last run left,

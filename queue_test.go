@@ -208,9 +208,9 @@ func TestAppendGeneratedSkipsSameTitleAndArtist(t *testing.T) {
 	}
 }
 
-// When a video and a music version of the same song are both recommended,
-// the music version is the one queued, in the video's place.
-func TestAppendGeneratedPrefersMusicVersionOverVideo(t *testing.T) {
+// Videos are skipped; song recommendations keep the order they had relative
+// to the other song recommendations.
+func TestAppendGeneratedKeepsAudioOrderWhenSkippingVideos(t *testing.T) {
 	q := newQueue()
 	q.replace(youtube.MusicItem{VideoID: "a", Title: "A", Duration: "1:00"}, nil, 0, "")
 	q.appendGenerated([]youtube.MusicItem{
@@ -219,7 +219,57 @@ func TestAppendGeneratedPrefersMusicVersionOverVideo(t *testing.T) {
 		{VideoID: "t1", Title: "Nostalgia", Artist: "Kenshi", Duration: "3:16", Kind: youtube.KindTrack},
 		{VideoID: "v2", Title: "Other", Duration: "2:00", Kind: youtube.KindVideo},
 	})
-	if got := ids(q.items); !slices.Equal(got, []string{"a", "t1", "r2"}) {
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "r2", "t1"}) {
 		t.Fatalf("queue %v", got)
+	}
+}
+
+func TestAppendGeneratedSkipsMusicVideoRecommendations(t *testing.T) {
+	q := newQueue()
+	q.replace(youtube.MusicItem{VideoID: "a", Title: "A", Duration: "1:00"}, nil, 0, "")
+	q.appendGenerated([]youtube.MusicItem{
+		{VideoID: "video", Title: "Music Video", Artist: "Kenshi", Duration: "3:17", Kind: youtube.KindVideo},
+		{VideoID: "track", Title: "Song", Artist: "Kenshi", Duration: "3:16", Kind: youtube.KindTrack},
+	})
+
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "track"}) {
+		t.Fatalf("queue = %v, want only the song recommendation", got)
+	}
+	if _, exists := q.generated["video"]; exists {
+		t.Error("music video was added as a recommendation")
+	}
+}
+
+func TestAppendGeneratedDoesNotReserveASlotForVideoOnEarlierPage(t *testing.T) {
+	q := newQueue()
+	current := youtube.MusicItem{VideoID: "a", Title: "A", Duration: "1:00"}
+	video := youtube.MusicItem{VideoID: "v1", Title: "Nostalgia", Artist: "Kenshi", Duration: "3:17", Kind: youtube.KindVideo}
+	q.replace(current, nil, 0, "")
+	q.appendGenerated([]youtube.MusicItem{video})
+	if got := ids(q.items); !slices.Equal(got, []string{"a"}) {
+		t.Fatalf("queue after video page = %v, want no video entry", got)
+	}
+	q.appendGenerated([]youtube.MusicItem{{
+		VideoID: "t1", Title: "Nostalgia", Artist: "Kenshi", Duration: "3:16", Kind: youtube.KindTrack,
+	}})
+
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "t1"}) {
+		t.Fatalf("queue = %v, want the song recommendation without a reserved video slot", got)
+	}
+	if _, exists := q.generated["t1"]; !exists {
+		t.Error("music version is not marked as generated")
+	}
+}
+
+func TestAppendGeneratedKeepsChosenVideoWhenAudioVersionIsRecommended(t *testing.T) {
+	video := youtube.MusicItem{VideoID: "v1", Title: "Nostalgia", Artist: "Kenshi", Duration: "3:17", Kind: youtube.KindVideo}
+	q := newQueue()
+	q.replace(video, []youtube.MusicItem{video}, 0, "Playlist")
+	q.appendGenerated([]youtube.MusicItem{{
+		VideoID: "t1", Title: "Nostalgia", Artist: "Kenshi", Duration: "3:16", Kind: youtube.KindTrack,
+	}})
+
+	if got := ids(q.items); !slices.Equal(got, []string{"v1"}) || q.recStart != -1 {
+		t.Fatalf("chosen queue = %v, recommendation boundary = %d", got, q.recStart)
 	}
 }

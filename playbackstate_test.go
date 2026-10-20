@@ -14,6 +14,24 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
+func TestRestoredQueueDropsUpcomingGeneratedVideos(t *testing.T) {
+	current := youtube.MusicItem{VideoID: "current", Title: "Current", Kind: youtube.KindTrack}
+	video := youtube.MusicItem{VideoID: "video", Title: "Music video", Kind: youtube.KindVideo}
+	track := youtube.MusicItem{VideoID: "track", Title: "Song", Kind: youtube.KindTrack}
+	var q queue
+	q.restore(playstate.State{Items: []youtube.MusicItem{current, video, track}, Index: 0, RecStart: 1})
+
+	if got := ids(q.items); fmt.Sprint(got) != "[current track]" {
+		t.Fatalf("restored upcoming queue = %v, want video removed", got)
+	}
+	if q.recStart != 1 {
+		t.Errorf("recommendation boundary = %d, want 1", q.recStart)
+	}
+	if _, exists := q.generated["video"]; exists {
+		t.Error("restored music video remains marked as generated")
+	}
+}
+
 func TestTheQueueComesBackPausedAfterARestart(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "playback.json")

@@ -564,6 +564,26 @@ func TestAutoPlayRetriesRecommendationsWhenChosenQueueRunsOut(t *testing.T) {
 	}
 }
 
+func TestAutoPlayQueuePanelDoesNotShowMusicVideos(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.current = youtube.MusicItem{VideoID: "current", Title: "Current", Kind: youtube.KindTrack}
+	a.queue.replace(a.current, nil, 0, "")
+	a.queue.appendGenerated([]youtube.MusicItem{
+		{VideoID: "video", Title: "Music video", Kind: youtube.KindVideo},
+		{VideoID: "track", Title: "Song", Kind: youtube.KindTrack},
+	})
+	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
+
+	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
+	tt.Frame()
+	if tt.HasText("Music video") {
+		t.Fatalf("music video appears in Up next: %q", tt.Texts())
+	}
+	if !tt.HasText("Song") {
+		t.Fatalf("song recommendation is missing from Up next: %q", tt.Texts())
+	}
+}
+
 func TestQueueDoesNotMoveWhileRecommendationsLoad(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.current = tracks("a")[0]
