@@ -62,13 +62,6 @@ const (
 	subclassID      = 0x4d45_4952 // "MEIR"
 	msgfltAllow     = 1
 
-	// ITaskbarList4 vtable indices, the same as ITaskbarList3's for these
-	// (ShObjIdl_core.h).
-	tbRelease               = 2
-	tbHrInit                = 3
-	tbThumbBarAddButtons    = 15
-	tbThumbBarUpdateButtons = 16
-
 	thbIcon    = 0x2
 	thbTooltip = 0x4
 	thbFlags   = 0x8
@@ -76,6 +69,43 @@ const (
 	thbfEnabled  = 0x0
 	thbfDisabled = 0x1
 )
+
+// taskbarList is an ITaskbarList4: what COM hands back is a pointer to a
+// pointer to its table of methods.
+type taskbarList struct{ vtbl *taskbarListVtbl }
+
+// taskbarListVtbl is the start of ITaskbarList4's method table, in the
+// order ShObjIdl_core.h declares the interfaces it extends: IUnknown,
+// ITaskbarList, ITaskbarList2, then ITaskbarList3, which ends with the
+// thumbnail toolbar's methods. ITaskbarList4 only adds one after them.
+type taskbarListVtbl struct {
+	QueryInterface, AddRef, Release                       uintptr
+	HrInit, AddTab, DeleteTab, ActivateTab, SetActiveAlt  uintptr
+	MarkFullscreenWindow                                  uintptr
+	SetProgressValue, SetProgressState                    uintptr
+	RegisterTab, UnregisterTab, SetTabOrder, SetTabActive uintptr
+	ThumbBarAddButtons, ThumbBarUpdateButtons             uintptr
+}
+
+// call calls one of t's methods, which take t itself first.
+func (t *taskbarList) call(method uintptr, args ...uintptr) error {
+	hr, _, _ := syscall.SyscallN(method, append([]uintptr{uintptr(unsafe.Pointer(t))}, args...)...)
+	if int32(uint32(hr)) < 0 {
+		return fmt.Errorf("HRESULT %#08x", uint32(hr))
+	}
+	return nil
+}
+
+func (t *taskbarList) HrInit() error { return t.call(t.vtbl.HrInit) }
+func (t *taskbarList) Release()      { _ = t.call(t.vtbl.Release) }
+
+func (t *taskbarList) ThumbBarAddButtons(hwnd uintptr, buttons []thumbButton) error {
+	return t.call(t.vtbl.ThumbBarAddButtons, hwnd, uintptr(len(buttons)), uintptr(unsafe.Pointer(&buttons[0])))
+}
+
+func (t *taskbarList) ThumbBarUpdateButtons(hwnd uintptr, buttons []thumbButton) error {
+	return t.call(t.vtbl.ThumbBarUpdateButtons, hwnd, uintptr(len(buttons)), uintptr(unsafe.Pointer(&buttons[0])))
+}
 
 // thumbButton is THUMBBUTTON, laid out as on 64-bit Windows.
 type thumbButton struct {
@@ -117,7 +147,7 @@ var glyphs = [glyphCount][][][2]float32{
 type windowsSession struct {
 	controls Controls
 	hwnd     uintptr
-	taskbar  uintptr // ITaskbarList4
+	taskbar  *taskbarList
 	// added is set once the current taskbar button has the toolbar.
 	added bool
 	state State
@@ -153,19 +183,19 @@ func New(controls Controls) (Session, error) {
 		r, _, _ := procRegisterWindowMessageW.Call(uintptr(unsafe.Pointer(name)))
 		taskbarButtonCreated = uint32(r)
 	})
-	var taskbar uintptr
+	var taskbar *taskbarList
 	hr, _, _ := procCoCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInproc,
 		uintptr(unsafe.Pointer(&iidITaskbarList4)), uintptr(unsafe.Pointer(&taskbar)))
-	if failed(hr) || taskbar == 0 {
+	if int32(uint32(hr)) < 0 || taskbar == nil {
 		return nil, fmt.Errorf("create the taskbar list: HRESULT %#08x", uint32(hr))
 	}
-	if hr := comCall(taskbar, tbHrInit); failed(hr) {
-		comCall(taskbar, tbRelease)
-		return nil, fmt.Errorf("start the taskbar list: HRESULT %#08x", uint32(hr))
+	if err := taskbar.HrInit(); err != nil {
+		taskbar.Release()
+		return nil, fmt.Errorf("start the taskbar list: %w", err)
 	}
 	s := &windowsSession{controls: controls, hwnd: controls.Window, taskbar: taskbar, light: lightTaskbar()}
 	if ok, _, _ := procSetWindowSubclass.Call(s.hwnd, subclassCallback, subclassID, 0); ok == 0 {
-		comCall(taskbar, tbRelease)
+		taskbar.Release()
 		return nil, errors.New("cannot subclass the window for its taskbar buttons")
 	}
 	sessions[s.hwnd] = s
@@ -201,9 +231,9 @@ func (s *windowsSession) Close() error {
 func (s *windowsSession) release() {
 	delete(sessions, s.hwnd)
 	s.hwnd = 0
-	if s.taskbar != 0 {
-		comCall(s.taskbar, tbRelease)
-		s.taskbar = 0
+	if s.taskbar != nil {
+		s.taskbar.Release()
+		s.taskbar = nil
 	}
 	for theme := range s.icons {
 		for i, icon := range s.icons[theme] {
@@ -259,7 +289,7 @@ func (s *windowsSession) click(id int) {
 
 // apply shows the state's buttons on the taskbar button's toolbar.
 func (s *windowsSession) apply() {
-	if s.taskbar == 0 {
+	if s.taskbar == nil {
 		return
 	}
 	playPause, playTip, canPlayPause := glyphPlay, "Play", s.state.CanPlay
@@ -274,17 +304,16 @@ func (s *windowsSession) apply() {
 	if s.added && buttons == s.shown {
 		return
 	}
-	ptr := uintptr(unsafe.Pointer(&buttons[0]))
 	if !s.added {
 		// Adding fails when the button already has a toolbar, for a
 		// TaskbarButtonCreated that came after the first add.
-		if hr := comCall(s.taskbar, tbThumbBarAddButtons, s.hwnd, buttonCount, ptr); failed(hr) &&
-			failed(comCall(s.taskbar, tbThumbBarUpdateButtons, s.hwnd, buttonCount, ptr)) {
+		if s.taskbar.ThumbBarAddButtons(s.hwnd, buttons[:]) != nil &&
+			s.taskbar.ThumbBarUpdateButtons(s.hwnd, buttons[:]) != nil {
 			// No button yet: TaskbarButtonCreated adds the toolbar later.
 			return
 		}
 		s.added = true
-	} else if failed(comCall(s.taskbar, tbThumbBarUpdateButtons, s.hwnd, buttonCount, ptr)) {
+	} else if s.taskbar.ThumbBarUpdateButtons(s.hwnd, buttons[:]) != nil {
 		return
 	}
 	s.shown = buttons
@@ -353,13 +382,3 @@ func lightTaskbar() bool {
 	light, _, err := key.GetIntegerValue("SystemUsesLightTheme")
 	return err == nil && light != 0
 }
-
-func comCall(obj uintptr, method int, args ...uintptr) uintptr {
-	// The object and its vtable are COM's memory, not Go's.
-	vtbl := *(*uintptr)(unsafe.Pointer(obj))                                            //nolint:govet // see above
-	fn := *(*uintptr)(unsafe.Pointer(vtbl + uintptr(method)*unsafe.Sizeof(uintptr(0)))) //nolint:govet // see above
-	r, _, _ := syscall.SyscallN(fn, append([]uintptr{obj}, args...)...)
-	return r
-}
-
-func failed(hr uintptr) bool { return int32(uint32(hr)) < 0 }
