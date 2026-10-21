@@ -8,6 +8,12 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- **A playlist write YouTube refuses is written to the log in full**, for the
+  add and the remove path, so a refusal that the player bar shows as a line can
+  be read whole.
+
 ## [0.4.3] - 2026-10-20
 
 ### Added
