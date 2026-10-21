@@ -493,13 +493,26 @@ func songKey(item youtube.MusicItem, o songOptions) string {
 	return itemKey("song", item) + "\x00" + strconv.Itoa(o.number) + "\x00" + o.list + "#" + strconv.Itoa(o.position)
 }
 
+// playingRow says whether a row is picked out as the one playing. In the
+// queue, which can hold the same song twice, it is the place that plays; in
+// every other list it is the song playing, by its own ID.
+func (a *app) playingRow(item youtube.MusicItem, o songOptions) bool {
+	if !item.IsTrack() {
+		return false
+	}
+	if o.list == "queue" {
+		return o.position == a.queue.index
+	}
+	return item.VideoID == a.current.VideoID
+}
+
 // songRow shows a song, an album, an artist or a playlist as a row: artwork,
 // name over details, and the length. The song playing is picked out in a
 // tonal container with dancing bars.
 func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, o songOptions) {
 	sc := m3.Of(c).Scheme
 	isSong := item.IsTrack()
-	playing := isSong && item.VideoID == a.current.VideoID
+	playing := a.playingRow(item, o)
 	key := songKey(item, o)
 	height, artSize, padding, gap, iconSize := float32(rowHeight), float32(48), float32(8), float32(12), float32(24)
 	titleRole, subtitleRole := m3.BodyLarge, m3.BodyMedium
@@ -591,35 +604,36 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			// button opened points at the button.
 			menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key)
 		})
-		if hovered || main.FocusVisible() || a.menu.opened(key) {
+		// A row of the queue carries no icon buttons: a right click opens its
+		// menu, which holds its edits, so the length can take the width the
+		// buttons held. The pointer frees the dots; the keyboard keeps them,
+		// since it has no other way to the menu.
+		switch {
+		case o.list == "queue" && (main.FocusVisible() || a.menu.opened(key+"-menu")):
 			menuButton = m3.IconButton(c, m3.IconButtonSpec{
 				Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
 			})
 			hasMenu = true
-		} else {
+		case o.list == "queue":
+			hasMenu = true
+		case hovered || main.FocusVisible() || a.menu.opened(key):
+			menuButton = m3.IconButton(c, m3.IconButtonSpec{
+				Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
+			})
+			hasMenu = true
+		default:
 			// The button's place stays, so the length does not move when the
 			// pointer arrives.
 			rowButtonSlot(c)
 		}
-		// A row of the queue has its own remove button; the track playing
-		// stays.
-		if o.list == "queue" {
-			// Two buttons side by side need their shapes 8 apart, or the
-			// pointer targets overlap.
-			ui.Box(c).Size(4, 0).Shrink(0)
-			if o.position != a.queue.index {
-				m3.IconButton(c, m3.IconButtonSpec{
-					Icon: m3.IconClose, Label: "Remove " + item.Title + " from the queue", Key: key + "-remove",
-				}).OnClick(func() { a.removeFromQueue(o.position) })
-			} else {
-				rowButtonSlot(c)
-			}
-		}
 	})
 	if hasMenu {
 		pointer := main.RightClicked() || menuButton.RightClicked()
-		x, y, _ := main.PointerPosition()
 		if menuButton.Clicked() || pointer {
+			// The pointer's place is read when the menu opens: reading it every
+			// frame makes the row track the pointer, and a drag of the row then
+			// never starts.
+			x, y, _ := main.PointerPosition()
 			a.menu.show(key, pointer, x, y)
 		}
 	}

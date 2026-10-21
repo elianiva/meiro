@@ -585,7 +585,9 @@ func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius fl
 			Icon: m3.IconMore, Label: "More options for " + a.current.Title, Key: key + "-button",
 			// On a picture the dots need a ground of their own.
 			Container: m3.Of(c).Scheme.SurfaceContainerHighest.Alpha(0.85),
-		}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(0).Right(0)
+			// Off the corner by the margin a card keeps around its own: on the
+			// artwork itself a flush button reads as touching the edge.
+		}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
 	})
 	m3.Elevation(c, artwork, 3)
 	if menuButton.Clicked() {
@@ -630,7 +632,9 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 	if compact {
 		tabs.Padding(4, 8, 0)
 	} else {
-		tabs.Padding(12, 12, 8)
+		// The card keeps 8 above the tabs, so 4 here gives the row the same
+		// 12 the card's sides give it.
+		tabs.Padding(4, 12, 8)
 	}
 	tabs.Gap(4).Children(func() {
 		for _, t := range panelTabs {
@@ -669,66 +673,82 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 	})
 }
 
+// queueSourceLine names the list the queue plays from, on one line: "Playing
+// from" and the playlist in the same size, the playlist in bold. The label
+// roles are used because their emphasis weight is the bold one.
+func (a *app) queueSourceLine(c *ui.Context, compact bool) {
+	sc := m3.Of(c).Scheme
+	role := m3.LabelLarge
+	if compact {
+		role = m3.LabelMedium
+	}
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		m3.Text(c, role, "Playing from").Shrink(0).TextColor(sc.OnSurfaceVariant)
+		m3.EmphasizedText(c, role, a.queue.source).Grow(1).MinWidth(0).SingleLine()
+	})
+}
+
 // queueView lists the tracks of the queue, with the current one picked out.
 func (a *app) queueView(c *ui.Context, compact bool) {
 	sc := m3.Of(c).Scheme
 	q := &a.queue
-	if q.source != "" {
-		if compact {
-			ui.Row(c).Padding(0, 16).Gap(8).AlignItems(ui.Center).Children(func() {
-				m3.Text(c, m3.BodySmall, "Playing from").Shrink(0).TextColor(sc.OnSurfaceVariant)
-				m3.EmphasizedText(c, m3.TitleSmall, q.source).Grow(1).MinWidth(0).SingleLine()
-			})
-		} else {
-			ui.Column(c).Padding(8, 16, 4).Gap(2).Children(func() {
-				m3.Text(c, m3.BodySmall, "Playing from").TextColor(sc.OnSurfaceVariant)
-				m3.EmphasizedText(c, m3.TitleSmall, q.source).SingleLine()
-			})
-		}
-	}
-	rowPadding := float32(8)
-	rowBottomPadding := float32(4)
+	// One rhythm down the panel: the source, the switch and the count sit the
+	// same distance apart, measured to their text, and the list follows at
+	// the same distance. The switch's row is 28 tall around its 16 line in
+	// the mini player, so its text sits 6 lower there; the count's row holds
+	// the Clear queue button, whose 48 target draws 8 above and below the 32
+	// the row takes.
+	gap, top, pull, pad := float32(20), float32(8), float32(8), float32(16)
 	rowGap := float32(12)
 	if compact {
-		rowPadding, rowBottomPadding, rowGap = 0, 0, 8
+		gap, top, pull, pad, rowGap = 8, 0, 8, 10, 8
 	}
-	ui.Row(c).Padding(rowPadding, 16, rowBottomPadding).Gap(rowGap).AlignItems(ui.Center).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+	ui.Column(c).Padding(top, 16, 0).Gap(gap).Children(func() {
+		if q.source != "" {
+			a.queueSourceLine(c, compact)
+		}
+		ui.Row(c).Gap(rowGap).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				if compact {
+					m3.EmphasizedText(c, m3.LabelMedium, "Auto-play")
+				} else {
+					m3.EmphasizedText(c, m3.TitleMedium, "Auto-play")
+					m3.Text(c, m3.BodySmall, "Add similar music when this queue ends.").TextColor(sc.OnSurfaceVariant).SingleLine()
+				}
+			})
+			on := a.settings.AutoPlay
+			switchControl := m3.Switch
 			if compact {
-				m3.EmphasizedText(c, m3.LabelMedium, "Auto-play")
-			} else {
-				m3.EmphasizedText(c, m3.TitleMedium, "Auto-play")
-				m3.Text(c, m3.BodySmall, "Add similar music when this queue ends.").TextColor(sc.OnSurfaceVariant).SingleLine()
+				switchControl = m3.CompactSwitch
+			}
+			if switchControl(c, &on, "Toggle auto-play").Changed() {
+				a.setAutoPlay(on)
 			}
 		})
-		on := a.settings.AutoPlay
-		switchControl := m3.Switch
-		if compact {
-			switchControl = m3.CompactSwitch
+		if a.upNext.err != "" {
+			m3.Text(c, m3.BodySmall, "Recommendations aren't available right now.").TextColor(sc.Error).Shrink(0)
 		}
-		if switchControl(c, &on, "Toggle auto-play").Changed() {
-			a.setAutoPlay(on)
-		}
-	})
-	if a.upNext.err != "" {
-		ui.Column(c).FillWidth().Height(24).Shrink(0).Padding(0, 16, 4).Children(func() {
-			m3.Text(c, m3.BodySmall, "Recommendations aren't available right now.").TextColor(sc.Error)
+		// The count's row: pulled up and padded by the target the Clear queue
+		// button draws around its layout.
+		ui.Row(c).Margin(-pull, 0).Padding(0, 0, pad).AlignItems(ui.Center).Children(func() {
+			m3.Text(c, m3.BodySmall, strconv.Itoa(q.remaining())+" up next").Grow(1).TextColor(sc.OnSurfaceVariant)
+			clear := func() {
+				m3.Button(c, m3.ButtonSpec{Label: "Clear queue", Kind: m3.TextOnly, Size: m3.ExtraSmall32, Disabled: q.remaining() < 1, Key: "queue-clear"}).OnClick(a.clearUpcoming)
+			}
+			if compact {
+				// The button's shape keeps 12 beside its label and the label's
+				// last letter stops 4 short of that; the margin puts the label
+				// on the list's edge, where the lengths end.
+				ui.Row(c).Shrink(0).Margin(0, -16, 0, 0).Children(clear)
+				return
+			}
+			clear()
 		})
-	} else if !compact {
-		ui.Column(c).FillWidth().Height(28).Shrink(0).Padding(0, 16, 4).Children(func() {})
-	}
+	})
 	if q.len() == 0 {
 		a.message(c, m3.IconQueue, "The queue is empty", "", "", nil)
 		return
 	}
-	headerBottomPadding := float32(4)
-	if compact {
-		headerBottomPadding = 0
-	}
-	ui.Row(c).Padding(0, 16, headerBottomPadding).AlignItems(ui.Center).Children(func() {
-		m3.Text(c, m3.BodySmall, strconv.Itoa(q.remaining())+" up next").Grow(1).TextColor(sc.OnSurfaceVariant)
-		m3.Button(c, m3.ButtonSpec{Label: "Clear queue", Kind: m3.TextOnly, Size: m3.ExtraSmall32, Disabled: q.remaining() < 1, Key: "queue-clear"}).OnClick(a.clearUpcoming)
-	})
 	list := &a.nowPlaying.queueList
 	// A press in a row can replace the queue while the list still asks about
 	// a row of the one before, so every question checks the row is there.
