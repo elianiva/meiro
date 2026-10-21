@@ -110,6 +110,10 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 	}
 	if event.Item != "" && event.Item != selected {
 		a.router.Push(event.Item)
+	} else if event.Item != "" && a.nowPlaying.open && !a.nowPlaying.closing {
+		// The page is already showing, so its tab has nothing to open: with
+		// the player over the page it puts the player away instead.
+		a.nowPlaying.closing = true
 	}
 }
 
@@ -146,9 +150,10 @@ func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 	ui.Box(c).Absolute().Bottom(0).Right(0).Size(sheetCorner, sheetCorner).Background(tint)
 	sheet := ui.Column(c.Key("sheet")).Absolute().Top(top).Left(0).Right(sheetInset).Bottom(sheetInset).
 		Radius(m3.ExtraLarge)
-	if !a.nowPlaying.open {
-		sheet.Background(sc.Surface)
-	}
+	// The sheet keeps its fill while the player covers it: the player rises
+	// from below and sinks back, so the band it leaves shows the sheet, and
+	// its rounded corners stay put through both.
+	sheet.Background(sc.Surface)
 	sheet.Children(func() {
 		defer sheetCorners(c, tint)
 		if a.nowPlaying.open {

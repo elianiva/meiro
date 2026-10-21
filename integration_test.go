@@ -1388,3 +1388,34 @@ func TestADeclinedPlaylistDeleteKeepsItsQuestion(t *testing.T) {
 		t.Fatal("a refused delete took the playlist off the page")
 	}
 }
+
+// The tab of the page already showing has nothing to open, so with the player
+// over the page it puts the player away instead of doing nothing.
+func TestTheCurrentTabPutsThePlayerAway(t *testing.T) {
+	a, _ := playbackApp(t)
+	tt := open(a, "/home")
+	a.nowPlaying.open, a.nowPlaying.playerShown = true, true
+	tt.Frame()
+	if before, _ := a.route(); before.nav != routeHome {
+		t.Fatalf("the window shows %q", before.title)
+	}
+	if err := tt.Click("Home"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.nowPlaying.open && !a.nowPlaying.closing {
+		t.Fatal("the current tab left the player open")
+	}
+	// The sink ends by taking the player away.
+	deadline := time.Now().Add(3 * time.Second)
+	for a.nowPlaying.open && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		tt.Frame()
+	}
+	if a.nowPlaying.open {
+		t.Fatal("the player did not close")
+	}
+	if after, _ := a.route(); after.nav != routeHome {
+		t.Errorf("the tab moved the page to %q", after.title)
+	}
+}

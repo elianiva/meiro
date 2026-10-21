@@ -8,6 +8,17 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- **The tab of the page already showing puts the player away.** With the player
+  open, the page's own tab in the rail did nothing, so the only way back to the
+  page was the player's close button. The tab now closes the player and leaves
+  the page as it was.
+- **The page keeps its rounded corners while the player opens and closes.** The
+  sheet was left unfilled behind the player, so the band the player left while
+  it rose or sank showed the window tint and the corners read as cut off. The
+  sheet keeps its fill while the player covers it.
+
 ## [0.4.3] - 2026-10-20
 
 ### Added
