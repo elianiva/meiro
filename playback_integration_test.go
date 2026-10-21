@@ -415,6 +415,37 @@ func TestPlaybackSettingsContainNormalizationOutsideCacheCard(t *testing.T) {
 	}
 }
 
+func TestLoudnessIsAppliedBeforeTheAudioStarts(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.settings.NormalizeLoudness = true
+	a.volume = 50
+	a.player.SetVolume(a.volume / 100)
+	auth, err := youtube.NewCookieAuth("SAPISID=test", youtube.CookieOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.account.session = &session{client: youtube.NewClient(youtube.Options{CookieAuth: auth, HTTPClient: &http.Client{Transport: playbackRoundTrip(func(*http.Request) (*http.Response, error) {
+		body := `{"playerConfig":{"audioConfig":{"loudnessDb":6}}}`
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}})}
+	// The stream is asked for after the gain is applied, so the fake resolver
+	// sees the volume the player holds when the audio is about to start.
+	atResolve := -1.0
+	urls := a.streams
+	a.streams = audio.NewURLs(func(ctx context.Context, videoID string) (string, time.Duration, error) {
+		atResolve = a.player.Volume()
+		return urls.Get(ctx, videoID)
+	})
+	a.play(tracks("song")[0], tracks("song"))
+	want := playbackVolume(50, 6, true)
+	if math.Abs(atResolve-want) > 1e-9 {
+		t.Fatalf("the player held volume %v when the stream was asked for, want %v", atResolve, want)
+	}
+	if !a.loudnessOK || math.Abs(a.player.Volume()-want) > 1e-9 {
+		t.Fatalf("after playing: loudness known=%t, volume %v, want %v", a.loudnessOK, a.player.Volume(), want)
+	}
+}
+
 func TestNormalizationToggleImmediatelyUpdatesPlayerVolume(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.volume = 50

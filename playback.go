@@ -349,6 +349,36 @@ func (a *app) applyLoudness() {
 	a.player.SetVolume(playbackVolume(a.volume, a.loudness, a.loudnessOK && a.settings.NormalizeLoudness))
 }
 
+// loudnessWait bounds how long the audio waits for a track's loudness before it
+// starts. The lookup usually lands while the stream is still being found, so
+// the wait is rarely paid in full.
+const loudnessWait = 2 * time.Second
+
+// ensureLoudness asks for a track's loudness when normalization is on and the
+// value is not known yet, so the gain is in place before the audio starts. A
+// lookup that fails, or that runs past loudnessWait, plays the track
+// unnormalized rather than not at all.
+func (a *app) ensureLoudness(ctx context.Context, item youtube.MusicItem) {
+	if _, ok := a.loudnessMap.Get(item.VideoID); ok {
+		return
+	}
+	var client *youtube.Client
+	if a.account.session != nil {
+		client = a.account.session.client
+	}
+	if client == nil || !a.settings.NormalizeLoudness {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, loudnessWait)
+	defer cancel()
+	value, err := client.Loudness(ctx, item.VideoID)
+	if err != nil {
+		log.Printf("playback: loudness unavailable video_id=%s: %v", item.VideoID, err)
+		return
+	}
+	a.loudnessMap.Put(item.VideoID, value)
+}
+
 // fetchLoudness asks for a track's loudness without holding up playback, and
 // applies it if the track is still the current one when it arrives. load is
 // the task that owns the request, so that a newer one replaces it.
@@ -394,9 +424,13 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 	cache := a.currentAudioCache()
 	accountProgress := a.signedIn()
 	log.Printf("playback: resolving video_id=%s", item.VideoID)
-	a.fetchLoudness(item, &a.loudnessLoad)
 	startTask(a, &a.stream, audio.ResolveTimeout, func(ctx context.Context) (resolvedAudio, error) {
 		a.player.Stop()
+		// The gain is in place before the device starts, so a track that is
+		// louder or quieter than the last one does not begin at the wrong
+		// volume for a moment.
+		a.ensureLoudness(ctx, item)
+		a.applyLoudness()
 		found, err := findAudio(ctx, a.streams, item, cache)
 		if err != nil || ctx.Err() != nil {
 			return found, err

@@ -8,6 +8,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- **A track starts at its corrected volume.** With normalization on, the first
+  moment of a track played at the volume the track before it had — or at the
+  plain volume when the app started — until the correction landed a moment
+  later. The gain is now in place before the audio starts.
+
 ## [0.4.3] - 2026-10-20
 
 ### Added
