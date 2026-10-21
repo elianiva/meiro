@@ -79,6 +79,63 @@ func TestQueueBoundsGeneratedTracks(t *testing.T) {
 	}
 }
 
+// Turning shuffle on arranges the whole queue behind the track that is
+// playing, which moves to the top, so the songs before it are not left out.
+// Turning it off puts the queue back in the order it held, with the track
+// playing where it was.
+func TestShuffleArrangesTheWholeQueueAndPutsItBack(t *testing.T) {
+	q := newQueue()
+	chosen := tracks("a", "b", "c", "d", "e")
+	q.replace(chosen[3], chosen, 3, "Album") // playing d, with songs before it
+	q.shuffleQueue()
+	if cur := q.current(); cur.VideoID != "d" || q.index != 0 {
+		t.Fatalf("after the shuffle: playing %q at %d, want d at the top", cur.VideoID, q.index)
+	}
+	if got := ids(q.items); len(got) != 5 {
+		t.Fatalf("the shuffle changed the queue: %v", got)
+	}
+	seen := map[string]bool{}
+	for _, id := range ids(q.items) {
+		seen[id] = true
+	}
+	if len(seen) != 5 {
+		t.Errorf("the shuffle lost or repeated a track: %v", ids(q.items))
+	}
+
+	q.restoreQueue()
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "c", "d", "e"}) {
+		t.Errorf("restore left %v, want the order the queue held", got)
+	}
+	if cur := q.current(); cur.VideoID != "d" || q.index != 3 {
+		t.Errorf("restore left %q at %d, want d where it was", cur.VideoID, q.index)
+	}
+}
+
+// The generated tracks keep their place at the end when the queue is arranged
+// and put back, and the boundary of the chosen tracks stays on the first of
+// them.
+func TestShuffleKeepsTheGeneratedTracksAtTheEnd(t *testing.T) {
+	q := newQueue()
+	chosen := tracks("a", "b", "c")
+	q.replace(chosen[0], chosen, 0, "")
+	q.appendGenerated(tracks("r1", "r2"))
+	q.shuffleQueue()
+	if q.recStart != 3 || !slices.Equal(ids(q.items[3:]), []string{"r1", "r2"}) {
+		t.Fatalf("after the shuffle: %v, recStart %d", ids(q.items), q.recStart)
+	}
+	if cur := q.current(); cur.VideoID != "a" || q.index != 0 {
+		t.Errorf("after the shuffle: playing %q at %d", cur.VideoID, q.index)
+	}
+
+	q.restoreQueue()
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "c", "r1", "r2"}) {
+		t.Errorf("restore left %v, want the chosen tracks and then the generated ones", got)
+	}
+	if q.index != 0 || q.recStart != 3 {
+		t.Errorf("restore left index %d and recStart %d, want 0 and 3", q.index, q.recStart)
+	}
+}
+
 func TestReplaceWithATrackOutsideTheTracksPlaysItAlone(t *testing.T) {
 	q := newQueue()
 	q.replace(youtube.MusicItem{VideoID: "solo"}, tracks("a", "b"), 0, "")
@@ -273,3 +330,7 @@ func TestAppendGeneratedKeepsChosenVideoWhenAudioVersionIsRecommended(t *testing
 		t.Fatalf("chosen queue = %v, recommendation boundary = %d", got, q.recStart)
 	}
 }
+
+// The queue can hold the same song twice, and only the copy at the queue's
+// place is picked out as playing. Every other list picks the song playing out
+// by its own ID.

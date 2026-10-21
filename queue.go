@@ -30,6 +30,10 @@ type queue struct {
 	// playNext is the track the user asked to play next, which plays before
 	// the rest even after the queue is reordered.
 	playNext string
+	// shuffleKept is the order the queue held before it was arranged, so
+	// that turning shuffle off puts it back. It is empty when the queue is
+	// not arranged.
+	shuffleKept []youtube.MusicItem
 	// source names where the chosen tracks came from, for the queue's
 	// heading.
 	source string
@@ -324,21 +328,85 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 	}
 }
 
-// shuffleUpcoming arranges the chosen tracks still to play in a random
-// order. The track playing, those played and the generated tracks stay
-// where they are.
-func (q *queue) shuffleUpcoming() {
+// shuffleQueue arranges the whole queue behind the track that is playing,
+// which moves to the top, the way Spotify does it: the songs before it are
+// not left out, and the queue plays on from there to its end. The tracks
+// already played lose their place, which is what shuffling a queue means.
+// The generated tracks keep their place at the end. The order the chosen
+// tracks were in is kept for restoreQueue.
+func (q *queue) shuffleQueue() {
 	limit := len(q.items)
 	if q.recStart >= 0 && q.recStart < limit {
 		limit = q.recStart
 	}
-	start := q.index + 1
-	if start < 0 || start >= limit {
+	if limit <= 1 || q.index < 0 || q.index >= limit {
 		return
 	}
-	rand.Shuffle(limit-start, func(i, j int) {
-		q.items[start+i], q.items[start+j] = q.items[start+j], q.items[start+i]
-	})
+	// The order the queue is in now is what turning shuffle off puts back.
+	q.shuffleKept = append(q.shuffleKept[:0], q.items[:limit]...)
+	current := q.items[q.index]
+	rest := make([]youtube.MusicItem, 0, limit-1)
+	rest = append(rest, q.items[:q.index]...)
+	rest = append(rest, q.items[q.index+1:limit]...)
+	rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+	ordered := make([]youtube.MusicItem, 0, limit)
+	ordered = append(ordered, current)
+	ordered = append(ordered, rest...)
+	copy(q.items[:limit], ordered)
+	q.index = 0
+	if q.recStart >= 0 {
+		q.recStart = limit
+	}
+}
+
+// restoreQueue puts the queue back in the order it held before it was
+// arranged, with the track that is playing where it was, and the tracks the
+// queue gained while it was arranged after the rest. The generated tracks
+// keep their place at the end.
+func (q *queue) restoreQueue() {
+	if len(q.shuffleKept) == 0 {
+		return
+	}
+	limit := len(q.items)
+	if q.recStart >= 0 && q.recStart < limit {
+		limit = q.recStart
+	}
+	if limit == 0 {
+		return
+	}
+	playing := ""
+	if q.index >= 0 && q.index < limit {
+		playing = q.items[q.index].VideoID
+	}
+	// The arranged tracks, taken in the order they are put back, each once:
+	// a playlist that holds a song twice keeps both copies.
+	left := slices.Clone(q.items[:limit])
+	ordered := make([]youtube.MusicItem, 0, limit)
+	take := func(want youtube.MusicItem) {
+		for i, queued := range left {
+			if queued.VideoID == want.VideoID {
+				ordered = append(ordered, queued)
+				left = slices.Delete(left, i, i+1)
+				return
+			}
+		}
+	}
+	for _, item := range q.shuffleKept {
+		take(item)
+	}
+	// Whatever the queue gained while it was arranged follows the rest.
+	ordered = append(ordered, left...)
+	copy(q.items[:limit], ordered)
+	q.shuffleKept = q.shuffleKept[:0]
+	if playing == "" {
+		return
+	}
+	for i, item := range q.items[:limit] {
+		if item.VideoID == playing {
+			q.index = i
+			break
+		}
+	}
 }
 
 // The queue's list shows a divider between the chosen and the generated

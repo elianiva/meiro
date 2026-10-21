@@ -8,6 +8,15 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- **Shuffle arranges the whole queue, and turning it off puts the queue back.**
+  Turning shuffle on moves the track playing to the top and shuffles every
+  other song behind it, the way Spotify does it, instead of arranging only the
+  songs after the track playing and leaving the ones before it out. Turning
+  shuffle off returns the queue to the order it held, with the track playing
+  where it was, and the generated tracks keep their place at the end.
+
 ## [0.4.3] - 2026-10-20
 
 ### Added

@@ -202,6 +202,23 @@ func TestShuffleKeepsTheTrackPlayingAndEveryTrack(t *testing.T) {
 	}
 }
 
+func TestTurningShuffleOffPutsTheQueueBack(t *testing.T) {
+	a, _ := playbackApp(t)
+	q := tracks("a", "b", "c", "d")
+	a.play(q[2], q) // c, with the songs before it in the queue
+	a.setShuffle(true)
+	if a.queue.index != 0 || a.current.VideoID != "c" {
+		t.Fatalf("shuffle left %q at %d, want c at the top", a.current.VideoID, a.queue.index)
+	}
+	a.setShuffle(false)
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "b", "c", "d"}) {
+		t.Errorf("unshuffle left %v, want the playlist's order", got)
+	}
+	if a.queue.index != 2 || a.current.VideoID != "c" {
+		t.Errorf("unshuffle left %q at %d, want c where it was", a.current.VideoID, a.queue.index)
+	}
+}
+
 func TestQueueingATrack(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c")

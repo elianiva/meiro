@@ -155,7 +155,7 @@ func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index
 		return // this track is already on its way
 	}
 	if a.shuffle {
-		a.queue.shuffleUpcoming()
+		a.queue.shuffleQueue()
 	}
 	a.start(item)
 }
@@ -1248,13 +1248,16 @@ func (a *app) pause() {
 	a.syncSystemMedia()
 }
 
-// setShuffle turns shuffle on or off. Turning it on arranges what is still to
-// play, and the queue then plays in that order to its end, where auto-play
-// takes over. Turning it off leaves the queue in the order it reached.
+// setShuffle turns shuffle on or off. Turning it on arranges the whole queue
+// behind the track playing, which moves to the top, and the queue then plays
+// in that order to its end, where auto-play takes over. Turning it off puts
+// the queue back in the order it held, with the track playing where it was.
 func (a *app) setShuffle(on bool) {
 	a.shuffle = on
 	if on {
-		a.queue.shuffleUpcoming()
+		a.queue.shuffleQueue()
+	} else {
+		a.queue.restoreQueue()
 	}
 	a.syncPreload()
 	a.syncSystemMedia()
