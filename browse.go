@@ -493,13 +493,26 @@ func songKey(item youtube.MusicItem, o songOptions) string {
 	return itemKey("song", item) + "\x00" + strconv.Itoa(o.number) + "\x00" + o.list + "#" + strconv.Itoa(o.position)
 }
 
+// playingRow says whether a row is picked out as the one playing. In the
+// queue, which can hold the same song twice, it is the place that plays; in
+// every other list it is the song playing, by its own ID.
+func (a *app) playingRow(item youtube.MusicItem, o songOptions) bool {
+	if !item.IsTrack() {
+		return false
+	}
+	if o.list == "queue" {
+		return o.position == a.queue.index
+	}
+	return item.VideoID == a.current.VideoID
+}
+
 // songRow shows a song, an album, an artist or a playlist as a row: artwork,
 // name over details, and the length. The song playing is picked out in a
 // tonal container with dancing bars.
 func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, o songOptions) {
 	sc := m3.Of(c).Scheme
 	isSong := item.IsTrack()
-	playing := isSong && item.VideoID == a.current.VideoID
+	playing := a.playingRow(item, o)
 	key := songKey(item, o)
 	height, artSize, padding, gap, iconSize := float32(rowHeight), float32(48), float32(8), float32(12), float32(24)
 	titleRole, subtitleRole := m3.BodyLarge, m3.BodyMedium
