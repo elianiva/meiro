@@ -8,6 +8,27 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- **The queue's header reads in one line.** Where the queue plays from is one
+  line, **Playing from** and the playlist in the same size with the playlist in
+  bold, instead of a caption over a second line. The source, **Auto-play** and
+  the count of the songs next sit one gap apart, and closer than before.
+- **A queue row is its song and nothing else.** The three-dot button and the X
+  are gone from the rows, and the length takes the width they held. Right-click
+  a row for **Move up**, **Move down** and **Remove from queue**. The track
+  playing still offers no remove.
+
+### Fixed
+
+- **The mini player's Clear queue ends on the queue's edge.** Its label stopped
+  16 px short of the lengths under it, so the narrow column read as two right
+  edges.
+- **The player's controls keep their distance from their edges.** The
+  three-dot menu on the album art sat against the artwork's corner, and the Up
+  next, Lyrics and Related row started further below the side panel's top than
+  from its sides; both now keep the margin the rest of the player keeps.
+
 ## [0.4.3] - 2026-10-20
 
 ### Added
