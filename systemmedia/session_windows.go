@@ -9,6 +9,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log"
+	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -25,8 +27,8 @@ import (
 // when the window shows after hiding or when Explorer restarts, and each
 // time sends the window TaskbarButtonCreated. A new button has no toolbar,
 // so the buttons are added again then. The clicks arrive as WM_COMMAND on
-// the window, which the session subclasses to hear them. Everything runs on
-// the UI thread, which owns the window and the taskbar's COM object.
+// the window, which the session subclasses to hear them on the UI thread.
+// The taskbar's COM object lives on a thread of its own (see run).
 
 var (
 	user32   = windows.NewLazySystemDLL("user32.dll")
@@ -37,9 +39,9 @@ var (
 	procCreateIconFromResourceEx    = user32.NewProc("CreateIconFromResourceEx")
 	procDestroyIcon                 = user32.NewProc("DestroyIcon")
 	procGetSystemMetrics            = user32.NewProc("GetSystemMetrics")
-	procIsWindow                    = user32.NewProc("IsWindow")
 	procChangeWindowMessageFilterEx = user32.NewProc("ChangeWindowMessageFilterEx")
 	procCoCreateInstance            = ole32.NewProc("CoCreateInstance")
+	procCoGetApartmentType          = ole32.NewProc("CoGetApartmentType")
 	procSetWindowSubclass           = comctl32.NewProc("SetWindowSubclass")
 	procRemoveWindowSubclass        = comctl32.NewProc("RemoveWindowSubclass")
 	procDefSubclassProc             = comctl32.NewProc("DefSubclassProc")
@@ -112,12 +114,20 @@ var glyphs = [glyphCount][][][2]float32{
 type windowsSession struct {
 	controls Controls
 	hwnd     uintptr
-	taskbar  uintptr // ITaskbarList3
+
+	// What the UI thread hands the taskbar thread, under mu.
+	mu      sync.Mutex
+	state   State
+	light   bool // the taskbar is light, which takes dark icons
+	rebuilt bool // Explorer made a new taskbar button, without a toolbar
+	wake    chan struct{}
+	quit    chan struct{}
+	stop    sync.Once
+
+	// The taskbar thread's own.
+	taskbar uintptr // ITaskbarList3
 	// added is set once the current taskbar button has the toolbar.
 	added bool
-	state State
-	// light is whether the taskbar is light, which takes dark icons.
-	light bool
 	// icons are made once per theme and kept while the toolbar may show them.
 	icons [2][glyphCount]uintptr
 	// shown is what the toolbar last showed, to skip identical updates.
@@ -148,19 +158,18 @@ func New(controls Controls) (Session, error) {
 		r, _, _ := procRegisterWindowMessageW.Call(uintptr(unsafe.Pointer(name)))
 		taskbarButtonCreated = uint32(r)
 	})
-	var taskbar uintptr
-	hr, _, _ := procCoCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInproc,
-		uintptr(unsafe.Pointer(&iidITaskbarList3)), uintptr(unsafe.Pointer(&taskbar)))
-	if failed(hr) || taskbar == 0 {
-		return nil, fmt.Errorf("create the taskbar list: HRESULT %#08x", uint32(hr))
+	logApartment()
+	s := &windowsSession{
+		controls: controls, hwnd: controls.Window, light: lightTaskbar(),
+		wake: make(chan struct{}, 1), quit: make(chan struct{}),
 	}
-	if hr := comCall(taskbar, tbHrInit); failed(hr) {
-		comCall(taskbar, tbRelease)
-		return nil, fmt.Errorf("start the taskbar list: HRESULT %#08x", uint32(hr))
+	started := make(chan error)
+	go s.run(started)
+	if err := <-started; err != nil {
+		return nil, err
 	}
-	s := &windowsSession{controls: controls, hwnd: controls.Window, taskbar: taskbar, light: lightTaskbar()}
 	if ok, _, _ := procSetWindowSubclass.Call(s.hwnd, subclassCallback, subclassID, 0); ok == 0 {
-		comCall(taskbar, tbRelease)
+		s.end()
 		return nil, errors.New("cannot subclass the window for its taskbar buttons")
 	}
 	sessions[s.hwnd] = s
@@ -170,36 +179,95 @@ func New(controls Controls) (Session, error) {
 	}
 	// The button may already be there, with its TaskbarButtonCreated gone
 	// before the subclass could hear it.
-	s.apply()
+	s.signal()
 	return s, nil
 }
 
+// logApartment notes the UI thread's COM apartment when it is not the
+// single-threaded one MyGo asks for, which is why the taskbar object lives
+// on its own thread: an apartment-threaded object made on a multithreaded
+// thread comes as a proxy, and ITaskbarList3 has none (E_NOINTERFACE).
+func logApartment() {
+	var kind, qualifier int32
+	hr, _, _ := procCoGetApartmentType.Call(uintptr(unsafe.Pointer(&kind)), uintptr(unsafe.Pointer(&qualifier)))
+	const aptSTA, aptMainSTA = 0, 3
+	if failed(hr) {
+		log.Printf("windows taskbar: the UI thread has no COM apartment (HRESULT %#08x)", uint32(hr))
+	} else if kind != aptSTA && kind != aptMainSTA {
+		log.Printf("windows taskbar: the UI thread's COM apartment is type %d, not single-threaded", kind)
+	}
+}
+
+// run owns the taskbar object, on a thread of its own in a single-threaded
+// apartment whatever the UI thread's apartment is. It reports on started
+// whether the object could be made, then applies what the UI thread hands
+// it until the session ends.
+func (s *windowsSession) run(started chan<- error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	// S_FALSE: the thread already had this apartment, which still needs
+	// the CoUninitialize.
+	if err := windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED); err != nil && !errors.Is(err, syscall.Errno(windows.S_FALSE)) {
+		started <- fmt.Errorf("start COM for the taskbar: %w", err)
+		return
+	}
+	defer windows.CoUninitialize()
+	hr, _, _ := procCoCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInproc,
+		uintptr(unsafe.Pointer(&iidITaskbarList3)), uintptr(unsafe.Pointer(&s.taskbar)))
+	if failed(hr) || s.taskbar == 0 {
+		started <- fmt.Errorf("create the taskbar list: HRESULT %#08x", uint32(hr))
+		return
+	}
+	defer s.release()
+	if hr := comCall(s.taskbar, tbHrInit); failed(hr) {
+		started <- fmt.Errorf("start the taskbar list: HRESULT %#08x", uint32(hr))
+		return
+	}
+	close(started)
+	for {
+		select {
+		case <-s.wake:
+			s.apply()
+		case <-s.quit:
+			return
+		}
+	}
+}
+
+// signal has the taskbar thread show what changed.
+func (s *windowsSession) signal() {
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+// end stops the taskbar thread, which lets go of what it holds. It does
+// not wait: the thread may be inside a call to Explorer.
+func (s *windowsSession) end() { s.stop.Do(func() { close(s.quit) }) }
+
 func (s *windowsSession) Update(state State) error {
+	s.mu.Lock()
 	s.state = state
-	s.apply()
+	s.mu.Unlock()
+	s.signal()
 	return nil
 }
 
 func (s *windowsSession) Close() error {
-	if s.hwnd == 0 {
-		return nil
-	}
-	if ok, _, _ := procIsWindow.Call(s.hwnd); ok != 0 {
+	if sessions[s.hwnd] == s {
 		_, _, _ = procRemoveWindowSubclass.Call(s.hwnd, subclassCallback, subclassID)
+		delete(sessions, s.hwnd)
 	}
-	s.release()
+	s.end()
 	return nil
 }
 
-// release lets go of the taskbar and the icons once the window is gone or
-// the session closes.
+// release lets go of the taskbar object and the icons, on the taskbar
+// thread as it ends.
 func (s *windowsSession) release() {
-	delete(sessions, s.hwnd)
-	s.hwnd = 0
-	if s.taskbar != 0 {
-		comCall(s.taskbar, tbRelease)
-		s.taskbar = 0
-	}
+	comCall(s.taskbar, tbRelease)
+	s.taskbar = 0
 	for theme := range s.icons {
 		for i, icon := range s.icons[theme] {
 			if icon != 0 {
@@ -216,21 +284,22 @@ func subclassProc(hwnd, msg, wParam, lParam, _, _ uintptr) uintptr {
 		case uint32(msg) == taskbarButtonCreated && taskbarButtonCreated != 0:
 			// A new button, without a toolbar. MyGo hears it too, for the
 			// progress bar.
-			s.added = false
-			s.shown = [buttonCount]thumbButton{}
-			s.apply()
+			s.mu.Lock()
+			s.rebuilt = true
+			s.mu.Unlock()
+			s.signal()
 		case msg == wmCommand && wParam>>16&0xffff == thbnClicked:
 			s.click(int(wParam & 0xffff))
 			return 0
 		case msg == wmSettingChange && lParam != 0 &&
 			windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam))) == "ImmersiveColorSet": //nolint:govet // the system's string, not Go memory
-			if light := lightTaskbar(); light != s.light {
-				s.light = light
-				s.apply()
-			}
+			light := lightTaskbar()
+			s.mu.Lock()
+			s.light = light
+			s.mu.Unlock()
+			s.signal()
 		case msg == wmNCDestroy:
-			_, _, _ = procRemoveWindowSubclass.Call(hwnd, subclassCallback, subclassID)
-			s.release()
+			_ = s.Close()
 		}
 	}
 	r, _, _ := procDefSubclassProc.Call(hwnd, msg, wParam, lParam)
@@ -252,19 +321,24 @@ func (s *windowsSession) click(id int) {
 	}
 }
 
-// apply shows the state's buttons on the taskbar button's toolbar.
+// apply shows the state's buttons on the taskbar button's toolbar. It runs
+// on the taskbar thread.
 func (s *windowsSession) apply() {
-	if s.taskbar == 0 {
-		return
+	s.mu.Lock()
+	state, light, rebuilt := s.state, s.light, s.rebuilt
+	s.rebuilt = false
+	s.mu.Unlock()
+	if rebuilt {
+		s.added = false
 	}
-	playPause, playTip, canPlayPause := glyphPlay, "Play", s.state.CanPlay
-	if s.state.Status == Playing {
-		playPause, playTip, canPlayPause = glyphPause, "Pause", s.state.CanPause
+	playPause, playTip, canPlayPause := glyphPlay, "Play", state.CanPlay
+	if state.Status == Playing {
+		playPause, playTip, canPlayPause = glyphPause, "Pause", state.CanPause
 	}
 	buttons := [buttonCount]thumbButton{
-		s.button(buttonPrevious, glyphPrevious, "Previous", s.state.CanPrevious),
-		s.button(buttonPlayPause, playPause, playTip, canPlayPause),
-		s.button(buttonNext, glyphNext, "Next", s.state.CanNext),
+		s.button(buttonPrevious, glyphPrevious, "Previous", state.CanPrevious, light),
+		s.button(buttonPlayPause, playPause, playTip, canPlayPause, light),
+		s.button(buttonNext, glyphNext, "Next", state.CanNext, light),
 	}
 	if s.added && buttons == s.shown {
 		return
@@ -285,8 +359,8 @@ func (s *windowsSession) apply() {
 	s.shown = buttons
 }
 
-func (s *windowsSession) button(id int, g glyph, tip string, enabled bool) thumbButton {
-	b := thumbButton{Mask: thbIcon | thbTooltip | thbFlags, ID: uint32(id), Icon: s.icon(g), Flags: thbfDisabled}
+func (s *windowsSession) button(id int, g glyph, tip string, enabled, light bool) thumbButton {
+	b := thumbButton{Mask: thbIcon | thbTooltip | thbFlags, ID: uint32(id), Icon: s.icon(g, light), Flags: thbfDisabled}
 	if enabled {
 		b.Flags = thbfEnabled
 	}
@@ -296,14 +370,14 @@ func (s *windowsSession) button(id int, g glyph, tip string, enabled bool) thumb
 }
 
 // icon returns the glyph's icon in the taskbar theme's colour.
-func (s *windowsSession) icon(g glyph) uintptr {
+func (s *windowsSession) icon(g glyph, light bool) uintptr {
 	theme := 0
-	if s.light {
+	if light {
 		theme = 1
 	}
 	if s.icons[theme][g] == 0 {
 		fill := color.RGBA{0xff, 0xff, 0xff, 0xff}
-		if s.light {
+		if light {
 			fill = color.RGBA{0x1f, 0x1f, 0x1f, 0xff}
 		}
 		size, _, _ := procGetSystemMetrics.Call(smCxSmIcon)
