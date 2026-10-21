@@ -8,6 +8,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- **A track whose stream stops at its end plays the next one.** YouTube's
+  server stops at the end of a track's data, which the app took for a stream
+  that broke off: it found the stream again and played the last moment of the
+  track a second time. The break now ends the track.
+
 ## [0.4.3] - 2026-10-20
 
 ### Added

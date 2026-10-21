@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -1000,6 +1001,53 @@ func TestAStreamThatStaysBrokenGivesUpAfterTheRetries(t *testing.T) {
 		t.Errorf("playErr %q, current %q: want the failure shown on the track", a.playErr, a.current.VideoID)
 	}
 }
+
+func TestAStreamThatBreaksOffAtTheEndPlaysTheNextTrack(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	tone := filepath.Join(t.TempDir(), "tone.wav")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=duration=3", tone).CombinedOutput(); err != nil {
+		t.Fatalf("making a tone: %v: %s", err, out)
+	}
+	data, err := os.ReadFile(tone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A track whose data stops just before its end: ffmpeg plays almost all
+	// of it and then reports the stream broken off.
+	broken := filepath.Join(t.TempDir(), "broken.wav")
+	if err := os.WriteFile(broken, data[:len(data)-4000], 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a, r := playbackApp(t)
+	r.file = broken
+	q := tracks("a", "b")
+	a.play(q[0], q)
+
+	// The break is the player's, before the app has looked at it, and the
+	// sound drains the last moment out while the ticker waits for its next
+	// look at the player.
+	waitFor(t, func() bool { return a.player.Failure() != "" })
+	waitFor(t, func() bool { return a.total-a.player.Position() <= endOfTrackLead })
+
+	a.poll()
+	if got := r.count("a"); got != 1 {
+		t.Errorf("the track was resolved %d times, want the break to end it rather than find it again", got)
+	}
+	if a.current.VideoID != "b" || a.queue.index != 1 {
+		t.Errorf("after the break: playing %q at %d, want b", a.current.VideoID, a.queue.index)
+	}
+	if a.playErr != "" {
+		t.Errorf("playErr = %q", a.playErr)
+	}
+}
+
+// A stream that breaks off mid-song, as the network dropping or an audio URL
+// that expired while the machine slept makes it, is found again and played
+// on from where it stopped.
 
 func waitFor(t *testing.T, done func() bool) {
 	t.Helper()

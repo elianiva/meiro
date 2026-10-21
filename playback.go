@@ -570,7 +570,24 @@ const (
 	// recoveryBackoff is the wait before the first retry; each one waits
 	// longer, which gives a network that just came back a moment to settle.
 	recoveryBackoff = 500 * time.Millisecond
+	// endOfTrackLead is how much of a track may be left when its stream
+	// breaks off and the track still counts as over. YouTube's server stops
+	// at the end of a track's data, which breaks the stream off in the last
+	// moment of it: what is left is shorter than the wait before the stream
+	// is found again, and playing that moment again is what the listener
+	// hears as the ending twice.
+	endOfTrackLead = 3 * time.Second
 )
+
+// atTrackEnd reports whether the track playing has reached the last moment of
+// its length, where a stream that breaks off is over rather than broken. A
+// paused stream is not at its end: it holds where the listener left it.
+func (a *app) atTrackEnd() bool {
+	if a.total <= 0 || a.player.Paused() {
+		return false
+	}
+	return a.total-a.player.Position() <= endOfTrackLead
+}
 
 // recoverStream picks the current track up where its stream broke off, as it
 // does when the network drops mid-song, or the machine wakes with an audio
@@ -1081,8 +1098,18 @@ func (a *app) poll() {
 		if a.stream.busy() {
 			return // a track, or this one again, is on its way
 		}
-		if a.player.StreamFailed() && a.recoverStream(failure) {
-			return
+		if a.player.StreamFailed() {
+			if a.atTrackEnd() {
+				// The stream broke off in the last moment of the track, so
+				// the track is over rather than broken: finding the stream
+				// again would play that moment a second time.
+				log.Printf("playback: stream broke off at the end of the track video_id=%s at=%s: %s", a.current.VideoID, a.player.Position().Round(time.Second), failure)
+				a.trackEnded()
+				return
+			}
+			if a.recoverStream(failure) {
+				return
+			}
 		}
 		if a.rawPlayErr != failure {
 			a.failPlayback(a.current, "player stopped", failure)
