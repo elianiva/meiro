@@ -143,6 +143,16 @@ func TestSettingsPagesLeaveTheMusicSearchOutOfTheTopBar(t *testing.T) {
 	}
 }
 
+func TestSettingsDoNotOfferWavyProgressPreference(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if tt.HasText("Wavy progress bar") {
+		t.Fatalf("settings still offer the wavy progress preference: %q", tt.Texts())
+	}
+}
+
 func TestHomeShowMoreAppendsContinuationSections(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)

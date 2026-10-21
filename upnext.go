@@ -99,6 +99,7 @@ func (a *app) ensureUpNext() {
 		if u.token == continuation {
 			u.token = ""
 		}
+		a.clearQueueSelection()
 		a.queue.appendGenerated(result.Items)
 		// A recommended track can be the one that plays next, so warm it too.
 		a.warmNext()

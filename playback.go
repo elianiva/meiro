@@ -101,6 +101,7 @@ func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index
 	if item.VideoID == "" {
 		return
 	}
+	a.clearQueueSelection()
 	a.queue.replace(item, tracks, index, source)
 	clear(a.scrobble.queued) // the queue they were added to is gone
 	a.learnCredits(tracks...)
@@ -225,6 +226,7 @@ func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 		return
 	}
 	a.queue.insert(item, playNext, a.settings.AutoPlay)
+	a.clearQueueSelection()
 	a.rememberQueued(item.VideoID)
 	a.learnCredits(item)
 	if playNext {
@@ -257,6 +259,35 @@ func (a *app) removeFromQueue(index int) {
 	a.queueChanged()
 }
 
+// selectedQueueIndices are the selected queue tracks, in descending order,
+// leaving out the track playing and the recommendations divider.
+func (a *app) selectedQueueIndices() []int {
+	var indices []int
+	for row := a.queue.rows() - 1; row >= 0; row-- {
+		index, ok := a.queue.trackAt(row)
+		if !ok || index == a.queue.index {
+			continue
+		}
+		if a.nowPlaying.queueSelection.Has(queueRowKey(&a.queue, row)) {
+			indices = append(indices, index)
+		}
+	}
+	return indices
+}
+
+// removeSelectedFromQueue removes every selected track except the one playing.
+func (a *app) removeSelectedFromQueue() {
+	indices := a.selectedQueueIndices()
+	if len(indices) == 0 {
+		return
+	}
+	for _, index := range indices {
+		a.queue.remove(index)
+	}
+	a.notice = fmt.Sprintf("Removed %d tracks from the queue", len(indices))
+	a.queueChanged()
+}
+
 // shiftInQueue moves the track at a place in the queue one up or down.
 func (a *app) shiftInQueue(index, delta int) {
 	if a.queue.shift(index, delta) {
@@ -275,11 +306,20 @@ func (a *app) clearUpcoming() {
 // queueChanged follows an edit of the queue: what plays next may be another
 // track now.
 func (a *app) queueChanged() {
+	a.clearQueueSelection()
 	a.nowPlaying.queueFollow = "" // the list scrolls to the current track again
 	a.warmNext()
 	a.syncPreload()
 	a.ensureUpNext()
 	a.syncSystemMedia()
+}
+
+// clearQueueSelection forgets the choice before a queue change can reuse a
+// row's key for a different track.
+func (a *app) clearQueueSelection() {
+	a.nowPlaying.queueSelection.Clear()
+	a.nowPlaying.queueSelectionAnchor = -1
+	a.nowPlaying.queueSelectionCursor = -1
 }
 
 // playVideoID starts a video, wherever it comes from: a link, a history
@@ -516,6 +556,7 @@ func (a *app) pause() {
 // in that order to its end, where auto-play takes over. Turning it off puts
 // the queue back in the order it held, with the track playing where it was.
 func (a *app) setShuffle(on bool) {
+	a.clearQueueSelection()
 	a.shuffle = on
 	if on {
 		a.queue.shuffleQueue()

@@ -176,15 +176,6 @@ func (a *app) appearanceCard(c *ui.Context) {
 				a.saveSettings()
 			}
 		})
-
-		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			settingLabel(c, "Wavy progress bar", "Draw the position slider as a wave that moves while music plays. It repaints the player continuously and can use a lot of memory, so it is off by default on macOS.").Grow(1)
-			on := a.settings.WavyProgress
-			if m3.Switch(c, &on, "Wavy progress bar").Changed() {
-				a.settings.WavyProgress = on
-				a.saveSettings()
-			}
-		})
 	})
 }
 

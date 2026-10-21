@@ -184,6 +184,7 @@ func newApp() *app {
 		settings:   settings.Defaults(),
 		openURL:    mygo.Shell.OpenExternal,
 		bundled:    proc.Bundled,
+		nowPlaying: nowPlayingState{queueSelectionAnchor: -1, queueSelectionCursor: -1},
 		page:       &pageData{},
 		list:       &ui.ListState{},
 		pages:      lru.New[string, *pageData](pageCacheLimit),

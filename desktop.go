@@ -195,6 +195,7 @@ func (d *desktop) setTray(on bool, state trayState, mini func(*ui.Context), show
 		}
 		onOpenMiniPlayer := func() { d.update(func() { d.showMini(mini, shown) }) }
 		options := mygo.TrayOptions{
+			ID:             "meiro-tray",
 			Icon:           icon,
 			IconIsTemplate: true,
 			ToolTip:        state.tip,

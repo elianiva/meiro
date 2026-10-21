@@ -40,8 +40,11 @@ type nowPlayingState struct {
 	// first frame only.
 	playerShown bool
 	// queueOnly shows the side panel alone, in a window too narrow for both.
-	queueOnly bool
-	queueList ui.ListState
+	queueOnly            bool
+	queueList            ui.ListState
+	queueSelection       ui.Selection[string]
+	queueSelectionAnchor int
+	queueSelectionCursor int
 	// queueFollow is the track the queue's list last scrolled to.
 	queueFollow  string
 	volumeHeld   bool
@@ -126,6 +129,7 @@ const riseDistance = 80
 // and beside them the queue or the lyrics. It rises over the sheet, and sinks
 // away when it closes.
 func (a *app) nowPlayingView(c *ui.Context) {
+	m3.Provide(c, a.resolveTheme(c))
 	sc := m3.Of(c).Scheme
 	w, h := c.Size()
 	wide := w > 1040
@@ -319,6 +323,48 @@ func (a *app) queueSourceLine(c *ui.Context, compact bool) {
 	})
 }
 
+// queueRowKey is the list identity of a queue row, including repeated
+// occurrences of the same track. The divider has an identity of its own.
+func queueRowKey(q *queue, row int) string {
+	if q.isDivider(row) {
+		return "queue-recommendations"
+	}
+	if index, ok := q.trackAt(row); ok {
+		return itemKey("queue", q.at(index)) + "#" + strconv.Itoa(index)
+	}
+	return ""
+}
+
+// selectQueueRow applies a modifier-click to the queue's multi-selection.
+func (a *app) selectQueueRow(index int, mods ui.Modifiers) {
+	row := a.queue.rowOf(index)
+	key := queueRowKey(&a.queue, row)
+	if mods&ui.Shift != 0 {
+		anchor := a.nowPlaying.queueSelectionAnchor
+		if anchor < 0 || anchor >= a.queue.len() {
+			a.nowPlaying.queueSelection.Clear()
+			a.nowPlaying.queueSelection.Add(key)
+			a.nowPlaying.queueSelectionAnchor = index
+		} else {
+			a.nowPlaying.queueSelection.Clear()
+			for i := min(anchor, index); i <= max(anchor, index); i++ {
+				a.nowPlaying.queueSelection.Add(queueRowKey(&a.queue, a.queue.rowOf(i)))
+			}
+		}
+	} else {
+		selection := &a.nowPlaying.queueSelection
+		if selection.Has(key) {
+			selection.Remove(key)
+		} else {
+			selection.Add(key)
+		}
+		a.nowPlaying.queueSelectionAnchor = index
+	}
+	// ListState.Selected is a rendered row index, which can differ from the
+	// queue item index when generated tracks add the recommendations divider.
+	a.nowPlaying.queueSelectionCursor = row
+}
+
 // queueView lists the tracks of the queue, with the current one picked out.
 func (a *app) queueView(c *ui.Context, compact bool) {
 	sc := m3.Of(c).Scheme
@@ -383,15 +429,10 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 	list := &a.nowPlaying.queueList
 	// A press in a row can replace the queue while the list still asks about
 	// a row of the one before, so every question checks the row is there.
-	list.Key = func(row int) any {
-		if q.isDivider(row) {
-			return "queue-recommendations"
-		}
-		if index, ok := q.trackAt(row); ok {
-			return itemKey("queue", q.at(index)) + "#" + strconv.Itoa(index)
-		}
-		return nil
-	}
+	list.Key = func(row int) any { return queueRowKey(q, row) }
+	list.Selection = &a.nowPlaying.queueSelection
+	list.Selected = &a.nowPlaying.queueSelectionCursor
+	list.MenuKeepsSelection = true
 	list.Label = func(row int) string {
 		if q.isDivider(row) {
 			return "Auto-play recommendations"
@@ -401,6 +442,7 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 		}
 		return ""
 	}
+	list.Header = q.isDivider
 	// Rows drag to a new place in the queue; the divider between chosen and
 	// generated tracks is not draggable itself.
 	list.Reorder = a.moveQueue
@@ -422,7 +464,7 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 				height = 32
 				topPadding = 4
 			}
-			ui.Column(c).Height(height).Padding(topPadding, 8, 0).Justify(ui.Center).Children(func() {
+			ui.Column(c).Height(height).Padding(topPadding, 8, 0).Justify(ui.Center).Background(sc.SurfaceContainerLow.Mix(sc.Surface, 0.1)).Children(func() {
 				m3.EmphasizedText(c, m3.TitleSmall, "Recommended").TextColor(sc.OnSurfaceVariant).SingleLine()
 			})
 			return

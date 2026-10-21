@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strconv"
+
 	"github.com/egoist/mygo/ui"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
@@ -174,6 +176,14 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 // place in it. The track playing stays where it is.
 func (a *app) queueMenuItems(c *ui.Context, index int, close func()) {
 	q := &a.queue
+	if selected := a.selectedQueueIndices(); len(selected) > 1 {
+		label := "Remove " + strconv.Itoa(len(selected)) + " tracks"
+		m3.MenuItem(c, label, m3.IconClose).OnClick(func() {
+			a.removeSelectedFromQueue()
+			close()
+		})
+		return
+	}
 	if index == q.index || index >= q.len() {
 		return
 	}

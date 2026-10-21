@@ -67,9 +67,7 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 }
 
 // scrubber is the position slider: a wave that travels while the music plays
-// and goes flat when it stops, unless the user turned the wave off (it is off
-// by default on macOS, see settings.Defaults), in which case the track is a
-// plain flat line. It follows the player until the user takes it,
+// and goes flat when it stops. It follows the player until the user takes it,
 // and seeks when they let go. Times stand at both ends.
 func (a *app) scrubber(c *ui.Context) {
 	sc := m3.Of(c).Scheme
@@ -83,7 +81,7 @@ func (a *app) scrubber(c *ui.Context) {
 		m3.Text(c, m3.LabelMedium, clock(time.Duration(a.scrub*float64(time.Second)))).
 			Width(40).TextAlign(ui.End).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 		slider := m3.Slider(c, &a.scrub, 0, total, m3.SliderSpec{
-			Label: "Position", Key: "scrubber", Wavy: a.settings.WavyProgress, Waving: a.player.Playing(), Disabled: !known,
+			Label: "Position", Key: "scrubber", Wavy: true, Waving: a.player.Playing(), Disabled: !known,
 		})
 		if slider.Pressed() {
 			a.scrubbing = true

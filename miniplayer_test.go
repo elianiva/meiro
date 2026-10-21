@@ -43,6 +43,15 @@ func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	}
 }
 
+func TestMiniPlayerRendersWithPopoverVibrancy(t *testing.T) {
+	a := newTestApp(t)
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	tt.SetVibrancy(true)
+	if !tt.HasText("Nothing playing") || !tt.HasText("Open Meiro") || !tt.HasText("Quit") {
+		t.Fatalf("vibrant mini player lost its content: %q", tt.Texts())
+	}
+}
+
 func TestMinimizeToTrayShowsTheTrayWithoutRememberingTheChoice(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp(t)

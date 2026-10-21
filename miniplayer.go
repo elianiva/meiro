@@ -29,14 +29,18 @@ func (a *app) miniPlayer(c *ui.Context) {
 	a.followArtwork()
 	m3.Provide(c, a.resolveTheme(c))
 	sc := m3.Of(c).Scheme
-	col := ui.Column(c.Key("mini")).Fill().Padding(12).Gap(8).Background(sc.SurfaceContainer)
+	surface := sc.SurfaceContainer
+	if c.Vibrancy() {
+		surface = ui.Transparent
+	}
+	col := ui.Column(c.Key("mini")).Fill().Padding(12).Gap(8).Background(surface)
 	if runtime.GOOS != "darwin" {
 		// macOS rounds the popover itself.
 		col.Radius(m3.ExtraLarge)
 	}
 	col.Children(func() {
-		ui.Column(c).Key("mini-content").Grow(1).MinHeight(0).Gap(8).Children(func() {
-			ui.Row(c).Key("mini-player").Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+		ui.Column(c.Key("mini-content")).Grow(1).MinHeight(0).Gap(8).Children(func() {
+			ui.Row(c.Key("mini-player")).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
 				// Drawn at playerArt pixels, the size followArtwork takes its colour
 				// from, so the picture it needs is the one this frame fetches.
 				a.art(c, a.current.Thumbnail, playerArt, miniArt, m3.Large, func() {
@@ -86,14 +90,16 @@ func (d *desktop) showMini(view func(*ui.Context), shown func(bool)) {
 		return
 	}
 	fl := mygo.NewFlyout(mygo.FlyoutOptions{
-		Tray:      d.tray,
-		Placement: mygo.PlacementBottom,
-		Width:     miniWidth,
-		Height:    miniHeight,
-		Focusable: true,
-		Shadow:    true,
-		Popover:   runtime.GOOS == "darwin",
-		Content:   ui.View(view),
+		Tray:         d.tray,
+		Placement:    mygo.PlacementBottom,
+		Width:        miniWidth,
+		Height:       miniHeight,
+		Focusable:    true,
+		Shadow:       true,
+		Popover:      runtime.GOOS == "darwin",
+		Vibrancy:     mygo.VibrancyPopover,
+		CornerRadius: int(m3.ExtraLarge),
+		Content:      ui.View(view),
 	})
 	d.mini.win.Store(fl)
 	shown(true)

@@ -57,6 +57,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	sc := m3.Of(c).Scheme
 	isSong := item.IsTrack()
 	playing := a.playingRow(item, o)
+	selected := o.list == "queue" && a.nowPlaying.queueSelection.Has(queueRowKey(&a.queue, a.queue.rowOf(o.position)))
 	key := songKey(item, o)
 	height, artSize, padding, gap, iconSize := float32(rowHeight), float32(48), float32(8), float32(12), float32(24)
 	titleRole, subtitleRole := m3.BodyLarge, m3.BodyMedium
@@ -92,6 +93,8 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			titleColour, subColour := sc.OnSurface, sc.OnSurfaceVariant
 			if playing {
 				titleColour, subColour = sc.OnSecondaryContainer, sc.OnSecondaryContainer.Alpha(0.8)
+			} else if selected {
+				titleColour, subColour = sc.OnPrimary, sc.OnPrimary.Alpha(0.8)
 			}
 			if o.number > 0 {
 				ui.Row(c).Size(artSize, artSize).Shrink(0).Center().Children(func() {
@@ -193,6 +196,14 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		}
 	}
 	if main.Clicked() {
+		if o.list == "queue" {
+			mods := main.ClickModifiers()
+			if mods&(ui.Cmd|ui.Shift) != 0 {
+				a.selectQueueRow(o.position, mods)
+				return
+			}
+			a.clearQueueSelection()
+		}
 		switch {
 		case o.directQueue:
 			index := o.track

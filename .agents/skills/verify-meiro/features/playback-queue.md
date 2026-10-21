@@ -25,6 +25,11 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - Click `Up next` in the player bar, or `Open the player`, to open the player panel with `Up next`, `Lyrics` and `Related`.
 - Open the tray mini player from the tray icon on macOS and Windows. On Linux, choose `Open Meiro` from the tray menu to restore the main window; Linux does not offer the tray mini player.
 - Right click a track for `Play next` and `Add to queue`.
+- In `Up next`, Cmd-click on macOS or Ctrl-click on Windows/Linux to select
+  several tracks; Shift-click extends the selection. Drag a selected row to
+  reorder the group, or right-click a row and choose `Remove N tracks`.
+  The selection highlight follows the active theme, and the track playing is
+  not removed.
 - Press `Space`, `Cmd+Shift+L`, `Cmd+Shift+J`, `Cmd+Shift+R`, `Cmd+Shift+S`.
 
 ## Driving it with the headless tester

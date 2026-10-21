@@ -35,7 +35,8 @@ linters:
       # the values that share a case.
       default-signifies-exhaustive: false
       # The JSON tokenizer's kinds are not ours to list.
-      ignore-enum-types: "jsontext\\.Kind"
+      ignore-types:
+        - "jsontext\\.Kind"
     gocritic:
       disabled-checks:
         # The views build trees of nested closures; naming each one would

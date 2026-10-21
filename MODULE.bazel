@@ -1,18 +1,18 @@
 module(
     name = "meiro",
-    version = "0.4.3",
+    version = "0.4.4",
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.9.2")
 bazel_dep(name = "gazelle", version = "0.54.0")
 bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_go", version = "0.64.2")
-bazel_dep(name = "rules_shell", version = "0.6.1")
+bazel_dep(name = "rules_shell", version = "0.8.0")
 
 # The Go SDK is pinned here, not by whatever `go` happens to be on PATH, so a
 # local build and CI compile with the same toolchain in the same sandbox.
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
-go_sdk.download(version = "1.27.1")
+go_sdk.download(version = "1.27.3")
 
 # go.mod stays the one place the dependencies are written down; this turns it
 # into Bazel repositories. The use_repo list is the direct requirements, which

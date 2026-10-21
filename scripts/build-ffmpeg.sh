@@ -23,8 +23,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 platform="${1:?usage: build-ffmpeg.sh <darwin-arm64|darwin-amd64|linux-amd64|linux-arm64|windows-amd64>}"
 
 # Bump the version and the checksum together.
-FFMPEG_VERSION="8.1"
-ffmpeg_sha256="b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a"
+FFMPEG_VERSION="9.0.2"
+ffmpeg_sha256="8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
 
 sha256() {
 	if command -v sha256sum >/dev/null 2>&1; then

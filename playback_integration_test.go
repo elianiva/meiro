@@ -660,8 +660,14 @@ func TestQueueRecommendationHeadingAlignsWithArtwork(t *testing.T) {
 	}
 	topGap := heading.Y - (chosenRow.Y + chosenRow.H)
 	bottomGap := row.Y + 8 - (heading.Y + heading.H) // The song row pads its artwork by 8.
-	if difference := topGap - bottomGap; difference < -4 || difference > 4 {
+	if difference := topGap - bottomGap; difference < -0.5 || difference > 0.5 {
 		t.Errorf("heading gaps are unbalanced: %g above, %g below", topGap, bottomGap)
+	}
+	if err := tt.Click("Recommended"); err != nil {
+		t.Fatal(err)
+	}
+	if a.nowPlaying.queueSelection.Len() != 0 || a.nowPlaying.queueSelectionCursor == a.queue.recStart {
+		t.Errorf("recommendation heading selected a queue row: %d selected, cursor %d", a.nowPlaying.queueSelection.Len(), a.nowPlaying.queueSelectionCursor)
 	}
 }
 
@@ -1143,6 +1149,115 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	}
 	if got := ids(a.queue.items); !slices.Equal(got, []string{"a"}) || a.current.VideoID != "a" {
 		t.Errorf("after clear: %v, playing %q", got, a.current.VideoID)
+	}
+}
+
+func TestQueueSelectionCursorUsesRenderedRowWithRecommendations(t *testing.T) {
+	a, _ := playbackApp(t)
+	q := tracks("a", "b", "c")
+	a.play(q[0], q)
+	a.queue.appendGenerated(tracks("recommended"))
+	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
+	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
+
+	if err := tt.ClickWith(ui.Cmd, "Track recommended"); err != nil {
+		t.Fatal(err)
+	}
+	row := a.queue.rowOf(3)
+	if a.nowPlaying.queueSelectionCursor != row || a.current.VideoID != "a" {
+		t.Fatalf("selected generated row %d with cursor %d and current %q", row, a.nowPlaying.queueSelectionCursor, a.current.VideoID)
+	}
+
+	if err := tt.ClickWith(ui.Shift, "Track b"); err != nil {
+		t.Fatal(err)
+	}
+	if a.nowPlaying.queueSelection.Len() != 3 || a.nowPlaying.queueSelectionCursor != a.queue.rowOf(1) {
+		t.Fatalf("shift selection has %d items and cursor %d; want 3 items and row %d", a.nowPlaying.queueSelection.Len(), a.nowPlaying.queueSelectionCursor, a.queue.rowOf(1))
+	}
+}
+
+func TestQueueSelectionUsesThemeAccent(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.settings.Seed, a.settings.Mode = "#e91e63", "light"
+	q := tracks("a", "b", "c")
+	a.play(q[0], q)
+	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
+	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
+
+	if err := tt.ClickWith(ui.Cmd, "Track b"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Move(0, 0)
+	row, ok := tt.Find("Track b")
+	if !ok {
+		t.Fatalf("selected row missing: %q", tt.Texts())
+	}
+	want := m3.New(a.settings.Theme(uiFont), false).Scheme.Primary
+	got := tt.Image().RGBAAt(int(row.X+row.W-40), int(row.Y+row.H/2))
+	if got.R != want.R || got.G != want.G || got.B != want.B || got.A != want.A {
+		t.Fatalf("selection colour is %v; want theme accent %v", got, want)
+	}
+}
+
+func TestQueueSelectionMovesAndRemovesTogether(t *testing.T) {
+	a, _ := playbackApp(t)
+	q := tracks("a", "b", "c", "d")
+	a.play(q[0], q)
+	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
+	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
+	tt.Frame()
+
+	if err := tt.ClickWith(ui.Cmd, "Track b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ClickWith(ui.Cmd, "Track c"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.current.VideoID != "a" || a.nowPlaying.queueSelection.Len() != 2 {
+		t.Fatalf("modifier-click selected %d tracks and started %q", a.nowPlaying.queueSelection.Len(), a.current.VideoID)
+	}
+
+	from, ok1 := tt.Find("Track b")
+	to, ok2 := tt.Find("Track d")
+	if !ok1 || !ok2 {
+		t.Fatalf("rows missing: %q", tt.Texts())
+	}
+	fx, fy := from.X+from.W/2, from.Y+from.H/2
+	endY := to.Y + to.H - 1
+	tt.Press(fx, fy)
+	for y := fy; y < endY; y += 4 {
+		tt.Move(fx, y)
+	}
+	tt.Move(fx, endY)
+	tt.Release(fx, endY)
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "d", "b", "c"}) {
+		t.Fatalf("dragging a selected row did not move the group: %v", got)
+	}
+	if a.nowPlaying.queueSelection.Len() != 0 {
+		t.Fatalf("queue edit kept a stale selection: %d", a.nowPlaying.queueSelection.Len())
+	}
+
+	if err := tt.ClickWith(ui.Cmd, "Track b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ClickWith(ui.Cmd, "Track c"); err != nil {
+		t.Fatal(err)
+	}
+	rowD, ok := tt.Find("Track d")
+	if !ok {
+		t.Fatalf("no row d: %q", tt.Texts())
+	}
+	tt.RightClickAt(rowD.X+rowD.W/2, rowD.Y+rowD.H/2)
+	tt.Frame()
+	if a.nowPlaying.queueSelection.Len() != 2 || !tt.HasText("Remove 2 tracks") {
+		t.Fatalf("context menu dropped the selection: %d, %q", a.nowPlaying.queueSelection.Len(), tt.Texts())
+	}
+	if err := tt.Click("Remove 2 tracks"); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "d"}) || a.current.VideoID != "a" {
+		t.Fatalf("batch remove left queue %v and current %q", got, a.current.VideoID)
 	}
 }
 
