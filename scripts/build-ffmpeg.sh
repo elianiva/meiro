@@ -66,7 +66,7 @@ configure=(
 	--enable-parser=opus,aac,vorbis,flac,mpegaudio
 	--enable-decoder=opus,aac,vorbis,mp3,mp3float,flac,pcm_s16le,pcm_f32le
 	--enable-encoder=pcm_s16le --enable-muxer=pcm_s16le
-	--enable-filter=abuffer,abuffersink,aformat,aresample,anull,atrim,apad
+	--enable-filter=abuffer,abuffersink,aformat,aresample,anull,atrim,apad,volume,equalizer
 )
 case "$platform" in
 	linux-*)

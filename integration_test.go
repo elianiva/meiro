@@ -445,6 +445,25 @@ func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
 	}
 }
 
+// A menu the hero's artwork opened opens again once it has closed: the mark
+// it leaves where the pointer pressed must not take the next right click.
+func TestTheHeroMenuOpensAgainAfterItCloses(t *testing.T) {
+	a, _ := playbackApp(t)
+	tt := open(a, "/playlist/VLPL_songs")
+	tt.Frame()
+	for round := range 2 {
+		if err := tt.RightClick("More options for "); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if !a.menu.open || !tt.HasText("Delete playlist") {
+			t.Fatalf("right click %d opened no menu: %v %q", round+1, a.menu.opened("hero"), tt.Texts())
+		}
+		a.menu.close()
+		tt.Frame()
+	}
+}
+
 func TestRightClickingTheHeroArtOffersItsMenu(t *testing.T) {
 	a, _ := playbackApp(t)
 	tt := open(a, "/album/MPREb_test")

@@ -36,11 +36,15 @@ func (m *itemMenu) close() { m.open = false }
 // pointerAnchor is a box at where the pointer was, in the layout of the item
 // the menu was opened on, if the secondary button opened the menu on the item
 // with this key. It must be built inside that item.
+//
+// The box has no size on purpose: it only places the menu. A box with a size
+// would sit over the spot the pointer pressed, and take the next right-click
+// there for itself, so the item under it would never open its menu again.
 func (m *itemMenu) pointerAnchor(c *ui.Context, key string) (ui.Element, bool) {
 	if !m.atPointer || m.key != key {
 		return ui.Element{}, false
 	}
-	return ui.Box(c).Size(1, 1).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).Left(m.x).Top(m.y), true
+	return ui.Box(c).Size(0, 0).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).Left(m.x).Top(m.y), true
 }
 
 // anchor picks what the menu points at: the pointer's box if there is one,

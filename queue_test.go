@@ -334,3 +334,21 @@ func TestAppendGeneratedKeepsChosenVideoWhenAudioVersionIsRecommended(t *testing
 // The queue can hold the same song twice, and only the copy at the queue's
 // place is picked out as playing. Every other list picks the song playing out
 // by its own ID.
+func TestTheSameSongTwiceInTheQueuePlaysFromOneRow(t *testing.T) {
+	a := newTestApp(t)
+	song := youtube.MusicItem{VideoID: "vid-3", Title: "Album Track One"}
+	a.queue.replace(song, []youtube.MusicItem{song, song}, 0, "Album")
+	a.current = a.queue.current()
+
+	row := songOptions{list: "queue", position: 0}
+	if !a.playingRow(song, row) {
+		t.Error("the copy of the song that plays is not picked out")
+	}
+	row.position = 1
+	if a.playingRow(song, row) {
+		t.Error("the copy of the song that does not play is picked out too")
+	}
+	if !a.playingRow(song, songOptions{list: "playlist", position: 1}) {
+		t.Error("a list that holds the song once no longer picks it out")
+	}
+}

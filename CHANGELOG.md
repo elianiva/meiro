@@ -10,12 +10,48 @@ and this project adheres to
 
 ### Changed
 
+- **The queue's header reads in one line.** Where the queue plays from is one
+  line, **Playing from** and the playlist in the same size with the playlist in
+  bold, instead of a caption over a second line. The source, **Auto-play** and
+  the count of the songs next sit one gap apart, and closer than before.
+- **A queue row is its song and nothing else.** The three-dot button and the X
+  are gone from the rows, and the length takes the width they held. Right-click
+  a row for **Move up**, **Move down** and **Remove from queue**. The track
+  playing still offers no remove.
 - **Shuffle arranges the whole queue, and turning it off puts the queue back.**
   Turning shuffle on moves the track playing to the top and shuffles every
   other song behind it, the way Spotify does it, instead of arranging only the
   songs after the track playing and leaving the ones before it out. Turning
   shuffle off returns the queue to the order it held, with the track playing
   where it was, and the generated tracks keep their place at the end.
+
+### Fixed
+
+- **The mini player's Clear queue ends on the queue's edge.** Its label stopped
+  16 px short of the lengths under it, so the narrow column read as two right
+  edges.
+- **The player's controls keep their distance from their edges.** The
+  three-dot menu on the album art sat against the artwork's corner, and the Up
+  next, Lyrics and Related row started further below the side panel's top than
+  from its sides; both now keep the margin the rest of the player keeps.
+- **A queue that holds the same song twice picks out only the copy playing.**
+  Both copies were drawn as playing, with the dancing bars and the tonal row,
+  because a row was picked out by its song rather than by its place in the
+  queue.
+- **A context menu opens again where it was closed.** The mark a menu left where
+  the pointer pressed took the next right click on that spot for itself, so a
+  card's or a page's menu could be opened only once until the page changed.
+- **A playlist write YouTube refuses is written to the log in full**, for the
+  add and the remove path, so a refusal that the player bar shows as a line can
+  be read whole.
+- **A track whose stream stops at its end plays the next one.** YouTube's
+  server stops at the end of a track's data, which the app took for a stream
+  that broke off: it found the stream again and played the last moment of the
+  track a second time. The break now ends the track.
+- **A track starts at its corrected volume.** With normalization on, the first
+  moment of a track played at the volume the track before it had — or at the
+  plain volume when the app started — until the correction landed a moment
+  later. The gain is now in place before the audio starts.
 
 ## [0.4.3] - 2026-10-20
 
