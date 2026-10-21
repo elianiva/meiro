@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -82,7 +84,19 @@ func TestRemoveFromPlaylistRefusal(t *testing.T) {
 		CookieAuth: auth,
 		HTTPClient: &http.Client{Transport: playlistResponse(`{"status":"STATUS_INVALID_PLAYLIST_SET_VIDEO_ID"}`)},
 	})
+	// The refusal the player bar shows as a line is written whole to the log.
+	var logged strings.Builder
+	flags := log.Flags()
+	log.SetOutput(&logged)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(os.Stderr)
+		log.SetFlags(flags)
+	}()
 	if err := client.RemoveFromPlaylist(context.Background(), "VLPL1", "entry-1"); err == nil || !strings.Contains(err.Error(), "STATUS_INVALID_PLAYLIST_SET_VIDEO_ID") {
 		t.Fatalf("refusal = %v", err)
+	}
+	if !strings.Contains(logged.String(), "body=") || !strings.Contains(logged.String(), "STATUS_INVALID_PLAYLIST_SET_VIDEO_ID") {
+		t.Errorf("the refusal is not in the log in full: %q", logged.String())
 	}
 }
