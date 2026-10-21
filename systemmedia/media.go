@@ -57,6 +57,9 @@ func durationDistance(a, b time.Duration) time.Duration {
 
 // Controls are called when the operating system sends a media command.
 type Controls struct {
+	// Window is the app window's native handle. Windows puts the media
+	// buttons on its taskbar thumbnail; other systems do not need it.
+	Window     uintptr
 	Play       func()
 	Pause      func()
 	Toggle     func()

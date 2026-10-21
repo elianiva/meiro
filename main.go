@@ -71,7 +71,9 @@ func main() {
 			TitleBarStyle: mygo.TitleBarHidden,
 			Content:       ui.View(a.frame),
 		})}
-		session, err := systemmedia.New(a.systemMediaControls())
+		controls := a.systemMediaControls()
+		controls.Window = a.desktop.win.NativeHandle()
+		session, err := systemmedia.New(controls)
 		if err != nil {
 			log.Printf("system media controls unavailable: %v", err)
 		} else {

@@ -27,6 +27,7 @@ use_repo(
     "com_github_godbus_dbus_v5",
     "com_github_microsoft_go_winio",
     "org_golang_x_image",
+    "org_golang_x_sys",
 )
 
 # The linter is a pinned release archive rather than a `go run` of a module

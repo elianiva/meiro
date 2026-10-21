@@ -8,6 +8,7 @@ go_library(
         "session_darwin.go",
         "session_linux.go",
         "session_other.go",
+        "session_windows.go",
     ],
     importpath = "github.com/elianiva/meiro/systemmedia",
     visibility = ["//visibility:public"],
@@ -27,6 +28,18 @@ go_library(
             "@com_github_godbus_dbus_v5//:dbus",
             "@com_github_godbus_dbus_v5//introspect",
             "@com_github_godbus_dbus_v5//prop",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "@rules_go//go/platform:windows_amd64": [
+            "@org_golang_x_image//vector",
+            "@org_golang_x_sys//windows",
+            "@org_golang_x_sys//windows/registry",
+        ],
+        "@rules_go//go/platform:windows_arm64": [
+            "@org_golang_x_image//vector",
+            "@org_golang_x_sys//windows",
+            "@org_golang_x_sys//windows/registry",
         ],
         "//conditions:default": [],
     }),
