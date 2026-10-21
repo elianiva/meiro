@@ -21,7 +21,6 @@ go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
 use_repo(
     go_deps,
-    "com_github_deploymenttheory_go_bindings_win32",
     "com_github_ebitengine_oto_v3",
     "com_github_egoist_mygo",
     "com_github_go_macos_objc",

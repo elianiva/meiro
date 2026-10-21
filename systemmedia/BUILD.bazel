@@ -32,21 +32,11 @@ go_library(
         "//conditions:default": [],
     }) + select({
         "@rules_go//go/platform:windows_amd64": [
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/runtime/win32",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/foundation",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/system/com",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/ui/shell",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/ui/windowsandmessaging",
             "@org_golang_x_image//vector",
             "@org_golang_x_sys//windows",
             "@org_golang_x_sys//windows/registry",
         ],
         "@rules_go//go/platform:windows_arm64": [
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/runtime/win32",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/foundation",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/system/com",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/ui/shell",
-            "@com_github_deploymenttheory_go_bindings_win32//bindings/win32/ui/windowsandmessaging",
             "@org_golang_x_image//vector",
             "@org_golang_x_sys//windows",
             "@org_golang_x_sys//windows/registry",
