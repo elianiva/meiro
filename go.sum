@@ -1,5 +1,7 @@
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
+github.com/deploymenttheory/go-bindings-win32 v0.5.0 h1:B5qu2L+XvQRPe0/ni7Q9PAu3j3it94cyDJjGTeMLG/o=
+github.com/deploymenttheory/go-bindings-win32 v0.5.0/go.mod h1:J3mOfF0N1uFmI8Cm3GPtq1YJYnwAKUkOsmc36GYbm0w=
 github.com/ebitengine/oto/v3 v3.5.1 h1:7gL5DxxSQp8S1Me2jDSp+gSAyondYxpjM5RPBBqLT0c=
 github.com/ebitengine/oto/v3 v3.5.1/go.mod h1:Elkm7yzTRns3w2efvibzVOoQ65YOwmec9a76dCiK10o=
 github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6XeQ/0=
