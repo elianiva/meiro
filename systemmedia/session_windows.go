@@ -10,7 +10,9 @@ import (
 	"image/color"
 	"image/png"
 	"log"
+	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -215,7 +217,7 @@ func (s *windowsSession) run(started chan<- error) {
 	hr, _, _ := procCoCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInproc,
 		uintptr(unsafe.Pointer(&iidITaskbarList3)), uintptr(unsafe.Pointer(&s.taskbar)))
 	if failed(hr) || s.taskbar == 0 {
-		started <- fmt.Errorf("create the taskbar list: HRESULT %#08x", uint32(hr))
+		started <- fmt.Errorf("create the taskbar list: HRESULT %#08x (%s)", uint32(hr), describeTaskbarList())
 		return
 	}
 	defer s.release()
@@ -232,6 +234,61 @@ func (s *windowsSession) run(started chan<- error) {
 			return
 		}
 	}
+}
+
+// describeTaskbarList says why the taskbar list may lack ITaskbarList3:
+// which of its interfaces the object answers to, the Windows build, and any
+// compatibility layer on the executable, which can hide the newer ones.
+func describeTaskbarList() string {
+	var parts []string
+	var unknown uintptr
+	iidUnknown := windows.GUID{Data4: [8]byte{0xc0, 0, 0, 0, 0, 0, 0, 0x46}}
+	hr, _, _ := procCoCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInproc,
+		uintptr(unsafe.Pointer(&iidUnknown)), uintptr(unsafe.Pointer(&unknown)))
+	if failed(hr) || unknown == 0 {
+		parts = append(parts, fmt.Sprintf("IUnknown %#08x", uint32(hr)))
+	} else {
+		for _, iface := range []struct{ name, iid string }{
+			{"ITaskbarList", "{56FDF342-FD6D-11d0-958A-006097C9A090}"},
+			{"ITaskbarList2", "{602D4995-B13A-429b-A66E-1935E44F4317}"},
+			{"ITaskbarList3", "{EA1AFB91-9E28-4B86-90E9-9E9F8A5EEE84}"},
+			{"ITaskbarList4", "{C43DC798-95D1-4BEA-9030-BB99E2983A1A}"},
+		} {
+			iid, err := windows.GUIDFromString(iface.iid)
+			if err != nil {
+				continue
+			}
+			if iface.name == "ITaskbarList3" && iid != iidITaskbarList3 {
+				parts = append(parts, "the ITaskbarList3 IID differs from the system's")
+			}
+			var obj uintptr
+			if hr := comCall(unknown, 0, uintptr(unsafe.Pointer(&iid)), uintptr(unsafe.Pointer(&obj))); failed(hr) {
+				parts = append(parts, fmt.Sprintf("%s %#08x", iface.name, uint32(hr)))
+				continue
+			}
+			comCall(obj, tbRelease)
+			parts = append(parts, iface.name+" ok")
+		}
+		comCall(unknown, tbRelease)
+	}
+	v := windows.RtlGetVersion()
+	parts = append(parts, fmt.Sprintf("Windows %d.%d.%d", v.MajorVersion, v.MinorVersion, v.BuildNumber))
+	if layer := os.Getenv("__COMPAT_LAYER"); layer != "" {
+		parts = append(parts, "__COMPAT_LAYER="+layer)
+	}
+	if exe, err := os.Executable(); err == nil {
+		for _, root := range []registry.Key{registry.CURRENT_USER, registry.LOCAL_MACHINE} {
+			key, err := registry.OpenKey(root, `Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers`, registry.QUERY_VALUE)
+			if err != nil {
+				continue
+			}
+			if layer, _, err := key.GetStringValue(exe); err == nil {
+				parts = append(parts, "compatibility layer "+layer)
+			}
+			_ = key.Close()
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // signal has the taskbar thread show what changed.
