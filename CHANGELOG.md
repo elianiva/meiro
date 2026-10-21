@@ -8,6 +8,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- **A queue that holds the same song twice picks out only the copy playing.**
+  Both copies were drawn as playing, with the dancing bars and the tonal row,
+  because a row was picked out by its song rather than by its place in the
+  queue.
+
 ## [0.4.3] - 2026-10-20
 
 ### Added
