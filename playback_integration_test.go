@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"image"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -1032,6 +1034,53 @@ func TestAStreamThatStaysBrokenGivesUpAfterTheRetries(t *testing.T) {
 	}
 }
 
+func TestAStreamThatBreaksOffAtTheEndPlaysTheNextTrack(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	tone := filepath.Join(t.TempDir(), "tone.wav")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=duration=3", tone).CombinedOutput(); err != nil {
+		t.Fatalf("making a tone: %v: %s", err, out)
+	}
+	data, err := os.ReadFile(tone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A track whose data stops just before its end: ffmpeg plays almost all
+	// of it and then reports the stream broken off.
+	broken := filepath.Join(t.TempDir(), "broken.wav")
+	if err := os.WriteFile(broken, data[:len(data)-4000], 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a, r := playbackApp(t)
+	r.file = broken
+	q := tracks("a", "b")
+	a.play(q[0], q)
+
+	// The break is the player's, before the app has looked at it, and the
+	// sound drains the last moment out while the ticker waits for its next
+	// look at the player.
+	waitFor(t, func() bool { return a.player.Failure() != "" })
+	waitFor(t, func() bool { return a.total-a.player.Position() <= endOfTrackLead })
+
+	a.poll()
+	if got := r.count("a"); got != 1 {
+		t.Errorf("the track was resolved %d times, want the break to end it rather than find it again", got)
+	}
+	if a.current.VideoID != "b" || a.queue.index != 1 {
+		t.Errorf("after the break: playing %q at %d, want b", a.current.VideoID, a.queue.index)
+	}
+	if a.playErr != "" {
+		t.Errorf("playErr = %q", a.playErr)
+	}
+}
+
+// A stream that breaks off mid-song, as the network dropping or an audio URL
+// that expired while the machine slept makes it, is found again and played
+// on from where it stopped.
+
 func waitFor(t *testing.T, done func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
@@ -1043,6 +1092,103 @@ func waitFor(t *testing.T, done func() bool) {
 	}
 }
 
+// TestTheQueuePanelKeepsItsSpacing checks that the tab row sits as far from the
+// top of its card as from its sides, that the source reads on one line with its
+// playlist in bold, and that the source, the auto-play switch and the count sit
+// the same distance apart. A queue row carries no buttons of its own.
+func TestTheQueuePanelKeepsItsSpacing(t *testing.T) {
+	a, _ := playbackApp(t)
+	q := tracks("a", "b", "c", "d")
+	for i := range q {
+		q[i].Duration = "3:45"
+	}
+	a.playFrom(q[0], q, 0, youtube.UpNextOptions{}, "Reiwa Era J-Pop")
+	a.nowPlaying.open, a.nowPlaying.playerShown = true, true
+	tt := ui.NewTester(a.nowPlayingView, 1400, 820)
+	row, ok := tt.Find("Track c")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+
+	tab, ok := tt.Find("Up next")
+	if !ok {
+		t.Fatalf("no Up next: %q", tt.Texts())
+	}
+	// The card is the tonal fill around the tabs, found from the panel's own
+	// surface away from the card's rounded corners.
+	img := tt.Image()
+	cx, cy := int(tab.X+tab.W/2), int(tab.Y+tab.H/2)
+	top := cardEdge(img, cx, 40, 0, 1)
+	left := cardEdge(img, int(tab.X)-40, cy, 1, 0)
+	if top < 0 || left < 0 {
+		t.Fatal("no card edge around the tabs")
+	}
+	if above, side := tab.Y-float32(top), tab.X-float32(left); above < side-1 || above > side+1 {
+		t.Errorf("the tabs are %.0f below the card's top and %.0f from its side", above, side)
+	}
+
+	find := func(label string) ui.Rect {
+		t.Helper()
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no %q: %q", label, tt.Texts())
+		}
+		return r
+	}
+	// The source is one line: "Playing from" and the playlist start at the
+	// same height, in the same size, the playlist after the label.
+	label, source := find("Playing from"), find("Reiwa Era J-Pop")
+	if label.Y != source.Y || label.H != source.H {
+		t.Errorf("the source is not one line of one size: %v and %v", label, source)
+	}
+	if source.X <= label.X+label.W {
+		t.Errorf("the playlist starts at %.0f, inside the label that ends at %.0f", source.X, label.X+label.W)
+	}
+	// One rhythm: the same gap from the source to Auto-play as from the
+	// sentence under it to the count.
+	autoPlay := find("Auto-play")
+	sentence := find("Add similar music when this queue ends.")
+	count := find("3 up next")
+	between := func(upper, lower ui.Rect) float32 { return lower.Y - (upper.Y + upper.H) }
+	if first, second := between(label, autoPlay), between(sentence, count); first != second {
+		t.Errorf("the header lines are %.0f and %.0f apart", first, second)
+	}
+
+	if _, ok := tt.Find("More options for Track c"); ok {
+		t.Error("a row of the queue offers a menu button")
+	}
+	if _, ok := tt.Find("Remove Track c from the queue"); ok {
+		t.Error("a row of the queue offers a remove button")
+	}
+}
+
+// cardEdge walks from a pixel of the panel's surface towards the card, one
+// step at a time along dx and dy, and returns the coordinate of the first
+// pixel that differs from the one it started on.
+func cardEdge(img *image.RGBA, x, y, dx, dy int) int {
+	r0, g0, b0, _ := img.At(x, y).RGBA()
+	for range 200 {
+		x, y = x+dx, y+dy
+		r, g, b, _ := img.At(x, y).RGBA()
+		if channelGap(r, r0)+channelGap(g, g0)+channelGap(b, b0) > 0x0600 {
+			if dx != 0 {
+				return x
+			}
+			return y
+		}
+	}
+	return -1
+}
+
+func channelGap(a, b uint32) int {
+	if a > b {
+		return int(a - b)
+	}
+	return int(b - a)
+}
+
 func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c", "d")
@@ -1050,14 +1196,20 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
 	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
 
-	if err := tt.Click("Remove Track b from the queue"); err != nil {
+	// A row of the queue has no buttons: a right click opens its menu, which
+	// holds the remove.
+	rowB, ok := tt.Find("Track b")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.RightClickAt(rowB.X+rowB.W/2, rowB.Y+rowB.H/2)
+	tt.Frame()
+	if err := tt.Click("Remove from queue"); err != nil {
 		t.Fatal(err)
 	}
+	tt.Frame()
 	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "c", "d"}) {
 		t.Fatalf("after remove: %v", got)
-	}
-	if tt.HasText("Remove Track a from the queue") {
-		t.Error("the track playing offers a remove button")
 	}
 
 	// Drag the last row above the one before it.
@@ -1076,6 +1228,19 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "d", "c"}) {
 		t.Fatalf("after drag: %v", got)
 	}
+
+	// The track playing has nowhere to go, so its menu offers no remove.
+	rowA, ok := tt.Find("Track a")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.RightClickAt(rowA.X+rowA.W/2, rowA.Y+rowA.H/2)
+	tt.Frame()
+	if tt.HasText("Remove from queue") {
+		t.Errorf("the track playing offers a remove: %q", tt.Texts())
+	}
+	a.menu.close()
+	tt.Frame()
 
 	if err := tt.Click("Clear queue"); err != nil {
 		t.Fatal(err)
