@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **The player's side panel does not crowd controls in short windows.** When the
+  window is wide but short, the queue and lyrics panel stays as an overlay behind
+  its toggle instead of splitting side-by-side and squeezing the album artwork.
 - **The tab of the page already showing puts the player away.** With the player
   open, the page's own tab in the rail did nothing, so the only way back to the
   page was the player's close button. The tab now closes the player and leaves
