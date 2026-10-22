@@ -59,6 +59,7 @@ func (a *app) miniPlayer(c *ui.Context) {
 			})
 			a.scrubber(c)
 			a.transport(c, 48, 4)
+			a.volumeControl(c, 272) // fills width = miniWidth (344) - padding (24) - mute button (40) and gap (8)
 			a.sidePanel(c, false, true)
 		})
 		ui.Row(c).Gap(8).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {

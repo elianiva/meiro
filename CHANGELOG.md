@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **A volume slider in the tray mini player.** Adjust or mute playback volume directly from the tray flyout.
 - **Media buttons on the Windows taskbar thumbnail.** Hover over Meiro in the taskbar for Previous, Play or Pause, and Next, the way Spotify offers them, without bringing the window back. They follow the taskbar's light or dark theme and come back after Explorer restarts.
 
 ### Fixed

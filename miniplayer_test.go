@@ -41,6 +41,12 @@ func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	if a.current.VideoID != "b" || !tt.HasText("Track b") {
 		t.Fatalf("Next did not move on: current %q, shown %q", a.current.VideoID, tt.Texts())
 	}
+	if err := tt.Click("Mute"); err != nil {
+		t.Fatal(err)
+	}
+	if a.volume != 0 {
+		t.Fatalf("clicking Mute did not mute: volume = %v", a.volume)
+	}
 }
 
 func TestMiniPlayerRendersWithPopoverVibrancy(t *testing.T) {
