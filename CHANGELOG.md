@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **The tab of the page already showing puts the player away.** With the player
+  open, the page's own tab in the rail did nothing, so the only way back to the
+  page was the player's close button. The tab now closes the player and leaves
+  the page as it was.
 - **The queue's Recommended heading has equal space above and below, and cannot be selected.** It lines up with the artwork and separates recommendations from chosen tracks without a full-width divider.
 
 ### Changed

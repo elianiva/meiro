@@ -103,6 +103,10 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 	}
 	if event.Item != "" && event.Item != selected {
 		a.router.Push(event.Item)
+	} else if event.Item != "" && a.nowPlaying.open && !a.nowPlaying.closing {
+		// The page is already showing, so its tab has nothing to open: with
+		// the player over the page it puts the player away instead.
+		a.nowPlaying.closing = true
 	}
 }
 
