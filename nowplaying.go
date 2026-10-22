@@ -132,7 +132,7 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	m3.Provide(c, a.resolveTheme(c))
 	sc := m3.Of(c).Scheme
 	w, h := c.Size()
-	wide := w > 1040
+	wide := w > 1040 && (h >= 700 || w > 1320)
 	panel := ui.Column(c.Key("now-playing")).Absolute().Left(0).Right(0).
 		Background(sc.Surface).Radius(m3.ExtraLarge).Clip()
 	// The player is pinned to the sheet's edges, so it rises and sinks by
