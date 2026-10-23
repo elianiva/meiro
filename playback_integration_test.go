@@ -1656,3 +1656,22 @@ func TestWidePlayerBarKeepsHorizontalVolumeSlider(t *testing.T) {
 		t.Fatalf("the wide volume slider is not horizontal: %+v", volume)
 	}
 }
+
+// The window names the track while it plays, the way the taskbar shows it,
+// and the app once it pauses.
+func TestTheWindowTitleNamesTheTrackPlaying(t *testing.T) {
+	a, _ := tonesApp(t, 3)
+	item := youtube.MusicItem{VideoID: "a", Title: "All Because of You", Artist: "Bill", Artists: "Bill Withers, Grover Washington"}
+	if got := a.windowTitle(); got != "Meiro" {
+		t.Errorf("before playing the title is %q", got)
+	}
+	a.play(item, []youtube.MusicItem{item})
+	pollUntil(t, a, "a to play", func() bool { return a.player.Playing() })
+	if got, want := a.windowTitle(), "Bill Withers, Grover Washington - All Because of You"; got != want {
+		t.Errorf("while playing the title is %q, want %q", got, want)
+	}
+	a.togglePlay()
+	if got := a.windowTitle(); got != "Meiro" {
+		t.Errorf("once paused the title is %q", got)
+	}
+}

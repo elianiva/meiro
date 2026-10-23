@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **The window title names the song while it plays.** The taskbar preview and the window switcher show "Artist - Title", and go back to "Meiro" when playback pauses or stops.
+
 ### Fixed
 
 - **The "Close Meiro?" prompt on Windows takes the first click.** Choosing "Minimize to tray" or "Close Meiro" works straight away instead of needing two or three clicks.

@@ -31,6 +31,8 @@ type desktop struct {
 	mini mini
 	// trayShown is what the tray last showed, to skip identical updates.
 	trayShown trayState
+	// titleShown is the window title last set, to skip identical updates.
+	titleShown string
 	// trayFailed is set when the system refused the tray, so it is not
 	// asked again until the user turns the tray off and on.
 	trayFailed bool
@@ -357,6 +359,32 @@ func (a *app) setupDesktop() {
 func (a *app) syncDesktop() {
 	a.desktop.keepAwake(a.loading() || (a.player.Active() && !a.player.Paused() && !a.player.Ended()))
 	a.desktop.setTray(a.settings.ShowTray, trayState{tip: a.trayTip()}, a.miniPlayer, a.setMiniShown)
+	a.desktop.setTitle(a.windowTitle())
+}
+
+// windowTitle names the track while it plays, as "Artist - Title" the way
+// the taskbar and the window switcher show it, and the app otherwise.
+func (a *app) windowTitle() string {
+	if a.current.VideoID == "" || !a.player.Playing() {
+		return "Meiro"
+	}
+	artist := a.current.Artists
+	if artist == "" {
+		artist = a.current.Artist
+	}
+	if artist == "" {
+		return a.current.Title
+	}
+	return artist + " - " + a.current.Title
+}
+
+// setTitle shows title on the window, skipping a title it already shows.
+func (d *desktop) setTitle(title string) {
+	if d == nil || title == d.titleShown {
+		return
+	}
+	d.titleShown = title
+	d.win.SetTitle(title)
 }
 
 // syncShortcut registers the global shortcut as the settings say, and turns
