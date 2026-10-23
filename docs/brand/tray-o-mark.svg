@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="453 78 157 157">
+  <defs>
+    <mask id="l0" maskUnits="userSpaceOnUse" x="470.5" y="95.5" width="122" height="122">
+      <rect x="470.5" y="95.5" width="122" height="122" fill="#fff"/>
+      <path d="M511.52 128.99 A34 34 0 0 1 551.48 128.99" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <path d="M551.48 128.99 A34 34 0 0 1 563.84 167.01" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <path d="M563.84 167.01 A34 34 0 0 1 531.50 190.50" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <path d="M531.50 190.50 A34 34 0 0 1 499.16 167.01" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <circle cx="499.16" cy="167.01" r="16.1" fill="#000"/>
+      <path d="M499.16 167.01 A34 34 0 0 1 498.69 147.59" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="butt"/>
+    </mask>
+    <mask id="l1" maskUnits="userSpaceOnUse" x="470.5" y="95.5" width="122" height="122">
+      <rect x="470.5" y="95.5" width="122" height="122" fill="#fff"/>
+      <path d="M551.48 128.99 A34 34 0 0 1 563.84 167.01" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <path d="M563.84 167.01 A34 34 0 0 1 531.50 190.50" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <path d="M531.50 190.50 A34 34 0 0 1 499.16 167.01" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <circle cx="499.16" cy="167.01" r="16.1" fill="#000"/>
+      <path d="M499.16 167.01 A34 34 0 0 1 498.69 147.59" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="butt"/>
+    </mask>
+    <mask id="l2" maskUnits="userSpaceOnUse" x="470.5" y="95.5" width="122" height="122">
+      <rect x="470.5" y="95.5" width="122" height="122" fill="#fff"/>
+      <path d="M563.84 167.01 A34 34 0 0 1 531.50 190.50" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <path d="M531.50 190.50 A34 34 0 0 1 499.16 167.01" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <circle cx="499.16" cy="167.01" r="16.1" fill="#000"/>
+      <path d="M499.16 167.01 A34 34 0 0 1 498.69 147.59" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="butt"/>
+    </mask>
+    <mask id="l3" maskUnits="userSpaceOnUse" x="470.5" y="95.5" width="122" height="122">
+      <rect x="470.5" y="95.5" width="122" height="122" fill="#fff"/>
+      <path d="M531.50 190.50 A34 34 0 0 1 499.16 167.01" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="round"/>
+      <circle cx="499.16" cy="167.01" r="16.1" fill="#000"/>
+      <path d="M499.16 167.01 A34 34 0 0 1 498.69 147.59" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="butt"/>
+    </mask>
+    <mask id="l4" maskUnits="userSpaceOnUse" x="470.5" y="95.5" width="122" height="122">
+      <rect x="470.5" y="95.5" width="122" height="122" fill="#fff"/>
+      <circle cx="499.16" cy="167.01" r="16.1" fill="#000"/>
+      <path d="M499.16 167.01 A34 34 0 0 1 498.69 147.59" fill="none" stroke="#000" stroke-width="32.20" stroke-linecap="butt"/>
+    </mask>
+  </defs>
+  <g mask="url(#l0)"><path d="M498.69 147.59 A34 34 0 0 1 511.52 128.99" fill="none" stroke="#7777AA" stroke-width="27" stroke-linecap="round"/></g>
+  <g mask="url(#l1)"><path d="M511.52 128.99 A34 34 0 0 1 551.48 128.99" fill="none" stroke="#77BBDD" stroke-width="27" stroke-linecap="round"/></g>
+  <g mask="url(#l2)"><path d="M551.48 128.99 A34 34 0 0 1 563.84 167.01" fill="none" stroke="#FF8899" stroke-width="27" stroke-linecap="round"/></g>
+  <g mask="url(#l3)"><path d="M563.84 167.01 A34 34 0 0 1 531.50 190.50" fill="none" stroke="#77DD77" stroke-width="27" stroke-linecap="round"/></g>
+  <g mask="url(#l4)"><path d="M531.50 190.50 A34 34 0 0 1 499.16 167.01" fill="none" stroke="#FFBB12" stroke-width="27" stroke-linecap="round"/></g>
+  <circle cx="499.16" cy="167.01" r="13.5" fill="#7777AA"/>
+  <path d="M499.16 167.01 A34 34 0 0 1 499.39 145.33" fill="none" stroke="#7777AA" stroke-width="27" stroke-linecap="butt"/>
+  <path d="M525.1 145.8 L525.1 167.2 L543.8 156.5 Z" fill="#1D1B20" stroke="#1D1B20" stroke-width="3.8" stroke-linejoin="round"/>
+</svg>

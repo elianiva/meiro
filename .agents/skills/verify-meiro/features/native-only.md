@@ -22,7 +22,7 @@ These behaviors need a real window, device, account or network. The headless tes
 
 - **Orb Desktop path.** `native-window` (real labwc window, fullscreen), `native-audio` (a `Meiro` stream on the Desktop null sink with position advancing), signed-out live `native-youtube`, and `native-ytdlp` resolving a real stream can be checked there. Search, click, inspect screenshots, and use `pactl list sink-inputs` for audio evidence.
 - **Known limits; report rather than rediscover.** MPRIS cannot be verified in this orb because it has no user D-Bus session. Never sign in with a real account. Brand-channel switching/identity and playback-history reporting therefore remain fake-session tests here; say that fake tests cover the code/request path but no real-account flow was exercised. Do not imply otherwise.
-- **Not verifiable on this orb.** macOS Now Playing, deep links on another OS, the updater, macOS and Windows rendering, and real sound-card output.
+- **Not verifiable on this orb.** The tray icon is unavailable in the orb Desktop, so neither the wordmark nor O mark appearance can be checked here. Also not verifiable: macOS Now Playing, deep links on another OS, the updater, macOS and Windows rendering, and real sound-card output.
 - **No native screen recorder is installed.** `scripts/native.sh capture-loop [interval-seconds] [duration-seconds] [name]` is the standard timed screenshot fallback and writes timestamps alongside PNG frames. Successive `shot` captures with step notes are also fine. Do not stitch the stills into an MP4 or call it a real recording.
 
 - **What does run.** `systemmedia` has its own unit tests. `go test ./systemmedia/ ./player/ ./internal/...` exercises them without a device.

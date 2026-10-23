@@ -14,6 +14,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - `play-volume` keeps the mute button visible in narrow windows and reveals
   the vertical volume slider on hover.
 - `play-mini` shows and controls the mini player.
+- `play-mini-navigation` opens an artist page from the mini player's track menu and returns to the main window.
 - `play-real-audio` decodes real audio through ffmpeg on the null device.
 
 ## How to get to it (user POV)
@@ -24,6 +25,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
   move onto the slider and drag it to adjust playback without losing the panel.
 - Click `Up next` in the player bar, or `Open the player`, to open the player panel with `Up next`, `Lyrics` and `Related`.
 - Open the tray mini player from the tray icon on macOS and Windows. On Linux, choose `Open Meiro` from the tray menu to restore the main window; Linux does not offer the tray mini player.
+- In the mini player's queue, right-click a track and choose `Go to artist`. The flyout closes and the main window shows that artist's page.
 - Right click a track for `Play next` and `Add to queue`.
 - In `Up next`, Cmd-click on macOS or Ctrl-click on Windows/Linux to select
   several tracks; Shift-click extends the selection. Drag a selected row to
@@ -54,6 +56,7 @@ Preconditions:
 - **Lyrics.** In the player panel, `Lyrics` loads YouTube Music's timed lines, then LRCLIB's (`a.lyricsSource`, stubbed to nothing in `newTestApp`; set it to return `lrclib.Lyrics`). A track with timed lines shows `Synced` and `Static` chips; `Static` saves `StaticLyrics`. The lit line follows `a.playbackPosition()`, so set `a.total` as well as `a.scrub`, or the position slider clamps it back to 0. Use a window wider than 1180 to see the panel beside the player.
 - **The same song twice.** Right-click a track and `Add to queue`, then play it and open `Up next`: the queue holds the song twice, and only one row is drawn as playing, with the tonal row and the dancing bars. The copy that does not play carries its `Remove … from the queue` button. `a.playingRow(item, songOptions{list: "queue", position: i})` is the rule: a queue row is picked out by its place, every other list by the song's ID.
 - **Mini player.** `ui.NewTester(a.miniPlayer, miniWidth, miniHeight)`. `Nothing playing` shows when idle. The artwork, track details, scrubber and transport sit above a compact queue with its source; with a long queue, verify at least `Track e` is visible. Call `a.setMiniShown(true)` to load the panel, as opening the tray player does on macOS and Windows. Check the `Track a` and `Lyrics` bounds to confirm the vertical layout.
+- **Open an artist from the mini player.** Call `a.setMiniShown(true)`, build both `a.view` and `a.miniPlayer` testers, then right-click a track in the mini player's queue and click `Go to artist`. The main tester shows the artist page and `a.nowPlaying.miniOpen` is false. The headless tester cannot confirm OS-level window focus.
 - **Linux tray.** The minimal AppIndicator menu offers `Open Meiro` and `Quit`. `Open Meiro` restores the main window rather than creating a separate mini-player flyout. The tray also needs the AppIndicator runtime and a StatusNotifier-capable panel; see [Linux troubleshooting](../../../../README.md#troubleshooting).
 
 ## Gotchas

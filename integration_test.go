@@ -105,6 +105,147 @@ func TestEveryPageLoadsAndDraws(t *testing.T) {
 	}
 }
 
+func blurSearchBar(t *testing.T, tt *ui.Tester, label string) {
+	t.Helper()
+	for range 8 {
+		if !tt.Focused(label) && !tt.Focused("Close the search") && !tt.Focused("Clear search") {
+			return
+		}
+		tt.Key(0, ui.KeyTab)
+	}
+	t.Fatalf("Tab did not move focus out of the %q search bar", label)
+}
+
+func assertSearchInputKeepsBoundsOnFocus(t *testing.T, tt *ui.Tester, label string) {
+	t.Helper()
+	before, ok := tt.Find(label)
+	if !ok {
+		t.Fatalf("search input %q is missing: %q", label, tt.Texts())
+	}
+	if err := tt.Click(label); err != nil {
+		t.Fatal(err)
+	}
+	tt.Move(0, 0)
+	tt.Frame()
+	if !tt.Focused(label) {
+		t.Fatalf("clicking %q did not focus the search input", label)
+	}
+	after, ok := tt.Find(label)
+	if !ok {
+		t.Fatalf("focused search input %q is missing: %q", label, tt.Texts())
+	}
+	if before != after {
+		t.Errorf("search input %q moved on focus: before %v, after %v", label, before, after)
+	}
+}
+
+func TestExpandedNavigationMetricsAndFullWidthSelection(t *testing.T) {
+	a := newTestApp(t)
+	tt := ui.NewTester(a.view, 1280, 720)
+	if err := tt.Click("Expand navigation"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(time.Second)
+
+	home, ok := tt.Find("Home")
+	if !ok {
+		t.Fatalf("expanded navigation has no Home destination: %q", tt.Texts())
+	}
+	search, ok := tt.Find("Search")
+	if !ok {
+		t.Fatalf("expanded navigation has no Search destination: %q", tt.Texts())
+	}
+	if home.W < 230 || home.W > 240 {
+		t.Errorf("expanded navigation width is %g DIPs, want to stay near 236", home.W)
+	}
+	if pitch := search.Y - home.Y; pitch < 55 || pitch > 57 {
+		t.Errorf("expanded navigation row pitch is %g DIPs, want 56", pitch)
+	}
+	image := tt.Image()
+	x, y := int(home.X+100), int(home.Y)
+	selected := image.RGBAAt(x, y+1)
+	outside := image.RGBAAt(x, y-5)
+	if selected == outside {
+		t.Errorf("the selected 56-DIP indicator is missing: selected=%v outside=%v", selected, outside)
+	}
+	activeLeft := image.RGBAAt(int(home.X+25), int(home.Y+28))
+	leftMargin := image.RGBAAt(int(home.X+5), int(home.Y+28))
+	if activeLeft == leftMargin {
+		t.Errorf("the selected background does not reach the left rail inset: row=%v margin=%v", activeLeft, leftMargin)
+	}
+	activeRight := image.RGBAAt(int(home.X+200), int(home.Y+28))
+	activeMargin := image.RGBAAt(int(home.X+220), int(home.Y+28))
+	if activeRight == activeMargin {
+		t.Errorf("the selected background escapes the rail's horizontal insets: right=%v margin=%v", activeRight, activeMargin)
+	}
+	for _, label := range []string{"Search", "Explore", "Library", "Settings"} {
+		row, ok := tt.Find(label)
+		if !ok {
+			t.Errorf("expanded navigation has no %s destination: %q", label, tt.Texts())
+			continue
+		}
+		inside := image.RGBAAt(int(row.X+200), int(row.Y+28))
+		outside := image.RGBAAt(int(row.X+5), int(row.Y+28))
+		if inside != outside {
+			t.Errorf("%s has an unintended idle indicator: inside=%v outside=%v", label, inside, outside)
+		}
+	}
+}
+
+func TestSearchInputsKeepBoundsWhenFocused(t *testing.T) {
+	t.Run("global", func(t *testing.T) {
+		a := newTestApp(t)
+		a.router.Push("/home")
+		tt := ui.NewTester(a.view, 1000, 700)
+		tt.Frame()
+		if tt.Focused(searchPlaceholder) {
+			t.Fatal("the home page's search input unexpectedly starts focused")
+		}
+		assertSearchInputKeepsBoundsOnFocus(t, tt, searchPlaceholder)
+	})
+
+	t.Run("settings", func(t *testing.T) {
+		a := newTestApp(t)
+		a.router.Push("/settings")
+		tt := ui.NewTester(a.view, 1000, 700)
+		tt.Frame()
+		if err := tt.Click("Search settings"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(300 * time.Millisecond)
+		tt.Type("discord")
+		tt.Frame()
+		blurSearchBar(t, tt, "Search settings")
+		if !a.settingsSearch.open {
+			t.Fatal("the settings search closed when its field lost focus")
+		}
+		assertSearchInputKeepsBoundsOnFocus(t, tt, "Search settings")
+	})
+
+	t.Run("playlist", func(t *testing.T) {
+		a, _ := playbackApp(t)
+		a.router.Push("/playlist/VLPL_songs")
+		tt := ui.NewTester(a.view, 1000, 700)
+		for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+			tt.Frame()
+		}
+		if len(a.page.playable) == 0 {
+			t.Fatal("the test playlist did not load")
+		}
+		if err := tt.Click("Search in this playlist"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(300 * time.Millisecond)
+		tt.Type("ameiro")
+		tt.Frame()
+		blurSearchBar(t, tt, "Search in this playlist")
+		if !a.detailSearchOpen {
+			t.Fatal("the playlist search closed when its field lost focus")
+		}
+		assertSearchInputKeepsBoundsOnFocus(t, tt, "Search in this playlist")
+	})
+}
+
 // Settings' search button opens a local filter without changing pages.
 func TestSettingsSearchFiltersSettingsInPlace(t *testing.T) {
 	a := newTestApp(t)
@@ -453,8 +594,32 @@ func TestSearchingFromAnotherPage(t *testing.T) {
 	}
 }
 
-// A search shows the filters YouTube offers for it, without one of the app's
-// own, and each one searches the query again with the parameters it carries.
+// An episode top result exposes Play and resolves the video ID carried by its
+// episode-page browse ID.
+func TestSearchEpisodeTopResultPlays(t *testing.T) {
+	a, streams := playbackApp(t)
+	a.router.Push("/search")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if err := tt.Click("Search songs, albums, artists, podcasts"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("play episode result")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if !tt.HasText("Find Me feat.Hina from miolly") || !tt.HasText("Play") {
+		t.Fatalf("the episode result offers no play action: %q", tt.Texts())
+	}
+	if err := tt.Click("Play"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.current.VideoID != "UZ83quirqLA" {
+		t.Fatalf("the episode played video %q, want UZ83quirqLA", a.current.VideoID)
+	}
+	waitFor(t, func() bool { return streams.asked("UZ83quirqLA") })
+}
+
 func TestSearchShowsYouTubesFilters(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/search")

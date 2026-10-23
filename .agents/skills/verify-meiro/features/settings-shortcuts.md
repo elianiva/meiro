@@ -14,6 +14,7 @@ A user changes the theme and equaliser, rebinds shortcuts, clears history, opens
 - `settings-lastfm` connects, pauses and disconnects Last.fm, and scrobbles qualifying plays.
 - `settings-top-bar` keeps global music search and the account out of the app-owned top bar; Settings has a playlist-style search button that filters settings in place, while Stats has no search entry point.
 - `settings-progress` keeps the wavy progress bar on by default and no longer offers a preference or performance warning in Settings.
+- `settings-tray` selects the wordmark or the low-key O mark on macOS and Linux, and keeps that choice after restart.
 
 ## How to get to it (user POV)
 
@@ -33,6 +34,7 @@ Preconditions:
 - **Keyboard-only navigation.** Mirror `TestKeyboardMenusKeepFocusAndRunActions`, `TestKeyboardPlayerTabsAndQueue`, `TestKeyboardOpensTheCoverMenu` and `TestKeyboardVolumeIsSaved` in `shortcuts_test.go`. The `tabTo` helper only sends Tab; verify the next action's focus explicitly. Test volume at 920 and 1280 pixels: the narrow popup must survive focus moving from Mute to Volume. `TestSeekingMovesThePlayerOffTheMainThread` checks Home and Right against the real decoder position, not only the scrubber value.
 - **Top bar.** Verified by `TestSettingsSearchFiltersSettingsInPlace`. `/settings` has a `Search settings` icon button that expands into a local filter; searching `Discord` shows Discord Rich Presence without unrelated cards, an unmatched query shows an empty state, and clearing restores the full list. `/stats` has no search entry point. Global music search remains on `/home`.
 - **Progress bar.** `TestSettingsDoNotOfferWavyProgressPreference` confirms Settings no longer offers the wave toggle or its warning. All player scrubbers use the shared `a.scrubber` with the wave enabled.
+- **Tray icon.** `TestTrayIconStyleCanBeChangedAndSavedInSettings` checks the Wordmark default, changes to `O mark`, reads the saved setting, then restores Wordmark. The two resources are optically centered vector exports; native tray rendering still needs macOS and Linux panel checks.
 - **History.** `p.click("Clear history", "confirm")`, `p.click("Delete all plays", "cleared")`. `a.history` is empty and the file on disk is too.
 - **Last.fm.** Mirror `TestConnectingPausingAndDisconnectingInSettings`. Set `MEIRO_LASTFM_API_KEY` and `MEIRO_LASTFM_SECRET` in the test environment only when the test needs a key, with a fake Last.fm transport.
 

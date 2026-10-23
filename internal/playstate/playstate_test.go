@@ -18,22 +18,24 @@ func tracks(n int) []youtube.MusicItem {
 	return items
 }
 
-func TestWindowKeepsTheCurrentTrackAndTheBoundaryInStep(t *testing.T) {
+func TestWindowKeepsTheCurrentTrackAndEveryUpcomingTrack(t *testing.T) {
 	s := State{Items: tracks(1000), Index: 500, RecStart: 700, PlayNext: "v501"}.Window()
-	if len(s.Items) != MaxItems {
-		t.Fatalf("%d tracks kept, want %d", len(s.Items), MaxItems)
+	if len(s.Items) != 1000-500+MaxHistoryItems {
+		t.Fatalf("%d tracks kept, want current, all upcoming and %d played", len(s.Items), MaxHistoryItems)
 	}
-	if got := s.Items[s.Index].VideoID; got != "v500" {
-		t.Errorf("current track became %s", got)
+	if got := s.Items[s.Index].VideoID; got != "v500" || s.Index != MaxHistoryItems {
+		t.Errorf("current track is %s at %d", got, s.Index)
 	}
-	// 700 is beyond the window that starts at 480, so there is no boundary.
-	if s.RecStart != -1 {
-		t.Errorf("RecStart = %d, want -1", s.RecStart)
+	if got := s.Items[s.RecStart].VideoID; s.RecStart != 220 || got != "v700" {
+		t.Errorf("recommendation boundary is %d at %s", s.RecStart, got)
+	}
+	if got := s.Items[len(s.Items)-1].VideoID; got != "v999" {
+		t.Errorf("last upcoming track is %s, want v999", got)
 	}
 
 	s = State{Items: tracks(1000), Index: 990, RecStart: 950}.Window()
-	if got := s.Items[s.Index].VideoID; got != "v990" || s.Items[s.RecStart].VideoID != "v950" {
-		t.Errorf("at the end, current %s and boundary %s", got, s.Items[s.RecStart].VideoID)
+	if got := s.Items[s.Index].VideoID; got != "v990" || s.RecStart != 0 || s.Items[s.RecStart].VideoID != "v970" {
+		t.Errorf("at the end, current %s and boundary %d at %s", got, s.RecStart, s.Items[s.RecStart].VideoID)
 	}
 }
 

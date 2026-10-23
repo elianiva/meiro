@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -58,7 +59,7 @@ var settingsRows = []settingsRow{
 	{key: "sound", search: "sound audio normalize loudness equaliser volume", card: (*app).soundCard},
 
 	{key: "h-system", heading: "System"},
-	{key: "desktop", search: "desktop linux notifications discord rich presence activity status", card: (*app).desktopCard},
+	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle", card: (*app).desktopCard},
 	{key: "keyboard", search: "keyboard shortcuts keys", card: (*app).keyboardCard},
 
 	{key: "h-data", heading: "Storage and privacy"},
@@ -560,6 +561,24 @@ func (a *app) desktopCard(c *ui.Context) {
 					a.settings.ShowTray = on
 					a.syncDesktop()
 				})
+			if trayMarkSupported(runtime.GOOS) {
+				ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
+					settingLabel(c, "Tray icon", "Choose which icon appears in the system tray; the O mark is more subtle.").Grow(1)
+					mark := 0
+					if a.settings.TrayMark == settings.TrayMarkOMark {
+						mark = 1
+					}
+					if m3.ButtonGroup(c, "tray-mark", &mark, []string{"Wordmark", "O mark"}, nil) {
+						if mark == 1 {
+							a.settings.TrayMark = settings.TrayMarkOMark
+						} else {
+							a.settings.TrayMark = settings.TrayMarkWordmark
+						}
+						a.syncDesktop()
+						a.saveSettings()
+					}
+				})
+			}
 			a.desktopSwitch(c, "Close to tray", "Closing the window keeps Meiro running in the tray instead of quitting.",
 				a.settings.CloseToTray != nil && *a.settings.CloseToTray, func(on bool) {
 					a.answerClose(on, true)

@@ -1,7 +1,7 @@
 {
   "name": "Meiro",
   "identifier": "com.elianiva.meiro",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "out": "build",
   "urlSchemes": [
     "meiro"

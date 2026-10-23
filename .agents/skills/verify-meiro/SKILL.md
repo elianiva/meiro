@@ -50,7 +50,7 @@ A proof the reader can trust has all of these.
 - A second view of every side effect. For a write, assert the counter and `written()`. For settings or history, read the file. For playback, read `a.player.Position()` after real audio and `a.history`.
 - Before and after. `scripts/prove.sh --before base` runs the same scratch tests on a clean worktree of the merge base. For a fix, before must fail for the reason the bug report gives. For a feature, before fails because the feature is absent. Say so, and show both screenshots side by side.
 - A control. One case that should not change, such as the signed-out app that must show no like button, or the page that stays unchanged.
-- The full suite. Run `scripts/checks.sh` once for tests, race tests, lint, and format; add `--gazelle` when Go files were added, moved or deleted. If Bazel is unavailable it runs `go test ./... -count=1` and `go vet ./...`. Say which ran. Add `--race` to `prove.sh` for threading changes.
+- The full suite. Run `scripts/checks.sh` once for race tests (which cover the plain tests), lint, and format; when Go files were added, moved or deleted, run `scripts/checks.sh gazelle test lint format`. It streams the active phase's log. If Bazel is unavailable it runs `go test ./... -count=1` and `go vet ./...`. Say which ran. Add `--race` to `prove.sh` for threading changes.
 - What stays unproven. `features/native-only.md` lists it. Name each item your change touches.
 
 Artifacts are in `.amp/in/artifacts/verify-meiro/<label>/{before,after}/` with `NN-step.png`, `steps.txt` (every text on screen per step), `go-test.log` and `exit-code`. The directory is gitignored. Embed the screenshots that matter in the final answer.
@@ -91,6 +91,6 @@ A user can watch the same window in the Desktop tab. `features/native-only.md` l
 
 - `scripts/doctor.sh` bootstraps MyGo/history, attempts Desktop ensure, prints `ok`, `note` or `FAIL` lines and exits 1 on a blocker.
 - `scripts/prove.sh [--before REF|base] [--label NAME] [--race] TEST_REGEX` runs scratch tests with `PROOF_DIR` set and prints the pass or fail lines, the exit code and the artifact path. Exit status is the after run's status.
-- `scripts/checks.sh [--gazelle]` batches the repository checks and prints one final summary (plus failure tails), avoiding repeated per-command transcript output.
+- `scripts/checks.sh [test|lint|format|build|gazelle]...` runs the named phases (default `test lint format`), streaming each phase's log, then prints one summary plus failure tails.
 - `scripts/native.sh start|shot|capture-loop|click|rclick|type|key|status|stop` drives the real window on the Desktop. Screenshots go to `.amp/in/artifacts/verify-meiro/native/`.
 - `templates/zz_proof_test.go.tmpl` is the scenario starter. `prove.sh` injects `templates/zz_proof_helpers_test.go.tmpl` into both working and before worktrees, so a scratch test does not need to duplicate helper code.

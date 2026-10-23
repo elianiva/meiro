@@ -10,12 +10,14 @@ A user types in the search bar, picks a suggestion or presses Enter, filters res
 - `search-more` loads the next page when the list reaches its end.
 - `search-menu` offers the item menu on right click.
 - `search-elsewhere` starts a search from a page that is not `/search`.
+- `search-episode-result` plays an episode top result whose page link carries the video ID.
 
 ## How to get to it (user POV)
 
 - Click `Search` in the rail, then click the bar (`searchPlaceholder`).
 - Press `Cmd+K` or `Cmd+F`.
 - Type in the bar of another page.
+- Click **Play** on an episode result to start that episode.
 
 ## Driving it with the headless tester
 
@@ -29,6 +31,7 @@ Preconditions:
 - **Filter.** Verified. `p.click("Songs", "songs-only")`. `searchBody()` contains `"params"`. `p.click("Clear filters", "cleared")`.
 - **Next page.** Mirror `TestSearchLoadsTheNextPageItself`. `searchesMore.Load()` becomes `1` with no click.
 - **Menu.** `tt.RightClick("Suggested Song")` and `tt.Menu()` lists the item actions.
+- **Episode result.** `TestSearchEpisodeTopResultPlays` searches for `play episode result`, clicks **Play**, and checks that the resolver receives `UZ83quirqLA` from the episode page ID `MPEDUZ83quirqLA`.
 
 ## Gotchas
 

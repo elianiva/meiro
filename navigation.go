@@ -172,7 +172,8 @@ func (a *app) onNavigate() {
 }
 
 // openTarget opens the page of an album, a playlist or an artist, with the
-// heading the item that opened it had.
+// heading the item that opened it had. When it comes from the mini player,
+// it closes the flyout and brings the main window forward.
 func (a *app) openTarget(target youtube.Target, heading detail) {
 	path, ok := targetPath(target)
 	if !ok {
@@ -180,6 +181,11 @@ func (a *app) openTarget(target youtube.Target, heading detail) {
 	}
 	a.details.Put(path, heading)
 	a.router.Push(path)
+	if a.nowPlaying.miniOpen {
+		a.setMiniShown(false)
+		a.desktop.closeMini()
+		a.desktop.bringToFront()
+	}
 }
 
 // loadPage loads the page shown with its route's loader. The client is the

@@ -120,25 +120,20 @@ func (t *Cache) UseStore(store Store) {
 	t.mu.Unlock()
 }
 
-// thumbRequest is the (URL, size, corner) triple a lookup asks about. corner
-// is the rounding of the corners, in thousandths of the picture's side.
+// thumbRequest is a picture URL and the pixel size requested for it.
 type thumbRequest struct {
-	url    string
-	size   int
-	corner int
+	url  string
+	size int
 }
 
 // thumbKeys is the derivation of a thumbRequest. sized names the bitmap in
-// every index: the URL asked for at that size, with its corner. base groups
-// every size of one picture drawn with that corner. fetch is the URL to
-// download, which is also what the compressed source is kept under, so
-// bitmaps of one picture with different corners share it.
+// every index, base groups every size of one picture, and fetch is the URL to
+// download and keep the compressed source under.
 type thumbKeys struct {
-	sized  string
-	base   string
-	fetch  string
-	size   int
-	corner int
+	sized string
+	base  string
+	fetch string
+	size  int
 }
 
 // thumbJob is a picture waiting for a worker. A source means its compressed
@@ -263,28 +258,17 @@ func (t *Cache) Close() {
 	t.cond.Broadcast()
 }
 
-// Corner is the corner rounding to ask Bitmap for when the picture is drawn
-// side points across with a corner of radius points.
-func Corner(radius, side float32) float32 {
-	if side <= 0 {
-		return 0
-	}
-	return min(max(radius/side, 0), 0.5)
-}
-
 // Bitmap returns the artwork at url, asked for at size pixels across. The
-// picture is cropped square, shrunk to size when it is larger, and has its
-// corners rounded by corner, a fraction of its side up to 0.5 (see Corner),
-// so that drawing it needs no clip. While it downloads or rebuilds from a
-// compressed source, it returns another size of the same picture and corner
-// when one is loaded, and nil otherwise.
-func (t *Cache) Bitmap(url string, size int, corner float32) *ui.Bitmap {
+// picture is cropped square and shrunk to size when it is larger. While it
+// downloads or rebuilds from a compressed source, it returns another size of
+// the same picture when one is loaded, and nil otherwise.
+func (t *Cache) Bitmap(url string, size int) *ui.Bitmap {
 	if url == "" {
 		return nil
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	key := t.keyLocked(url, size, corner)
+	key := t.keyLocked(url, size)
 	if entry, ok := t.bitmaps[key.sized]; ok {
 		return t.touch(entry)
 	}
@@ -314,19 +298,13 @@ func (t *Cache) Bitmap(url string, size int, corner float32) *ui.Bitmap {
 // keyLocked derives the sized URL and sizeless base of a request, remembering
 // the answer so repeated lookups skip the regex work. The caller holds the
 // lock.
-func (t *Cache) keyLocked(url string, size int, corner float32) thumbKeys {
-	// The corner is kept in steps of half a percent. Artwork whose drawn size
-	// follows the window would otherwise ask for a new bitmap, and decode the
-	// picture again, at nearly every size the window passes through; a step
-	// moves the corner by about a pixel at most.
-	permille := int(corner*200+0.5) * 5
-	request := thumbRequest{url: url, size: size, corner: permille}
+func (t *Cache) keyLocked(url string, size int) thumbKeys {
+	request := thumbRequest{url: url, size: size}
 	if key, ok := t.keys[request]; ok {
 		return key
 	}
 	fetch := thumbnailURL(url, size)
-	suffix := "\x00" + strconv.Itoa(permille)
-	key := thumbKeys{sized: fetch + suffix, base: sizeless(fetch) + suffix, fetch: fetch, size: size, corner: permille}
+	key := thumbKeys{sized: fetch, base: sizeless(fetch), fetch: fetch, size: size}
 	if len(t.keys) >= thumbKeyMemo {
 		t.keys = make(map[thumbRequest]thumbKeys)
 	}
@@ -507,9 +485,9 @@ func (t *Cache) decode(keys thumbKeys, data []byte, keepSource bool) bool {
 		t.failedFetch(keys.sized, fmt.Errorf("%w: %w", errDecode, err))
 		return false
 	}
-	// The pixels are drawn as they are: the picture is already the size and
-	// shape it is shown at, which the bitmap takes without copying.
-	bitmap := ui.NewBitmap(fit(img, keys.size, float64(keys.corner)/1000))
+	// Crop and shrink here; MyGo applies the display shape when it draws the
+	// bitmap, so cache entries do not vary with their corner radius.
+	bitmap := ui.NewBitmap(fit(img, keys.size))
 	url := keys.sized
 	t.mu.Lock()
 	delete(t.pending, url)
@@ -747,7 +725,7 @@ func (t *Cache) Colour(url string, size int) (colour ui.Color, has, ready bool) 
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	fetch := t.keyLocked(url, size, 0).fetch
+	fetch := t.keyLocked(url, size).fetch
 	if taken, ok := t.colours[fetch]; ok && taken.ready {
 		return taken.colour, taken.has, true
 	}

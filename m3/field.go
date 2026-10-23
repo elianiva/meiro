@@ -53,13 +53,14 @@ func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 	}
 	bar := ui.Row(c.Key(spec.Key)).Height(height).PaddingX(16).Gap(12).AlignItems(ui.Center).Radius(Full)
 	container := sc.SurfaceContainerHigh
+	border := ui.Color{}
 	if bar.FocusWithin() {
 		container = sc.SurfaceContainerHighest
-		bar.Border(2, sc.Primary)
+		border = sc.Primary
 	} else if bar.Hovered() {
 		container = Layer(container, sc.OnSurface, StateHover)
 	}
-	bar.Background(container).Transition(Fade(EffectsFast)).Cursor(ui.CursorText).Grow(1)
+	bar.Border(2, border).Background(container).Transition(Fade(EffectsFast)).Cursor(ui.CursorText).Grow(1)
 	if spec.MaxWidth > 0 {
 		bar.MaxWidth(spec.MaxWidth)
 	}

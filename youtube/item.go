@@ -112,6 +112,16 @@ func isAlbumID(id string) bool {
 // episodes are a playlist, but the show's page is not the playlist's.
 func isPodcastID(id string) bool { return strings.HasPrefix(id, "MPSPP") }
 
+// episodeVideoIDFromBrowseID reads the video ID carried by an episode page's
+// browse ID, such as MPEDUZ83quirqLA.
+func episodeVideoIDFromBrowseID(id string) string {
+	videoID, ok := strings.CutPrefix(id, "MPED")
+	if !ok || len(videoID) != 11 {
+		return ""
+	}
+	return videoID
+}
+
 func isArtistID(id string) bool {
 	return strings.HasPrefix(id, "UC") || strings.Contains(id, "privately_owned_artist")
 }

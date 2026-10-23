@@ -164,8 +164,14 @@ func parseMusicCardShelf(renderer *jsonObject) (MusicItem, bool) {
 		item.Subtitle = strings.TrimSuffix(item.Subtitle, " • "+duration)
 	}
 	item.BrowseID, item.VideoID = cardTarget(renderer)
+	if item.VideoID == "" {
+		item.VideoID = episodeVideoIDFromBrowseID(item.BrowseID)
+		if item.VideoID != "" {
+			item.Kind = KindEpisode
+		}
+	}
 	item.setCredits(bylineCredits(renderer.get("subtitle")))
-	if item.VideoID != "" {
+	if item.VideoID != "" && item.Kind != KindEpisode {
 		// A card of a song plays its video, and says so.
 		item.Kind = KindVideo
 	}
@@ -281,10 +287,18 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	if item.VideoID == "" {
 		item.VideoID = rendererVideoID(renderer)
 	}
-	if item.VideoID != "" && isEpisode(renderer) {
+	item.BrowseID = navigationID(renderer.get("navigationEndpoint"))
+	if item.BrowseID == "" {
+		item.BrowseID = navigationID(renderer.get("title"))
+	}
+	episodeVideoID := episodeVideoIDFromBrowseID(item.BrowseID)
+	if item.VideoID == "" {
+		item.VideoID = episodeVideoID
+	}
+	if item.VideoID != "" && (isEpisode(renderer) || episodeVideoID != "") {
 		item.Kind = KindEpisode
 	}
-	if kind == KindEpisode {
+	if item.Kind == KindEpisode {
 		item.Description = strings.Join(strings.Fields(rendererText(renderer.get("description"))), " ")
 		item.ProgressPercent = episodeProgress(renderer)
 	}
@@ -302,7 +316,6 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	item.PlaylistSetID = nestedString(renderer.get("playlistItemData"), "playlistSetVideoId")
 	item.Like = likeStatus(renderer)
 	item.Library = itemLibraryState(renderer)
-	item.BrowseID = navigationID(renderer.get("navigationEndpoint"))
 	if item.BrowseID == "" && (kind == KindTrack || kind == KindVideo) {
 		// A song or a video names no page of its own: the artist beside it
 		// is the page the row can open. A row that names its own page, as an

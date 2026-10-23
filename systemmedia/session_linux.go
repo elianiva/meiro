@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"regexp"
 	"runtime"
 	"sync"
 	"time"
@@ -19,11 +20,17 @@ import (
 )
 
 const (
-	busNamePrefix   = "org.mpris.MediaPlayer2.meiro"
-	objectPath      = dbus.ObjectPath("/org/mpris/MediaPlayer2")
-	rootInterface   = "org.mpris.MediaPlayer2"
-	playerInterface = "org.mpris.MediaPlayer2.Player"
-	volumeInterval  = 50 * time.Millisecond
+	busNamePrefix    = "org.mpris.MediaPlayer2.meiro"
+	objectPath       = dbus.ObjectPath("/org/mpris/MediaPlayer2")
+	rootInterface    = "org.mpris.MediaPlayer2"
+	playerInterface  = "org.mpris.MediaPlayer2.Player"
+	volumeInterval   = 50 * time.Millisecond
+	mprisArtworkSize = 1024
+)
+
+var (
+	mprisArtworkDimensions = regexp.MustCompile(`=w\d+-h\d+`)
+	mprisArtworkScale      = regexp.MustCompile(`=s\d+`)
 )
 
 // valid reports whether l is one of the supported loop modes.
@@ -354,9 +361,21 @@ func trackMetadata(state State) map[string]dbus.Variant {
 		metadata["mpris:length"] = dbus.MakeVariant(int64(state.Duration / time.Microsecond))
 	}
 	if state.ArtworkURL != "" {
-		metadata["mpris:artUrl"] = dbus.MakeVariant(state.ArtworkURL)
+		metadata["mpris:artUrl"] = dbus.MakeVariant(mprisArtworkURL(state.ArtworkURL))
 	}
 	return metadata
+}
+
+// mprisArtworkURL asks Google's image host for a larger cover than the
+// in-app thumbnails, so desktop widgets have enough detail when enlarged.
+func mprisArtworkURL(url string) string {
+	if mprisArtworkDimensions.MatchString(url) {
+		return mprisArtworkDimensions.ReplaceAllString(url, fmt.Sprintf("=w%d-h%d", mprisArtworkSize, mprisArtworkSize))
+	}
+	if mprisArtworkScale.MatchString(url) {
+		return mprisArtworkScale.ReplaceAllString(url, fmt.Sprintf("=s%d", mprisArtworkSize))
+	}
+	return url
 }
 
 func trackPath(state State) dbus.ObjectPath {

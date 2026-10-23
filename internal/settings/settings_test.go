@@ -12,6 +12,7 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 	s := Defaults()
 	s.Mode = "dark"
 	s.DiscordPresence = true
+	s.TrayMark = TrayMarkOMark
 	w.Save(&s)
 	s.Seed = "#d81b78"
 	w.Save(&s)
@@ -19,7 +20,7 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 	w.Wait()
 
 	got := Load(path)
-	if got.Mode != "dark" || got.Seed != "#d81b78" || !got.DiscordPresence {
+	if got.Mode != "dark" || got.Seed != "#d81b78" || !got.DiscordPresence || got.TrayMark != TrayMarkOMark {
 		t.Errorf("loaded %+v", got)
 	}
 
@@ -29,8 +30,14 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, want := Load(path), Defaults()
-	if got.Volume != want.Volume || got.Seed != want.Seed || got.CacheSongs != want.CacheSongs || !got.AutoPlay {
+	if got.Volume != want.Volume || got.Seed != want.Seed || got.CacheSongs != want.CacheSongs || got.TrayMark != want.TrayMark || !got.AutoPlay {
 		t.Errorf("repaired %+v", got)
+	}
+	if err := os.WriteFile(path, []byte(`{"trayMark":"unexpected"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path).TrayMark; got != want.TrayMark {
+		t.Errorf("invalid tray mark = %q, want default %q", got, want.TrayMark)
 	}
 }
 

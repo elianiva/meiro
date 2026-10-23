@@ -2,8 +2,11 @@ name: Release
 
 # Push a tag such as desktop-v0.2.0 to build the app for every platform and
 # publish it as a GitHub release, with the signed update files the app's
-# updater reads (docs/updates.md). The release is not marked latest: the app
-# finds the newest desktop-v release through the GitHub API. It builds only after a CI run already passed on
+# updater reads (docs/updates.md). It is published with --latest=false
+# because the app finds the newest desktop-v release by its tag prefix, not
+# by GitHub's latest marker. GET /releases/latest can still return it: that
+# endpoint picks the newest non-draft, non-prerelease release regardless of
+# the flag, and that is fine. It builds only after a CI run already passed on
 # the tag's commit, so no release builds from unchecked code. Triggering
 # only on tags keeps these expensive platform builds off every branch push
 # and pull request. Run it by hand on a tag to retry after CI turns green,
@@ -421,7 +424,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # Not latest: the app finds desktop releases by their tag prefix.
+          # --latest=false: the app finds desktop releases by their tag prefix.
           version="${{ needs.gate.outputs.version }}"
           # The notes are the version's CHANGELOG.md section, so the release
           # says what the changelog says.
@@ -446,7 +449,7 @@ jobs:
           gh release create "${{ needs.gate.outputs.tag }}" artifacts/* \
             --title "Meiro $version" --notes-file release-notes.md --verify-tag --latest=false
       # The minimal build's update files, apart from the downloads: its own
-      # release, which never becomes latest, tagged for its feed.
+      # release, published with --latest=false, tagged for its feed.
       - name: Publish the minimal updates
         env:
           GH_TOKEN: ${{ github.token }}

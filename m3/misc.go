@@ -155,9 +155,8 @@ func MenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
 // Art shows artwork in a rounded frame, or a tonal placeholder with a note
 // while the picture loads or has failed. A zero size leaves it to the layout.
 //
-// The picture is drawn as it is, so it must already have the rounded corners
-// of radius (see artwork.Corner). Overlays are built on top of the picture, to
-// put a control over it; one that covers the corners rounds itself.
+// The picture is rounded as it is drawn. Overlays are built on top of it, so
+// one that covers the corners rounds itself.
 func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()) ui.Element {
 	sc := Of(c).Scheme
 	box := ui.Box(c).Radius(radius).Background(sc.SurfaceContainerHighest).Shrink(0)
@@ -170,7 +169,7 @@ func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()
 				ui.Icon(c, IconMusicNote).FontSize(max(size*0.4, 18)).TextColor(sc.OnSurfaceVariant.Alpha(0.6))
 			})
 		} else {
-			ui.Image(c, art).Fit(ui.Cover).Fill()
+			ui.Image(c, art).Fit(ui.Cover).Fill().Radius(radius)
 		}
 		for _, overlay := range overlays {
 			overlay()
@@ -202,7 +201,7 @@ func Avatar(c *ui.Context, name string, pic *ui.Bitmap, size float32) ui.Element
 	disc := ui.Box(c).Size(size, size).Radius(Full).Background(sc.PrimaryContainer).Shrink(0)
 	disc.Children(func() {
 		if pic != nil {
-			ui.Image(c, pic).Fit(ui.Cover).Fill()
+			ui.Image(c, pic).Fit(ui.Cover).Fill().Radius(Full)
 			return
 		}
 		initial := "?"

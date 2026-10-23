@@ -18,7 +18,63 @@ import (
 	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/youtube"
 )
+
+func TestTrayIconUsesPlatformAppropriateMark(t *testing.T) {
+	for _, tc := range []struct {
+		goos     string
+		mark     settings.TrayMark
+		name     string
+		template bool
+	}{
+		{goos: "windows", mark: settings.TrayMarkOMark, name: "icon.png", template: false},
+		{goos: "darwin", mark: settings.TrayMarkWordmark, name: "tray-wordmark.png", template: true},
+		{goos: "darwin", mark: settings.TrayMarkOMark, name: "tray-o-mark.png", template: true},
+		{goos: "linux", mark: settings.TrayMarkWordmark, name: "tray-wordmark.png", template: true},
+		{goos: "linux", mark: settings.TrayMarkOMark, name: "tray-o-mark.png", template: true},
+		{goos: "freebsd", mark: settings.TrayMarkOMark, name: "tray-wordmark.png", template: true},
+	} {
+		t.Run(tc.goos, func(t *testing.T) {
+			if got := trayIconName(tc.goos, tc.mark); got != tc.name {
+				t.Errorf("trayIconName(%q, %q) = %q, want %q", tc.goos, tc.mark, got, tc.name)
+			}
+			if got := trayIconTemplate(tc.goos); got != tc.template {
+				t.Errorf("trayIconTemplate(%q) = %v, want %v", tc.goos, got, tc.template)
+			}
+		})
+	}
+}
+
+func TestTrayIconStyleCanBeChangedAndSavedInSettings(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("tray")
+	tt.Frame()
+	if a.settings.TrayMark != settings.TrayMarkWordmark || !tt.HasText("Wordmark") || !tt.HasText("O mark") {
+		t.Fatalf("tray icon choices or default are wrong: mark=%q, text=%q", a.settings.TrayMark, tt.Texts())
+	}
+	if err := tt.Click("O mark"); err != nil {
+		t.Fatal(err)
+	}
+	a.saver.Wait()
+	if got := settings.Load(a.saver.Path).TrayMark; got != settings.TrayMarkOMark {
+		t.Fatalf("saved tray mark = %q, want %q", got, settings.TrayMarkOMark)
+	}
+	if err := tt.Click("Wordmark"); err != nil {
+		t.Fatal(err)
+	}
+	a.saver.Wait()
+	if got := settings.Load(a.saver.Path).TrayMark; got != settings.TrayMarkWordmark {
+		t.Errorf("saved tray mark = %q, want %q", got, settings.TrayMarkWordmark)
+	}
+}
 
 func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	a := newTestApp(t)
@@ -46,6 +102,44 @@ func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	}
 	if a.volume != 0 {
 		t.Fatalf("clicking Mute did not mute: volume = %v", a.volume)
+	}
+}
+
+func TestGoToArtistFromMiniPlayerOpensTheArtistPage(t *testing.T) {
+	a := newTestApp(t)
+	track := youtube.MusicItem{
+		VideoID: "vid-3", BrowseID: fakeArtist, Kind: youtube.KindTrack,
+		Title: "Album Track One", Subtitle: "Aurora Vale", Duration: "3:42",
+	}
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{track}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.setMiniShown(true)
+
+	main := ui.NewTester(a.view, 1000, 700)
+	main.Frame()
+	mini := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	mini.Frame()
+	if err := mini.Click("More options for Album Track One"); err != nil {
+		t.Fatal(err)
+	}
+	mini.Frame()
+	if !mini.HasText("Go to artist") {
+		t.Fatalf("the mini player's track menu lacks Go to artist: %q", mini.Texts())
+	}
+	if err := mini.Click("Go to artist"); err != nil {
+		t.Fatal(err)
+	}
+	mini.Frame()
+	main.Frame()
+
+	if a.path() != "/artist/"+fakeArtist {
+		t.Fatalf("Go to artist opened %q", a.path())
+	}
+	if a.nowPlaying.miniOpen {
+		t.Fatal("the mini player stayed open after opening the artist page")
+	}
+	if !main.HasText("Aurora Vale") || !main.HasText("Artist Track") {
+		t.Fatalf("the main window did not show the artist page: %q", main.Texts())
 	}
 }
 

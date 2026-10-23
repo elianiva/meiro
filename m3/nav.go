@@ -24,7 +24,7 @@ const (
 
 // railInset is the space either side of an expanded destination: the
 // collapsed indicator's left edge, which the expanded pill grows from.
-// railIconInset then puts the icon on the collapsed icon's centre line.
+// railIconInset puts the icon on the collapsed icon's centre line.
 const (
 	railInset     float32 = 20
 	railIconInset float32 = 16
@@ -72,7 +72,7 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 	railWidth := RailCollapsed + (RailExpanded-RailCollapsed)*p
 	expanded := p > 0.5
 	fade := min(abs32(2*p-1)*railFadeGain, 1)
-	rail.Width(railWidth).Shrink(0).FillHeight().ClipX().PaddingY(12).Gap(4).
+	rail.Width(railWidth).Shrink(0).FillHeight().ClipX().PaddingY(12).Gap(4 * (1 - p)).
 		Background(sc.SurfaceContainerLow)
 	rail.AlignItems(ui.Start).Children(func() {
 		if spec.TopInset > 0 {
@@ -108,13 +108,14 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 	return event
 }
 
-// navItem is one destination. Its icon and the pill behind it are the same
-// element in both layouts: the pill is as wide as the rail between its
-// insets, so it is the collapsed indicator at one end and the expanded row
-// at the other, and the icon stays where it is. Only the label changes
-// place, from under the icon to beside it, and it does that while faded out.
+// navItem is one destination. Its icon and pill keep their identities as the
+// rail changes width: the pill is the collapsed indicator at one end and the
+// expanded row at the other. Only the label changes place, from under the
+// icon to beside it, and it does that while faded out.
 func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWidth float32) bool {
 	sc := Of(c).Scheme
+	open := min(max((railWidth-RailCollapsed)/(RailExpanded-RailCollapsed), 0), 1)
+	rowHeight := 64 - 8*open
 	b := ui.ButtonBase(c.Key("nav-" + item.ID))
 	icon := item.Icon
 	if selected && item.Selected != nil {
@@ -122,28 +123,34 @@ func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWid
 	}
 	iconColor, labelColor := sc.OnSurfaceVariant, sc.OnSurfaceVariant
 	if selected {
-		iconColor, labelColor = sc.OnSecondaryContainer, sc.OnSurface
+		iconColor, labelColor = sc.OnSecondaryContainer, sc.OnSecondaryContainer
 	}
 
-	b.Column().Width(railWidth).Height(64).Justify(ui.Start).AlignItems(ui.Start).Cursor(ui.CursorPointer).Label(item.Label)
+	b.Column().Width(railWidth).Height(rowHeight).Justify(ui.Start).AlignItems(ui.Start).Cursor(ui.CursorPointer).Label(item.Label)
 	b.Children(func() {
-		pill := ui.Row(c).Radius(Full).AlignItems(ui.Center).PaddingX(railIconInset).Gap(12)
+		pill := ui.Row(c).Radius(Full).AlignItems(ui.Center)
 		target := float32(0)
 		if selected {
 			target = 1
 		}
 		sel := min(max(Animate(pill, "sel", target, SpatialDefault), 0), 1)
-		// 32 collapsed and 40 expanded, around the icon's own centre line.
-		open := min(max((railWidth-RailCollapsed)/(RailExpanded-RailCollapsed), 0), 1)
-		height := 32 + 8*open
-		fill := sc.SecondaryContainer.Alpha(sel)
-		pill.Width(railWidth-2*railInset).Height(height).Margin(6-(height-32)/2, railInset, 0, railInset).Shrink(0).ClipX().
+		// In the expanded rail, the selected indicator fills the available
+		// row. Its center follows the collapsed icon-and-label stack.
+		height := 32 + 24*open
+		marginTop := 22 + 6*open - height/2
+		fill := ui.Transparent
+		if selected {
+			fill = sc.SecondaryContainer.Alpha(sel)
+		}
+		pill.Width(railWidth - 2*railInset)
+		pill.Height(height).Margin(marginTop, railInset, 0, railInset).Shrink(0).ClipX().
 			Background(StateFill(fill, sc.OnSurface, b.Hovered() && !selected, b.Pressed(), b.FocusVisible()))
 		focusRing(c, b, pill, Full)
+		pill.PaddingX(railIconInset).Gap(8)
 		pill.Children(func() {
 			ui.Icon(c, icon).FontSize(24).TextColor(iconColor).Shrink(0)
 			if expanded {
-				LabelLarge.Style(ui.Text(c, item.Label), selected).TextColor(labelColor).Grow(1).MinWidth(0).SingleLine().Opacity(fade)
+				LabelLarge.Style(ui.Text(c, item.Label), false).TextColor(labelColor).SingleLine().Opacity(fade)
 			}
 		})
 		if !expanded {

@@ -10,6 +10,37 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
+func TestMPRISArtworkURLRequestsLargeGoogleImages(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{
+			name: "dimensions",
+			url:  "https://lh3.googleusercontent.com/cover=w544-h544-l90-rj",
+			want: "https://lh3.googleusercontent.com/cover=w1024-h1024-l90-rj",
+		},
+		{
+			name: "scale",
+			url:  "https://lh3.googleusercontent.com/cover=s544",
+			want: "https://lh3.googleusercontent.com/cover=s1024",
+		},
+		{
+			name: "other URL",
+			url:  "https://example.test/cover.jpg",
+			want: "https://example.test/cover.jpg",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := mprisArtworkURL(test.url); got != test.want {
+				t.Errorf("mprisArtworkURL(%q) = %q, want %q", test.url, got, test.want)
+			}
+		})
+	}
+}
+
 // The media session talks to the user's session bus, so these need one. Run
 // them under dbus-run-session, as CI does:
 //
@@ -45,7 +76,7 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 	linux := session.(*linuxSession)
 	state := State{
 		VideoID: "video-1", Title: "A song", Artist: "An artist",
-		ArtworkURL: "https://example.test/art.jpg", Duration: 3 * time.Minute,
+		ArtworkURL: "https://lh3.googleusercontent.com/cover=w544-h544-l90-rj", Duration: 3 * time.Minute,
 		Position: 17 * time.Second, Status: Playing, Volume: 0.7,
 		CanPlay: true, CanPause: true, CanNext: true, CanPrevious: true, CanSeek: true,
 	}
@@ -72,6 +103,11 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 	}
 	if err := metadata["xesam:artist"].Store(&artists); err != nil || len(artists) != 1 || artists[0] != state.Artist {
 		t.Errorf("MPRIS artist = %v, err %v; want [%q]", artists, err, state.Artist)
+	}
+	var artworkURL string
+	wantArtworkURL := "https://lh3.googleusercontent.com/cover=w1024-h1024-l90-rj"
+	if err := metadata["mpris:artUrl"].Store(&artworkURL); err != nil || artworkURL != wantArtworkURL {
+		t.Errorf("MPRIS artwork URL = %q, err %v; want %q", artworkURL, err, wantArtworkURL)
 	}
 	if err := getProperty(object, "PlaybackStatus", &status); err != nil {
 		t.Fatal(err)

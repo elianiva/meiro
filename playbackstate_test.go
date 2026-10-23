@@ -41,7 +41,7 @@ func TestTheQueueComesBackPausedAfterARestart(t *testing.T) {
 	for i := range 300 {
 		q = append(q, youtube.MusicItem{VideoID: fmt.Sprintf("v%d", i), Title: fmt.Sprintf("Track %d", i), Duration: "3:00"})
 	}
-	first.playFrom(q[250], q, 250, youtube.UpNextOptions{}, "My mix")
+	first.playFrom(q[0], q, 0, youtube.UpNextOptions{}, "My mix")
 	first.queue.insert(youtube.MusicItem{VideoID: "next-up", Title: "Next up"}, true, false)
 	first.setVolume(35)
 	first.saveSettings()
@@ -56,11 +56,17 @@ func TestTheQueueComesBackPausedAfterARestart(t *testing.T) {
 	if second.settings.Volume != 35 {
 		t.Errorf("volume came back as %v", second.settings.Volume)
 	}
-	if n := second.queue.len(); n != playstate.MaxItems {
-		t.Errorf("%d tracks came back, want the cap of %d", n, playstate.MaxItems)
+	if n := second.queue.len(); n != len(q)+1 {
+		t.Errorf("%d tracks came back, want all %d playlist tracks and the queued track", n, len(q))
 	}
-	if second.current.VideoID != "v250" || second.queue.current().VideoID != "v250" {
+	if second.current.VideoID != "v0" || second.queue.current().VideoID != "v0" {
 		t.Errorf("current track is %q", second.current.VideoID)
+	}
+	if got := second.queue.remaining(); got != len(q) {
+		t.Errorf("%d tracks left after restore, want %d", got, len(q))
+	}
+	if got := second.queue.at(second.queue.len() - 1).VideoID; got != "v299" {
+		t.Errorf("last playlist track is %q, want v299", got)
 	}
 	if next, ok := second.queue.next(false, repeatOff); !ok || second.queue.at(next).VideoID != "next-up" {
 		t.Errorf("the play-next track did not come first: %v", ids(second.queue.items[second.queue.index:min(second.queue.index+3, second.queue.len())]))
@@ -68,13 +74,13 @@ func TestTheQueueComesBackPausedAfterARestart(t *testing.T) {
 	if second.queue.source != "My mix" || second.total != 3*time.Minute {
 		t.Errorf("source %q, total %v", second.queue.source, second.total)
 	}
-	if second.player.Active() || second.stream.busy() || r.asked("v250") {
+	if second.player.Active() || second.stream.busy() || r.asked("v0") {
 		t.Error("restoring started playing")
 	}
 
 	// Pressing play plays the restored track.
 	second.togglePlay()
-	if !r.asked("v250") || second.current.VideoID != "v250" {
+	if !r.asked("v0") || second.current.VideoID != "v0" {
 		t.Errorf("play did not start the restored track: %v", r.ids)
 	}
 }

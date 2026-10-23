@@ -20,9 +20,9 @@ import (
 // oldest is forgotten first.
 const MaxEpisodes = 100
 
-// MaxItems is how many tracks a saved queue holds. A longer queue is saved
-// as the window of it around the track playing.
-const MaxItems = 200
+// MaxHistoryItems is how many tracks before the current one a saved queue
+// keeps. Upcoming tracks are kept so the queue can continue after a restart.
+const MaxHistoryItems = 20
 
 // State is a queue and the place in it. The zero value is no queue.
 type State struct {
@@ -51,18 +51,15 @@ type Episode struct {
 // Empty reports whether the state holds no queue.
 func (s *State) Empty() bool { return len(s.Items) == 0 }
 
-// Window cuts the state down to at most MaxItems tracks around the current
-// one, so that a queue of thousands does not make a file of megabytes. The
-// receiver is not changed.
+// Window drops old played tracks, keeping at most MaxHistoryItems before the
+// current one. It keeps every upcoming track, so a long queue can continue
+// after a restart. The receiver is not changed.
 func (s State) Window() State {
-	if len(s.Items) <= MaxItems {
+	if s.Index <= MaxHistoryItems {
 		return s
 	}
-	// Keep a little of what played, and the rest of the room for what is to
-	// come.
-	start := min(max(s.Index-MaxItems/10, 0), len(s.Items)-MaxItems)
-	end := start + MaxItems
-	s.Items = s.Items[start:end]
+	start := s.Index - MaxHistoryItems
+	s.Items = s.Items[start:]
 	s.Index -= start
 	if s.RecStart >= 0 {
 		s.RecStart = max(s.RecStart-start, 0)

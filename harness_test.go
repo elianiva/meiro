@@ -144,6 +144,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.Contains(asked, "search-more"):
 		searchesMore.Add(1)
 		reply = searchMoreResponse
+	case strings.Contains(asked, `"query":"play episode result"`):
+		searches.Add(1)
+		searchAsked.Store(asked)
+		reply = searchEpisodeResponse
 	case strings.Contains(asked, "yor mixed"):
 		reply = searchMixedResponse
 	case strings.Contains(asked, `"query"`):
@@ -465,6 +469,14 @@ const searchResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"ta
 			"continuations":[{"nextContinuationData":{"continuation":"search-more"}}]
 		}}
 	]}}}}]}}}`
+
+// searchEpisodeResponse is a search whose top result links to an episode page
+// ID that carries the playable video ID rather than a watch endpoint.
+const searchEpisodeResponse = `{"contents":{"musicCardShelfRenderer":{
+	"title":{"runs":[{"text":"Find Me feat.Hina from miolly","navigationEndpoint":{"browseEndpoint":{"browseId":"MPEDUZ83quirqLA"}}}]},
+	"subtitle":{"runs":[{"text":"Episode"},{"text":" • "},{"text":"18h ago"},{"text":" • "},{"text":"*Luna"}]},
+	"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/find-me"}]}}}
+}}}`
 
 // searchMixedResponse is a search that found one of everything: a top result,
 // and a row each for an album, an artist, a playlist and a song.

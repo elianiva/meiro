@@ -5,7 +5,6 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -304,15 +303,14 @@ func artRadius(item youtube.MusicItem, square float32) float32 {
 }
 
 // art shows the artwork at url in a square of size points with rounded
-// corners. The picture is asked for at pixels across and already rounded, so
-// drawing it needs no clip; an overlay that covers the corners rounds itself.
+// corners. The picture is asked for at pixels across; MyGo rounds it as drawn.
 func (a *app) art(c *ui.Context, url string, pixels int, size, radius float32, overlays ...func()) ui.Element {
-	return m3.Art(c, a.thumbs.Bitmap(url, pixels, artwork.Corner(radius, size)), size, radius, overlays...)
+	return m3.Art(c, a.thumbs.Bitmap(url, pixels), size, radius, overlays...)
 }
 
 // avatar is a person's picture on a disc of size points, rounded like art.
 func (a *app) avatar(c *ui.Context, name, url string, pixels int, size float32) {
-	m3.Avatar(c, name, a.thumbs.Bitmap(url, pixels, artwork.Corner(m3.Full, size)), size)
+	m3.Avatar(c, name, a.thumbs.Bitmap(url, pixels), size)
 }
 
 // card shows an album, a playlist, an artist or a song as artwork over its
