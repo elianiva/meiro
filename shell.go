@@ -48,7 +48,7 @@ func (a *app) view(c *ui.Context) {
 			a.sheet(c, bar)
 		})
 	})
-	a.keepSpace(shell)
+	a.reserveSpaceForPlayback(shell)
 	a.signInDialog(c)
 	a.newPlaylistDialog(c)
 	a.deletePlaylistDialog(c)

@@ -11,9 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Space plays and pauses after a click.** Clicking a control left it with the
   keyboard focus, and a focused control took Space as a click of its own, so
   after clicking a track, a tab or a button, Space pressed that control again
-  instead of the player. Space now plays and pauses wherever the focus is,
-  except in a text field, which keeps it as typing. Enter still presses the
-  focused control, so keyboard users press the control they reached with Enter.
+  instead of the player. Space now plays and pauses throughout the app shell,
+  including on a focused switch; text fields keep it for typing. Dialogs keep
+  their own Space behavior. Enter still activates a focused control.
 
 ## [0.4.7] - 2026-10-22
 

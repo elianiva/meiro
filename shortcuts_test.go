@@ -343,7 +343,9 @@ func TestKeyboardOpensTheCoverMenu(t *testing.T) {
 // Enter still presses it, and a text field still takes Space as typing.
 func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
 	a, _ := playbackApp(t)
-	tt := open(a, "/album/MPREb_test")
+	a.router.Push("/album/MPREb_test")
+	tt := ui.NewTester(a.view, 1000, 4000)
+	tt.Frame()
 	if err := tt.Click("Album Track One"); err != nil {
 		t.Fatal(err)
 	}
@@ -369,17 +371,38 @@ func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
 		t.Fatal("Enter no longer presses the control the click focused")
 	}
 
-	// The search field keeps Space as typing.
+	// Space is reserved from every shell control, including a switch.
+	a.router.Push("/settings")
+	tt.Frame()
+	if err := tt.Click("Equaliser on"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.settings.EQOn {
+		t.Fatal("clicking the equaliser switch did not turn it on")
+	}
+	tt.Key(0, ui.KeySpace)
+	tt.Frame()
+	if !a.player.Paused() || !a.settings.EQOn {
+		t.Fatal("Space did not pause playback without toggling the focused switch")
+	}
+	tt.Key(0, ui.KeySpace)
+	untilPlaying(t, a, tt)
+	if !a.settings.EQOn {
+		t.Fatal("Space toggled the focused switch while resuming playback")
+	}
+
+	// A text field keeps Space as text input; dialogs sit outside the shell.
 	a.router.Push("/search")
 	tt.Frame()
 	if err := tt.Click(searchPlaceholder); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	tt.Key(0, ui.KeySpace)
+	tt.TypeKey(0, ui.KeySpace, " ")
 	tt.Frame()
-	if a.player.Paused() {
-		t.Fatal("Space played or paused while the search field had the focus")
+	if a.search.query != " " || a.player.Paused() {
+		t.Fatal("Space was not typed into the search field or affected playback")
 	}
 }
 

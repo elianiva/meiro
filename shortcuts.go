@@ -94,14 +94,13 @@ func (a *app) shortcuts(c *ui.Context) {
 	}
 }
 
-// keepSpace keeps Space on the transport. MyGo gives Space to the control the
-// click focused, before the window's shortcuts read it, so pressing it after a
-// click pressed that control again instead of the player. The claim sits on the
-// shell, where every page and the player are: it takes the key from the focused
-// control and hands it to the shortcut. A text field takes Space as typing
-// before a claim is read, and a dialog is drawn outside the shell, so its own
-// button keeps the key.
-func (a *app) keepSpace(shell ui.Element) {
+// reserveSpaceForPlayback reserves Space for playback throughout the shell.
+// MyGo gives Space to the focused control before window shortcuts, so pressing
+// it after a click activated that control instead of the player. The shell
+// claim takes Space from its controls, including switches, and hands it to the
+// play or pause shortcut. Text fields take Space as typing before the claim is
+// read, and dialogs outside the shell keep their own Space behavior.
+func (a *app) reserveSpaceForPlayback(shell ui.Element) {
 	if a.keyboard.recording != "" {
 		return // the field taking the new key reads Space itself
 	}
