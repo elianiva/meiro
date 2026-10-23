@@ -235,9 +235,9 @@ func TestKeyboardMenusKeepFocusAndRunActions(t *testing.T) {
 				if !tt.Focused("Play Deep Focus") {
 					t.Fatal("Tab did not reach the card's play button")
 				}
-				tt.Key(0, ui.KeySpace)
+				tt.Key(0, ui.KeyEnter)
 				if a.current.VideoID != "vid-3" || a.router.Path() != "/home" {
-					t.Fatal("Space did not play the album from its card")
+					t.Fatal("Enter did not play the album from its card")
 				}
 			}
 		})
@@ -335,5 +335,64 @@ func TestKeyboardOpensTheCoverMenu(t *testing.T) {
 	tt.Key(0, ui.KeyEnter)
 	if !a.menu.open || !tt.Focused("Start radio") {
 		t.Fatal("Enter on the cover did not open its menu")
+	}
+}
+
+// Space plays and pauses wherever the focus is: a click leaves it on the
+// control it pressed, and that control would take Space as a click of its own.
+// Enter still presses it, and a text field still takes Space as typing.
+func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
+	a, _ := playbackApp(t)
+	tt := open(a, "/album/MPREb_test")
+	if err := tt.Click("Album Track One"); err != nil {
+		t.Fatal(err)
+	}
+	untilPlaying(t, a, tt)
+
+	tt.Key(0, ui.KeySpace)
+	tt.Frame()
+	if !a.player.Paused() {
+		t.Fatal("Space pressed the row the click focused instead of pausing")
+	}
+	tt.Key(0, ui.KeySpace)
+	untilPlaying(t, a, tt)
+
+	// Enter still presses the control the click focused.
+	if err := tt.Click("Repeat"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	repeated := a.repeat
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.repeat == repeated {
+		t.Fatal("Enter no longer presses the control the click focused")
+	}
+
+	// The search field keeps Space as typing.
+	a.router.Push("/search")
+	tt.Frame()
+	if err := tt.Click(searchPlaceholder); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Key(0, ui.KeySpace)
+	tt.Frame()
+	if a.player.Paused() {
+		t.Fatal("Space played or paused while the search field had the focus")
+	}
+}
+
+// untilPlaying waits for the track to start, which takes a moment.
+func untilPlaying(t *testing.T, a *app, tt *ui.Tester) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !a.player.Playing() && time.Now().Before(deadline) {
+		a.poll()
+		tt.Frame()
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !a.player.Playing() {
+		t.Fatal("the track did not start")
 	}
 }

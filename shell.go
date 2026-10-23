@@ -41,12 +41,14 @@ func (a *app) view(c *ui.Context) {
 	a.syncSignInDialog()
 
 	bar := c.TitleBar()
-	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+	shell := ui.Row(c).Fill().AlignItems(ui.Stretch)
+	shell.Children(func() {
 		a.rail(c, bar)
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.sheet(c, bar)
 		})
 	})
+	a.keepSpace(shell)
 	a.signInDialog(c)
 	a.newPlaylistDialog(c)
 	a.deletePlaylistDialog(c)
