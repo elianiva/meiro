@@ -63,6 +63,8 @@ type Settings struct {
 	GlobalShortcut bool `json:"globalShortcut"`
 	// ShowTray keeps an icon in the menu bar with transport controls.
 	ShowTray bool `json:"showTray"`
+	// TrayMark is the menu bar icon style on macOS and Linux.
+	TrayMark TrayMark `json:"trayMark"`
 	// DiscordPresence shares the current track with the running Discord client.
 	DiscordPresence bool `json:"discordPresence,omitempty"`
 	// CloseToTray hides the window instead of quitting when the user closes
@@ -88,10 +90,20 @@ type Settings struct {
 	EQBands []float64 `json:"eqBands,omitempty"`
 }
 
+// TrayMark names one of the menu bar icon styles.
+type TrayMark string
+
+const (
+	// TrayMarkWordmark uses the optically centered Meiro wordmark.
+	TrayMarkWordmark TrayMark = "wordmark"
+	// TrayMarkOMark uses the smaller standalone O mark.
+	TrayMarkOMark TrayMark = "o"
+)
+
 // Defaults is what a first run starts with.
 func Defaults() Settings {
 	return Settings{
-		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: true, ShowTray: true,
+		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: true, ShowTray: true, TrayMark: TrayMarkWordmark,
 	}
 }
 
@@ -202,6 +214,9 @@ func Load(path string) Settings {
 	}
 	if read.Mode == "" {
 		read.Mode = s.Mode
+	}
+	if read.TrayMark != TrayMarkWordmark && read.TrayMark != TrayMarkOMark {
+		read.TrayMark = s.TrayMark
 	}
 	return read
 }

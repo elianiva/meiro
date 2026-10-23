@@ -5,7 +5,10 @@
 | `wordmark-light.svg` | The name, on light backgrounds. The app itself shows only the wordmark. |
 | `wordmark-dark.svg` | The name, on dark backgrounds. |
 | `icon.svg` | The app icon, the source of `resources/icon.png`. |
-| `resources/tray-wordmark.png` | The transparent wordmark used by the macOS and Linux tray. |
+| `tray-wordmark.svg` | The tray wordmark, optically centered for the menu bar. |
+| `tray-o-mark.svg` | The standalone O mark, without the `me!r` lettering. |
+| `resources/tray-wordmark.png` | The wordmark export used by the macOS and Linux tray. |
+| `resources/tray-o-mark.png` | The O mark export used by the macOS and Linux tray. |
 
 The wordmark reads **me!ro**. The *i* is MyGO!!!!!'s `!`, tilted like a lost
 compass needle, and the *o* is a ring of five overlapping pieces, one per
@@ -39,7 +42,12 @@ highlight on each piece, and one soft shadow under the ring and the play mark.
 background, the rounded square scaled to 824 px and centred (the macOS icon
 grid), with a soft shadow under it.
 
-The macOS and Linux tray image is a transparent PNG export of
-`wordmark-light.svg`, 191 × 64 px. Windows uses `icon.png` instead: its
+The macOS and Linux tray images are transparent PNG exports of the two tray
+SVGs: `tray-wordmark.svg` at 191 × 64 px, and `tray-o-mark.svg` at 64 × 64 px.
+The wordmark export slightly shortens the `!` stem and reframes the artwork so
+each coordinate of its alpha-weighted centre is within 0.24 px of the canvas
+centre. The O export contains only the five-piece ring and play mark, with
+extra transparent space around it for a quieter appearance. Windows uses
+`icon.png` instead: its
 notification area reuses the tray icon in track notifications, and template
 icons become a solid white square on a dark taskbar.

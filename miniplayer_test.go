@@ -24,21 +24,55 @@ import (
 func TestTrayIconUsesPlatformAppropriateMark(t *testing.T) {
 	for _, tc := range []struct {
 		goos     string
+		mark     settings.TrayMark
 		name     string
 		template bool
 	}{
-		{goos: "windows", name: "icon.png", template: false},
-		{goos: "darwin", name: "tray-wordmark.png", template: true},
-		{goos: "linux", name: "tray-wordmark.png", template: true},
+		{goos: "windows", mark: settings.TrayMarkOMark, name: "icon.png", template: false},
+		{goos: "darwin", mark: settings.TrayMarkWordmark, name: "tray-wordmark.png", template: true},
+		{goos: "darwin", mark: settings.TrayMarkOMark, name: "tray-o-mark.png", template: true},
+		{goos: "linux", mark: settings.TrayMarkWordmark, name: "tray-wordmark.png", template: true},
+		{goos: "linux", mark: settings.TrayMarkOMark, name: "tray-o-mark.png", template: true},
+		{goos: "freebsd", mark: settings.TrayMarkOMark, name: "tray-wordmark.png", template: true},
 	} {
 		t.Run(tc.goos, func(t *testing.T) {
-			if got := trayIconName(tc.goos); got != tc.name {
-				t.Errorf("trayIconName(%q) = %q, want %q", tc.goos, got, tc.name)
+			if got := trayIconName(tc.goos, tc.mark); got != tc.name {
+				t.Errorf("trayIconName(%q, %q) = %q, want %q", tc.goos, tc.mark, got, tc.name)
 			}
 			if got := trayIconTemplate(tc.goos); got != tc.template {
 				t.Errorf("trayIconTemplate(%q) = %v, want %v", tc.goos, got, tc.template)
 			}
 		})
+	}
+}
+
+func TestTrayIconStyleCanBeChangedAndSavedInSettings(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("tray")
+	tt.Frame()
+	if a.settings.TrayMark != settings.TrayMarkWordmark || !tt.HasText("Wordmark") || !tt.HasText("O mark") {
+		t.Fatalf("tray icon choices or default are wrong: mark=%q, text=%q", a.settings.TrayMark, tt.Texts())
+	}
+	if err := tt.Click("O mark"); err != nil {
+		t.Fatal(err)
+	}
+	a.saver.Wait()
+	if got := settings.Load(a.saver.Path).TrayMark; got != settings.TrayMarkOMark {
+		t.Fatalf("saved tray mark = %q, want %q", got, settings.TrayMarkOMark)
+	}
+	if err := tt.Click("Wordmark"); err != nil {
+		t.Fatal(err)
+	}
+	a.saver.Wait()
+	if got := settings.Load(a.saver.Path).TrayMark; got != settings.TrayMarkWordmark {
+		t.Errorf("saved tray mark = %q, want %q", got, settings.TrayMarkWordmark)
 	}
 }
 

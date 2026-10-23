@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -27,6 +28,8 @@ type desktop struct {
 	// awake releases the sleep assertion while one is held.
 	awake func()
 	tray  *mygo.Tray
+	// trayIcon is the resource name last applied to the tray.
+	trayIcon string
 	// mini is the tray's mini player while it is open.
 	mini mini
 	// trayShown is what the tray last showed, to skip identical updates.
@@ -174,7 +177,7 @@ type trayState struct {
 // icon clicks or position, so MyGo centers tray flyouts in the primary
 // display's work area instead of anchoring them to the icon. It changes the
 // tooltip only when it changed: playback calls it four times a second.
-func (d *desktop) setTray(on bool, state trayState, mini func(*ui.Context), shown func(bool)) {
+func (d *desktop) setTray(on bool, mark settings.TrayMark, state trayState, mini func(*ui.Context), shown func(bool)) {
 	if d == nil {
 		return
 	}
@@ -182,7 +185,7 @@ func (d *desktop) setTray(on bool, state trayState, mini func(*ui.Context), show
 		if d.tray != nil {
 			d.closeMini()
 			d.tray.Destroy()
-			d.tray, d.trayShown = nil, trayState{}
+			d.tray, d.trayIcon, d.trayShown = nil, "", trayState{}
 		}
 		d.trayFailed = false
 		return
@@ -191,7 +194,8 @@ func (d *desktop) setTray(on bool, state trayState, mini func(*ui.Context), show
 		return
 	}
 	if d.tray == nil {
-		icon, err := trayIcon()
+		name := trayIconName(runtime.GOOS, mark)
+		icon, err := trayIcon(name)
 		if err != nil {
 			log.Printf("tray icon unavailable: %v", err)
 		}
@@ -214,8 +218,20 @@ func (d *desktop) setTray(on bool, state trayState, mini func(*ui.Context), show
 		if runtime.GOOS != "linux" {
 			tray.OnClick(onOpenMiniPlayer)
 		}
-		d.tray, d.trayShown = tray, state
+		d.tray, d.trayIcon, d.trayShown = tray, name, state
 		return
+	}
+	name := trayIconName(runtime.GOOS, mark)
+	if name != d.trayIcon {
+		icon, err := trayIcon(name)
+		if err != nil {
+			log.Printf("tray icon unavailable: %v", err)
+		} else if err := d.tray.SetIcon(icon, trayIconTemplate(runtime.GOOS)); err != nil {
+			log.Printf("updating the tray icon: %v", err)
+		}
+		// Avoid repeating a failed resource update on every playback tick. A
+		// different choice still gets a fresh attempt.
+		d.trayIcon = name
 	}
 	if state == d.trayShown {
 		return
@@ -235,25 +251,29 @@ func linuxTrayMenu(openMeiro func()) *mygo.Menu {
 	})
 }
 
-// trayIcon reads the platform's tray mark. The Windows shell reuses its tray
-// icon for track notifications, so that platform keeps the coloured app icon.
-func trayIcon() ([]byte, error) {
+// trayIcon reads a tray image from the app's resources.
+func trayIcon(name string) ([]byte, error) {
 	dir, err := mygo.App.Path(mygo.PathResources)
 	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(filepath.Join(dir, trayIconName(runtime.GOOS)))
+	return os.ReadFile(filepath.Join(dir, name))
 }
 
 // trayIconName and trayIconTemplate select marks that stay legible at the
-// platform's tray size. Windows whitens template images on a dark taskbar;
-// using the rounded-square app icon there would leave only a blank square.
-func trayIconName(goos string) string {
+// platform's tray size. Windows keeps the coloured app icon because its tray
+// image is also used in track notifications.
+func trayIconName(goos string, mark settings.TrayMark) string {
 	if goos == "windows" {
 		return "icon.png"
 	}
+	if trayMarkSupported(goos) && mark == settings.TrayMarkOMark {
+		return "tray-o-mark.png"
+	}
 	return "tray-wordmark.png"
 }
+
+func trayMarkSupported(goos string) bool { return goos == "darwin" || goos == "linux" }
 
 func trayIconTemplate(goos string) bool { return goos != "windows" }
 
@@ -358,7 +378,7 @@ func (a *app) setupDesktop() {
 // path that changes playback reaches it through syncSystemMedia.
 func (a *app) syncDesktop() {
 	a.desktop.keepAwake(a.loading() || (a.player.Active() && !a.player.Paused() && !a.player.Ended()))
-	a.desktop.setTray(a.settings.ShowTray, trayState{tip: a.trayTip()}, a.miniPlayer, a.setMiniShown)
+	a.desktop.setTray(a.settings.ShowTray, a.settings.TrayMark, trayState{tip: a.trayTip()}, a.miniPlayer, a.setMiniShown)
 	a.desktop.setTitle(a.windowTitle())
 }
 
