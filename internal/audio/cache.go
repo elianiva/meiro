@@ -448,52 +448,100 @@ func downloadURL(ctx context.Context, client *http.Client, streamURL, cacheDir s
 	if strings.TrimSpace(streamURL) == "" {
 		return "", errors.New("no resolved audio URL to cache")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, streamURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("prepare audio download: %w", err)
-	}
-	request.Header.Set("User-Agent", userAgent)
-	response, err := client.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("download audio: %w", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		// A signed URL that has expired answers with an error; the track is
-		// already playing, so the cache just skips it.
-		return "", fmt.Errorf("download audio: unexpected status %s", response.Status)
-	}
 	tempDir, err := os.MkdirTemp(cacheDir, tempPrefix+"*")
 	if err != nil {
 		return "", fmt.Errorf("prepare audio cache: %w", err)
 	}
-	path := filepath.Join(tempDir, "audio"+audioURLExtension(response.Header.Get("Content-Type")))
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	path, err := downloadRanges(ctx, client, streamURL, filepath.Join(tempDir, "audio"))
 	if err != nil {
 		_ = os.RemoveAll(tempDir)
+		return "", err
+	}
+	return path, nil
+}
+
+// downloadRange is how many bytes of a stream one request asks for. YouTube
+// serves one request for a whole long file, such as a podcast episode, at
+// about twice the speed it plays, and bounded ranges at full speed.
+const downloadRange = 10 << 20
+
+// downloadRanges writes the stream at streamURL to base, a range at a time,
+// and names the file with the extension its media type calls for. It returns
+// the file's path.
+func downloadRanges(ctx context.Context, client *http.Client, streamURL, base string) (string, error) {
+	file, err := os.OpenFile(base, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
 		return "", fmt.Errorf("prepare audio cache: %w", err)
 	}
-	written, copyErr := io.Copy(file, response.Body)
-	closeErr := file.Close()
-	if copyErr != nil {
-		_ = os.RemoveAll(tempDir)
-		return "", fmt.Errorf("download audio: %w", copyErr)
+	var written int64
+	total := int64(-1)
+	var contentType string
+	for total < 0 || written < total {
+		n, size, kind, err := appendRange(ctx, client, streamURL, written, file)
+		if err != nil {
+			_ = file.Close()
+			return "", err
+		}
+		if written == 0 {
+			contentType = kind
+		}
+		written, total = written+n, size
 	}
-	if closeErr != nil {
-		_ = os.RemoveAll(tempDir)
-		return "", fmt.Errorf("download audio: %w", closeErr)
+	if err := file.Close(); err != nil {
+		return "", fmt.Errorf("download audio: %w", err)
+	}
+	path := base + audioURLExtension(contentType)
+	if err := os.Rename(base, path); err != nil {
+		return "", fmt.Errorf("prepare audio cache: %w", err)
+	}
+	return path, nil
+}
+
+// appendRange writes the bytes of streamURL from offset to file, at most
+// downloadRange of them. It returns how many it wrote, the length of the
+// whole stream and its media type. A server that ignores the range sends the
+// whole stream instead, which ends the download in one request.
+func appendRange(ctx context.Context, client *http.Client, streamURL string, offset int64, file io.Writer) (written, total int64, contentType string, err error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, streamURL, nil)
+	if err != nil {
+		return 0, 0, "", fmt.Errorf("prepare audio download: %w", err)
+	}
+	request.Header.Set("User-Agent", userAgent)
+	request.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+downloadRange-1))
+	response, err := client.Do(request)
+	if err != nil {
+		return 0, 0, "", fmt.Errorf("download audio: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	switch {
+	case response.StatusCode == http.StatusPartialContent:
+		var first, last int64
+		contentRange := response.Header.Get("Content-Range")
+		if _, err := fmt.Sscanf(contentRange, "bytes %d-%d/%d", &first, &last, &total); err != nil || first != offset {
+			return 0, 0, "", fmt.Errorf("download audio: unexpected range %q", contentRange)
+		}
+	case response.StatusCode == http.StatusOK && offset == 0:
+	default:
+		// A signed URL that has expired answers with an error; the track is
+		// already playing, so the cache just skips it.
+		return 0, 0, "", fmt.Errorf("download audio: unexpected status %s", response.Status)
+	}
+	written, err = io.Copy(file, response.Body)
+	if err != nil {
+		return 0, 0, "", fmt.Errorf("download audio: %w", err)
 	}
 	// A stream cut short can end without an error, so the declared length is
 	// the only proof that every byte arrived.
 	if response.ContentLength >= 0 && written != response.ContentLength {
-		_ = os.RemoveAll(tempDir)
-		return "", fmt.Errorf("download audio: got %d of %d bytes", written, response.ContentLength)
+		return 0, 0, "", fmt.Errorf("download audio: got %d of %d bytes", written, response.ContentLength)
 	}
 	if written == 0 {
-		_ = os.RemoveAll(tempDir)
-		return "", errors.New("download audio: the response was empty")
+		return 0, 0, "", errors.New("download audio: the response was empty")
 	}
-	return path, nil
+	if response.StatusCode == http.StatusOK {
+		total = written
+	}
+	return written, total, response.Header.Get("Content-Type"), nil
 }
 
 // audioURLExtension picks the file extension for a downloaded audio stream

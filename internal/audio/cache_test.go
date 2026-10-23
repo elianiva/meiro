@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +15,22 @@ import (
 // The cache downloads real bytes from a media server, keeps the most recent
 // tracks within its limit, and survives a restart.
 func TestCacheFromDownloadToRestart(t *testing.T) {
+	long := make([]byte, 2*downloadRange+3)
+	for i := range long {
+		long[i] = byte(i % 251)
+	}
 	media := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/gone":
 			http.Error(w, "expired", http.StatusForbidden)
+		case "/long":
+			// A track longer than one range. YouTube throttles a request
+			// for the whole of it; this server refuses one.
+			if ranged := r.Header.Get("Range"); ranged == "" || strings.HasSuffix(ranged, "-") {
+				http.Error(w, "ask for a range", http.StatusTooManyRequests)
+				return
+			}
+			http.ServeContent(w, r, "long.webm", time.Time{}, bytes.NewReader(long))
 		default:
 			w.Header().Set("Content-Type", "audio/mp4")
 			_, _ = w.Write([]byte("audio for " + r.URL.Path))
@@ -78,6 +91,15 @@ func TestCacheFromDownloadToRestart(t *testing.T) {
 	defer again.Close()
 	if _, ok := again.Get("three"); !ok {
 		t.Error("the cache lost its files across a restart")
+	}
+
+	// A track longer than one range arrives whole, every range in its place.
+	cache = again
+	cache.Add("long", media.URL+"/long")
+	waitCached("long")
+	path, _ = cache.Get("long")
+	if data, _ := os.ReadFile(path); !bytes.Equal(data, long) {
+		t.Error("a track downloaded by ranges was not cached byte for byte")
 	}
 }
 

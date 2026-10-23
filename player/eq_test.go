@@ -86,7 +86,7 @@ func TestEQChangeBlendsAndUpdatesAnExistingReader(t *testing.T) {
 }
 
 func TestStreamArgsLeavesEQOutOfTheDecoder(t *testing.T) {
-	args := streamArgs("https://example.invalid/audio", 0)
+	args := streamArgs("https://example.invalid/audio", 0, true)
 	for _, arg := range args {
 		if arg == "-af" {
 			t.Fatalf("streamArgs = %v, want EQ to run outside ffmpeg", args)

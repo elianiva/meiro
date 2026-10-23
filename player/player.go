@@ -11,6 +11,8 @@
 package player
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -40,6 +42,9 @@ const (
 	// media servers answer some requests without one with an error.
 	userAgent       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 	httpReadTimeout = 15 * time.Second
+	// rangeSize is how many bytes of a remote stream one request asks for,
+	// as YouTube's own player and yt-dlp ask.
+	rangeSize = 10 << 20
 )
 
 // EQFrequencies are the centre frequencies of the equaliser's bands, in Hz.
@@ -79,6 +84,9 @@ type Player struct {
 	lookOnce   sync.Once
 	ffmpegPath string
 	lookErr    error
+	// rangedHTTP reports whether that ffmpeg can fetch a stream in bounded
+	// ranges. It is set with ffmpegPath.
+	rangedHTTP bool
 
 	audio *sharedAudio
 }
@@ -520,7 +528,7 @@ func (p *Player) start(url string, at time.Duration, paused bool) error {
 // session's reader shapes the PCM as it reaches the output. The session has no
 // output yet: start gives it one, and a handoff takes over the one before it.
 func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64) (*session, error) {
-	cmd := exec.Command(ffmpeg, streamArgs(url, at)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
+	cmd := exec.Command(ffmpeg, streamArgs(url, at, p.rangedHTTP)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
 	hideWindow(cmd)
 	pipe, writer, err := os.Pipe()
 	if err != nil {
@@ -546,7 +554,8 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64) (*se
 
 // streamArgs is the ffmpeg command line that decodes url from at into signed
 // 16-bit stereo PCM on stdout. The equaliser runs as a live layer after decode.
-func streamArgs(url string, at time.Duration) []string {
+// ranged is whether ffmpeg can fetch a remote stream in bounded ranges.
+func streamArgs(url string, at time.Duration, ranged bool) []string {
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-xerror"}
 	if isHTTP(url) {
 		// A remote stream, or a manifest it names, cannot reach local files.
@@ -556,6 +565,13 @@ func streamArgs(url string, at time.Duration) []string {
 			"-rw_timeout", strconv.FormatInt(httpReadTimeout.Microseconds(), 10),
 			"-user_agent", userAgent,
 		)
+		if ranged {
+			// YouTube serves one request for a whole long file, such as a
+			// podcast episode, at about twice the speed it plays, which a
+			// slow moment of the network turns into a stall. Bounded ranges
+			// come at full speed.
+			args = append(args, "-request_size", strconv.Itoa(rangeSize))
+		}
 	}
 	if at > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(at.Seconds(), 'f', 3, 64))
@@ -691,11 +707,26 @@ func (p *Player) resolveFFmpeg() (string, error) {
 		if p.ffmpegPath == "" {
 			p.ffmpegPath, p.lookErr = exec.LookPath("ffmpeg")
 		}
+		if p.lookErr == nil {
+			p.rangedHTTP = supportsRanges(p.ffmpegPath)
+		}
 	})
 	if p.lookErr != nil {
 		return "", ErrNoFFmpeg
 	}
 	return p.ffmpegPath, nil
+}
+
+// supportsRanges reports whether the ffmpeg at path has the HTTP option
+// request_size, which older builds lack. Those refuse a command line
+// that names it, so it is only passed to an ffmpeg that lists it.
+func supportsRanges(path string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "-hide_banner", "-h", "protocol=http")
+	hideWindow(cmd)
+	help, err := cmd.Output()
+	return err == nil && bytes.Contains(help, []byte("-request_size"))
 }
 
 // output is the part of an oto player a session drives.
