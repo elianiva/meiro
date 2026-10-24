@@ -1,6 +1,7 @@
 package player
 
 import (
+	"context"
 	"image"
 	"os/exec"
 	"path/filepath"
@@ -137,7 +138,7 @@ func TestThePictureFollowsTheSound(t *testing.T) {
 	if err := p.Play(wav); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetVideo(clip); err != nil {
+	if err := p.SetVideo(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
 	if p.VideoURL() != clip {
@@ -180,7 +181,7 @@ func TestANewStreamDropsThePicture(t *testing.T) {
 	if err := p.Play(wav); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetVideo(clip); err != nil {
+	if err := p.SetVideo(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
 	other := filepath.Join(filepath.Dir(wav), "other.wav")
@@ -193,8 +194,14 @@ func TestANewStreamDropsThePicture(t *testing.T) {
 	if p.VideoURL() != "" {
 		t.Fatalf("VideoURL = %q after a new stream, want none", p.VideoURL())
 	}
+	// A request superseded before it reached the player sets nothing.
+	superseded, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := p.SetVideo(superseded, clip); err == nil || p.VideoURL() != "" {
+		t.Fatalf("a superseded request: err %v, VideoURL %q", err, p.VideoURL())
+	}
 	p.Stop()
-	if err := p.SetVideo(clip); err != nil {
+	if err := p.SetVideo(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
 	if p.VideoURL() != "" {
@@ -207,7 +214,7 @@ func TestAnUnreadablePictureFails(t *testing.T) {
 	if err := p.Play(wav); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetVideo(filepath.Join(t.TempDir(), "missing.mp4")); err != nil {
+	if err := p.SetVideo(t.Context(), filepath.Join(t.TempDir(), "missing.mp4")); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "the failure", func() bool { return p.VideoFailure() != "" })

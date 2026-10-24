@@ -94,7 +94,7 @@ func (a *app) syncVideo() {
 		// The player takes the picture only once a stream plays; before
 		// that this is a no-op, and the next poll asks again, with the
 		// URL now remembered.
-		return stream.Video, a.player.SetVideo(stream.Video)
+		return stream.Video, a.player.SetVideo(ctx, stream.Video)
 	}, func(url string, err error) {
 		if err != nil {
 			log.Printf("playback: video unavailable video_id=%s: %v", id, err)

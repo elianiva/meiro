@@ -67,8 +67,10 @@ type videoFrame struct {
 // SetVideo shows the picture of url, the stream playing's video, in step
 // with it from where it is now. It replaces the picture shown, and does
 // nothing when no stream is loaded. A Seek keeps the picture, moving it with
-// the sound; a new stream and Stop drop it.
-func (p *Player) SetVideo(url string) error {
+// the sound; a new stream and Stop drop it. Once ctx is done it does
+// nothing and returns ctx's error, so a request that was superseded cannot
+// replace the picture of the one that superseded it.
+func (p *Player) SetVideo(ctx context.Context, url string) error {
 	p.ctl.Lock()
 	defer p.ctl.Unlock()
 	p.mu.Lock()
@@ -81,7 +83,7 @@ func (p *Player) SetVideo(url string) error {
 	if s == nil {
 		return nil
 	}
-	ffmpeg, err := p.resolveFFmpeg(context.Background())
+	ffmpeg, err := p.resolveFFmpeg(ctx)
 	if err != nil {
 		return err
 	}
