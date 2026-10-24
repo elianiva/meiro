@@ -1,6 +1,8 @@
 package player
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -49,6 +51,21 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 func near(got, want time.Duration) bool {
 	d := got - want
 	return d > -300*time.Millisecond && d < 300*time.Millisecond
+}
+
+func TestCanceledPlayCanBeRetried(t *testing.T) {
+	p, wav := newTestPlayer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := p.PlayContext(ctx, wav); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Play with a canceled context = %v, want context.Canceled", err)
+	}
+	if err := p.PlayContext(context.Background(), wav); err != nil {
+		t.Fatalf("Play after cancellation = %v", err)
+	}
+	if !p.Active() {
+		t.Fatal("the retry did not start the stream")
+	}
 }
 
 func TestPlaysAFileToItsEnd(t *testing.T) {

@@ -1671,6 +1671,13 @@ func TestTheWindowTitleNamesTheTrackPlaying(t *testing.T) {
 	if got, want := a.windowTitle(), "Bill Withers, Grover Washington - All Because of You"; got != want {
 		t.Errorf("while playing the title is %q, want %q", got, want)
 	}
+	// An item whose row links no artist names one only in its byline.
+	radio := youtube.MusicItem{VideoID: "b", Title: "Kitto Coaster", Subtitle: "Ado", Kind: youtube.KindTrack}
+	a.play(radio, []youtube.MusicItem{radio})
+	pollUntil(t, a, "b to play", func() bool { return a.current.VideoID == "b" && a.player.Playing() })
+	if got, want := a.windowTitle(), "Ado - Kitto Coaster"; got != want {
+		t.Errorf("a row that links no artist leaves the title %q, want %q", got, want)
+	}
 	a.togglePlay()
 	if got := a.windowTitle(); got != "Meiro" {
 		t.Errorf("once paused the title is %q", got)

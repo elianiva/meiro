@@ -17,7 +17,10 @@ go_library(
 
 go_test(
     name = "artwork_test",
-    srcs = ["fit_test.go"],
+    srcs = [
+        "fit_test.go",
+        "notification_test.go",
+    ],
     embed = [":artwork"],
     deps = [
         "//m3",

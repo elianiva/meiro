@@ -64,7 +64,7 @@ func frameAt(t *testing.T, v *videoSession, at time.Duration) int {
 func TestFramesAreDueAtTheirTimeInTheStream(t *testing.T) {
 	clip := numberedClip(t, 4)
 	p := New(WithNullAudio())
-	ffmpeg, err := p.resolveFFmpeg()
+	ffmpeg, err := p.resolveFFmpeg(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestFramesAreDueAtTheirTimeInTheStream(t *testing.T) {
 func TestADecodeFromWithinTheStreamIsDueFromThere(t *testing.T) {
 	clip := numberedClip(t, 4)
 	p := New(WithNullAudio())
-	ffmpeg, err := p.resolveFFmpeg()
+	ffmpeg, err := p.resolveFFmpeg(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

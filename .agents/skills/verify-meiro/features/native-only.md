@@ -7,6 +7,7 @@ These behaviors need a real window, device, account or network. The headless tes
 - `native-window` covers the OS window, title bar, vibrancy, tray, and the mini player window.
 - `native-audio` covers the real sound card, device selection, and volume.
 - `native-media-keys` covers MPRIS on Linux and Now Playing on macOS (`systemmedia/`).
+- `native-notifications` covers Windows track notifications and their cover icons.
 - `native-youtube` covers real InnerTube responses, real sign-in, and region or age blocks.
 - `native-ytdlp` covers resolving real audio URLs and reading browser cookies.
 - `native-deeplink` covers `meiro://` links and single instance behavior.
@@ -16,11 +17,13 @@ These behaviors need a real window, device, account or network. The headless tes
 
 - In an Amp orb, run `scripts/doctor.sh`; it attempts `amp orb desktop ensure` and checks the tools `.agents/setup` installs. Then run `scripts/native.sh start` and inspect the real native window. Do not treat the initial absence of a Desktop environment file as proof that native verification is unavailable.
 - On a laptop, run `bazel run //:dev` (live reload) with `ffmpeg` and `yt-dlp` on `PATH`.
+- On Windows, enable track notifications in Settings → Desktop, then play a track and inspect the notification's cover icon.
 - Install a release build from `scripts/package-linux.sh` or the release workflow.
 
 ## Verification boundaries
 
 - **Orb Desktop path.** `native-window` (real labwc window, fullscreen), `native-audio` (a `Meiro` stream on the Desktop null sink with position advancing), signed-out live `native-youtube`, and `native-ytdlp` resolving a real stream can be checked there. Search, click, inspect screenshots, and use `pactl list sink-inputs` for audio evidence.
+- **Windows notifications.** The Windows cross-build type-checks the notification icon path, but only a Windows run can confirm the shell displays cover art rather than a white square.
 - **Known limits; report rather than rediscover.** MPRIS cannot be verified in this orb because it has no user D-Bus session. Never sign in with a real account. Brand-channel switching/identity and playback-history reporting therefore remain fake-session tests here; say that fake tests cover the code/request path but no real-account flow was exercised. Do not imply otherwise.
 - **Not verifiable on this orb.** The tray icon is unavailable in the orb Desktop, so neither the wordmark nor O mark appearance can be checked here. Also not verifiable: macOS Now Playing, deep links on another OS, the updater, macOS and Windows rendering, and real sound-card output.
 - **No native screen recorder is installed.** `scripts/native.sh capture-loop [interval-seconds] [duration-seconds] [name]` is the standard timed screenshot fallback and writes timestamps alongside PNG frames. Successive `shot` captures with step notes are also fine. Do not stitch the stills into an MP4 or call it a real recording.

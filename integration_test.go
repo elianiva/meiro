@@ -76,6 +76,36 @@ func TestDiscordPresenceFallsBackToTheFirstArtistOfASavedQueue(t *testing.T) {
 	}
 }
 
+func TestDiscordPresenceShowsTheBylineWhenNoArtistIsLinked(t *testing.T) {
+	// A saved queue's row can link no artist, so the item credits none. The
+	// byline names Ado, and the player shows it.
+	item := youtube.MusicItem{
+		VideoID:  "track-3",
+		Title:    "きっとコースター - Kitto Coaster",
+		Subtitle: "Ado",
+		Kind:     youtube.KindTrack,
+		Duration: "2:59",
+	}
+	got := discordPresenceState(item, 0, 179*time.Second, 1)
+	if got.Artist != "Ado" {
+		t.Errorf("Discord artist = %q, want the artist the byline names", got.Artist)
+	}
+}
+
+func TestDiscordPresenceKeepsAnEpisodeBylineOutOfTheArtistLine(t *testing.T) {
+	// An episode's second line names the show and its length, not an artist.
+	item := youtube.MusicItem{
+		VideoID:  "episode-1",
+		Title:    "Episode 4",
+		Subtitle: "Episode • Show • 1 hr 30 min",
+		Kind:     youtube.KindEpisode,
+	}
+	got := discordPresenceState(item, 0, time.Minute, 1)
+	if got.Artist != "" {
+		t.Errorf("Discord artist = %q, want no artist for an episode", got.Artist)
+	}
+}
+
 func TestEveryPageLoadsAndDraws(t *testing.T) {
 	pages := []struct {
 		path string

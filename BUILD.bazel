@@ -136,6 +136,8 @@ go_library(
         "collections.go",
         "crash.go",
         "desktop.go",
+        "desktop_notify_other.go",
+        "desktop_notify_windows.go",
         "episodes.go",
         "eq.go",
         "fonts.go",
@@ -206,7 +208,15 @@ go_library(
         "@com_github_egoist_mygo//plugins/updater/native",
         "@com_github_egoist_mygo//ui",
         "@com_github_egoist_mygo//ui/chart",
-    ],
+    ] + select({
+        "@rules_go//go/platform:windows_amd64": [
+            "@org_golang_x_sys//windows",
+        ],
+        "@rules_go//go/platform:windows_arm64": [
+            "@org_golang_x_sys//windows",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 go_binary(

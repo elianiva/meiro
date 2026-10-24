@@ -142,18 +142,29 @@ func (a *app) syncDiscordPresence() {
 	a.discord.Update(discordPresenceState(a.current, a.player.Position(), a.total, a.seekVersion))
 }
 
-// discordPresenceState selects the fields from the current track that belong
-// in Discord's compact activity, rather than forwarding its display subtitle.
-func discordPresenceState(item youtube.MusicItem, position, total time.Duration, seekVersion uint64) discordrpc.State {
-	artist := item.Artists
-	if artist == "" {
-		// A queue saved before the item named every artist has only the first.
-		artist = item.Artist
+// shownArtist is the artist line for a track: the credited artists, else the
+// one credit an older saved queue kept, else the byline the player shows for a
+// row that links none.
+func shownArtist(item youtube.MusicItem) string {
+	if item.Artists != "" {
+		return item.Artists
 	}
+	if item.Artist != "" {
+		return item.Artist
+	}
+	if item.Kind != youtube.KindTrack {
+		return ""
+	}
+	return item.Subtitle
+}
+
+// discordPresenceState selects the fields from the current track that belong
+// in Discord's compact activity.
+func discordPresenceState(item youtube.MusicItem, position, total time.Duration, seekVersion uint64) discordrpc.State {
 	return discordrpc.State{
 		VideoID:     item.VideoID,
 		Title:       item.Title,
-		Artist:      artist,
+		Artist:      shownArtist(item),
 		ArtworkURL:  item.Thumbnail,
 		Position:    position,
 		Duration:    total,

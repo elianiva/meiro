@@ -51,6 +51,9 @@ type playback struct {
 	// stream finds the current track's audio; it is busy from the moment a
 	// track is chosen until its audio is found.
 	stream task
+	// notificationArtwork loads the current cover before showing its track
+	// notification on Windows.
+	notificationArtwork task
 	// loudnessLoad and preloadLoudnessLoad ask for the loudness of the current
 	// and the next track; a result lands in loudnessMap whenever it arrives.
 	loudnessLoad        task
@@ -204,10 +207,38 @@ func (a *app) afterEnter(item youtube.MusicItem, changed bool) {
 	a.loadPanel()
 	if changed {
 		if a.settings.NotifyTrack {
-			a.desktop.notify(item)
+			a.notifyTrack(item)
+		} else {
+			a.notificationArtwork.stop()
 		}
 	}
 	a.syncSystemMedia()
+}
+
+// notifyTrack waits for a fresh Windows cover so the native notification can
+// show it instead of the app icon. Other platforms keep their normal
+// notification path.
+func (a *app) notifyTrack(item youtube.MusicItem) {
+	if a.desktop == nil {
+		return
+	}
+	if !notificationArtworkNeeded() || a.thumbs == nil {
+		a.notificationArtwork.stop()
+		a.desktop.notify(item, nil)
+		return
+	}
+	startTask(a, &a.notificationArtwork, 8*time.Second, func(ctx context.Context) ([]byte, error) {
+		return a.thumbs.NotificationIcon(ctx, item.Thumbnail)
+	}, func(icon []byte, err error) {
+		if a.current.VideoID != item.VideoID {
+			return
+		}
+		if err != nil {
+			log.Printf("fetching track notification artwork: %v", err)
+			icon = nil // The coloured app icon is the safe fallback.
+		}
+		a.desktop.notify(item, icon)
+	})
 }
 
 // loading reports whether the track chosen is not making sound yet: its audio
@@ -491,8 +522,8 @@ func (a *app) seek(position time.Duration) {
 // that landed while this was on its way.
 func (a *app) applySeek() {
 	at := a.seekTarget
-	startTask(a, &a.seeking, noTimeout, func(context.Context) (time.Duration, error) {
-		a.player.Seek(at)
+	startTask(a, &a.seeking, noTimeout, func(ctx context.Context) (time.Duration, error) {
+		a.player.SeekContext(ctx, at)
 		return at, nil
 	}, func(applied time.Duration, _ error) {
 		a.seekVersion++

@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"io"
 	"net/http"
 	neturl "net/url"
@@ -21,6 +24,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	xdraw "golang.org/x/image/draw"
 
 	"github.com/elianiva/meiro/m3"
 )
@@ -439,9 +443,14 @@ func (t *Cache) dropStaleLocked() {
 
 // download fetches the picture at url.
 func (t *Cache) download(url string) ([]byte, error) {
+	return t.downloadContext(context.Background(), url)
+}
+
+// downloadContext fetches the picture at url until ctx ends.
+func (t *Cache) downloadContext(ctx context.Context, url string) ([]byte, error) {
 	// Each download is bounded by the client's timeout; nothing cancels one
-	// sooner, since a picture that lands late is still kept.
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	// sooner unless its caller cancels it.
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -472,6 +481,48 @@ func (t *Cache) download(url string) ([]byte, error) {
 	// The buffer grew in doublings and the kept copy would carry its spare
 	// room, for as long as the source stays cached.
 	return bytes.Clone(data), nil
+}
+
+// NotificationIcon fetches a fresh, opaque PNG for a Windows track
+// notification. Notifications use the supplied image rather than the app's
+// tray template, so the shell cannot tint the cover into a white square.
+func (t *Cache) NotificationIcon(ctx context.Context, url string) ([]byte, error) {
+	if url == "" {
+		return nil, errors.New("track has no artwork URL")
+	}
+	data, err := t.downloadContext(ctx, thumbnailURL(url, notificationIconSize))
+	if err != nil {
+		return nil, err
+	}
+	return notificationIconPNG(data)
+}
+
+const notificationIconSize = 96
+
+// notificationIconPNG makes a square, opaque Windows icon from a downloaded
+// cover. The solid background preserves a clear edge for transparent sources.
+func notificationIconPNG(data []byte) ([]byte, error) {
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("read notification artwork dimensions: %w", err)
+	}
+	if config.Width <= 0 || config.Height <= 0 || config.Width > 4096 || config.Height > 4096 {
+		return nil, fmt.Errorf("notification artwork dimensions %dx%d are invalid", config.Width, config.Height)
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode notification artwork: %w", err)
+	}
+	cover := fit(img, notificationIconSize)
+	icon := image.NewRGBA(image.Rect(0, 0, notificationIconSize, notificationIconSize))
+	draw.Draw(icon, icon.Bounds(), image.NewUniform(color.RGBA{R: 32, G: 33, B: 36, A: 255}), image.Point{}, draw.Src)
+	xdraw.CatmullRom.Scale(icon, icon.Bounds(), cover, cover.Bounds(), xdraw.Over, nil)
+
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, icon); err != nil {
+		return nil, fmt.Errorf("encode notification artwork: %w", err)
+	}
+	return encoded.Bytes(), nil
 }
 
 // decode creates a bitmap, retaining downloaded source bytes, and reports

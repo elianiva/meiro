@@ -1,6 +1,7 @@
 package player
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"io"
@@ -80,7 +81,7 @@ func (p *Player) SetVideo(url string) error {
 	if s == nil {
 		return nil
 	}
-	ffmpeg, err := p.resolveFFmpeg()
+	ffmpeg, err := p.resolveFFmpeg(context.Background())
 	if err != nil {
 		return err
 	}

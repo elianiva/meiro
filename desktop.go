@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -32,6 +33,14 @@ type desktop struct {
 	trayIcon string
 	// mini is the tray's mini player while it is open.
 	mini mini
+	// notificationTray is the temporary full-colour icon used to show a
+	// notification's cover when the user has hidden the persistent tray.
+	notificationTray  *mygo.Tray
+	notificationTimer *time.Timer
+	notification      *mygo.Notification
+	// notificationIcon is the native icon currently attached to a track
+	// notification; zero on platforms without custom notification artwork.
+	notificationIcon uintptr
 	// trayShown is what the tray last showed, to skip identical updates.
 	trayShown trayState
 	// titleShown is the window title last set, to skip identical updates.
@@ -118,10 +127,18 @@ func (d *desktop) keepAwake(on bool) {
 	d.awake = mygo.Power.KeepAwake("Playing music", false)
 }
 
-// notify announces a track, and brings the window back when it is clicked.
-func (d *desktop) notify(item youtube.MusicItem) {
+// notify announces a track with its cover when the platform supports it, and
+// brings the window back when the user clicks the notification.
+func (d *desktop) notify(item youtube.MusicItem, icon []byte) {
 	if d == nil || !mygo.NotificationsSupported() {
 		return
+	}
+	if d.notification != nil {
+		d.notification.Close()
+		d.notification = nil
+	}
+	if err := prepareNotificationArtwork(d, icon); err != nil {
+		log.Printf("preparing notification artwork: %v", err)
 	}
 	n := mygo.NewNotification(mygo.NotificationOptions{
 		ID:    "now-playing",
@@ -130,12 +147,50 @@ func (d *desktop) notify(item youtube.MusicItem) {
 		Group: "now-playing",
 	})
 	n.OnClick(func() {
-		d.update(d.bringToFront)
+		d.update(func() {
+			d.bringToFront()
+			if d.notification == n {
+				d.clearNotificationTray()
+				d.notification = nil
+				d.clearNotificationArtwork()
+			}
+		})
 		n.Close()
 	})
+	d.notification = n
 	if err := n.Show(); err != nil {
 		log.Printf("showing track notification: %v", err)
+		d.notification = nil
+		d.clearNotificationTray()
+		d.clearNotificationArtwork()
+		return
 	}
+	if err := applyNotificationArtwork(d, item.Title, item.Subtitle, icon); err != nil {
+		log.Printf("setting notification artwork: %v", err)
+	}
+}
+
+// clearNotificationTray removes the temporary tray icon used only when a
+// notification has a cover and the persistent tray is hidden.
+func (d *desktop) clearNotificationTray() {
+	if d.notificationTimer != nil {
+		d.notificationTimer.Stop()
+		d.notificationTimer = nil
+	}
+	if d.notificationTray != nil {
+		d.notificationTray.Destroy()
+		d.notificationTray = nil
+	}
+}
+
+// clearNotificationArtwork releases the native icon attached to a track
+// notification, when this platform creates one.
+func (d *desktop) clearNotificationArtwork() {
+	if d == nil || d.notificationIcon == 0 {
+		return
+	}
+	destroyNotificationIcon(d.notificationIcon)
+	d.notificationIcon = 0
 }
 
 // toggleShortcut is the global shortcut that plays or pauses from anywhere.
@@ -193,6 +248,7 @@ func (d *desktop) setTray(on bool, mark settings.TrayMark, state trayState, mini
 		if d.tray != nil {
 			d.closeMini()
 			d.tray.Destroy()
+			d.clearNotificationArtwork()
 			d.tray, d.trayIcon, d.trayShown = nil, "", trayState{}
 		}
 		d.trayFailed = false
@@ -209,7 +265,7 @@ func (d *desktop) setTray(on bool, mark settings.TrayMark, state trayState, mini
 		}
 		onOpenMiniPlayer := func() { d.update(func() { d.showMini(mini, shown) }) }
 		options := mygo.TrayOptions{
-			ID:             "meiro-tray",
+			ID:             meiroTrayID,
 			Icon:           icon,
 			IconIsTemplate: trayIconTemplate(runtime.GOOS),
 			ToolTip:        state.tip,
@@ -269,8 +325,8 @@ func trayIcon(name string) ([]byte, error) {
 }
 
 // trayIconName and trayIconTemplate select marks that stay legible at the
-// platform's tray size. Windows keeps the coloured app icon because its tray
-// image is also used in track notifications.
+// platform's tray size. Windows keeps the coloured app icon as a safe fallback
+// for track notifications.
 func trayIconName(goos string, mark settings.TrayMark) string {
 	if goos == "windows" {
 		return "icon.png"
@@ -340,10 +396,16 @@ func (d *desktop) close() {
 	}
 	d.keepAwake(false)
 	mygo.GlobalShortcut.UnregisterAll()
+	if d.notification != nil {
+		d.notification.Close()
+		d.notification = nil
+	}
 	if d.tray != nil {
 		d.tray.Destroy()
 		d.tray = nil
 	}
+	d.clearNotificationTray()
+	d.clearNotificationArtwork()
 }
 
 // appScheme is the deep link scheme Meiro answers to, as
@@ -351,6 +413,8 @@ func (d *desktop) close() {
 // the system by the installers mygo build makes, and at run time for
 // portable builds.
 const appScheme = "meiro"
+
+const meiroTrayID = "meiro-tray"
 
 // setupDesktop wires the app to the rest of the system: the second-instance
 // handoff, deep links, notification clicks, power changes, the tray, the
@@ -374,7 +438,17 @@ func (a *app) setupDesktop() {
 			a.update(a.desktop.bringToFront)
 		}
 	})
-	mygo.App.OnDidBecomeActive(func() { mygo.ClearNotifications() })
+	mygo.App.OnDidBecomeActive(func() {
+		mygo.ClearNotifications()
+		notification := a.desktop.notification
+		a.update(func() {
+			if a.desktop.notification == notification {
+				a.desktop.clearNotificationTray()
+				a.desktop.notification = nil
+				a.desktop.clearNotificationArtwork()
+			}
+		})
+	})
 	// The system can take the window out of full screen itself; the picture
 	// then goes back to its place in the player.
 	a.desktop.win.OnLeaveFullScreen(func() { a.update(func() { a.nowPlaying.fullscreen = false }) })
@@ -399,10 +473,7 @@ func (a *app) windowTitle() string {
 	if a.current.VideoID == "" || !a.player.Playing() {
 		return "Meiro"
 	}
-	artist := a.current.Artists
-	if artist == "" {
-		artist = a.current.Artist
-	}
+	artist := shownArtist(a.current)
 	if artist == "" {
 		return a.current.Title
 	}

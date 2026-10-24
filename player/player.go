@@ -87,7 +87,8 @@ type Player struct {
 	// video is the picture decoding in step with the session, if any.
 	video *videoSession
 
-	lookOnce   sync.Once
+	lookMu     sync.Mutex
+	lookDone   bool
 	ffmpegPath string
 	lookErr    error
 	// rangedHTTP reports whether that ffmpeg can fetch a stream in bounded
@@ -129,17 +130,28 @@ func New(options ...Option) *Player {
 // Play starts url from its beginning, replacing anything playing. It returns
 // once ffmpeg has started, not when the stream ends.
 func (p *Player) Play(url string) error {
+	return p.PlayContext(context.Background(), url)
+}
+
+// PlayContext starts url from its beginning, replacing anything playing. It
+// returns once ffmpeg has started, not when the stream ends.
+func (p *Player) PlayContext(ctx context.Context, url string) error {
 	p.ctl.Lock()
 	defer p.ctl.Unlock()
-	return p.start(url, 0, false)
+	return p.start(ctx, url, 0, false)
 }
 
 // PlayAt is Play from the position at, and held when paused. It is how a
 // stream that broke off is picked up again where it stopped.
 func (p *Player) PlayAt(url string, at time.Duration, paused bool) error {
+	return p.PlayAtContext(context.Background(), url, at, paused)
+}
+
+// PlayAtContext is PlayContext from the position at, and held when paused.
+func (p *Player) PlayAtContext(ctx context.Context, url string, at time.Duration, paused bool) error {
 	p.ctl.Lock()
 	defer p.ctl.Unlock()
-	return p.start(url, max(at, 0), paused)
+	return p.start(ctx, url, max(at, 0), paused)
 }
 
 // Preload starts decoding url in the background, to follow the stream playing
@@ -152,10 +164,15 @@ func (p *Player) PlayAt(url string, at time.Duration, paused bool) error {
 // preloaded successor failed to open, ends as it would have, and what follows
 // is for the caller to decide.
 func (p *Player) Preload(tag, url string) error {
+	return p.PreloadContext(context.Background(), tag, url)
+}
+
+// PreloadContext is Preload with a caller context for ffmpeg discovery.
+func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 	if strings.TrimSpace(url) == "" {
 		return errors.New("player: stream URL is empty")
 	}
-	ffmpeg, err := p.resolveFFmpeg()
+	ffmpeg, err := p.resolveFFmpeg(ctx)
 	if err != nil {
 		return err
 	}
@@ -272,6 +289,11 @@ func (p *Player) Toggle() {
 // Seek moves to at within the stream by restarting the decode there. It
 // keeps the stream paused when it was paused.
 func (p *Player) Seek(at time.Duration) {
+	p.SeekContext(context.Background(), at)
+}
+
+// SeekContext is Seek with a caller context for ffmpeg discovery.
+func (p *Player) SeekContext(ctx context.Context, at time.Duration) {
 	p.ctl.Lock()
 	defer p.ctl.Unlock()
 	p.mu.Lock()
@@ -285,7 +307,7 @@ func (p *Player) Seek(at time.Duration) {
 	if s == nil || at < 0 {
 		return
 	}
-	_ = p.start(url, at, paused)
+	_ = p.start(ctx, url, at, paused)
 }
 
 // Stop ends the stream and forgets it.
@@ -500,11 +522,11 @@ func (p *Player) endedLocked(s *session) bool {
 
 // start replaces the current stream with url, decoded from at. The caller
 // holds ctl and not mu.
-func (p *Player) start(url string, at time.Duration, paused bool) error {
+func (p *Player) start(ctx context.Context, url string, at time.Duration, paused bool) error {
 	if strings.TrimSpace(url) == "" {
 		return errors.New("player: stream URL is empty")
 	}
-	ffmpeg, err := p.resolveFFmpeg()
+	ffmpeg, err := p.resolveFFmpeg(ctx)
 	if err != nil {
 		return err
 	}
@@ -735,31 +757,58 @@ func (s *session) discard() {
 	_ = s.pipe.Close()
 }
 
-func (p *Player) resolveFFmpeg() (string, error) {
-	p.lookOnce.Do(func() {
-		if p.ffmpegPath == "" {
-			p.ffmpegPath, p.lookErr = exec.LookPath("ffmpeg")
-		}
-		if p.lookErr == nil {
-			p.rangedHTTP = supportsRanges(p.ffmpegPath)
-		}
-	})
-	if p.lookErr != nil {
-		return "", ErrNoFFmpeg
+func (p *Player) resolveFFmpeg(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
+	p.lookMu.Lock()
+	defer p.lookMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if p.lookDone {
+		if p.lookErr != nil {
+			return "", ErrNoFFmpeg
+		}
+		return p.ffmpegPath, nil
+	}
+	path := p.ffmpegPath
+	if path == "" {
+		var err error
+		path, err = exec.LookPath("ffmpeg")
+		if err != nil {
+			p.lookErr = err
+			p.lookDone = true
+			return "", ErrNoFFmpeg
+		}
+	}
+	ranged, err := supportsRanges(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	p.ffmpegPath = path
+	p.rangedHTTP = ranged
+	p.lookDone = true
 	return p.ffmpegPath, nil
 }
 
 // supportsRanges reports whether the ffmpeg at path has the HTTP option
 // request_size, which older builds lack. Those refuse a command line
 // that names it, so it is only passed to an ffmpeg that lists it.
-func supportsRanges(path string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func supportsRanges(ctx context.Context, path string) (bool, error) {
+	parentCtx := ctx
+	ctx, cancel := context.WithTimeout(parentCtx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "-hide_banner", "-h", "protocol=http")
 	hideWindow(cmd)
 	help, err := cmd.Output()
-	return err == nil && bytes.Contains(help, []byte("-request_size"))
+	if err := parentCtx.Err(); err != nil {
+		return false, err
+	}
+	return err == nil && bytes.Contains(help, []byte("-request_size")), nil
 }
 
 // output is the part of an oto player a session drives.

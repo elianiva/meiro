@@ -7,7 +7,7 @@ activity. The feature is off by default.
 ## Sub-features
 
 - `discord-presence-settings` saves the opt-in switch. Meiro supplies its application ID in the app build.
-- `discord-presence-playback` publishes the current track, artist, artwork, and start and end timestamps. Discord draws a time bar from them; the end is left out while the length is unknown. The member list shows every credited artist, joined with commas, or Meiro's name when the track credits none.
+- `discord-presence-playback` publishes the current track, artist, artwork, and start and end timestamps. Discord draws a time bar from them; the end is left out while the length is unknown. The member list shows every credited artist, joined with commas, and falls back to the track's byline when the item credits none.
 - `discord-presence-clear` clears the activity on pause, stop, disable or app exit.
 - `discord-presence-reconnect` retries when Discord is not running or its IPC connection closes.
 - `discord-presence-client-discovery` finds standard IPC sockets for native clients, Flatpak app exports and per-app runtime paths, and Snap runtime paths without a fixed client-ID list.

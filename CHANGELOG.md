@@ -11,9 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Music videos and podcast episodes can show their video.** The player offers an Audio/Video choice for a music video or an episode; Video shows the picture in place of the artwork, in step with the sound, and Audio goes back to the artwork. The choice is remembered. Songs keep showing their artwork. Showing the video asks YouTube for nothing extra: its stream comes along with the audio's.
 - **The video can fill the screen.** A Full screen button on the picture takes the window full screen with the picture alone; the controls, title and position slider hide after the pointer rests and come back when it moves. Escape, the button in the corner, or a track without a video brings the player back.
 - **Click the video to play or pause, double-click it for full screen.** This works both in the player and in full screen, where a double click brings the player back. A click shows a play or pause icon that briefly swells and fades over the picture, like YouTube.
+- **Windows track notifications show the current cover art.** A missing or invalid cover falls back to Meiro's coloured app icon.
 
 ### Fixed
 
+- **Discord and the window title show the artist of a track whose row links none.** Some track rows name the artist as plain text, so Discord left the member list as Meiro and the title dropped the artist. Both now fall back to the byline the player shows.
 - **Long podcast episodes play without buffering.** YouTube slowed long episodes down to barely faster than they play, so a dip in the network meant silence. Meiro now fetches them at full speed, and saves them to the audio cache in seconds instead of giving up partway. Faster playback needs a recent ffmpeg, which the full build includes.
 - **Times beside the position slider stay on one line.** For tracks and episodes over an hour, the elapsed time and length no longer break onto a second line.
 

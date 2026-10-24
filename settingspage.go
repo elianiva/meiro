@@ -555,7 +555,12 @@ func (a *app) desktopCard(c *ui.Context) {
 	a.settingsCard(c, "Desktop", m3.IconNotifications, func() {
 		ui.Column(c).Gap(4).Children(func() {
 			a.desktopSwitch(c, "Track notifications", "Announce each new track. Clicking one brings Meiro back.",
-				a.settings.NotifyTrack, func(on bool) { a.settings.NotifyTrack = on })
+				a.settings.NotifyTrack, func(on bool) {
+					a.settings.NotifyTrack = on
+					if !on {
+						a.notificationArtwork.stop()
+					}
+				})
 			a.desktopSwitch(c, "Menu bar icon", "Keep Meiro in the menu bar with play, next and quit.",
 				a.settings.ShowTray, func(on bool) {
 					a.settings.ShowTray = on
