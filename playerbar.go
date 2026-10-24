@@ -79,7 +79,7 @@ func (a *app) scrubber(c *ui.Context) {
 	a.scrub = min(a.scrub, total)
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 		m3.Text(c, m3.LabelMedium, clock(time.Duration(a.scrub*float64(time.Second)))).
-			Width(40).TextAlign(ui.End).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
+			MinWidth(40).NoWrap().TextAlign(ui.End).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 		slider := m3.Slider(c, &a.scrub, 0, total, m3.SliderSpec{
 			Label: "Position", Key: "scrubber", Wavy: true, Waving: a.player.Playing(), Disabled: !known,
 		})
@@ -93,7 +93,7 @@ func (a *app) scrubber(c *ui.Context) {
 			// Arrow keys, Home and End change the value without a pointer press.
 			a.seek(time.Duration(a.scrub * float64(time.Second)))
 		}
-		m3.Text(c, m3.LabelMedium, clock(a.total)).Width(40).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
+		m3.Text(c, m3.LabelMedium, clock(a.total)).MinWidth(40).NoWrap().Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 	})
 }
 

@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Long podcast episodes play without buffering.** YouTube slowed long episodes down to barely faster than they play, so a dip in the network meant silence. Meiro now fetches them at full speed, and saves them to the audio cache in seconds instead of giving up partway. Faster playback needs a recent ffmpeg, which the full build includes.
+- **Times beside the position slider stay on one line.** For tracks and episodes over an hour, the elapsed time and length no longer break onto a second line.
 
 ## [0.4.9] - 2026-10-23
 
