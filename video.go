@@ -11,7 +11,6 @@ import (
 
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/m3"
-	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -22,8 +21,10 @@ type videoState struct {
 	load task
 	// id is the track whose picture was last asked for, and err why it
 	// could not be shown; a track is not asked for again until it changes.
-	id  string
-	err string
+	// fullScreen says the picture asked for was the full-screen one.
+	id         string
+	err        string
+	fullScreen bool
 	// bitmap holds the frame drawn, once a frame of the track id has come;
 	// hasFrame says one has.
 	bitmap   *ui.Bitmap
@@ -59,10 +60,20 @@ func (a *app) setShowVideo(on bool) {
 	a.syncVideo()
 }
 
+// The picture's frames are as tall as its stream: 720p in the player, and
+// 1080p over the whole screen.
+const (
+	videoHeight           = 720
+	fullScreenVideoHeight = 1080
+)
+
 // syncVideo brings the player's picture in line with wantVideo: it starts
 // the picture of the track playing when it is wanted and not yet shown, and
-// stops it when it is not. Opening the player, choosing the picture, a track
-// starting and each poll call it, so the picture follows them all.
+// stops it when it is not. Full screen asks for the sharper picture, and
+// leaving it for the one the player shows; the player switches between them
+// without a gap. Opening the player, choosing the picture, a track
+// starting, filling the screen and each poll call it, so the picture
+// follows them all.
 func (a *app) syncVideo() {
 	if !a.wantVideo() {
 		a.setFullscreen(false)
@@ -73,13 +84,15 @@ func (a *app) syncVideo() {
 		}
 		return
 	}
-	id := a.current.VideoID
-	if a.video.id == id && (a.video.load.busy() || a.video.err != "" || a.player.VideoURL() != "") {
+	id, fullScreen := a.current.VideoID, a.nowPlaying.fullscreen
+	if a.video.id == id && (a.video.err != "" ||
+		a.video.fullScreen == fullScreen && (a.video.load.busy() || a.player.VideoURL() != "")) {
 		return
 	}
 	if a.video.id != id {
 		a.video.id, a.video.err, a.video.hasFrame = id, "", false
 	}
+	a.video.fullScreen = fullScreen
 	// The picture's URL came with the audio's, from the one yt-dlp run that
 	// found it; a track whose audio came from the cache resolves now.
 	streams := a.streams
@@ -91,27 +104,52 @@ func (a *app) syncVideo() {
 		if stream.Video == "" {
 			return "", errors.New("the track has no picture")
 		}
+		url, height, fps := stream.Video, videoHeight, stream.VideoFPS
+		if fullScreen && stream.FullScreenVideo != "" {
+			url, height, fps = stream.FullScreenVideo, fullScreenVideoHeight, stream.FullScreenVideoFPS
+		}
 		// The player takes the picture only once a stream plays; before
 		// that this is a no-op, and the next poll asks again, with the
 		// URL now remembered.
-		return stream.Video, a.player.SetVideo(ctx, stream.Video)
+		return url, a.player.SetVideo(ctx, url, height, fps)
 	}, func(url string, err error) {
 		if err != nil {
 			log.Printf("playback: video unavailable video_id=%s: %v", id, err)
 			a.video.err = "The video isn't available."
 			return
 		}
-		log.Printf("playback: video started video_id=%s", id)
+		log.Printf("playback: video started video_id=%s full_screen=%t", id, fullScreen)
 	})
 }
 
+// maxVideoFPS is the highest frame rate YouTube serves.
+const maxVideoFPS = 60
+
 // startVideoPump wakes the main thread at the picture's frame rate while a
 // picture decodes, so pumpVideo can draw each frame as the sound reaches it.
+// It ticks at maxVideoFPS and passes on the ticks that keep to the
+// picture's own rate, so a 24 fps picture redraws the window 24 times a
+// second, not 60.
 func (a *app) startVideoPump() {
-	a.every(time.Second/player.VideoFPS, func() {
-		if a.player.VideoURL() != "" {
-			a.update(a.pumpVideo)
+	var next time.Time
+	a.every(time.Second/maxVideoFPS, func() {
+		fps := a.player.VideoFPS()
+		if fps <= 0 {
+			return
 		}
+		// A tick may come a little before its time; at 60 fps it would
+		// otherwise miss the frame it is for.
+		now := time.Now()
+		if now.Add(4 * time.Millisecond).Before(next) {
+			return
+		}
+		next = next.Add(time.Duration(float64(time.Second) / fps))
+		if next.Before(now) {
+			// Behind by more than a frame, or just started: keep time from
+			// now, not from ticks that are gone.
+			next = now.Add(time.Duration(float64(time.Second) / fps))
+		}
+		a.update(a.pumpVideo)
 	})
 }
 
@@ -158,6 +196,7 @@ func (a *app) setFullscreen(on bool) {
 	}
 	a.nowPlaying.fullscreen = on
 	a.desktop.setFullScreen(on)
+	a.syncVideo()
 }
 
 // nowPlayingVideo shows the picture of the track playing where the artwork

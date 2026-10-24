@@ -27,11 +27,15 @@ import (
 var ErrMissing = errors.New("playing needs ffmpeg and yt-dlp on PATH")
 
 // streamFormat is what one run asks for: the best audio, and beside it the
-// picture, no taller than the player shows it and H.264 where YouTube has
-// it, which every machine decodes with little work. Both come from the one
-// player response, so a track with a picture costs no more requests than
-// one without; a track with no picture gives the audio alone.
-const streamFormat = "bestaudio,bestvideo[height<=720][vcodec^=avc1]/bestvideo[height<=720]/bestvideo"
+// picture twice, no taller than the player shows it and no taller than a
+// 1080p screen shows it, each H.264 where YouTube has it, which every
+// machine decodes with little work, and otherwise anything but AV1, which
+// the ffmpeg the app ships cannot decode. All come from the one player response,
+// so a track with a picture costs no more requests than one without; a
+// track with no picture gives the audio alone.
+const streamFormat = "bestaudio," +
+	"bestvideo[height<=720][vcodec^=avc1]/bestvideo[height<=720][vcodec!^=av01]/bestvideo," +
+	"bestvideo[height<=1080][vcodec^=avc1]/bestvideo[height<=1080][vcodec!^=av01]/bestvideo"
 
 // Resolve asks yt-dlp for the direct URLs of a track's audio and picture, and
 // its length. Stream resolution is anonymous; account cookies stay with the
@@ -67,7 +71,9 @@ func resolve(ctx context.Context, videoID string, jsless bool) (audio.Stream, er
 	} else {
 		jsRuntime, runtimeArgs = jsRuntimeArgs()
 	}
-	args := []string{"-f", streamFormat, "-g", "--no-playlist", "--extractor-args", extractorArgs}
+	// Each stream prints as its frame rate and its URL, so the picture
+	// decodes at its own rate.
+	args := []string{"-f", streamFormat, "--print", "%(fps)s %(url)s", "--no-playlist", "--extractor-args", extractorArgs}
 	args = append(args, runtimeArgs...)
 	args = append(args, youtube.WatchURL(videoID))
 	command := proc.Command(ctx, path, args...)
@@ -89,15 +95,17 @@ func resolve(ctx context.Context, videoID string, jsless bool) (audio.Stream, er
 	if stream.URL == "" {
 		return audio.Stream{}, errors.New("could not resolve the audio")
 	}
-	log.Printf("playback: yt-dlp resolved video_id=%s video=%t elapsed=%s", videoID, stream.Video != "", time.Since(started).Round(time.Millisecond))
+	log.Printf("playback: yt-dlp resolved video_id=%s video=%t video_fps=%g full_screen_video=%t full_screen_video_fps=%g elapsed=%s", videoID, stream.Video != "", stream.VideoFPS, stream.FullScreenVideo != "", stream.FullScreenVideoFPS, time.Since(started).Round(time.Millisecond))
 	return stream, nil
 }
 
 // parseStreams reads the URLs yt-dlp printed, one per line in the order of
-// streamFormat: the audio, then the picture when the track has one. A
-// YouTube media URL names its kind in its mime parameter, which tells the
-// two apart even when the audio is missing; a URL without one is taken in
-// order.
+// streamFormat: the audio, then the picture and its full-screen one when
+// the track has them, each after its frame rate, NA for the audio. A
+// YouTube media URL names its kind in its mime
+// parameter, which tells the audio from the picture even when the audio is
+// missing; a URL without one is taken in order. A full-screen picture no
+// sharper than the other, the same URL, is none.
 func parseStreams(output string) audio.Stream {
 	var stream audio.Stream
 	for line := range strings.SplitSeq(output, "\n") {
@@ -105,14 +113,22 @@ func parseStreams(output string) audio.Stream {
 		if line == "" {
 			continue
 		}
+		var fps float64
+		if rate, rest, ok := strings.Cut(line, " "); ok {
+			fps, _ = strconv.ParseFloat(rate, 64)
+			line = strings.TrimSpace(rest)
+		}
 		mime := ""
 		if parsed, err := url.Parse(line); err == nil {
 			mime = parsed.Query().Get("mime")
 		}
 		switch {
 		case strings.HasPrefix(mime, "video/") || (mime == "" && stream.URL != ""):
-			if stream.Video == "" {
-				stream.Video = line
+			switch {
+			case stream.Video == "":
+				stream.Video, stream.VideoFPS = line, fps
+			case stream.FullScreenVideo == "" && line != stream.Video:
+				stream.FullScreenVideo, stream.FullScreenVideoFPS = line, fps
 			}
 		case stream.URL == "":
 			stream.URL = line

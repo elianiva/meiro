@@ -5,6 +5,9 @@ go_library(
     srcs = [
         "equalizer.go",
         "null.go",
+        "pipe_linux.go",
+        "pipe_other.go",
+        "pipe_windows.go",
         "player.go",
         "video.go",
         "window_unix.go",
@@ -12,7 +15,17 @@ go_library(
     ],
     importpath = "github.com/elianiva/meiro/player",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_ebitengine_oto_v3//:oto"],
+    deps = [
+        "@com_github_ebitengine_oto_v3//:oto",
+    ] + select({
+        "@rules_go//go/platform:android": [
+            "@org_golang_x_sys//unix",
+        ],
+        "@rules_go//go/platform:linux": [
+            "@org_golang_x_sys//unix",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 go_test(

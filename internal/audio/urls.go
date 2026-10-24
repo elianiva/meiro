@@ -17,13 +17,19 @@ const (
 )
 
 // Stream is what one resolve of a track finds: the direct URL of its audio,
-// the direct URL of its picture, when the track has one, and its length.
-// Both URLs come from a single yt-dlp run, so asking for the picture costs
-// no request of its own.
+// the direct URLs of its picture, when the track has one, and its length.
+// Video is the picture at up to 720p, as the player shows it, and
+// FullScreenVideo at up to 1080p, as the whole screen shows it; it is empty
+// when the track has nothing sharper. Each picture's FPS is its frame rate,
+// 0 when unknown. Every URL comes from a single yt-dlp run, so asking for
+// the picture costs no request of its own.
 type Stream struct {
-	URL   string
-	Video string
-	Total time.Duration
+	URL                string
+	Video              string
+	VideoFPS           float64
+	FullScreenVideo    string
+	FullScreenVideoFPS float64
+	Total              time.Duration
 }
 
 // Resolver finds the direct URLs and the length of a track.

@@ -84,8 +84,12 @@ type Player struct {
 	next     *session
 	advanced string
 
-	// video is the picture decoding in step with the session, if any.
-	video *videoSession
+	// video is the picture decoding in step with the session, if any, and
+	// nextVideo the one on its way to replace it.
+	video, nextVideo *videoSession
+	// gpuVideo says pictures decode on the GPU, and gpuChecked that ffmpeg
+	// was asked whether they can. Guarded by ctl.
+	gpuChecked, gpuVideo bool
 
 	lookMu     sync.Mutex
 	lookDone   bool
@@ -534,12 +538,20 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	if err != nil {
 		return err
 	}
-	// The same stream started again is a seek, which keeps its picture; a
-	// new stream has none until the caller sets one.
+	// The same stream started again is a seek, which keeps its picture, the
+	// one on its way if there is one; a new stream has none until the
+	// caller sets one.
 	p.mu.Lock()
 	var video string
+	var height int
+	var fps float64
 	if p.session != nil && p.session.url == url {
-		video = p.session.video
+		for _, v := range []*videoSession{p.nextVideo, p.video} {
+			if v != nil {
+				video, height, fps = v.url, v.height, v.fps
+				break
+			}
+		}
 	}
 	p.mu.Unlock()
 	p.stop()
@@ -558,9 +570,9 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 		s.out.Play()
 	}
 	if video != "" {
-		if v, err := p.decodeVideo(ffmpeg, video, at); err == nil {
+		if v, err := p.decodeVideo(ffmpeg, video, height, fps, p.gpuVideo, at); err == nil {
 			p.mu.Lock()
-			s.video, p.video = video, v
+			p.video = v
 			p.mu.Unlock()
 		}
 	}
@@ -699,7 +711,9 @@ func (p *Player) handoff(from *session) io.Reader {
 	// The picture was the stream that ended's; the caller sets the next
 	// one's, if it has one. Ending it is a kill and a close, quick enough
 	// to hold mu through.
-	p.dropVideoLocked().end()
+	shown, nextVideo := p.dropVideoLocked()
+	shown.end()
+	nextVideo.end()
 	return next.source
 }
 
@@ -911,9 +925,6 @@ type session struct {
 	// stopped is set when the app, not ffmpeg, ended the decode.
 	stopped bool
 	waitErr error
-	// video is the URL of the picture shown with this stream, which a seek
-	// carries along; empty while there is none.
-	video string
 }
 
 // countingReader counts the bytes oto has taken from the pipe, and remembers

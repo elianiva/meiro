@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -294,13 +295,68 @@ func TestAnUnavailableVideoSaysSo(t *testing.T) {
 	tt := ui.NewTester(a.view, 1200, 800)
 	a.openPlayer(tabQueue, false)
 	afterAnimations(tt)
-	waitFor(t, func() bool { return a.player.VideoFailure() != "" })
-	a.pumpVideo()
+	// The pump, as the ticker runs it, tries a picture that failed on the
+	// GPU again on the CPU before it says the picture failed.
+	waitFor(t, func() bool { a.pumpVideo(); return a.video.err != "" })
 	tt.Frame()
 	if !tt.HasText("The video stopped playing.") {
 		t.Fatalf("the failed picture is not explained: %q", tt.Texts())
 	}
 	if !a.player.Playing() {
 		t.Fatal("a failed picture stopped the sound")
+	}
+}
+
+func TestFullScreenShowsTheSharperPicture(t *testing.T) {
+	a, clip := videoApp(t)
+	a.settings.ShowVideo = true
+	// The full-screen picture is another file, so which one shows is plain.
+	data, err := os.ReadFile(clip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := filepath.Join(t.TempDir(), "full.mp4")
+	if err := os.WriteFile(full, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	urls := a.streams
+	a.streams = audio.NewURLs(func(ctx context.Context, videoID string) (audio.Stream, error) {
+		stream, err := urls.Get(ctx, videoID)
+		stream.FullScreenVideo = full
+		return stream, err
+	})
+	q := []youtube.MusicItem{{VideoID: "v1", Title: "A music video", Kind: youtube.KindVideo}}
+	a.play(q[0], q)
+	tt := ui.NewTester(a.view, 1200, 800)
+	a.openPlayer(tabQueue, false)
+	afterAnimations(tt)
+	pumpFrames(t, a)
+	waitFor(t, func() bool { a.poll(); return a.player.Playing() })
+	if w, h := a.video.bitmap.Size(); a.player.VideoURL() != clip || w != 1280 || h != 720 {
+		t.Fatalf("the player shows %q at %dx%d, want the clip at 1280x720", a.player.VideoURL(), w, h)
+	}
+
+	// The picture shown stays until the sharper one takes over, frame for
+	// frame, and leaving full screen goes back the same way.
+	switchTo := func(label, url string, width, height int) {
+		t.Helper()
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		waitFor(t, func() bool {
+			a.pumpVideo()
+			if !a.video.hasFrame || a.video.err != "" {
+				t.Fatalf("after %s: frame %v, error %q", label, a.video.hasFrame, a.video.err)
+			}
+			w, h := a.video.bitmap.Size()
+			return a.player.VideoURL() == url && w == width && h == height
+		})
+	}
+	switchTo("Full screen", full, 1920, 1080)
+	tt.Frame()
+	switchTo("Leave full screen", clip, 1280, 720)
+	if !a.player.Playing() {
+		t.Fatal("switching pictures stopped the sound")
 	}
 }
