@@ -43,8 +43,12 @@ type videoSession struct {
 	fps float64
 	// gpu says the picture decodes on the GPU; got, that a frame has come,
 	// and drained, closed when the reader stops, that none will come.
-	gpu     bool
-	got     atomic.Bool
+	gpu bool
+	got atomic.Bool
+	// latest is the time of the newest frame decoded, in nanoseconds, or
+	// just before the offset until one is: a decode yet to give a frame
+	// has not reached even where it began.
+	latest  atomic.Int64
 	drained chan struct{}
 	cmd     *exec.Cmd
 	pipe    *os.File
@@ -231,6 +235,29 @@ func (p *Player) Frame() (*image.RGBA, bool) {
 	return v.frame(at)
 }
 
+// VideoLag returns how far the picture shown has fallen behind the sound: the
+// sound's position less the time of the newest frame decoded. Until a frame
+// has come it is positive, even at once after a seek. It is negative while
+// the decoder is ahead, as it keeps itself, and 0 when no picture is shown
+// or its decode has stopped, at its end or on a failure, as no frame is
+// then on its way. While the sound is paused the decoder catches up to it,
+// so a caller that holds the sound until the lag is no longer positive lets
+// a stalled picture catch up, and waits for a new one's first frame.
+func (p *Player) VideoLag() time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	v, s := p.video, p.session
+	if v == nil || s == nil {
+		return 0
+	}
+	select {
+	case <-v.drained:
+		return 0
+	default:
+	}
+	return s.played() - time.Duration(v.latest.Load())
+}
+
 // VideoFailure returns what ffmpeg reported when the picture stopped because
 // of an error, and an empty string while it decodes, when it ended, or when
 // the app stopped it. A picture that fails on the GPU reports nothing until
@@ -339,6 +366,7 @@ func (p *Player) decodeVideo(ffmpeg, url string, height int, fps float64, gpu bo
 	for range buffers {
 		v.free <- image.NewRGBA(image.Rect(0, 0, videoWidth(height), height))
 	}
+	v.latest.Store(int64(at) - 1)
 	go v.read()
 	go p.reapVideo(v)
 	return v, nil
@@ -362,6 +390,7 @@ func (v *videoSession) read() {
 		}
 		v.got.Store(true)
 		frame := videoFrame{img: buf, at: v.offset + time.Duration(float64(i)*float64(time.Second)/v.fps)}
+		v.latest.Store(int64(frame.at))
 		select {
 		case v.frames <- frame:
 		case <-v.quit:

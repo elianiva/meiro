@@ -550,17 +550,22 @@ func (a *app) togglePlay() {
 		}
 		return
 	}
-	if a.player.Playing() {
+	if a.playing() {
 		a.pause()
 	} else {
 		a.resume()
 	}
 }
 
+// playing reports whether the track plays, or would but for the sound
+// waiting for the picture to catch up.
+func (a *app) playing() bool { return a.player.Playing() || a.video.buffering }
+
 // resume plays a paused track, or starts the current one again when it has
-// ended or failed. It does nothing while a track plays or is on its way.
+// ended or failed. It does nothing while a track plays or is on its way, or
+// while its sound waits for the picture, which plays it once it can.
 func (a *app) resume() {
-	if a.stream.busy() || a.player.Playing() {
+	if a.stream.busy() || a.playing() {
 		return
 	}
 	if a.playErr != "" || !a.player.Active() || a.player.Ended() {
@@ -576,8 +581,10 @@ func (a *app) resume() {
 	a.syncSystemMedia()
 }
 
-// pause holds the track where it is.
+// pause holds the track where it is, and keeps it held once a picture it
+// waited for catches up.
 func (a *app) pause() {
+	a.video.buffering = false
 	a.player.Pause()
 	a.finishEpisodeProgress(false)
 	a.syncSystemMedia()

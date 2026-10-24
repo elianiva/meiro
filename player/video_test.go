@@ -384,3 +384,71 @@ func TestASharperPictureTakesOverWithoutAGap(t *testing.T) {
 		t.Fatal("the sharper picture did not stay")
 	}
 }
+
+func TestAPictureThatFallsBehindCatchesUpWhileTheSoundWaits(t *testing.T) {
+	// The null device plays twenty times faster than real time, so the
+	// picture falls behind the sound as a stalled one does.
+	p, wav := newTestPlayerWithDuration(t, 120)
+	clip := numberedClip(t, 120, clipFPS)
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetVideo(t.Context(), clip, 36, clipFPS); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the picture to fall behind", func() bool {
+		p.Frame()
+		return p.VideoLag() > time.Second
+	})
+	// Held, the sound stays where it is, and the decoder reaches it. A
+	// seek starts the decode again, which is behind until its first frame.
+	p.Pause()
+	for _, seek := range []bool{false, true} {
+		if seek {
+			p.Seek(p.Position() + 10*time.Second)
+			if lag := p.VideoLag(); lag <= 0 {
+				t.Fatalf("VideoLag = %s just after a seek, before any frame", lag)
+			}
+		}
+		waitFor(t, "the picture to catch up", func() bool {
+			p.Frame()
+			return p.VideoLag() <= 0
+		})
+		img, _ := p.Frame()
+		if got, at := frameNumber(img), int(p.Position()*clipFPS/time.Second); got < at-1 || got > at {
+			t.Fatalf("frame %d shown with the paused sound at frame %d (seek %v)", got, at, seek)
+		}
+	}
+	p.StopVideo()
+	if lag := p.VideoLag(); lag != 0 {
+		t.Fatalf("VideoLag = %s with no picture", lag)
+	}
+}
+
+func TestAPictureThatEndedIsNotBehind(t *testing.T) {
+	// A picture shorter than its sound shows its last frame to the end: no
+	// frame is on its way, so nothing is worth waiting for.
+	p, wav := newTestPlayerWithDuration(t, 120)
+	clip := numberedClip(t, 1, clipFPS)
+	// On the CPU, so no GPU failure starts the decode again past the end.
+	p.ctl.Lock()
+	p.gpuChecked, p.gpuVideo = true, false
+	p.ctl.Unlock()
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetVideo(t.Context(), clip, 36, clipFPS); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the sound to pass the end of the picture", func() bool {
+		p.Frame()
+		return p.Position() > 5*time.Second && p.VideoLag() == 0
+	})
+	for range 20 {
+		p.Frame()
+		if lag := p.VideoLag(); lag != 0 {
+			t.Fatalf("VideoLag = %s after the picture ended, at %s", lag, p.Position())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}

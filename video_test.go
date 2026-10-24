@@ -193,7 +193,7 @@ func TestClickingThePicturePlaysPausesAndFillsTheWindow(t *testing.T) {
 	a.openPlayer(tabQueue, false)
 	afterAnimations(tt)
 	pumpFrames(t, a)
-	waitFor(t, func() bool { a.poll(); return a.player.Playing() })
+	waitFor(t, func() bool { a.pumpVideo(); a.poll(); return a.player.Playing() })
 	tt.Frame()
 
 	// The middle of the picture: below the menu button, above Full screen.
@@ -245,6 +245,57 @@ func TestClickingThePicturePlaysPausesAndFillsTheWindow(t *testing.T) {
 	}
 	if !tt.HasText("Now playing") {
 		t.Fatalf("the player did not come back: %q", tt.Texts())
+	}
+}
+
+func TestTheSoundWaitsForAPictureThatFellBehind(t *testing.T) {
+	// The null device plays twenty times faster than real time, so the
+	// picture falls behind the sound as one does when the network stalls.
+	a, _ := videoApp(t)
+	a.settings.ShowVideo = true
+	q := []youtube.MusicItem{{VideoID: "v1", Title: "A music video", Kind: youtube.KindVideo}}
+	a.play(q[0], q)
+	tt := ui.NewTester(a.view, 1200, 800)
+	a.openPlayer(tabQueue, false)
+	afterAnimations(tt)
+	pumpFrames(t, a)
+	waitForBuffering := func() {
+		t.Helper()
+		waitFor(t, func() bool { a.pumpVideo(); return a.video.buffering })
+		tt.Frame()
+	}
+
+	// The sound waits, with a loading indicator over the picture, and the
+	// track still counts as playing: the transport offers to pause it.
+	waitForBuffering()
+	if a.player.Playing() {
+		t.Fatal("the sound plays on while the picture is behind")
+	}
+	if _, ok := tt.Find("Loading"); !ok {
+		t.Fatalf("no loading indicator over a picture that fell behind: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Pause"); !ok {
+		t.Fatalf("the transport does not offer to pause a track waiting for its picture: %q", tt.Texts())
+	}
+	// Once the picture has caught up, the sound plays on by itself.
+	waitFor(t, func() bool { a.pumpVideo(); return a.player.Playing() })
+
+	// Pausing while the sound waits keeps it paused when the picture
+	// catches up.
+	waitForBuffering()
+	if err := tt.Click("Pause"); err != nil {
+		t.Fatal(err)
+	}
+	for range 100 {
+		a.pumpVideo()
+		time.Sleep(5 * time.Millisecond)
+	}
+	if a.player.Playing() || a.video.buffering {
+		t.Fatalf("the paused track played on once the picture caught up: playing %v, waiting %v", a.player.Playing(), a.video.buffering)
+	}
+	tt.Frame()
+	if _, ok := tt.Find("Play"); !ok {
+		t.Fatalf("a paused track does not offer to play: %q", tt.Texts())
 	}
 }
 
@@ -331,7 +382,7 @@ func TestFullScreenShowsTheSharperPicture(t *testing.T) {
 	a.openPlayer(tabQueue, false)
 	afterAnimations(tt)
 	pumpFrames(t, a)
-	waitFor(t, func() bool { a.poll(); return a.player.Playing() })
+	waitFor(t, func() bool { a.pumpVideo(); a.poll(); return a.player.Playing() })
 	if w, h := a.video.bitmap.Size(); a.player.VideoURL() != clip || w != 1280 || h != 720 {
 		t.Fatalf("the player shows %q at %dx%d, want the clip at 1280x720", a.player.VideoURL(), w, h)
 	}
@@ -356,7 +407,7 @@ func TestFullScreenShowsTheSharperPicture(t *testing.T) {
 	switchTo("Full screen", full, 1920, 1080)
 	tt.Frame()
 	switchTo("Leave full screen", clip, 1280, 720)
-	if !a.player.Playing() {
+	if !a.playing() {
 		t.Fatal("switching pictures stopped the sound")
 	}
 }

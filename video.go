@@ -29,6 +29,9 @@ type videoState struct {
 	// hasFrame says one has.
 	bitmap   *ui.Bitmap
 	hasFrame bool
+	// buffering says the picture fell behind the sound, which is held until
+	// the picture catches up and then plays on.
+	buffering bool
 	// flash is the icon that swells and fades over the picture after a
 	// click on it plays or pauses the track; flashNew says it has yet to
 	// start.
@@ -82,6 +85,10 @@ func (a *app) syncVideo() {
 		if a.player.VideoURL() != "" {
 			a.player.StopVideo()
 		}
+		if a.video.buffering {
+			a.video.buffering = false // nothing to wait for
+			a.player.Resume()
+		}
 		return
 	}
 	id, fullScreen := a.current.VideoID, a.nowPlaying.fullscreen
@@ -90,7 +97,8 @@ func (a *app) syncVideo() {
 		return
 	}
 	if a.video.id != id {
-		a.video.id, a.video.err, a.video.hasFrame = id, "", false
+		// A new track plays as it started, whatever the last one waited for.
+		a.video.id, a.video.err, a.video.hasFrame, a.video.buffering = id, "", false, false
 	}
 	a.video.fullScreen = fullScreen
 	// The picture's URL came with the audio's, from the one yt-dlp run that
@@ -153,10 +161,24 @@ func (a *app) startVideoPump() {
 	})
 }
 
-// pumpVideo draws the frame due at the sound's position, if a new one is. It
-// runs on the main thread.
+// videoStall is how far the picture may fall behind the sound before the
+// sound waits for it.
+const videoStall = 300 * time.Millisecond
+
+// pumpVideo draws the frame due at the sound's position, if a new one is,
+// and holds the sound while the picture has fallen behind it, as when the
+// network stalls. It runs on the main thread.
 func (a *app) pumpVideo() {
 	a.syncVideo() // the player may have closed since the last frame
+	switch lag := a.player.VideoLag(); {
+	case !a.video.buffering && a.player.Playing() && lag > videoStall:
+		log.Printf("playback: waiting for the video video_id=%s behind=%s", a.video.id, lag.Round(time.Millisecond))
+		a.video.buffering = true
+		a.player.Pause()
+	case a.video.buffering && lag <= 0:
+		a.video.buffering = false
+		a.player.Resume()
+	}
 	frame, changed := a.player.Frame()
 	if !changed {
 		if a.video.err == "" {
@@ -247,7 +269,7 @@ func (a *app) videoPicture(c *ui.Context) ui.Element {
 		a.setFullscreen(!a.nowPlaying.fullscreen)
 	case picture.Clicked():
 		a.video.flash, a.video.flashNew = m3.IconPlay, true
-		if a.player.Playing() {
+		if a.playing() {
 			a.video.flash = m3.IconPause
 		}
 		a.togglePlay()
@@ -281,10 +303,17 @@ func (a *app) videoFlash(c *ui.Context) {
 	})
 }
 
-// videoFrame is what videoPicture shows.
+// videoFrame is what videoPicture shows: the frame drawn, with a loading
+// indicator over it on a dark disc while the sound waits for the picture.
 func (a *app) videoFrame(c *ui.Context) {
 	if a.video.hasFrame {
 		ui.Image(c, a.video.bitmap).Fit(ui.Contain).Fill()
+		if a.video.buffering {
+			ui.Box(c.Key("video-buffering")).Size(64, 64).Radius(m3.Full).Background(ui.RGB(0, 0, 0).Alpha(0.5)).
+				Center().Attach(ui.AnchorCenter, ui.AnchorCenter).PassThrough().Children(func() {
+				m3.LoadingIndicatorIn(c, 48, ui.RGB(255, 255, 255))
+			})
+		}
 		return
 	}
 	art := a.thumbs.Bitmap(a.current.Thumbnail, 640)
