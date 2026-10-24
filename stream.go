@@ -63,7 +63,7 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 		}
 		// Opening the audio device and starting ffmpeg take long enough to
 		// be felt, so they happen here and not on the main thread.
-		found.playErr = a.player.PlayAt(found.url, startAt, false)
+		found.playErr = a.player.PlayAtContext(ctx, found.url, startAt, false)
 		return found, nil
 	}, func(found resolvedAudio, err error) {
 		if found.loudnessOK {
@@ -163,7 +163,7 @@ func (a *app) syncPreload() {
 		if err != nil {
 			return preloadedAudio{}, err
 		}
-		return preloadedAudio{next.VideoID, found}, a.player.Preload(next.VideoID, found.url)
+		return preloadedAudio{next.VideoID, found}, a.player.PreloadContext(ctx, next.VideoID, found.url)
 	}, func(found preloadedAudio, err error) {
 		if err != nil {
 			log.Printf("playback: could not preload video_id=%s: %v", next.VideoID, err)
@@ -275,7 +275,7 @@ func (a *app) recoverStream(failure string) bool {
 		if err != nil || ctx.Err() != nil {
 			return found, err
 		}
-		found.playErr = a.player.PlayAt(found.url, at, paused)
+		found.playErr = a.player.PlayAtContext(ctx, found.url, at, paused)
 		return found, nil
 	}, func(found resolvedAudio, err error) {
 		if err == nil {

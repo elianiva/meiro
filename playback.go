@@ -490,8 +490,8 @@ func (a *app) seek(position time.Duration) {
 // that landed while this was on its way.
 func (a *app) applySeek() {
 	at := a.seekTarget
-	startTask(a, &a.seeking, noTimeout, func(context.Context) (time.Duration, error) {
-		a.player.Seek(at)
+	startTask(a, &a.seeking, noTimeout, func(ctx context.Context) (time.Duration, error) {
+		a.player.SeekContext(ctx, at)
 		return at, nil
 	}, func(applied time.Duration, _ error) {
 		a.seekVersion++
