@@ -242,8 +242,10 @@ func (a *app) notifyTrack(item youtube.MusicItem) {
 }
 
 // loading reports whether the track chosen is not making sound yet: its audio
-// is being found, or ffmpeg is still opening it.
-func (a *app) loading() bool { return a.stream.busy() || a.player.Buffering() }
+// is being found, ffmpeg is still opening it, or it waits for its picture.
+func (a *app) loading() bool {
+	return a.stream.busy() || a.player.Buffering() || a.video.buffering
+}
 
 // enqueue adds a track to the chosen queue without changing the current
 // track. Chosen tracks stay ahead of auto-play recommendations.

@@ -161,17 +161,20 @@ func (a *app) startVideoPump() {
 	})
 }
 
-// videoStall is how far the picture may fall behind the sound before the
-// sound waits for it.
+// videoStall is how far a playing picture may fall behind the sound before
+// the sound waits for it.
 const videoStall = 300 * time.Millisecond
 
 // pumpVideo draws the frame due at the sound's position, if a new one is,
 // and holds the sound while the picture has fallen behind it, as when the
-// network stalls. It runs on the main thread.
+// network stalls. A picture yet to give its first frame, as after a seek,
+// holds the sound at once, even while the sound is still opening, so the
+// two wait together rather than one after the other. It runs on the main
+// thread.
 func (a *app) pumpVideo() {
 	a.syncVideo() // the player may have closed since the last frame
 	switch lag := a.player.VideoLag(); {
-	case !a.video.buffering && a.player.Playing() && lag > videoStall:
+	case !a.video.buffering && a.player.Playing() && (lag > videoStall || a.player.VideoStarting()):
 		log.Printf("playback: waiting for the video video_id=%s behind=%s", a.video.id, lag.Round(time.Millisecond))
 		a.video.buffering = true
 		a.player.Pause()
@@ -304,11 +307,12 @@ func (a *app) videoFlash(c *ui.Context) {
 }
 
 // videoFrame is what videoPicture shows: the frame drawn, with a loading
-// indicator over it on a dark disc while the sound waits for the picture.
+// indicator over it on a dark disc while the track loads, the sound or the
+// picture.
 func (a *app) videoFrame(c *ui.Context) {
 	if a.video.hasFrame {
 		ui.Image(c, a.video.bitmap).Fit(ui.Contain).Fill()
-		if a.video.buffering {
+		if a.loading() {
 			ui.Box(c.Key("video-buffering")).Size(64, 64).Radius(m3.Full).Background(ui.RGB(0, 0, 0).Alpha(0.5)).
 				Center().Attach(ui.AnchorCenter, ui.AnchorCenter).PassThrough().Children(func() {
 				m3.LoadingIndicatorIn(c, 48, ui.RGB(255, 255, 255))

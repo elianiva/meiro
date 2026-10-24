@@ -130,7 +130,7 @@ func TestThePictureFillsTheWindowWhenAsked(t *testing.T) {
 	if tt.HasText("Now playing") || tt.HasText("Up next") {
 		t.Fatalf("the player still shows behind the full-screen picture: %q", tt.Texts())
 	}
-	for _, label := range []string{"Leave full screen", "A music video", "Position", "Pause"} {
+	for _, label := range []string{"Leave full screen", "A music video", "Position", "Next"} {
 		if _, ok := tt.Find(label); !ok {
 			t.Fatalf("no %q over the full-screen picture: %q", label, tt.Texts())
 		}
@@ -265,27 +265,41 @@ func TestTheSoundWaitsForAPictureThatFellBehind(t *testing.T) {
 		tt.Frame()
 	}
 
-	// The sound waits, with a loading indicator over the picture, and the
-	// track still counts as playing: the transport offers to pause it.
+	// The sound waits, with a loading indicator over the picture and on the
+	// transport, as it does while the sound itself loads.
 	waitForBuffering()
 	if a.player.Playing() {
 		t.Fatal("the sound plays on while the picture is behind")
 	}
-	if _, ok := tt.Find("Loading"); !ok {
-		t.Fatalf("no loading indicator over a picture that fell behind: %q", tt.Texts())
+	if label, ok := tt.Find("Loading"); !ok || !tt.HasText("Loading") {
+		t.Fatalf("no loading indicator while the sound waits for the picture: %v %q", label, tt.Texts())
 	}
-	if _, ok := tt.Find("Pause"); !ok {
-		t.Fatalf("the transport does not offer to pause a track waiting for its picture: %q", tt.Texts())
+	if _, ok := tt.Find("Pause"); ok {
+		t.Fatalf("the transport offers Pause, not its loading state, while the sound waits: %q", tt.Texts())
 	}
 	// Once the picture has caught up, the sound plays on by itself.
 	waitFor(t, func() bool { a.pumpVideo(); return a.player.Playing() })
 
+	// A seek starts the picture again, and the sound waits for its first
+	// frame from the start, with the sound's own opening, not after
+	// playing on for a moment.
+	at := a.player.Position() + 10*time.Second
+	a.seek(at)
+	waitFor(t, func() bool {
+		a.pumpVideo()
+		if a.player.Position() >= at && a.player.VideoStarting() && a.player.Position() >= at+videoStall {
+			t.Fatalf("the sound played to %s past a seek to %s before the picture's first frame", a.player.Position(), at)
+		}
+		return a.player.Position() >= at && !a.player.VideoStarting() && !a.seeking.busy()
+	})
+
 	// Pausing while the sound waits keeps it paused when the picture
-	// catches up.
+	// catches up. A click on the picture pauses.
+	waitFor(t, func() bool { a.pumpVideo(); return a.player.Playing() })
 	waitForBuffering()
-	if err := tt.Click("Pause"); err != nil {
-		t.Fatal(err)
-	}
+	menu, _ := tt.Find("More options for A music video")
+	full, _ := tt.Find("Full screen")
+	tt.ClickAt(menu.X-100, (menu.Y+full.Y)/2)
 	for range 100 {
 		a.pumpVideo()
 		time.Sleep(5 * time.Millisecond)

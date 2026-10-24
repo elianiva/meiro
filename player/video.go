@@ -258,6 +258,23 @@ func (p *Player) VideoLag() time.Duration {
 	return s.played() - time.Duration(v.latest.Load())
 }
 
+// VideoStarting reports whether the picture shown has yet to give a frame
+// since its decode began, as at once after a seek, and still may.
+func (p *Player) VideoStarting() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	v := p.video
+	if v == nil || v.got.Load() {
+		return false
+	}
+	select {
+	case <-v.drained:
+		return false
+	default:
+		return true
+	}
+}
+
 // VideoFailure returns what ffmpeg reported when the picture stopped because
 // of an error, and an empty string while it decodes, when it ended, or when
 // the app stopped it. A picture that fails on the GPU reports nothing until
