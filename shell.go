@@ -41,13 +41,20 @@ func (a *app) view(c *ui.Context) {
 	a.syncSignInDialog()
 
 	bar := c.TitleBar()
-	shell := ui.Row(c).Fill().AlignItems(ui.Stretch)
-	shell.Children(func() {
-		a.rail(c, bar)
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			a.sheet(c, bar)
+	var shell ui.Element
+	if a.nowPlaying.fullscreen {
+		// The picture takes the whole window: no rail, no sheet, no player
+		// until it goes back to its place.
+		shell = a.fullscreenVideoView(c)
+	} else {
+		shell = ui.Row(c).Fill().AlignItems(ui.Stretch)
+		shell.Children(func() {
+			a.rail(c, bar)
+			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+				a.sheet(c, bar)
+			})
 		})
-	})
+	}
 	a.reserveSpaceForPlayback(shell)
 	a.signInDialog(c)
 	a.newPlaylistDialog(c)

@@ -149,6 +149,12 @@ func (a *app) perform(action keymap.Action) {
 	case keymap.Settings:
 		a.navigate(routeSettings)
 	case keymap.ClosePlayer:
+		// A picture over the whole window goes back to its place first;
+		// the player closes on the next press.
+		if a.nowPlaying.fullscreen {
+			a.setFullscreen(false)
+			return
+		}
 		a.nowPlaying.closing = true
 	}
 }

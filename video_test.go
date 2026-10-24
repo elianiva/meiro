@@ -110,6 +110,82 @@ func TestThePlayerShowsAVideoWhenAsked(t *testing.T) {
 	}
 }
 
+func TestThePictureFillsTheWindowWhenAsked(t *testing.T) {
+	a, _ := videoApp(t)
+	a.settings.ShowVideo = true
+	q := []youtube.MusicItem{{VideoID: "v1", Title: "A music video", Kind: youtube.KindVideo}, {VideoID: "s1", Title: "A song"}}
+	a.play(q[0], q)
+	tt := ui.NewTester(a.view, 1200, 800)
+	a.openPlayer(tabQueue, false)
+	afterAnimations(tt)
+	pumpFrames(t, a)
+	tt.Frame()
+
+	if err := tt.Click("Full screen"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.nowPlaying.fullscreen {
+		t.Fatal("Full screen did not fill the window")
+	}
+	// The player and the shell are gone; the controls lie over the picture.
+	if tt.HasText("Now playing") || tt.HasText("Up next") {
+		t.Fatalf("the player still shows behind the full-screen picture: %q", tt.Texts())
+	}
+	for _, label := range []string{"Leave full screen", "A music video", "Position", "Pause"} {
+		if _, ok := tt.Find(label); !ok {
+			t.Fatalf("no %q over the full-screen picture: %q", label, tt.Texts())
+		}
+	}
+
+	// The controls go once the pointer has rested, and the pointer with
+	// them; a move brings them back.
+	tt.Advance(controlsLinger)
+	tt.Frame()
+	if _, ok := tt.Find("Leave full screen"); ok {
+		t.Fatalf("the controls stay over the picture after the pointer rested: %q", tt.Texts())
+	}
+	if tt.Cursor() != ui.CursorNone {
+		t.Fatalf("the pointer shows over the picture while the controls are gone: %v", tt.Cursor())
+	}
+	tt.Move(600, 400)
+	tt.Frame()
+	if _, ok := tt.Find("Leave full screen"); !ok {
+		t.Fatalf("moving the pointer did not bring the controls back: %q", tt.Texts())
+	}
+
+	// Escape puts the picture back in the player, which stays open; only
+	// the next Escape closes it.
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.nowPlaying.fullscreen || !a.nowPlaying.open || a.nowPlaying.closing {
+		t.Fatalf("Escape did not put the picture back: fullscreen %v, open %v, closing %v", a.nowPlaying.fullscreen, a.nowPlaying.open, a.nowPlaying.closing)
+	}
+	if !tt.HasText("Now playing") {
+		t.Fatalf("the player did not come back: %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if !a.nowPlaying.closing {
+		t.Fatal("the second Escape did not close the player")
+	}
+
+	// A track without a picture takes the window back.
+	afterAnimations(tt)
+	a.openPlayer(tabQueue, false)
+	afterAnimations(tt)
+	if err := tt.Click("Full screen"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	a.startTrack(q[1], false)
+	a.poll()
+	tt.Frame()
+	if a.nowPlaying.fullscreen || !tt.HasText("Now playing") {
+		t.Fatalf("a song left the window to the picture: fullscreen %v, texts %q", a.nowPlaying.fullscreen, tt.Texts())
+	}
+}
+
 func TestClosingThePlayerStopsThePicture(t *testing.T) {
 	a, clip := videoApp(t)
 	a.settings.ShowVideo = true

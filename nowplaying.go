@@ -39,6 +39,10 @@ type nowPlayingState struct {
 	// playerShown says the player has been built, so its rise starts on its
 	// first frame only.
 	playerShown bool
+	// fullscreen shows the picture over the whole window, with the controls
+	// laid over it while the pointer moves; pointerAt is when it last did.
+	fullscreen bool
+	pointerAt  time.Time
 	// queueOnly shows the side panel alone, in a window too narrow for both.
 	queueOnly            bool
 	queueList            ui.ListState
@@ -178,9 +182,17 @@ func (a *app) nowPlayingView(c *ui.Context) {
 		})
 		ui.Row(c).Grow(1).MinHeight(0).Padding(0, pageGutter, pageGutter).Gap(32).AlignItems(ui.Stretch).Children(func() {
 			if wide || !a.nowPlaying.queueOnly {
-				// What the main part has to spread in: the window less the
+				// What the main part has to spread in: the player less the
 				// gutters, and, beside the side panel, the panel and the gap.
-				available := w - 2*pageGutter
+				// The player is as wide as the sheet, which the rail beside
+				// it narrows by a width that changes as it opens; the last
+				// frame's bounds know it, and before a first frame the
+				// window stands in.
+				available := panel.Bounds().W
+				if available == 0 {
+					available = w
+				}
+				available -= 2 * pageGutter
 				if wide {
 					available -= 480 + 32
 				}
