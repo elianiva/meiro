@@ -5,6 +5,9 @@
 // system's audio device. Decoding in a child process keeps the app free of
 // cgo and of codecs of its own, and lets it play anything ffmpeg reads.
 //
+// A stream's picture, when the app asks for it with SetVideo, is a second
+// ffmpeg decoding frames that Frame hands out in step with the sound.
+//
 // The zero value is not usable; call New. All methods are safe for
 // concurrent use, so the user interface can drive the player from the main
 // thread while oto reads samples in the background.
@@ -80,6 +83,13 @@ type Player struct {
 	// Advanced reports it.
 	next     *session
 	advanced string
+
+	// video is the picture decoding in step with the session, if any, and
+	// nextVideo the one on its way to replace it.
+	video, nextVideo *videoSession
+	// gpuVideo says pictures decode on the GPU, and gpuChecked that ffmpeg
+	// was asked whether they can. Guarded by ctl.
+	gpuChecked, gpuVideo bool
 
 	lookMu     sync.Mutex
 	lookDone   bool
@@ -528,6 +538,22 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	if err != nil {
 		return err
 	}
+	// The same stream started again is a seek, which keeps its picture, the
+	// one on its way if there is one; a new stream has none until the
+	// caller sets one.
+	p.mu.Lock()
+	var video string
+	var height int
+	var fps float64
+	if p.session != nil && p.session.url == url {
+		for _, v := range []*videoSession{p.nextVideo, p.video} {
+			if v != nil {
+				video, height, fps = v.url, v.height, v.fps
+				break
+			}
+		}
+	}
+	p.mu.Unlock()
 	p.stop()
 
 	s, err := p.decode(ffmpeg, url, at, p.eqBands)
@@ -542,6 +568,13 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	p.mu.Unlock()
 	if !paused {
 		s.out.Play()
+	}
+	if video != "" {
+		if v, err := p.decodeVideo(ffmpeg, video, height, fps, p.gpuVideo, at); err == nil {
+			p.mu.Lock()
+			p.video = v
+			p.mu.Unlock()
+		}
 	}
 	return nil
 }
@@ -578,6 +611,18 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64) (*se
 // 16-bit stereo PCM on stdout. The equaliser runs as a live layer after decode.
 // ranged is whether ffmpeg can fetch a remote stream in bounded ranges.
 func streamArgs(url string, at time.Duration, ranged bool) []string {
+	args := inputArgs(url, at, ranged)
+	args = append(args,
+		"-vn", "-f", "s16le", "-acodec", "pcm_s16le",
+		"-ac", strconv.Itoa(channelCount), "-ar", strconv.Itoa(sampleRate),
+	)
+	return append(args, "pipe:1")
+}
+
+// inputArgs is the part of an ffmpeg command line that opens url at at: the
+// options a remote stream needs, and the input itself. What is decoded from
+// it follows.
+func inputArgs(url string, at time.Duration, ranged bool) []string {
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-xerror"}
 	if isHTTP(url) {
 		// A remote stream, or a manifest it names, cannot reach local files.
@@ -598,12 +643,7 @@ func streamArgs(url string, at time.Duration, ranged bool) []string {
 	if at > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(at.Seconds(), 'f', 3, 64))
 	}
-	args = append(args,
-		"-i", url,
-		"-vn", "-f", "s16le", "-acodec", "pcm_s16le",
-		"-ac", strconv.Itoa(channelCount), "-ar", strconv.Itoa(sampleRate),
-	)
-	return append(args, "pipe:1")
+	return append(args, "-i", url)
 }
 
 // isHTTP reports whether rawURL is read over HTTP, the only protocol that
@@ -668,6 +708,12 @@ func (p *Player) handoff(from *session) io.Reader {
 	}
 	next.out, next.paused = from.out, from.paused
 	p.session, p.next, p.advanced = next, nil, next.tag
+	// The picture was the stream that ended's; the caller sets the next
+	// one's, if it has one. Ending it is a kill and a close, quick enough
+	// to hold mu through.
+	shown, nextVideo := p.dropVideoLocked()
+	shown.end()
+	nextVideo.end()
 	return next.source
 }
 
@@ -698,6 +744,7 @@ func (p *Player) stop() {
 		s.stopped = true
 	}
 	p.mu.Unlock()
+	p.stopVideo()
 	if next != nil {
 		next.discard()
 	}

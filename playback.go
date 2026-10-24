@@ -242,8 +242,10 @@ func (a *app) notifyTrack(item youtube.MusicItem) {
 }
 
 // loading reports whether the track chosen is not making sound yet: its audio
-// is being found, or ffmpeg is still opening it.
-func (a *app) loading() bool { return a.stream.busy() || a.player.Buffering() }
+// is being found, ffmpeg is still opening it, or it waits for its picture.
+func (a *app) loading() bool {
+	return a.stream.busy() || a.player.Buffering() || a.video.buffering
+}
 
 // enqueue adds a track to the chosen queue without changing the current
 // track. Chosen tracks stay ahead of auto-play recommendations.
@@ -445,6 +447,7 @@ func (a *app) poll() {
 		}
 		a.observeListen()
 		a.syncPreload()
+		a.syncVideo()
 		a.ensureUpNext()
 		if !a.scrubbing {
 			a.scrub = a.player.Position().Seconds()
@@ -549,17 +552,22 @@ func (a *app) togglePlay() {
 		}
 		return
 	}
-	if a.player.Playing() {
+	if a.playing() {
 		a.pause()
 	} else {
 		a.resume()
 	}
 }
 
+// playing reports whether the track plays, or would but for the sound
+// waiting for the picture to catch up.
+func (a *app) playing() bool { return a.player.Playing() || a.video.buffering }
+
 // resume plays a paused track, or starts the current one again when it has
-// ended or failed. It does nothing while a track plays or is on its way.
+// ended or failed. It does nothing while a track plays or is on its way, or
+// while its sound waits for the picture, which plays it once it can.
 func (a *app) resume() {
-	if a.stream.busy() || a.player.Playing() {
+	if a.stream.busy() || a.playing() {
 		return
 	}
 	if a.playErr != "" || !a.player.Active() || a.player.Ended() {
@@ -575,8 +583,10 @@ func (a *app) resume() {
 	a.syncSystemMedia()
 }
 
-// pause holds the track where it is.
+// pause holds the track where it is, and keeps it held once a picture it
+// waited for catches up.
 func (a *app) pause() {
+	a.video.buffering = false
 	a.player.Pause()
 	a.finishEpisodeProgress(false)
 	a.syncSystemMedia()

@@ -158,3 +158,22 @@ func TestUpNextTellsSongsFromVideos(t *testing.T) {
 		t.Errorf("song and video not told apart: %+v", items)
 	}
 }
+
+// The cards of an artist's Videos and Live performances shelves are drawn as
+// songs' are; only their watch endpoint says they have a picture.
+func TestCardsTellSongsFromVideos(t *testing.T) {
+	card := func(id, videoType string) MusicItem {
+		item, _, ok := parseMusicRenderer("musicTwoRowItemRenderer", decodeResponse(json.RawMessage(`{"title":{"runs":[{"text":"`+id+`"}]},
+			"navigationEndpoint":{"watchEndpoint":{"videoId":"`+id+`","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"`+videoType+`"}}}}}`)))
+		if !ok {
+			t.Fatalf("card %s not parsed", id)
+		}
+		return item
+	}
+	if song := card("song", "MUSIC_VIDEO_TYPE_ATV"); song.IsVideo() {
+		t.Errorf("a song's card is a video: %+v", song)
+	}
+	if clip := card("clip", "MUSIC_VIDEO_TYPE_OMV"); !clip.IsVideo() {
+		t.Errorf("a music video's card is not a video: %+v", clip)
+	}
+}

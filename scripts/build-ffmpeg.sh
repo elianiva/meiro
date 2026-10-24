@@ -4,11 +4,13 @@
 #   scripts/build-ffmpeg.sh darwin-arm64
 #   scripts/build-ffmpeg.sh windows-amd64
 #
-# Meiro uses ffmpeg for one thing: decoding the audio of one stream (Opus in
+# Meiro uses ffmpeg for two things: decoding the audio of one stream (Opus in
 # WebM, AAC in MP4, and the files of the audio cache) to raw PCM, and reading
-# the length of a cached file. So the build keeps just that: the demuxers,
-# decoders and filters it needs, plus HTTP(S) for the stream itself. It is
-# about 7 MB, where a full build is over 100 MB, and it is LGPL.
+# the length of a cached file; and decoding the picture of a music video
+# (H.264 in MP4, or VP9 in WebM where YouTube has no H.264) to raw RGBA
+# frames of one size and rate. So the build keeps just that: the demuxers,
+# decoders and filters it needs, plus HTTP(S) for the stream itself. A full
+# build is over 100 MB, and this one is LGPL.
 #
 # Build tools: a C compiler, make, curl, xz, and on x86 nasm. Linux also needs
 # OpenSSL's static libraries (libssl.a), and links them in. Linux releases
@@ -59,14 +61,16 @@ fi
 configure=(
 	--disable-everything --disable-autodetect --disable-doc --disable-debug
 	--disable-ffplay --disable-ffprobe --enable-ffmpeg
-	--disable-avdevice --disable-swscale --enable-swresample
+	--disable-avdevice --enable-swscale --enable-swresample
 	--enable-small --enable-version3
 	--enable-protocol=file,pipe,http,https,httpproxy,tcp,tls,crypto,udp
 	--enable-demuxer=matroska,mov,ogg,aac,mp3,flac,wav
-	--enable-parser=opus,aac,vorbis,flac,mpegaudio
-	--enable-decoder=opus,aac,vorbis,mp3,mp3float,flac,pcm_s16le,pcm_f32le
-	--enable-encoder=pcm_s16le --enable-muxer=pcm_s16le
+	--enable-parser=opus,aac,vorbis,flac,mpegaudio,h264,vp9
+	--enable-decoder=opus,aac,vorbis,mp3,mp3float,flac,pcm_s16le,pcm_f32le,h264,vp9
+	--enable-bsf=vp9_superframe_split
+	--enable-encoder=pcm_s16le,rawvideo --enable-muxer=pcm_s16le,rawvideo
 	--enable-filter=abuffer,abuffersink,aformat,aresample,anull,atrim,apad,volume,equalizer
+	--enable-filter=buffer,buffersink,format,null,scale,pad,fps
 )
 case "$platform" in
 	linux-*)

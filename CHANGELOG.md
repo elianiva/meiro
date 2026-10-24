@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Music videos and podcast episodes can show their video.** The player offers an Audio/Video choice for a music video or an episode, which is remembered; Video shows the picture in place of the artwork, in step with the sound, at its own frame rate up to 60 fps, and songs keep their artwork. Its stream comes with the audio's, so it asks YouTube for nothing extra, and where the graphics card and ffmpeg support it (Vulkan and libplacebo) the GPU decodes it. Click the picture to play or pause, and double-click it or use the Full screen button to fill the screen with it; the controls hide while the pointer rests, and Escape brings the player back. Full screen plays 1080p where YouTube has it, and the player 720p, switching without blanking the picture. When the video stalls, as on a slow network, the sound waits with a loading indicator over the picture and both play on together once it catches up.
 - **Windows track notifications show the current cover art.** A missing or invalid cover falls back to Meiro's coloured app icon.
 
 ### Fixed

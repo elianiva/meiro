@@ -87,6 +87,7 @@ func main() {
 		a.loadScrobbleSession()
 		a.loadHistory()
 		a.startTicker()
+		a.startVideoPump()
 		a.every(persistInterval, func() { a.update(a.persistPlayback) })
 		// Browsing decodes and drops pictures in bursts, and the runtime
 		// keeps the freed memory for a while before it gives it back.

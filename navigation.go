@@ -136,6 +136,7 @@ func (a *app) onNavigate() {
 	a.pageLoad.stop()
 	a.pageMore.stop()
 	a.nowPlaying.open, a.nowPlaying.closing = false, false
+	a.setFullscreen(false)
 	location := a.router.Location()
 	r, id := a.route()
 	if r.open != nil {

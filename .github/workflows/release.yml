@@ -190,6 +190,10 @@ jobs:
           if [ "${{ matrix.platform }}" != darwin-amd64 ] && [ "${{ matrix.platform }}" != windows-amd64 ]; then
             "$ffmpeg" -hide_banner -protocols | grep -x '  https'
             "$ffmpeg" -hide_banner -decoders | grep -E ' (opus|aac) '
+            # The picture of a music video: H.264, or VP9, to raw RGBA.
+            "$ffmpeg" -hide_banner -decoders | grep -E ' h264 '
+            "$ffmpeg" -hide_banner -decoders | grep -E ' vp9 '
+            "$ffmpeg" -hide_banner -muxers | grep -E ' rawvideo '
           fi
       - uses: actions/upload-artifact@v7
         with:

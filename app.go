@@ -124,6 +124,8 @@ type app struct {
 
 	playback
 	nowPlaying nowPlayingState
+	// video is the picture of the track playing, when the player shows it.
+	video videoState
 
 	// The local listening history and the stats page built from it.
 	historyPath    string

@@ -19,6 +19,9 @@ type themeState struct {
 	cached     *m3.Theme
 	cachedCfg  m3.Config
 	cachedDark bool
+	// dark is the theme in its dark appearance whatever the settings say,
+	// for the picture over the whole window.
+	dark *m3.Theme
 	// dynamic is the seed taken from the artwork playing, and dynamicFor the
 	// artwork it was taken from.
 	dynamic    ui.Color
@@ -68,6 +71,22 @@ func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 	t.shown = &shown
 	c.AnimationFrame()
 	return t.shown
+}
+
+// darkTheme returns the theme in its dark appearance: the one resolveTheme
+// gives when that is dark already, and the same colours made dark when it is
+// not. The picture over the whole window is on black whatever the
+// appearance, so its controls are drawn with it.
+func (a *app) darkTheme(c *ui.Context) *m3.Theme {
+	t := a.resolveTheme(c)
+	if t.Dark {
+		return t
+	}
+	d := &a.theme
+	if d.dark == nil || d.dark.Config != t.Config {
+		d.dark = m3.New(t.Config, true)
+	}
+	return d.dark
 }
 
 // followArtwork takes the theme's seed from the artwork of the track playing,

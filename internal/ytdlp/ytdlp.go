@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/fsutil"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/youtube"
@@ -25,29 +26,40 @@ import (
 // ErrMissing reports that yt-dlp is neither inside the app nor on PATH.
 var ErrMissing = errors.New("playing needs ffmpeg and yt-dlp on PATH")
 
-// Resolve asks yt-dlp for a direct audio URL of a track and its length. Stream
-// resolution is anonymous; account cookies stay with the YouTube API client
-// for account features and playback history.
-func Resolve(ctx context.Context, videoID string) (string, time.Duration, error) {
-	// The visionos client returns anonymous audio URLs without a challenge.
+// streamFormat is what one run asks for: the best audio, and beside it the
+// picture twice, no taller than the player shows it and no taller than a
+// 1080p screen shows it, each H.264 where YouTube has it, which every
+// machine decodes with little work, and otherwise anything but AV1, which
+// the ffmpeg the app ships cannot decode. All come from the one player response,
+// so a track with a picture costs no more requests than one without; a
+// track with no picture gives the audio alone.
+const streamFormat = "bestaudio," +
+	"bestvideo[height<=720][vcodec^=avc1]/bestvideo[height<=720][vcodec!^=av01]/bestvideo," +
+	"bestvideo[height<=1080][vcodec^=avc1]/bestvideo[height<=1080][vcodec!^=av01]/bestvideo"
+
+// Resolve asks yt-dlp for the direct URLs of a track's audio and picture, and
+// its length. Stream resolution is anonymous; account cookies stay with the
+// YouTube API client for account features and playback history.
+func Resolve(ctx context.Context, videoID string) (audio.Stream, error) {
+	// The visionos client returns anonymous stream URLs without a challenge.
 	// yt-dlp's default also asks the web client, which makes it run the solver
 	// under QuickJS for about seven seconds of CPU, so try visionos alone first
 	// and fall back to the full set if YouTube stops serving it.
-	streamURL, total, err := resolve(ctx, videoID, true)
+	stream, err := resolve(ctx, videoID, true)
 	if err == nil {
-		return streamURL, total, nil
+		return stream, nil
 	}
 	if ctx.Err() != nil {
-		return "", 0, err
+		return audio.Stream{}, err
 	}
 	log.Printf("playback: js-less resolve failed video_id=%s, retrying with the solver: %v", videoID, err)
 	return resolve(ctx, videoID, false)
 }
 
-func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Duration, error) {
+func resolve(ctx context.Context, videoID string, jsless bool) (audio.Stream, error) {
 	path, err := proc.Tool("yt-dlp")
 	if err != nil {
-		return "", 0, ErrMissing
+		return audio.Stream{}, ErrMissing
 	}
 	jsRuntime := "none"
 	var runtimeArgs []string
@@ -59,7 +71,9 @@ func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Dur
 	} else {
 		jsRuntime, runtimeArgs = jsRuntimeArgs()
 	}
-	args := []string{"-f", "bestaudio", "-g", "--no-playlist", "--extractor-args", extractorArgs}
+	// Each stream prints as its frame rate and its URL, so the picture
+	// decodes at its own rate.
+	args := []string{"-f", streamFormat, "--print", "%(fps)s %(url)s", "--no-playlist", "--extractor-args", extractorArgs}
 	args = append(args, runtimeArgs...)
 	args = append(args, youtube.WatchURL(videoID))
 	command := proc.Command(ctx, path, args...)
@@ -72,18 +86,56 @@ func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Dur
 		log.Printf("playback: yt-dlp failed video_id=%s elapsed=%s: %s", videoID, time.Since(started).Round(time.Millisecond), strings.TrimSpace(stderr.String()))
 		if exit := (*exec.ExitError)(nil); errors.As(err, &exit) {
 			if reason := LastError(stderr.String()); reason != "" {
-				return "", 0, fmt.Errorf("yt-dlp could not resolve the audio: %s", reason)
+				return audio.Stream{}, fmt.Errorf("yt-dlp could not resolve the stream: %s", reason)
 			}
 		}
-		return "", 0, fmt.Errorf("yt-dlp could not resolve the audio: %w", err)
+		return audio.Stream{}, fmt.Errorf("yt-dlp could not resolve the stream: %w", err)
 	}
-	streamURL, _, _ := strings.Cut(string(output), "\n")
-	streamURL = strings.TrimSpace(streamURL)
-	if streamURL == "" {
-		return "", 0, errors.New("could not resolve the audio")
+	stream := parseStreams(string(output))
+	if stream.URL == "" {
+		return audio.Stream{}, errors.New("could not resolve the audio")
 	}
-	log.Printf("playback: yt-dlp resolved video_id=%s elapsed=%s", videoID, time.Since(started).Round(time.Millisecond))
-	return streamURL, durationFromURL(streamURL), nil
+	log.Printf("playback: yt-dlp resolved video_id=%s video=%t video_fps=%g full_screen_video=%t full_screen_video_fps=%g elapsed=%s", videoID, stream.Video != "", stream.VideoFPS, stream.FullScreenVideo != "", stream.FullScreenVideoFPS, time.Since(started).Round(time.Millisecond))
+	return stream, nil
+}
+
+// parseStreams reads the URLs yt-dlp printed, one per line in the order of
+// streamFormat: the audio, then the picture and its full-screen one when
+// the track has them, each after its frame rate, NA for the audio. A
+// YouTube media URL names its kind in its mime
+// parameter, which tells the audio from the picture even when the audio is
+// missing; a URL without one is taken in order. A full-screen picture no
+// sharper than the other, the same URL, is none.
+func parseStreams(output string) audio.Stream {
+	var stream audio.Stream
+	for line := range strings.SplitSeq(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var fps float64
+		if rate, rest, ok := strings.Cut(line, " "); ok {
+			fps, _ = strconv.ParseFloat(rate, 64)
+			line = strings.TrimSpace(rest)
+		}
+		mime := ""
+		if parsed, err := url.Parse(line); err == nil {
+			mime = parsed.Query().Get("mime")
+		}
+		switch {
+		case strings.HasPrefix(mime, "video/") || (mime == "" && stream.URL != ""):
+			switch {
+			case stream.Video == "":
+				stream.Video, stream.VideoFPS = line, fps
+			case stream.FullScreenVideo == "" && line != stream.Video:
+				stream.FullScreenVideo, stream.FullScreenVideoFPS = line, fps
+			}
+		case stream.URL == "":
+			stream.URL = line
+		}
+	}
+	stream.Total = durationFromURL(stream.URL)
+	return stream
 }
 
 // BrowserCookie has yt-dlp read the cookies of one browser, or profile, as

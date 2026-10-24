@@ -175,6 +175,7 @@ go_library(
         "theme.go",
         "toolhelp.go",
         "upnext.go",
+        "video.go",
     ],
     embedsrcs = ["fonts/GoogleSans.ttf"],
     importpath = "github.com/elianiva/meiro",
@@ -244,6 +245,7 @@ go_test(
         "shortcuts_test.go",
         "states_test.go",
         "subscription_test.go",
+        "video_test.go",
     ],
     embed = [":meiro_lib"],
     deps = [

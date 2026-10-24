@@ -16,14 +16,30 @@ const (
 	ResolveTimeout = 90 * time.Second
 )
 
-// Resolver finds a direct audio URL and the length of a track.
-type Resolver func(ctx context.Context, videoID string) (string, time.Duration, error)
+// Stream is what one resolve of a track finds: the direct URL of its audio,
+// the direct URLs of its picture, when the track has one, and its length.
+// Video is the picture at up to 720p, as the player shows it, and
+// FullScreenVideo at up to 1080p, as the whole screen shows it; it is empty
+// when the track has nothing sharper. Each picture's FPS is its frame rate,
+// 0 when unknown. Every URL comes from a single yt-dlp run, so asking for
+// the picture costs no request of its own.
+type Stream struct {
+	URL                string
+	Video              string
+	VideoFPS           float64
+	FullScreenVideo    string
+	FullScreenVideoFPS float64
+	Total              time.Duration
+}
 
-// URLs remembers resolved audio URLs, so a track resolved ahead of time plays
-// without waiting on yt-dlp. A URL is a few hundred bytes: resolving ahead
-// costs no meaningful bandwidth, unlike downloading the audio. Concurrent
-// requests for one track share a single resolve. It is safe for concurrent
-// use.
+// Resolver finds the direct URLs and the length of a track.
+type Resolver func(ctx context.Context, videoID string) (Stream, error)
+
+// URLs remembers resolved stream URLs, so a track resolved ahead of time
+// plays without waiting on yt-dlp. A URL is a few hundred bytes: resolving
+// ahead costs no meaningful bandwidth, unlike downloading the audio.
+// Concurrent requests for one track share a single resolve. It is safe for
+// concurrent use.
 type URLs struct {
 	resolve Resolver
 
@@ -32,11 +48,10 @@ type URLs struct {
 }
 
 type urlEntry struct {
-	at    time.Time
-	done  chan struct{}
-	url   string
-	total time.Duration
-	err   error
+	at     time.Time
+	done   chan struct{}
+	stream Stream
+	err    error
 }
 
 // NewURLs returns an empty cache that resolves with resolve.
@@ -44,12 +59,12 @@ func NewURLs(resolve Resolver) *URLs {
 	return &URLs{resolve: resolve, entries: make(map[string]*urlEntry)}
 }
 
-// Get returns the audio URL and length of a track, resolving it unless a
-// fresh result or a resolve in flight exists. The resolve goes on when ctx
-// ends, so a later Get can still use it; a failed one is not remembered.
-func (c *URLs) Get(ctx context.Context, videoID string) (string, time.Duration, error) {
+// Get returns the stream of a track, resolving it unless a fresh result or a
+// resolve in flight exists. The resolve goes on when ctx ends, so a later
+// Get can still use it; a failed one is not remembered.
+func (c *URLs) Get(ctx context.Context, videoID string) (Stream, error) {
 	if err := ctx.Err(); err != nil {
-		return "", 0, err
+		return Stream{}, err
 	}
 	c.mu.Lock()
 	e, ok := c.entries[videoID]
@@ -64,9 +79,9 @@ func (c *URLs) Get(ctx context.Context, videoID string) (string, time.Duration, 
 	c.mu.Unlock()
 	select {
 	case <-e.done:
-		return e.url, e.total, e.err
+		return e.stream, e.err
 	case <-ctx.Done():
-		return "", 0, ctx.Err()
+		return Stream{}, ctx.Err()
 	}
 }
 
@@ -82,7 +97,7 @@ func (c *URLs) Forget(videoID string) {
 func (c *URLs) run(ctx context.Context, videoID string, e *urlEntry) {
 	ctx, cancel := context.WithTimeout(ctx, ResolveTimeout)
 	defer cancel()
-	e.url, e.total, e.err = c.resolve(ctx, videoID)
+	e.stream, e.err = c.resolve(ctx, videoID)
 	if e.err != nil {
 		c.mu.Lock()
 		if c.entries[videoID] == e {

@@ -30,7 +30,7 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 			}
 		}, keymap.Previous)
 		loading := a.loading()
-		playing := a.player.Playing() && !loading
+		playing := a.playing() && !loading
 		icon, label := m3.IconPlay, "Play"
 		switch {
 		case loading:

@@ -298,6 +298,12 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	if item.VideoID != "" && (isEpisode(renderer) || episodeVideoID != "") {
 		item.Kind = KindEpisode
 	}
+	if (item.Kind == KindTrack || item.Kind == KindMusicItem && item.VideoID != "") && isMusicVideo(renderer) {
+		// A music video in the rows of a search, an artist or a playlist,
+		// or in the cards of an artist's videos, is drawn like a song, and
+		// only its watch endpoint says it has a picture.
+		item.Kind = KindVideo
+	}
 	if item.Kind == KindEpisode {
 		item.Description = strings.Join(strings.Fields(rendererText(renderer.get("description"))), " ")
 		item.ProgressPercent = episodeProgress(renderer)
@@ -345,12 +351,30 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 // isEpisode reports whether the tap that plays a renderer names a podcast
 // episode.
 func isEpisode(renderer *jsonObject) bool {
-	for _, key := range []string{"navigationEndpoint", "onTap", "overlay"} {
-		if nestedString(renderer.get(key), "musicVideoType") == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
-			return true
+	return musicVideoType(renderer) == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE"
+}
+
+// isMusicVideo reports whether the tap that plays a renderer names a music
+// video: anything YouTube types other than a song (ATV) or an episode. Rows
+// of every list say so, not only the cards and the queue drawn as videos.
+func isMusicVideo(renderer *jsonObject) bool {
+	switch musicVideoType(renderer) {
+	case "", "MUSIC_VIDEO_TYPE_ATV", "MUSIC_VIDEO_TYPE_PODCAST_EPISODE":
+		return false
+	}
+	return true
+}
+
+// musicVideoType is the type YouTube gives the watch endpoint that plays a
+// renderer, in whichever member the renderer keeps it: list rows keep theirs
+// in the first flex column and the play overlay.
+func musicVideoType(renderer *jsonObject) string {
+	for _, key := range []string{"navigationEndpoint", "onTap", "overlay", "flexColumns"} {
+		if videoType := nestedString(renderer.get(key), "musicVideoType"); videoType != "" {
+			return videoType
 		}
 	}
-	return false
+	return ""
 }
 
 // episodeLength reads the length a show's episode row keeps beside its

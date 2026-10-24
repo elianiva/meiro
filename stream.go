@@ -108,6 +108,7 @@ func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position
 		// is instead of resolving the same track again.
 		cache.Add(item.VideoID, found.url)
 	}
+	a.syncVideo()
 	a.warmNext()
 }
 
@@ -313,10 +314,10 @@ func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem,
 		}
 		return found, nil
 	}
-	url, total, err := streams.Get(ctx, item.VideoID)
-	found.url = url
-	if total > 0 {
-		found.total = total
+	stream, err := streams.Get(ctx, item.VideoID)
+	found.url = stream.URL
+	if stream.Total > 0 {
+		found.total = stream.Total
 	}
 	return found, err
 }
@@ -337,13 +338,13 @@ func (a *app) warmNext() {
 	a.run(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), audio.ResolveTimeout)
 		defer cancel()
-		url, _, err := a.streams.Get(ctx, next.VideoID)
+		stream, err := a.streams.Get(ctx, next.VideoID)
 		if err != nil {
 			log.Printf("playback: could not resolve next video_id=%s: %v", next.VideoID, err)
 			return
 		}
 		if cache.Warmable() {
-			cache.Add(next.VideoID, url)
+			cache.Add(next.VideoID, stream.URL)
 		}
 	})
 }

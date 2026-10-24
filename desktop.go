@@ -105,6 +105,14 @@ func (d *desktop) bringToFront() {
 	d.win.Focus()
 }
 
+// setFullScreen fills the screen with the window, or gives it its frame
+// back.
+func (d *desktop) setFullScreen(on bool) {
+	if d != nil {
+		d.win.SetFullScreen(on)
+	}
+}
+
 // keepAwake holds a sleep assertion while on is set, and releases it once it
 // is not.
 func (d *desktop) keepAwake(on bool) {
@@ -441,6 +449,9 @@ func (a *app) setupDesktop() {
 			}
 		})
 	})
+	// The system can take the window out of full screen itself; the picture
+	// then goes back to its place in the player.
+	a.desktop.win.OnLeaveFullScreen(func() { a.update(func() { a.nowPlaying.fullscreen = false }) })
 	a.desktop.closeToTray(func() *bool { return a.settings.CloseToTray }, a.answerClose)
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.desktop.quitting = true })
 	a.syncDesktop()
