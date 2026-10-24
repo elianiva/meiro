@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "ytdlp",
@@ -6,8 +6,15 @@ go_library(
     importpath = "github.com/elianiva/meiro/internal/ytdlp",
     visibility = ["//:__subpackages__"],
     deps = [
+        "//internal/audio",
         "//internal/fsutil",
         "//internal/proc",
         "//youtube",
     ],
+)
+
+go_test(
+    name = "ytdlp_test",
+    srcs = ["ytdlp_test.go"],
+    embed = [":ytdlp"],
 )

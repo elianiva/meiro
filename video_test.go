@@ -35,10 +35,7 @@ func videoApp(t *testing.T) (*app, string) {
 		t.Fatalf("making a clip: %v: %s", err, out)
 	}
 	a, r := playbackApp(t)
-	r.file = tone
-	a.video.streams = audio.NewURLs(func(context.Context, string) (string, time.Duration, error) {
-		return clip, 0, nil
-	})
+	r.file, r.video = tone, clip
 	return a, clip
 }
 
@@ -222,8 +219,11 @@ func TestClosingThePlayerStopsThePicture(t *testing.T) {
 func TestAnUnavailableVideoSaysSo(t *testing.T) {
 	a, _ := videoApp(t)
 	a.settings.ShowVideo = true
-	a.video.streams = audio.NewURLs(func(context.Context, string) (string, time.Duration, error) {
-		return filepath.Join(t.TempDir(), "missing.mp4"), 0, nil
+	urls := a.streams
+	a.streams = audio.NewURLs(func(ctx context.Context, videoID string) (audio.Stream, error) {
+		stream, err := urls.Get(ctx, videoID)
+		stream.Video = filepath.Join(t.TempDir(), "missing.mp4")
+		return stream, err
 	})
 	q := []youtube.MusicItem{{VideoID: "v1", Title: "A music video", Kind: youtube.KindVideo}}
 	a.play(q[0], q)

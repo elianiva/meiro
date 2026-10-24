@@ -32,19 +32,20 @@ type resolved struct {
 	mu  sync.Mutex
 	ids []string
 	err map[string]error
-	// file, when set, is the audio every track resolves to.
-	file string
+	// file, when set, is the audio every track resolves to, and video the
+	// picture.
+	file, video string
 	// url, when set, chooses the URL of a track's nth resolve (from 1), in
 	// place of file, and may fail it.
 	url func(videoID string, n int) (string, error)
 }
 
-func (r *resolved) resolve(_ context.Context, videoID string) (string, time.Duration, error) {
+func (r *resolved) resolve(_ context.Context, videoID string) (audio.Stream, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ids = append(r.ids, videoID)
 	if err := r.err[videoID]; err != nil {
-		return "", 0, err
+		return audio.Stream{}, err
 	}
 	if r.url != nil {
 		n := 0
@@ -54,12 +55,12 @@ func (r *resolved) resolve(_ context.Context, videoID string) (string, time.Dura
 			}
 		}
 		url, err := r.url(videoID, n)
-		return url, 3 * time.Minute, err
+		return audio.Stream{URL: url, Total: 3 * time.Minute}, err
 	}
 	if r.file != "" {
-		return r.file, 3 * time.Second, nil
+		return audio.Stream{URL: r.file, Video: r.video, Total: 3 * time.Second}, nil
 	}
-	return "/nonexistent/" + videoID + ".m4a", 3 * time.Minute, nil
+	return audio.Stream{URL: "/nonexistent/" + videoID + ".m4a", Total: 3 * time.Minute}, nil
 }
 
 // asked reports whether the resolver was asked for videoID. The app also
@@ -441,7 +442,7 @@ func TestLoudnessIsAppliedBeforeTheAudioStarts(t *testing.T) {
 	// sees the volume the player holds when the audio is about to start.
 	atResolve := -1.0
 	urls := a.streams
-	a.streams = audio.NewURLs(func(ctx context.Context, videoID string) (string, time.Duration, error) {
+	a.streams = audio.NewURLs(func(ctx context.Context, videoID string) (audio.Stream, error) {
 		atResolve = a.player.Volume()
 		return urls.Get(ctx, videoID)
 	})

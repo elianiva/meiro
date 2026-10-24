@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **Music videos and podcast episodes can show their video.** The player offers an Audio/Video choice for a music video or an episode; Video shows the picture in place of the artwork, in step with the sound, and Audio goes back to the artwork. The choice is remembered. Songs keep showing their artwork.
+- **Music videos and podcast episodes can show their video.** The player offers an Audio/Video choice for a music video or an episode; Video shows the picture in place of the artwork, in step with the sound, and Audio goes back to the artwork. The choice is remembered. Songs keep showing their artwork. Showing the video asks YouTube for nothing extra: its stream comes along with the audio's.
 - **The video can fill the screen.** A Full screen button on the picture takes the window full screen with the picture alone; the controls, title and position slider hide after the pointer rests and come back when it moves. Escape, the button in the corner, or a track without a video brings the player back.
 
 ### Fixed

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"image"
 	"log"
 	"time"
@@ -19,9 +20,6 @@ import (
 type videoState struct {
 	// load finds the picture's stream and gives it to the player.
 	load task
-	// streams remembers resolved picture URLs, as playback.streams does the
-	// audio's.
-	streams *audio.URLs
 	// id is the track whose picture was last asked for, and err why it
 	// could not be shown; a track is not asked for again until it changes.
 	id  string
@@ -77,16 +75,21 @@ func (a *app) syncVideo() {
 	if a.video.id != id {
 		a.video.id, a.video.err, a.video.hasFrame = id, "", false
 	}
-	streams := a.video.streams
+	// The picture's URL came with the audio's, from the one yt-dlp run that
+	// found it; a track whose audio came from the cache resolves now.
+	streams := a.streams
 	startTask(a, &a.video.load, audio.ResolveTimeout, func(ctx context.Context) (string, error) {
-		url, _, err := streams.Get(ctx, id)
+		stream, err := streams.Get(ctx, id)
 		if err != nil {
 			return "", err
+		}
+		if stream.Video == "" {
+			return "", errors.New("the track has no picture")
 		}
 		// The player takes the picture only once a stream plays; before
 		// that this is a no-op, and the next poll asks again, with the
 		// URL now remembered.
-		return url, a.player.SetVideo(url)
+		return stream.Video, a.player.SetVideo(stream.Video)
 	}, func(url string, err error) {
 		if err != nil {
 			log.Printf("playback: video unavailable video_id=%s: %v", id, err)

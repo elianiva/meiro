@@ -201,10 +201,6 @@ func newApp() *app {
 	}
 	a.scrobble = newScrobbler()
 	a.playback = newPlayback(audio.NewURLs(ytdlp.Resolve), a.settings.Volume)
-	a.video.streams = audio.NewURLs(func(ctx context.Context, videoID string) (string, time.Duration, error) {
-		url, err := ytdlp.ResolveVideo(ctx, videoID)
-		return url, 0, err
-	})
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.run = func(work func()) {
 		go func() {
