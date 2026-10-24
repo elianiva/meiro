@@ -298,10 +298,10 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	if item.VideoID != "" && (isEpisode(renderer) || episodeVideoID != "") {
 		item.Kind = KindEpisode
 	}
-	if item.Kind == KindTrack && isMusicVideo(renderer) {
-		// A music video in the rows of a search, an artist or a playlist
-		// is drawn like a song, and only its watch endpoint says it has a
-		// picture.
+	if (item.Kind == KindTrack || item.Kind == KindMusicItem && item.VideoID != "") && isMusicVideo(renderer) {
+		// A music video in the rows of a search, an artist or a playlist,
+		// or in the cards of an artist's videos, is drawn like a song, and
+		// only its watch endpoint says it has a picture.
 		item.Kind = KindVideo
 	}
 	if item.Kind == KindEpisode {
