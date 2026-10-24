@@ -6,6 +6,7 @@ go_library(
         "equalizer.go",
         "null.go",
         "player.go",
+        "video.go",
         "window_unix.go",
         "window_windows.go",
     ],
@@ -20,6 +21,7 @@ go_test(
         "eq_test.go",
         "integration_test.go",
         "player_test.go",
+        "video_test.go",
     ],
     embed = [":player"],
 )

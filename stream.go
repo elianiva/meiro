@@ -108,6 +108,7 @@ func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position
 		// is instead of resolving the same track again.
 		cache.Add(item.VideoID, found.url)
 	}
+	a.syncVideo()
 	a.warmNext()
 }
 

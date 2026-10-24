@@ -56,6 +56,9 @@ type Settings struct {
 	SignInSource string `json:"signInSource,omitempty"`
 	// StaticLyrics shows lyrics as plain text even when a track has them timed.
 	StaticLyrics bool `json:"staticLyrics,omitempty"`
+	// ShowVideo shows the picture of a video in the player, in place of its
+	// artwork.
+	ShowVideo bool `json:"showVideo,omitempty"`
 	// NotifyTrack shows a desktop notification when a new track starts.
 	NotifyTrack bool `json:"notifyTrack"`
 	// GlobalShortcut plays or pauses from anywhere with

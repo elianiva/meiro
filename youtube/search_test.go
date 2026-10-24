@@ -57,6 +57,12 @@ const searchPageResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[
 		"flexColumns":[
 			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"First Light"}]}}},
 			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Song"},{"text":" • "},{"text":"Someone","navigationEndpoint":{"browseEndpoint":{"browseId":"UCsomeone"}}},{"text":" • "},{"text":"3:42"}]}}}
+		]}}]}},
+	{"itemSectionRenderer":{"contents":[{"musicResponsiveListItemRenderer":{
+		"playlistItemData":{"videoId":"vid-2"},
+		"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"First Light (Official Video)","navigationEndpoint":{"watchEndpoint":{"videoId":"vid-2","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_OMV"}}}}}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Video"},{"text":" • "},{"text":"Someone","navigationEndpoint":{"browseEndpoint":{"browseId":"UCsomeone"}}},{"text":" • "},{"text":"3:50"}]}}}
 		]}}]}}
 ]}}}}]}}}`
 
@@ -102,12 +108,18 @@ func TestSearchRowsOpenWhatTheyName(t *testing.T) {
 		{"Ambient Mix", TargetPlaylist, "VLPLambient"},
 		{"Ambient Talk", TargetPodcast, "MPSPPLambient"},
 		{"First Light", TargetTrack, "vid-1"},
+		{"First Light (Official Video)", TargetTrack, "vid-2"},
 	}
 	for _, item := range want {
 		got := searchItem(t, result, item.title)
 		if target := got.Target(); target.Kind != item.kind || target.ID != item.id {
 			t.Errorf("%q opens %d %q, want %d %q", item.title, target.Kind, target.ID, item.kind, item.id)
 		}
+	}
+	// A row says in its watch endpoint whether it has a picture; a song's
+	// endpoint says nothing.
+	if song, video := searchItem(t, result, "First Light"), searchItem(t, result, "First Light (Official Video)"); song.IsVideo() || !video.IsVideo() {
+		t.Errorf("song IsVideo=%v, video IsVideo=%v; want false, true", song.IsVideo(), video.IsVideo())
 	}
 	if artist := searchItem(t, result, "First Light").ArtistID(); artist != "UCsomeone" {
 		t.Errorf("the song credits artist %q, want UCsomeone", artist)

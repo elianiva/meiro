@@ -71,6 +71,7 @@ func (a *app) openPlayer(tab panelTab, queueOnly bool) {
 	a.nowPlaying.open, a.nowPlaying.closing = true, false
 	a.nowPlaying.tab, a.nowPlaying.queueOnly = tab, queueOnly
 	a.loadPanel()
+	a.syncVideo()
 }
 
 // setMiniShown records that the mini player opened or closed, and loads its
@@ -158,6 +159,15 @@ func (a *app) nowPlayingView(c *ui.Context) {
 				}
 			}, keymap.ClosePlayer)
 			m3.EmphasizedText(c, m3.TitleMedium, "Now playing").TextColor(sc.OnSurfaceVariant).Grow(1)
+			if hasVideo(a.current) {
+				mode := 0
+				if a.settings.ShowVideo {
+					mode = 1
+				}
+				if m3.ButtonGroup(c, "np-mode", &mode, []string{"Audio", "Video"}, []*ui.SVG{m3.IconMusicNote, m3.IconVideocam}) {
+					a.setShowVideo(mode == 1)
+				}
+			}
 			if !wide {
 				if m3.IconButton(c, m3.IconButtonSpec{
 					Icon: m3.IconQueue, Label: "Up next", Toggle: true, Selected: a.nowPlaying.queueOnly, Kind: m3.TonalIcon, Key: "np-queue",
@@ -168,7 +178,13 @@ func (a *app) nowPlayingView(c *ui.Context) {
 		})
 		ui.Row(c).Grow(1).MinHeight(0).Padding(0, pageGutter, pageGutter).Gap(32).AlignItems(ui.Stretch).Children(func() {
 			if wide || !a.nowPlaying.queueOnly {
-				a.nowPlayingMain(c, h)
+				// What the main part has to spread in: the window less the
+				// gutters, and, beside the side panel, the panel and the gap.
+				available := w - 2*pageGutter
+				if wide {
+					available -= 480 + 32
+				}
+				a.nowPlayingMain(c, available, h)
 			}
 			if wide || a.nowPlaying.queueOnly {
 				a.sidePanel(c, wide, false)
@@ -177,9 +193,11 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	})
 }
 
-// nowPlayingMain is the artwork, the name, the scrubber and the controls:
-// stacked in a tall window, side by side in a short one.
-func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
+// nowPlayingMain is the artwork, or the picture, the name, the scrubber and
+// the controls: stacked in a tall window, side by side in a short one.
+// available is the width it has.
+func (a *app) nowPlayingMain(c *ui.Context, available, windowHeight float32) {
+	video := a.wantVideo()
 	controls := func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			a.trackLine(c, m3.HeadlineSmall, m3.TitleMedium).Grow(1)
@@ -196,15 +214,28 @@ func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 	if windowHeight < 700 {
 		art := min(max(windowHeight-200, 160), 320)
 		ui.Row(c).Grow(1).MinWidth(0).Center().Gap(28).Children(func() {
-			a.nowPlayingArtwork(c, 512, art, m3.ExtraLarge)
+			if video {
+				// The controls keep their narrowest width beside the picture.
+				width, height := videoSize(art, available-28-260)
+				a.nowPlayingVideo(c, width, height, m3.ExtraLarge)
+			} else {
+				a.nowPlayingArtwork(c, 512, art, m3.ExtraLarge)
+			}
 			ui.Column(c).Grow(1).MinWidth(260).MaxWidth(420).Gap(10).Children(controls)
 		})
 		return
 	}
 	art := min(max(windowHeight-420, 300), 440)
+	width := art
 	ui.Column(c).Grow(1).MinWidth(0).Center().Gap(20).Children(func() {
-		a.nowPlayingArtwork(c, 640, art, m3.ExtraLargeInc+8)
-		ui.Column(c).Width(art).Gap(14).Children(controls)
+		if video {
+			var height float32
+			width, height = videoSize(art, available)
+			a.nowPlayingVideo(c, width, height, m3.ExtraLargeInc+8)
+		} else {
+			a.nowPlayingArtwork(c, 640, art, m3.ExtraLargeInc+8)
+		}
+		ui.Column(c).Width(width).Gap(14).Children(controls)
 	})
 }
 

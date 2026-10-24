@@ -29,25 +29,46 @@ var ErrMissing = errors.New("playing needs ffmpeg and yt-dlp on PATH")
 // resolution is anonymous; account cookies stay with the YouTube API client
 // for account features and playback history.
 func Resolve(ctx context.Context, videoID string) (string, time.Duration, error) {
-	// The visionos client returns anonymous audio URLs without a challenge.
+	streamURL, err := resolveFormat(ctx, videoID, "audio", "bestaudio")
+	if err != nil {
+		return "", 0, err
+	}
+	return streamURL, durationFromURL(streamURL), nil
+}
+
+// videoFormat is the picture ResolveVideo asks for: no taller than the player
+// shows it, and H.264 where YouTube has it, which every machine decodes with
+// little work.
+const videoFormat = "bestvideo[height<=720][vcodec^=avc1]/bestvideo[height<=720]/bestvideo"
+
+// ResolveVideo asks yt-dlp for a direct URL of a track's picture alone, to
+// play beside the audio Resolve finds.
+func ResolveVideo(ctx context.Context, videoID string) (string, error) {
+	return resolveFormat(ctx, videoID, "video", videoFormat)
+}
+
+// resolveFormat resolves the stream of videoID that format selects. what
+// names it in errors.
+func resolveFormat(ctx context.Context, videoID, what, format string) (string, error) {
+	// The visionos client returns anonymous stream URLs without a challenge.
 	// yt-dlp's default also asks the web client, which makes it run the solver
 	// under QuickJS for about seven seconds of CPU, so try visionos alone first
 	// and fall back to the full set if YouTube stops serving it.
-	streamURL, total, err := resolve(ctx, videoID, true)
+	streamURL, err := resolve(ctx, videoID, what, format, true)
 	if err == nil {
-		return streamURL, total, nil
+		return streamURL, nil
 	}
 	if ctx.Err() != nil {
-		return "", 0, err
+		return "", err
 	}
 	log.Printf("playback: js-less resolve failed video_id=%s, retrying with the solver: %v", videoID, err)
-	return resolve(ctx, videoID, false)
+	return resolve(ctx, videoID, what, format, false)
 }
 
-func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Duration, error) {
+func resolve(ctx context.Context, videoID, what, format string, jsless bool) (string, error) {
 	path, err := proc.Tool("yt-dlp")
 	if err != nil {
-		return "", 0, ErrMissing
+		return "", ErrMissing
 	}
 	jsRuntime := "none"
 	var runtimeArgs []string
@@ -59,31 +80,31 @@ func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Dur
 	} else {
 		jsRuntime, runtimeArgs = jsRuntimeArgs()
 	}
-	args := []string{"-f", "bestaudio", "-g", "--no-playlist", "--extractor-args", extractorArgs}
+	args := []string{"-f", format, "-g", "--no-playlist", "--extractor-args", extractorArgs}
 	args = append(args, runtimeArgs...)
 	args = append(args, youtube.WatchURL(videoID))
 	command := proc.Command(ctx, path, args...)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	started := time.Now()
-	log.Printf("playback: running yt-dlp video_id=%s js_runtime=%s", videoID, jsRuntime)
+	log.Printf("playback: running yt-dlp video_id=%s stream=%s js_runtime=%s", videoID, what, jsRuntime)
 	output, err := command.Output()
 	if err != nil {
-		log.Printf("playback: yt-dlp failed video_id=%s elapsed=%s: %s", videoID, time.Since(started).Round(time.Millisecond), strings.TrimSpace(stderr.String()))
+		log.Printf("playback: yt-dlp failed video_id=%s stream=%s elapsed=%s: %s", videoID, what, time.Since(started).Round(time.Millisecond), strings.TrimSpace(stderr.String()))
 		if exit := (*exec.ExitError)(nil); errors.As(err, &exit) {
 			if reason := LastError(stderr.String()); reason != "" {
-				return "", 0, fmt.Errorf("yt-dlp could not resolve the audio: %s", reason)
+				return "", fmt.Errorf("yt-dlp could not resolve the %s: %s", what, reason)
 			}
 		}
-		return "", 0, fmt.Errorf("yt-dlp could not resolve the audio: %w", err)
+		return "", fmt.Errorf("yt-dlp could not resolve the %s: %w", what, err)
 	}
 	streamURL, _, _ := strings.Cut(string(output), "\n")
 	streamURL = strings.TrimSpace(streamURL)
 	if streamURL == "" {
-		return "", 0, errors.New("could not resolve the audio")
+		return "", fmt.Errorf("could not resolve the %s", what)
 	}
-	log.Printf("playback: yt-dlp resolved video_id=%s elapsed=%s", videoID, time.Since(started).Round(time.Millisecond))
-	return streamURL, durationFromURL(streamURL), nil
+	log.Printf("playback: yt-dlp resolved video_id=%s stream=%s elapsed=%s", videoID, what, time.Since(started).Round(time.Millisecond))
+	return streamURL, nil
 }
 
 // BrowserCookie has yt-dlp read the cookies of one browser, or profile, as

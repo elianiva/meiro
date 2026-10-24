@@ -217,6 +217,7 @@ func newTestApp(t testing.TB) *app {
 	a.streams = audio.NewURLs(func(context.Context, string) (string, time.Duration, error) {
 		return "", 0, errors.New("no network in tests")
 	})
+	a.video.streams = a.streams
 	a.collectInfo = func(_ context.Context, version string) report.Info {
 		return report.Info{App: version, OS: runtime.GOOS, Arch: runtime.GOARCH, YtDlp: "2026.01.01", FFmpeg: "7.1"}
 	}

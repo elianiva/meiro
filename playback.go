@@ -414,6 +414,7 @@ func (a *app) poll() {
 		}
 		a.observeListen()
 		a.syncPreload()
+		a.syncVideo()
 		a.ensureUpNext()
 		if !a.scrubbing {
 			a.scrub = a.player.Position().Seconds()
