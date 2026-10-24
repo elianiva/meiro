@@ -28,6 +28,11 @@ type videoState struct {
 	// hasFrame says one has.
 	bitmap   *ui.Bitmap
 	hasFrame bool
+	// flash is the icon that swells and fades over the picture after a
+	// click on it plays or pauses the track; flashNew says it has yet to
+	// start.
+	flash    *ui.SVG
+	flashNew bool
 }
 
 // hasVideo reports whether item has a picture to show: a music video, or an
@@ -189,8 +194,56 @@ func (a *app) nowPlayingVideo(c *ui.Context, width, height, radius float32) {
 
 // videoPicture fills its parent with the frame drawn, or, until one has
 // come, with the artwork dimmed under a loading indicator or the reason the
-// picture cannot be shown.
-func (a *app) videoPicture(c *ui.Context) {
+// picture cannot be shown. A click on it plays or pauses the track, and a
+// double click fills the screen with it or puts it back. It returns the
+// picture.
+func (a *app) videoPicture(c *ui.Context) ui.Element {
+	picture := ui.Box(c.Key("video-picture")).Fill()
+	// The first click of a double click has already played or paused the
+	// track; the second undoes that, so a double click leaves it as it was.
+	switch {
+	case picture.DoubleClicked():
+		a.togglePlay()
+		a.nowPlaying.pointerAt = c.Now() // the click counts as the pointer's last move
+		a.setFullscreen(!a.nowPlaying.fullscreen)
+	case picture.Clicked():
+		a.video.flash, a.video.flashNew = m3.IconPlay, true
+		if a.player.Playing() {
+			a.video.flash = m3.IconPause
+		}
+		a.togglePlay()
+	}
+	return picture.Children(func() {
+		a.videoFrame(c)
+		a.videoFlash(c)
+	})
+}
+
+// flashTime is how long the icon over a clicked picture takes to fade.
+const flashTime = 500 * time.Millisecond
+
+// videoFlash shows what a click on the picture did, as a play or pause icon
+// in a dark circle that swells and fades from the middle of the picture.
+func (a *app) videoFlash(c *ui.Context) {
+	if a.video.flash == nil {
+		return
+	}
+	flash := ui.Box(c.Key("video-flash")).Size(64, 64).Radius(m3.Full).Background(ui.RGB(0, 0, 0).Alpha(0.5)).
+		Center().Attach(ui.AnchorCenter, ui.AnchorCenter).PassThrough()
+	if a.video.flashNew {
+		a.video.flashNew = false
+		flash.Jump("opacity", 1)
+		flash.Jump("scale", 1)
+	}
+	scale := flash.Animate("scale", 1.6, flashTime)
+	flash.Opacity(flash.Animate("opacity", 0, flashTime)).Scale(scale, scale)
+	flash.Children(func() {
+		ui.Icon(c, a.video.flash).FontSize(36).TextColor(ui.RGB(255, 255, 255))
+	})
+}
+
+// videoFrame is what videoPicture shows.
+func (a *app) videoFrame(c *ui.Context) {
 	if a.video.hasFrame {
 		ui.Image(c, a.video.bitmap).Fit(ui.Contain).Fill()
 		return
@@ -230,9 +283,6 @@ func (a *app) fullscreenVideoView(c *ui.Context) ui.Element {
 		c.After(controlsLinger - rested)
 	}
 	root := ui.Box(c.Key("fullscreen-video")).Fill().Background(ui.RGB(0, 0, 0))
-	if !controls {
-		root.Cursor(ui.CursorNone)
-	}
 	root.HandleInput(func(ev ui.InputEvent) bool {
 		if ev.Kind != ui.InputPointerMove {
 			return false
@@ -244,8 +294,9 @@ func (a *app) fullscreenVideoView(c *ui.Context) ui.Element {
 		return hidden
 	})
 	root.Children(func() {
-		a.videoPicture(c)
+		picture := a.videoPicture(c)
 		if !controls {
+			picture.Cursor(ui.CursorNone)
 			return
 		}
 		scrim := ui.RGB(0, 0, 0).Alpha(0.7)

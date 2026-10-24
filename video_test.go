@@ -183,6 +183,70 @@ func TestThePictureFillsTheWindowWhenAsked(t *testing.T) {
 	}
 }
 
+func TestClickingThePicturePlaysPausesAndFillsTheWindow(t *testing.T) {
+	a, _ := videoApp(t)
+	a.settings.ShowVideo = true
+	q := []youtube.MusicItem{{VideoID: "v1", Title: "A music video", Kind: youtube.KindVideo}}
+	a.play(q[0], q)
+	tt := ui.NewTester(a.view, 1200, 800)
+	a.openPlayer(tabQueue, false)
+	afterAnimations(tt)
+	pumpFrames(t, a)
+	waitFor(t, func() bool { a.poll(); return a.player.Playing() })
+	tt.Frame()
+
+	// The middle of the picture: below the menu button, above Full screen.
+	menu, ok := tt.Find("More options for A music video")
+	if !ok {
+		t.Fatalf("no picture in the player: %q", tt.Texts())
+	}
+	full, _ := tt.Find("Full screen")
+	x, y := menu.X-100, (menu.Y+full.Y)/2
+
+	tt.ClickAt(x, y)
+	tt.Frame()
+	if a.player.Playing() {
+		t.Fatal("a click on the picture did not pause the track")
+	}
+	tt.Advance(time.Second) // apart, so the next click is not a double click
+	tt.ClickAt(x, y)
+	tt.Frame()
+	if !a.player.Playing() {
+		t.Fatal("a second click on the picture did not resume the track")
+	}
+
+	// A double click fills the window and leaves the track playing.
+	tt.Advance(time.Second)
+	tt.ClickAt(x, y)
+	tt.ClickAt(x, y)
+	tt.Frame()
+	if !a.nowPlaying.fullscreen {
+		t.Fatal("a double click on the picture did not fill the window")
+	}
+	if !a.player.Playing() {
+		t.Fatal("a double click on the picture paused the track")
+	}
+
+	// Over the full-screen picture a click pauses, and a double click puts
+	// the picture back, still paused.
+	tt.Advance(time.Second)
+	tt.ClickAt(600, 400)
+	tt.Frame()
+	if a.player.Playing() || !a.nowPlaying.fullscreen {
+		t.Fatalf("a click on the full-screen picture: playing %v, fullscreen %v", a.player.Playing(), a.nowPlaying.fullscreen)
+	}
+	tt.Advance(time.Second)
+	tt.ClickAt(600, 400)
+	tt.ClickAt(600, 400)
+	tt.Frame()
+	if a.nowPlaying.fullscreen || a.player.Playing() {
+		t.Fatalf("a double click on the full-screen picture: fullscreen %v, playing %v", a.nowPlaying.fullscreen, a.player.Playing())
+	}
+	if !tt.HasText("Now playing") {
+		t.Fatalf("the player did not come back: %q", tt.Texts())
+	}
+}
+
 func TestClosingThePlayerStopsThePicture(t *testing.T) {
 	a, clip := videoApp(t)
 	a.settings.ShowVideo = true
