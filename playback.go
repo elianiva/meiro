@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +63,8 @@ type playback struct {
 	// seeking moves the player to seekTarget; it is busy while the decode is
 	// being restarted there.
 	seeking task
+	// speeding changes the player's speed to the current track's.
+	speeding task
 	// preload resolves the next track and has the player decode it ahead of
 	// the end of the current one; preloaded is what it left with the player,
 	// and preloadFailed the track it could not, which is not tried again
@@ -192,6 +195,8 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 	// the decode the seek was moving is about to be replaced.
 	a.seeking.stop()
 	a.seekTarget = 0
+	// The track's audio starts at the track's own speed.
+	a.speeding.stop()
 	// What was being readied was for the track after the old one.
 	a.preload.stop()
 	a.preloaded, a.preloadFailed = preloadedAudio{}, ""
@@ -614,6 +619,42 @@ func (a *app) setVolume(v float64) {
 	a.player.SetVolume(playbackVolume(a.volume, a.loudness, a.loudnessOK && a.settings.NormalizeLoudness))
 	a.settings.Volume = a.volume
 	a.syncSystemMedia()
+}
+
+// podcastSpeeds are the speeds an episode can play at.
+var podcastSpeeds = []float64{0.5, 0.8, 1, 1.2, 1.5, 1.8, 2, 2.5, 3}
+
+// speedFor is how fast item plays: an episode at the speed chosen for
+// podcasts, anything else at its own pace.
+func (a *app) speedFor(item youtube.MusicItem) float64 {
+	if item.IsEpisode() && slices.Contains(podcastSpeeds, a.settings.PodcastSpeed) {
+		return a.settings.PodcastSpeed
+	}
+	return 1
+}
+
+// setPodcastSpeed chooses how fast episodes play, keeps the choice, and
+// plays the episode playing at it.
+func (a *app) setPodcastSpeed(speed float64) {
+	a.settings.PodcastSpeed = speed
+	a.saveSettings()
+	a.applySpeed()
+}
+
+// applySpeed plays the current track at its speed, if it does not already.
+// Changing the speed restarts the decode, which is not for the main thread to
+// do. While the track's audio is on its way this is left to the work that
+// finds it, which applies the speed once it plays.
+func (a *app) applySpeed() {
+	if a.stream.busy() {
+		return
+	}
+	speed := a.speedFor(a.current)
+	startTask(a, &a.speeding, noTimeout, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, a.player.SetSpeed(ctx, speed)
+	}, func(struct{}, error) {
+		a.syncSystemMedia()
+	})
 }
 
 // toggleMute silences the player, or brings the volume back, never quieter

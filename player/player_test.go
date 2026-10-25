@@ -12,7 +12,7 @@ import (
 )
 
 func TestStreamArgsProtocolWhitelist(t *testing.T) {
-	args := streamArgs("https://media.test/audio", 0, true)
+	args := streamArgs("https://media.test/audio", 0, true, 1)
 	index := slices.Index(args, "-protocol_whitelist")
 	if index < 0 || index+1 == len(args) {
 		t.Fatalf("no protocol whitelist in %v", args)

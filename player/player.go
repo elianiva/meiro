@@ -77,6 +77,9 @@ type Player struct {
 	// eqBands holds one gain in dB per EQFrequencies entry, nil when the
 	// equaliser is off. Guarded by ctl while sessions publish updated targets.
 	eqBands []float64
+	// speed is how fast streams play, 1 for their own pace. Written under
+	// ctl and mu, so either guards a read.
+	speed float64
 
 	// next is the stream decoding ahead of the end of the current one, and
 	// advanced is the tag of the one that took over without a pause, until
@@ -121,7 +124,7 @@ func withAudio(audio *sharedAudio) Option {
 // New creates a player that is not yet playing anything. It does not touch
 // the audio device or the file system.
 func New(options ...Option) *Player {
-	p := &Player{volume: 1, audio: processAudio}
+	p := &Player{volume: 1, speed: 1, audio: processAudio}
 	for _, option := range options {
 		option(p)
 	}
@@ -189,20 +192,21 @@ func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 	// eqBands only changes under ctl, so snapshot it there; Preload itself
 	// decodes without the lock, like the rest of the app's calls.
 	p.ctl.Lock()
-	eq := p.eqBands
+	eq, speed := p.eqBands, p.speed
 	p.ctl.Unlock()
-	next, err := p.decode(ffmpeg, url, 0, eq)
+	next, err := p.decode(ffmpeg, url, 0, eq, speed)
 	if err != nil {
 		return err
 	}
 	next.tag = tag
 	// A slider may have changed EQ while this stream was decoding. Publish it
 	// with the latest target while ctl prevents a newer change from racing the
-	// handoff into p.next.
+	// handoff into p.next. A stream decoded at a speed changed since is not
+	// one to follow with.
 	p.ctl.Lock()
 	next.eq.Set(p.eqBands)
 	p.mu.Lock()
-	if p.session == nil {
+	if p.session == nil || p.speed != speed {
 		p.mu.Unlock()
 		p.ctl.Unlock()
 		next.discard()
@@ -374,6 +378,54 @@ func equalGains(a, b []float64) bool {
 	return true
 }
 
+// MinSpeed and MaxSpeed bound the speeds SetSpeed takes.
+const (
+	MinSpeed = 0.5
+	MaxSpeed = 4.0
+)
+
+// SetSpeed sets how fast streams play, 1 for their own pace, keeping their
+// pitch. A speed outside MinSpeed and MaxSpeed is ignored. The stream
+// playing goes on from where it is at the new speed, held when paused, and
+// the preloaded one is dropped; later streams play at it too. Positions stay
+// in the stream's own time, so a picture keeps in step. Once ctx is done it
+// does nothing and returns ctx's error, so a request that was superseded
+// cannot undo the one that superseded it.
+func (p *Player) SetSpeed(ctx context.Context, speed float64) error {
+	if math.IsNaN(speed) || speed < MinSpeed || speed > MaxSpeed {
+		return nil
+	}
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p.speed == speed {
+		return nil
+	}
+	p.mu.Lock()
+	p.speed = speed
+	s := p.session
+	var url string
+	var at time.Duration
+	var paused, ended bool
+	if s != nil {
+		url, at, paused, ended = s.url, s.played(), s.paused, p.endedLocked(s)
+	}
+	p.mu.Unlock()
+	if s == nil || ended {
+		return nil
+	}
+	return p.start(ctx, url, at, paused)
+}
+
+// Speed returns how fast streams play, 1 by default.
+func (p *Player) Speed() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.speed
+}
+
 // Volume returns the current gain, 1 by default.
 func (p *Player) Volume() float64 {
 	p.mu.Lock()
@@ -448,10 +500,11 @@ func (p *Player) Position() time.Duration {
 }
 
 // played is how far into the track this session has come, from where its
-// decode began and the samples the device has taken. The caller holds p.mu.
+// decode began and the samples the device has taken, each of which covers
+// speed times its length of the track. The caller holds p.mu.
 func (s *session) played() time.Duration {
 	played := max(s.source.read.Load()-int64(s.out.BufferedSize()), 0)
-	return s.offset + time.Duration(played*int64(time.Second)/bytesPerSecond)
+	return s.offset + time.Duration(float64(played)*s.speed*float64(time.Second)/bytesPerSecond)
 }
 
 // Failure returns what ffmpeg reported when the decode stopped because of an
@@ -556,7 +609,7 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	p.mu.Unlock()
 	p.stop()
 
-	s, err := p.decode(ffmpeg, url, at, p.eqBands)
+	s, err := p.decode(ffmpeg, url, at, p.eqBands, p.speed)
 	if err != nil {
 		return err
 	}
@@ -579,11 +632,12 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	return nil
 }
 
-// decode starts ffmpeg on url from at and the goroutine that reaps it. The
-// session's reader shapes the PCM as it reaches the output. The session has no
-// output yet: start gives it one, and a handoff takes over the one before it.
-func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64) (*session, error) {
-	cmd := exec.Command(ffmpeg, streamArgs(url, at, p.rangedHTTP)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
+// decode starts ffmpeg on url from at, played at speed, and the goroutine
+// that reaps it. The session's reader shapes the PCM as it reaches the output.
+// The session has no output yet: start gives it one, and a handoff takes over
+// the one before it.
+func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, speed float64) (*session, error) {
+	cmd := exec.Command(ffmpeg, streamArgs(url, at, p.rangedHTTP, speed)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
 	hideWindow(cmd)
 	pipe, writer, err := os.Pipe()
 	if err != nil {
@@ -600,7 +654,7 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64) (*se
 	_ = writer.Close()
 	s := &session{
 		url: url, cmd: cmd, pipe: pipe, stderr: stderr,
-		offset: at, done: make(chan struct{}), quit: make(chan struct{}), eq: newEqualizer(eq),
+		offset: at, speed: speed, done: make(chan struct{}), quit: make(chan struct{}), eq: newEqualizer(eq),
 	}
 	s.source = newCountingReader(newEQReader(pipe, s.eq), func() io.Reader { return p.handoff(s) })
 	go p.reap(s)
@@ -608,15 +662,30 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64) (*se
 }
 
 // streamArgs is the ffmpeg command line that decodes url from at into signed
-// 16-bit stereo PCM on stdout. The equaliser runs as a live layer after decode.
-// ranged is whether ffmpeg can fetch a remote stream in bounded ranges.
-func streamArgs(url string, at time.Duration, ranged bool) []string {
+// 16-bit stereo PCM on stdout, played at speed. The equaliser runs as a live
+// layer after decode. ranged is whether ffmpeg can fetch a remote stream in
+// bounded ranges.
+func streamArgs(url string, at time.Duration, ranged bool, speed float64) []string {
 	args := inputArgs(url, at, ranged)
+	if speed != 1 {
+		args = append(args, "-af", tempoFilter(speed))
+	}
 	args = append(args,
 		"-vn", "-f", "s16le", "-acodec", "pcm_s16le",
 		"-ac", strconv.Itoa(channelCount), "-ar", strconv.Itoa(sampleRate),
 	)
 	return append(args, "pipe:1")
+}
+
+// tempoFilter is the ffmpeg filter that plays audio at speed without changing
+// its pitch. ffmpeg before 4.3 takes atempo only up to 2, so a faster speed
+// is two of them.
+func tempoFilter(speed float64) string {
+	format := func(f float64) string { return "atempo=" + strconv.FormatFloat(f, 'f', -1, 64) }
+	if speed > 2 {
+		return format(2) + "," + format(speed/2)
+	}
+	return format(speed)
 }
 
 // inputArgs is the part of an ffmpeg command line that opens url at at: the
@@ -919,8 +988,10 @@ type session struct {
 	// quit is closed when the app stops the decode.
 	quit chan struct{}
 
-	// offset is where in the track this decode began.
+	// offset is where in the track this decode began, and speed how fast it
+	// plays.
 	offset time.Duration
+	speed  float64
 	paused bool
 	// stopped is set when the app, not ffmpeg, ended the decode.
 	stopped bool

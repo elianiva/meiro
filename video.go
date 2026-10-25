@@ -386,7 +386,10 @@ func (a *app) fullscreenVideoView(c *ui.Context) ui.Element {
 				ui.Row(c).AlignItems(ui.Center).Children(func() {
 					ui.Row(c).Grow(1).Basis(0).Children(func() { a.volumeControl(c, 120) })
 					a.transport(c, 56, 8)
-					ui.Row(c).Grow(1).Basis(0).Justify(ui.End).Children(func() { a.likeButton(c) })
+					ui.Row(c).Grow(1).Basis(0).Justify(ui.End).AlignItems(ui.Center).Gap(8).Children(func() {
+						a.speedControl(c, "fullscreen-speed")
+						a.likeButton(c)
+					})
 				})
 			})
 		})
