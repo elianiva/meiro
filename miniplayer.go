@@ -59,7 +59,13 @@ func (a *app) miniPlayer(c *ui.Context) {
 			})
 			a.scrubber(c)
 			a.transport(c, 48, 4)
-			a.volumeControl(c, 272) // fills width = miniWidth (344) - padding (24) - mute button (40) and gap (8)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+				// The slider fills the width: miniWidth (344) less the padding
+				// (24), the mute button (40) and its gap (8), and the speed
+				// button (56) and its gap (8).
+				a.volumeControl(c, 208)
+				a.speedControl(c, "mini-speed")
+			})
 			a.sidePanel(c, false, true)
 		})
 		ui.Row(c).Gap(8).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {

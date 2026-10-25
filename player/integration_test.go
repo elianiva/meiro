@@ -123,6 +123,31 @@ func TestSeekRestartsTheDecodeAtThatPoint(t *testing.T) {
 	}
 }
 
+func TestSetSpeedGoesOnFromWhereTheStreamIs(t *testing.T) {
+	p, wav := newTestPlayerWithDuration(t, 10)
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	p.Pause()
+	p.Seek(4 * time.Second)
+	if err := p.SetSpeed(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Paused() {
+		t.Error("changing the speed of a paused stream resumed it")
+	}
+	if !near(p.Position(), 4*time.Second) {
+		t.Errorf("position after changing the speed = %v, want about 4s", p.Position())
+	}
+	p.Resume()
+	waitFor(t, "the track to end", p.Ended)
+	// The six seconds left play in three seconds of sound: a position that
+	// ignored the speed would stop near 7s, and sound not sped up near 16s.
+	if !near(p.Position(), 10*time.Second) {
+		t.Errorf("position at the end = %v, want about 10s", p.Position())
+	}
+}
+
 func TestPlaysOverHTTP(t *testing.T) {
 	p, wav := newTestPlayer(t)
 	server := httptest.NewServer(http.FileServer(http.Dir(filepath.Dir(wav))))
