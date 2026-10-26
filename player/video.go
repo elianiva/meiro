@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -462,19 +463,29 @@ func (v *videoSession) end() {
 // at into RGBA frames of height, and 16:9 of that wide, at fps on stdout.
 // With gpu, the GPU decodes the stream where it can decode its codec, and
 // ffmpeg decodes it where not, and libplacebo scales the frames and turns
-// them into RGBA on the GPU; without it all of that runs on the CPU.
+// them into RGBA on the GPU. Without it the CPU scales the frames and turns
+// them into RGBA; on Windows Direct3D 11 decodes them where the GPU can, and
+// the CPU where not.
 func videoArgs(url string, height int, fps float64, gpu bool, at time.Duration, ranged bool) []string {
 	width := strconv.Itoa(videoWidth(height))
 	rate := ",fps=" + strconv.FormatFloat(fps, 'f', -1, 64)
 	args := inputArgs(url, at, ranged)
-	filter := "scale=" + width + ":" + strconv.Itoa(height) + ":force_original_aspect_ratio=decrease," +
+	// A frame the GPU decoded comes back as NV12, which swscale turns into
+	// RGBA far slower than it turns NV12 into YUV 4:2:0 and that into RGBA,
+	// so it goes that way; an RGB picture stays RGB. One filter thread does
+	// the work in less CPU time than several.
+	filter := "format=yuv420p|gbrp,scale=" + width + ":" + strconv.Itoa(height) + ":force_original_aspect_ratio=decrease," +
 		"pad=" + width + ":" + strconv.Itoa(height) + ":(ow-iw)/2:(oh-ih)/2" + rate
-	if gpu {
+	switch {
+	case gpu:
 		args = append(append(gpuArgs(), "-hwaccel", "vulkan", "-hwaccel_output_format", "vulkan"), args...)
 		filter = gpuFilter(height) + rate
+	case runtime.GOOS == "windows":
+		args = append([]string{"-hwaccel", "d3d11va"}, args...)
 	}
 	return append(args,
 		"-an", "-sn", "-dn",
+		"-filter_threads", "1",
 		"-vf", filter,
 		"-f", "rawvideo", "-pix_fmt", "rgba",
 		"pipe:1",

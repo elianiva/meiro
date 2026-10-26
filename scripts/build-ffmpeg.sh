@@ -8,9 +8,10 @@
 # WebM, AAC in MP4, and the files of the audio cache) to raw PCM, and reading
 # the length of a cached file; and decoding the picture of a music video
 # (H.264 in MP4, or VP9 in WebM where YouTube has no H.264) to raw RGBA
-# frames of one size and rate. So the build keeps just that: the demuxers,
-# decoders and filters it needs, plus HTTP(S) for the stream itself. A full
-# build is over 100 MB, and this one is LGPL.
+# frames of one size and rate, on Windows with the GPU decoding it. So the
+# build keeps just that: the demuxers, decoders and filters it needs, plus
+# HTTP(S) for the stream itself. A full build is over 100 MB, and this one is
+# LGPL.
 #
 # Build tools: a C compiler, make, curl, xz, and on x86 nasm. Linux also needs
 # OpenSSL's static libraries (libssl.a), and links them in. Linux releases
@@ -88,8 +89,10 @@ case "$platform" in
 		;;
 	windows-amd64)
 		# Cross-compiled with MinGW-w64, and linked static so the one file
-		# runs without any DLL beside it.
+		# runs without any DLL beside it. The GPU decodes the picture through
+		# Direct3D 11, on any GPU with a driver for it.
 		configure+=(
+			--enable-d3d11va --enable-hwaccel=h264_d3d11va,h264_d3d11va2,vp9_d3d11va,vp9_d3d11va2
 			--enable-schannel --enable-cross-compile --arch=x86_64 --target-os=mingw32
 			--cross-prefix=x86_64-w64-mingw32- --extra-ldflags=-static
 		)

@@ -5,6 +5,7 @@ import (
 	"image"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -253,8 +254,15 @@ func TestVideoArgs(t *testing.T) {
 	if slices.Contains(args, "-vn") {
 		t.Errorf("videoArgs drops the picture: %v", args)
 	}
-	if i := slices.Index(args, "-vf"); i < 0 || !strings.HasPrefix(args[i+1], "scale=1920:1080:") || !strings.HasSuffix(args[i+1], ",fps=60") {
-		t.Errorf("videoArgs does not decode onto a 1920x1080 canvas at 60 fps: %v", args)
+	if i := slices.Index(args, "-vf"); i < 0 || !strings.HasPrefix(args[i+1], "format=yuv420p|gbrp,scale=1920:1080:") || !strings.HasSuffix(args[i+1], ",fps=60") {
+		t.Errorf("videoArgs does not decode onto a 1920x1080 canvas at 60 fps by way of YUV 4:2:0: %v", args)
+	}
+	i := slices.Index(args, "-hwaccel")
+	if runtime.GOOS == "windows" && (i < 0 || i > slices.Index(args, "-i") || args[i+1] != "d3d11va") {
+		t.Errorf("videoArgs does not decode with Direct3D 11 on Windows: %v", args)
+	}
+	if runtime.GOOS != "windows" && i >= 0 {
+		t.Errorf("videoArgs asks for a hardware decoder the ffmpeg the app ships lacks: %v", args)
 	}
 }
 
