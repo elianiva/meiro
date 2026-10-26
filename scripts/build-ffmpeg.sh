@@ -104,7 +104,12 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 echo "ffmpeg ${FFMPEG_VERSION} for ${platform}"
-curl -fsSL -o "$work/ffmpeg.tar.xz" "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
+# ffmpeg.org resets a connection from a runner now and then, and a release
+# that dies there waits for someone to rerun it by hand. The checksum below is
+# what says the archive is whole, so a retry cannot ship a damaged one; every
+# error is retried, because a reset is not one curl retries on its own.
+curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+	-o "$work/ffmpeg.tar.xz" "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
 if [[ "$(sha256 "$work/ffmpeg.tar.xz")" != "$ffmpeg_sha256" ]]; then
 	printf 'Checksum mismatch for ffmpeg-%s.tar.xz\n' "$FFMPEG_VERSION" >&2
 	exit 1

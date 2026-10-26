@@ -256,7 +256,7 @@ func TestNavigationRailAndPageAnimateTogether(t *testing.T) {
 		compactRows[label] = row
 		compactIconCenters[label] = center
 	}
-	compactPage, ok := tt.Find("Up late?")
+	compactPage, ok := tt.Find("Quick picks")
 	if !ok {
 		t.Fatalf("home page is missing: %q", tt.Texts())
 	}
@@ -280,7 +280,7 @@ func TestNavigationRailAndPageAnimateTogether(t *testing.T) {
 	if !ok || opening.W <= compact.W || opening.W >= 230 {
 		t.Fatalf("rail did not pass smoothly through an intermediate width: compact %g, opening %v", compact.W, opening)
 	}
-	openingPage, ok := tt.Find("Up late?")
+	openingPage, ok := tt.Find("Quick picks")
 	if !ok || openingPage.X <= compactPage.X {
 		t.Fatalf("page did not move with the opening rail: compact %v, opening %v", compactPage, openingPage)
 	}
@@ -289,7 +289,7 @@ func TestNavigationRailAndPageAnimateTogether(t *testing.T) {
 	if !ok || expanded.W < 230 || expanded.W > 240 {
 		t.Fatalf("rail did not settle at its expanded width: %v", expanded)
 	}
-	expandedPage, ok := tt.Find("Up late?")
+	expandedPage, ok := tt.Find("Quick picks")
 	if !ok || expandedPage.X <= openingPage.X {
 		t.Fatalf("page stopped following the rail: opening %v, expanded %v", openingPage, expandedPage)
 	}
@@ -319,7 +319,7 @@ func TestNavigationRailAndPageAnimateTogether(t *testing.T) {
 	if !ok || closing.W >= expanded.W || closing.W <= compact.W {
 		t.Fatalf("rail did not pass smoothly through an intermediate width while closing: expanded %g, closing %v", expanded.W, closing)
 	}
-	closingPage, ok := tt.Find("Up late?")
+	closingPage, ok := tt.Find("Quick picks")
 	if !ok || closingPage.X >= expandedPage.X {
 		t.Fatalf("page did not follow the closing rail: expanded %v, closing %v", expandedPage, closingPage)
 	}
