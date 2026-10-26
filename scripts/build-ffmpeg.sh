@@ -91,6 +91,7 @@ case "$platform" in
 		# Cross-compiled with MinGW-w64, and linked static so the one file
 		# runs without any DLL beside it. The GPU decodes the picture through
 		# Direct3D 11, on any GPU with a driver for it.
+		# shellcheck disable=SC2054 # the commas are ffmpeg's own list syntax
 		configure+=(
 			--enable-d3d11va --enable-hwaccel=h264_d3d11va,h264_d3d11va2,vp9_d3d11va,vp9_d3d11va2
 			--enable-schannel --enable-cross-compile --arch=x86_64 --target-os=mingw32
