@@ -249,8 +249,6 @@ func TestClickingThePicturePlaysPausesAndFillsTheWindow(t *testing.T) {
 }
 
 func TestTheSoundWaitsForAPictureThatFellBehind(t *testing.T) {
-	// The null device plays twenty times faster than real time, so the
-	// picture falls behind the sound as one does when the network stalls.
 	a, _ := videoApp(t)
 	a.settings.ShowVideo = true
 	q := []youtube.MusicItem{{VideoID: "v1", Title: "A music video", Kind: youtube.KindVideo}}
@@ -259,9 +257,16 @@ func TestTheSoundWaitsForAPictureThatFellBehind(t *testing.T) {
 	a.openPlayer(tabQueue, false)
 	afterAnimations(tt)
 	pumpFrames(t, a)
+	// With no frame pump taking frames, the decoder stops once it is ahead,
+	// and the picture falls behind the sound as one does when the network
+	// stalls. The next pump finds it behind.
 	waitForBuffering := func() {
 		t.Helper()
-		waitFor(t, func() bool { a.pumpVideo(); return a.video.buffering })
+		waitFor(t, func() bool { return a.player.VideoLag() > videoStall })
+		a.pumpVideo()
+		if !a.video.buffering {
+			t.Fatalf("the sound plays on with the picture %s behind", a.player.VideoLag())
+		}
 		tt.Frame()
 	}
 

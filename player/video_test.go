@@ -386,8 +386,6 @@ func TestASharperPictureTakesOverWithoutAGap(t *testing.T) {
 }
 
 func TestAPictureThatFallsBehindCatchesUpWhileTheSoundWaits(t *testing.T) {
-	// The null device plays twenty times faster than real time, so the
-	// picture falls behind the sound as a stalled one does.
 	p, wav := newTestPlayerWithDuration(t, 120)
 	clip := numberedClip(t, 120, clipFPS)
 	if err := p.Play(wav); err != nil {
@@ -396,8 +394,13 @@ func TestAPictureThatFallsBehindCatchesUpWhileTheSoundWaits(t *testing.T) {
 	if err := p.SetVideo(t.Context(), clip, 36, clipFPS); err != nil {
 		t.Fatal(err)
 	}
+	waitFor(t, "the first frame", func() bool {
+		img, _ := p.Frame()
+		return img != nil
+	})
+	// Nobody takes frames, so the decoder stops once it is videoAhead
+	// ahead, and the picture falls behind the sound as a stalled one does.
 	waitFor(t, "the picture to fall behind", func() bool {
-		p.Frame()
 		return p.VideoLag() > time.Second
 	})
 	// Held, the sound stays where it is, and the decoder reaches it. A
