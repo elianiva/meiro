@@ -64,7 +64,7 @@ func (a *app) setShowVideo(on bool) {
 }
 
 // The picture's frames are as tall as its stream: 720p in the player, and
-// 1080p over the whole screen.
+// 1080p over a screen at least that tall.
 const (
 	videoHeight           = 720
 	fullScreenVideoHeight = 1080
@@ -104,6 +104,12 @@ func (a *app) syncVideo() {
 	// The picture's URL came with the audio's, from the one yt-dlp run that
 	// found it; a track whose audio came from the cache resolves now.
 	streams := a.streams
+	// A screen too short for the sharper picture shows the player's,
+	// stretched, rather than decode pixels it cannot show.
+	sharper := fullScreen
+	if screen := a.screenHeight(); screen > 0 && screen < fullScreenVideoHeight {
+		sharper = false
+	}
 	startTask(a, &a.video.load, audio.ResolveTimeout, func(ctx context.Context) (string, error) {
 		stream, err := streams.Get(ctx, id)
 		if err != nil {
@@ -113,7 +119,7 @@ func (a *app) syncVideo() {
 			return "", errors.New("the track has no picture")
 		}
 		url, height, fps := stream.Video, videoHeight, stream.VideoFPS
-		if fullScreen && stream.FullScreenVideo != "" {
+		if sharper && stream.FullScreenVideo != "" {
 			url, height, fps = stream.FullScreenVideo, fullScreenVideoHeight, stream.FullScreenVideoFPS
 		}
 		// The player takes the picture only once a stream plays; before

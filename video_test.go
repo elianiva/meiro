@@ -429,4 +429,23 @@ func TestFullScreenShowsTheSharperPicture(t *testing.T) {
 	if !a.playing() {
 		t.Fatal("switching pictures stopped the sound")
 	}
+
+	// A screen shorter than the sharper picture keeps the player's: it
+	// could not show the extra pixels.
+	a.screenHeight = func() int { return 768 }
+	if err := tt.Click("Full screen"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	waitFor(t, func() bool { a.pumpVideo(); return a.video.fullScreen && !a.video.load.busy() })
+	// The sharper picture, had it been asked for, would take over within a
+	// second: its decode starts a few seconds of sound ahead, which the
+	// null device plays in a fraction of one.
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		a.pumpVideo()
+		if w, h := a.video.bitmap.Size(); a.player.VideoURL() != clip || w != 1280 || h != 720 || a.video.err != "" {
+			t.Fatalf("full screen on a 768-pixel screen shows %q at %dx%d (error %q), want the player's picture at 1280x720", a.player.VideoURL(), w, h, a.video.err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }

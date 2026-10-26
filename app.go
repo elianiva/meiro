@@ -67,6 +67,9 @@ type app struct {
 	keyboard keyboardState
 	// openPath shows a file or folder in the system; tests replace it.
 	openPath func(path string) error
+	// screenHeight is the height in pixels of the screen the window is on,
+	// and 0 when that is unknown; tests replace it.
+	screenHeight func() int
 	// logsDir is the folder the log file is in; empty when there is none.
 	logsDir string
 	// notice is a message for the next frame to show as a toast.
@@ -210,6 +213,7 @@ func newApp() *app {
 	}
 	a.sleep = sleep
 	a.openPath = func(path string) error { return a.desktop.openPath(path) }
+	a.screenHeight = func() int { return a.desktop.screenHeight() }
 	a.account = newAccountState(func(auth *youtube.CookieAuth) *youtube.Client {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
 	}, cookies.Sources)

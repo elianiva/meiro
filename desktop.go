@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -111,6 +112,16 @@ func (d *desktop) setFullScreen(on bool) {
 	if d != nil {
 		d.win.SetFullScreen(on)
 	}
+}
+
+// screenHeight is the height in pixels of the display the window is on, and
+// 0 without a window.
+func (d *desktop) screenHeight() int {
+	if d == nil {
+		return 0
+	}
+	display := mygo.Screen.DisplayMatching(d.win.Bounds())
+	return int(math.Round(float64(display.Bounds.Height) * display.ScaleFactor))
 }
 
 // keepAwake holds a sleep assertion while on is set, and releases it once it
