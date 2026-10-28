@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Related tab works for podcast episodes.** It said related songs weren't available; it now lists related episodes and suggested podcasts.
+
 ## [0.4.14] - 2026-10-28
 
 ### Fixed

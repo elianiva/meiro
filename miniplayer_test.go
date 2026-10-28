@@ -282,3 +282,21 @@ func TestMiniPlayerAloneTakesTheArtworkColour(t *testing.T) {
 	}
 	t.Fatal("the mini player never took a colour from the artwork")
 }
+
+func TestEpisodeRelatedTabListsEpisodes(t *testing.T) {
+	a := newTestApp(t)
+	episode := youtube.MusicItem{VideoID: "ep-related", Title: "Reality Checking Productivity", Kind: youtube.KindEpisode}
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{episode}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	tt.Frame()
+	// Its Related tab is of the page type episodes have, not songs'.
+	if err := tt.Click("Related"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Another Deep Episode") {
+		t.Fatalf("the related episodes are missing: %q", tt.Texts())
+	}
+}

@@ -107,25 +107,27 @@ func milliseconds(value any) (time.Duration, bool) {
 	return 0, false
 }
 
-// GetRelated loads the related music tab for a track.
+// GetRelated loads the related tab for a track, or for a podcast episode,
+// whose tab is of a page type of its own.
 func (c *Client) GetRelated(ctx context.Context, videoID string) (*BrowseResult, error) {
-	raw, err := c.getTrackTab(ctx, videoID, "MUSIC_PAGE_TYPE_TRACK_RELATED")
+	raw, err := c.getTrackTab(ctx, videoID, "MUSIC_PAGE_TYPE_TRACK_RELATED", "MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_RELATED")
 	if err != nil {
 		return nil, err
 	}
 	return c.newBrowseResult(raw), nil
 }
 
-func (c *Client) getTrackTab(ctx context.Context, videoID, pageType string) (json.RawMessage, error) {
-	browseID, err := c.trackTabBrowseID(ctx, videoID, pageType)
+func (c *Client) getTrackTab(ctx context.Context, videoID string, pageTypes ...string) (json.RawMessage, error) {
+	browseID, err := c.trackTabBrowseID(ctx, videoID, pageTypes...)
 	if err != nil {
 		return nil, err
 	}
 	return c.execute(ctx, "browse", map[string]any{"browseId": browseID})
 }
 
-// trackTabBrowseID finds the page of a track's tab, such as its lyrics.
-func (c *Client) trackTabBrowseID(ctx context.Context, videoID, pageType string) (string, error) {
+// trackTabBrowseID finds the page of a track's tab, such as its lyrics: the
+// first of the page types the track has a tab of.
+func (c *Client) trackTabBrowseID(ctx context.Context, videoID string, pageTypes ...string) (string, error) {
 	if strings.TrimSpace(videoID) == "" {
 		return "", errors.New("youtube: video ID is required")
 	}
@@ -133,11 +135,13 @@ func (c *Client) trackTabBrowseID(ctx context.Context, videoID, pageType string)
 	if err != nil {
 		return "", err
 	}
-	browseID := musicTabBrowseID(decodeResponse(raw), pageType)
-	if browseID == "" {
-		return "", fmt.Errorf("youtube: track response has no %s tab", pageType)
+	root := decodeResponse(raw)
+	for _, pageType := range pageTypes {
+		if browseID := musicTabBrowseID(root, pageType); browseID != "" {
+			return browseID, nil
+		}
 	}
-	return browseID, nil
+	return "", fmt.Errorf("youtube: track response has no %s tab", strings.Join(pageTypes, " or "))
 }
 
 func musicTabBrowseID(root any, pageType string) string {

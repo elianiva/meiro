@@ -125,6 +125,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = albumPage()
 	case strings.Contains(asked, "MPSPPLshow"):
 		reply = podcastResponse
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"ep-related"`):
+		reply = episodeRelatedNextResponse
+	case strings.Contains(asked, "MPPRep-related"):
+		reply = episodeRelatedResponse
 	case strings.Contains(asked, "FEmusic_library_landing"):
 		libraryLoads.Add(1)
 		reply = libraryPage()
@@ -325,6 +329,22 @@ const podcastResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 			"onTap":{"watchEndpoint":{"videoId":"ep-1","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_PODCAST_EPISODE"}}}}}}
 	]}}]}}
 }}}`
+
+// episodeRelatedNextResponse is what YouTube answers for the episode
+// ep-related in the player: a Related tab of the page type episodes have,
+// which is not the one songs have.
+const episodeRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPPRep-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_RELATED"}}}}}}
+]}}}}}`
+
+// episodeRelatedResponse is the Related tab of ep-related: other episodes,
+// in the carousel YouTube Music gives them.
+const episodeRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[{"musicMultiRowListItemRenderer":{"title":{"runs":[{"text":"Another Deep Episode"}]},"subtitle":{"runs":[{"text":"3d ago • 1 hr 9 min"}]},
+		"onTap":{"watchEndpoint":{"videoId":"ep-9","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_PODCAST_EPISODE"}}}}}}]
+}}]}}}`
 
 // playlistPage is a playlist the account does not own: a header with the
 // button that saves it, and its videos.

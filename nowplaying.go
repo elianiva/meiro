@@ -108,14 +108,18 @@ func (a *app) loadRelated() {
 	}
 	r.videoID, r.items, r.err = id, nil, ""
 	client := a.client()
+	unavailable, none := "Related songs aren't available.", "No related songs for this track."
+	if a.current.IsEpisode() {
+		unavailable, none = "Related episodes aren't available.", "Nothing related to this episode."
+	}
 	startTask(a, &r.load, panelTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
 		return client.GetRelated(ctx, id)
 	}, func(result *youtube.BrowseResult, err error) {
 		switch {
 		case err != nil:
-			r.err = "Related songs aren't available."
+			r.err = unavailable
 		case len(result.Items) == 0:
-			r.err = "No related songs for this track."
+			r.err = none
 		default:
 			r.items = result.Items
 		}
