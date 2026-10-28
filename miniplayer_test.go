@@ -748,6 +748,117 @@ func TestNotchProgressSeeksWithoutInterferenceFromTheMainPlayer(t *testing.T) {
 	}
 }
 
+func TestNotchCoverOpensNowPlaying(t *testing.T) {
+	for _, input := range []string{"click", "keyboard", "reduce-motion"} {
+		t.Run(input, func(t *testing.T) {
+			a := notchTestApp(t)
+			a.router.Push("/home")
+			main := ui.NewTester(a.view, 1000, 700)
+			if input == "keyboard" {
+				if err := main.Click("Up next"); err != nil {
+					t.Fatal(err)
+				}
+				main.Advance(time.Second)
+				if !a.nowPlaying.queueOnly {
+					t.Fatal("precondition: main window did not open the queue")
+				}
+			}
+			wasOpen, wasQueue := a.nowPlaying.open, a.nowPlaying.queueOnly
+			nt := ui.NewTester(a.notchView, 284, 38)
+			nt.SetPreferences(ui.Preferences{ReduceMotion: input == "reduce-motion"})
+			if err := nt.Click("Open notch lyrics"); err != nil {
+				t.Fatal(err)
+			}
+			nt.SetSize(480, 190)
+			if input == "reduce-motion" {
+				nt.Advance(40 * time.Millisecond)
+			} else {
+				nt.Advance(140 * time.Millisecond)
+			}
+			cover, found := nt.Find("Open Now Playing")
+			if !found || cover.W != 76 || cover.H != 76 {
+				t.Fatalf("large cover is not an accessible button of the original size: found %v, rect %+v", found, cover)
+			}
+			nt.Press(cover.X+cover.W/2, cover.Y+cover.H/2)
+			nt.Release(cover.X+cover.W/2, cover.Y+cover.H/2)
+			if !a.notch.expanded || a.nowPlaying.open != wasOpen || a.nowPlaying.queueOnly != wasQueue {
+				t.Fatal("compact cover or fading artwork changed the main player")
+			}
+			nt.Advance(300 * time.Millisecond)
+			tabTo(t, nt, "Notch position")
+			nt.Key(0, ui.KeyEnd)
+			position, seek := a.playbackPosition(), a.seekVersion
+			if input == "keyboard" {
+				tabTo(t, nt, "Open Now Playing")
+				nt.Key(0, ui.KeyEnter)
+			} else if err := nt.Click("Open Now Playing"); err != nil {
+				t.Fatal(err)
+			}
+			if !a.nowPlaying.open || a.nowPlaying.queueOnly || a.nowPlaying.closing || a.notch.expanded || !a.notch.transitioning || a.notch.bounds().Height != 190 {
+				t.Fatal("cover did not open Now Playing and begin collapsing the notch")
+			}
+			main.Frame()
+			main.Advance(time.Second)
+			nt.Advance(300 * time.Millisecond)
+			bounds := a.notch.bounds()
+			nt.SetSize(bounds.Width, bounds.Height)
+			if !main.HasText("Now playing") || !main.HasText("Track a") || !main.HasText("Play") || bounds.Width != 284 || bounds.Height != 38 || nt.HasText("Open Now Playing") {
+				t.Fatalf("main player or compact notch did not finish appearing: bounds %+v, main %q, notch %q", bounds, main.Texts(), nt.Texts())
+			}
+			if a.player.Playing() || a.playbackPosition() != position || a.seekVersion != seek || a.current.VideoID != "a" || a.queue.index != 0 || len(a.queue.items) != 2 || a.router.Path() != "/home" {
+				t.Fatal("cover navigation changed playback or the underlying page")
+			}
+			if err := main.Click("Close the player"); err != nil {
+				t.Fatal(err)
+			}
+			main.Advance(time.Second)
+			if err := nt.Click("Open notch lyrics"); err != nil {
+				t.Fatal(err)
+			}
+			nt.SetSize(480, 190)
+			nt.Advance(300 * time.Millisecond)
+			cover, _ = nt.Find("Open Now Playing")
+			if err := nt.Click("Close notch lyrics"); err != nil {
+				t.Fatal(err)
+			}
+			nt.Advance(40 * time.Millisecond)
+			nt.Press(cover.X+cover.W/2, cover.Y+cover.H/2)
+			nt.Release(cover.X+cover.W/2, cover.Y+cover.H/2)
+			if a.nowPlaying.open || a.notch.expanded {
+				t.Fatal("closing artwork accepted a click")
+			}
+		})
+	}
+}
+
+func TestNotchCoverKeepsPlayingAudio(t *testing.T) {
+	a, r := tonesApp(t, 600)
+	r.url = func(string, int) (string, error) { return r.file, nil }
+	a.notch.cutout = mygo.Rectangle{Width: 180, Height: 32}
+	a.router.Push("/album/MPREb_test")
+	main := ui.NewTester(a.view, 1000, 700)
+	if err := main.Click("Album Track One"); err != nil {
+		t.Fatal(err)
+	}
+	pollUntil(t, a, "playing audio", func() bool { return a.player.Playing() && a.player.Position() > 0 })
+	nt := ui.NewTester(a.notchView, 284, 38)
+	if err := nt.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	nt.SetSize(480, 190)
+	nt.Advance(300 * time.Millisecond)
+	position, seek, resolves := a.player.Position(), a.seekVersion, r.count("vid-3")
+	if err := nt.Click("Open Now Playing"); err != nil {
+		t.Fatal(err)
+	}
+	main.Frame()
+	main.Advance(time.Second)
+	nt.Advance(300 * time.Millisecond)
+	if !main.HasText("Now playing") || !main.HasText("Album Track One") || !a.player.Playing() || a.player.Position() < position || a.current.VideoID != "vid-3" || a.seekVersion != seek || r.count("vid-3") != resolves || len(a.history) != 1 {
+		t.Fatal("opening Now Playing interrupted, sought, or restarted audio")
+	}
+}
+
 func TestNotchOpenMeiroCollapsesWithoutChangingPlayback(t *testing.T) {
 	for _, cutoutWidth := range []int{180, 380} {
 		t.Run(strconv.Itoa(cutoutWidth), func(t *testing.T) {

@@ -8,6 +8,7 @@ the right. The previous and next lines frame the active lyric.
 ## Sub-features
 
 - `notch-compact`: cover and five animated bars, resting on pause, with a loading indicator while buffering.
+- `notch-cover-open`: the large cover in the expanded panel opens the current song's Now Playing view in the main window and collapses the notch. It preserves playback and paused state, uses a pointer and Open Now Playing tooltip, supports keyboard activation, and is disabled while fading. The small header cover still expands the notch.
 - `notch-lyrics`: click either wing to expand/collapse; Escape collapses. The panel stays open when the pointer leaves.
 - `notch-open`: the expanded header has a 16 point Open Meiro icon in a 32 point target beside collapse, outside the camera area. It brings the existing main window forward, restoring it if hidden or minimized, and collapses the notch through its normal closing animation while playback continues. It fades with the panel and is disabled while fading; compact mode has no extra button.
 - `notch-motion`: opening expands over 240 ms and closing contracts over 200 ms, anchored to the camera. Content fades and lifts slightly; the header cover crossfades with the collapse arrow. Rapid clicks reverse the current animation. Reduce Motion uses a 100 ms fade in place. Fading controls cannot be activated.
@@ -30,6 +31,8 @@ indicator, or press Escape, to collapse. The player remains
 available when the main window is hidden with Keep running when closed. Reopen
 the main window from the Open Meiro icon beside collapse or from the Dock. Search Settings for
 `notch` to turn it off or back on.
+Click the large cover inside the expanded notch to open the current song in
+Now Playing directly; the notch collapses as the main window comes forward.
 
 ## Headless proof recipe
 
@@ -87,6 +90,17 @@ notch cannot run this scenario. The headless desktop is nil, so only a native
 macOS check can prove that the main window actually appears and takes focus.
 For auto-collapse, use `TestNotchOpenMeiroCollapsesWithoutChangingPlayback` and
 compare the proof with the preceding commit where Open Meiro left the panel open.
+
+For the cover action, click the compact cover first: only the notch expands.
+Click the large cover (`Open Now Playing`) or focus it with Tab and press Enter.
+The main window must show Now Playing with the current track and its controls,
+even if it previously showed only the queue. Check that playback position,
+queue, track and paused state are preserved, and the notch finishes collapsing.
+Repeat while playing real generated audio, with Reduce Motion, and after closing
+and reopening the panel. Clicking during either fade must do nothing. The plain
+Open Meiro icon remains a control that restores the main page without opening
+Now Playing. Use `TestNotchCoverOpensNowPlaying` and
+`TestNotchCoverKeepsPlayingAudio`, and compare the proof with the previous commit.
 
 ## Gotchas
 

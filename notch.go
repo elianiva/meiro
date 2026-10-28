@@ -272,9 +272,24 @@ func (a *app) notchView(c *ui.Context) {
 			body := ui.Row(c.Key("notch-lyrics")).Absolute().Top(headerHeight+lift).Left((width-fullWidth)/2).
 				Size(fullWidth, notchLyricsHeight).Padding(8, 16, 16).Gap(14).AlignItems(ui.Center).Disabled(!open)
 			body.Opacity(opacity).Children(func() {
-				ui.Box(c.Key("notch-album")).Size(76, 76).Shrink(0).Label("Album cover").Children(func() {
-					a.art(c, a.current.Thumbnail, 192, 76, 12)
+				cover := ui.ButtonBase(c.Key("notch-album")).Size(76, 76).Shrink(0).Radius(12).
+					Label("Open Now Playing").Tooltip("Open Now Playing").Cursor(ui.CursorPointer).
+					Disabled(!open || opacity < 1)
+				cover.Children(func() {
+					a.art(c, a.current.Thumbnail, 192, 76, 12, func() {
+						state := ui.Box(c.Key("cover-state")).Absolute().Top(0).Left(0).Size(76, 76).Radius(12).PassThrough().
+							Background(m3.StateFill(ui.Transparent, white, cover.Hovered(), cover.Pressed(), cover.FocusVisible()))
+						if cover.FocusVisible() {
+							state.Border(2, white)
+						}
+					}).Label("Album cover")
 				})
+				if cover.Clicked() {
+					a.setNotchExpanded(false)
+					a.openPlayer(a.nowPlaying.tab, false)
+					a.desktop.bringToFront()
+					a.refresh()
+				}
 				ui.Column(c.Key("notch-info")).Width(148).MinWidth(0).Shrink(0).Gap(4).Children(func() {
 					ui.Column(c.Key("notch-title")).FillWidth().Children(func() {
 						ui.Text(c, a.current.Title).FontSize(13).FontWeight(600).FixedLineHeight(18).TextColor(white).SingleLine()
