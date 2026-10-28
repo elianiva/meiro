@@ -151,6 +151,9 @@ go_library(
         "mediasession.go",
         "miniplayer.go",
         "navigation.go",
+        "notch.go",
+        "notch_darwin.go",
+        "notch_other.go",
         "nowplaying.go",
         "playback.go",
         "playbackstate.go",
@@ -209,6 +212,14 @@ go_library(
         "@com_github_egoist_mygo//ui",
         "@com_github_egoist_mygo//ui/chart",
     ] + select({
+        "@rules_go//go/platform:darwin": [
+            "@com_github_go_macos_objc//:objc",
+        ],
+        "@rules_go//go/platform:ios": [
+            "@com_github_go_macos_objc//:objc",
+        ],
+        "//conditions:default": [],
+    }) + select({
         "@rules_go//go/platform:windows_amd64": [
             "@org_golang_x_sys//windows",
         ],
@@ -263,6 +274,7 @@ go_test(
         "//m3",
         "//player",
         "//youtube",
+        "@com_github_egoist_mygo//:mygo",
         "@com_github_egoist_mygo//ui",
     ],
 )

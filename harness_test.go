@@ -24,6 +24,11 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
+// artworkTransport supplies controlled cover responses without network access.
+type artworkTransport func(*http.Request) (*http.Response, error)
+
+func (f artworkTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 // searches counts the search requests the fake YouTube has answered,
 // searchesMore the continuations of them, searchAsked is the last search
 // request's body, fakePageID records the channel a request acted as, and the

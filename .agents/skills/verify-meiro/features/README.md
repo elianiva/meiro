@@ -31,6 +31,7 @@ This directory is the maintained source for verifying what a Meiro user can do. 
 - [Podcasts](./podcast.md) covers opening a show, reading its episodes and resuming an episode.
 - [Search](./search.md) covers the bar, suggestions, results, filters, and the next page.
 - [Playback and queue](./playback-queue.md) covers playing, the queue, repeat, shuffle, seeking, failures, resume, and the mini player.
+- [macOS notch player](./notch.md) covers the compact camera-side player, synced lyrics, fallback states and desktop setting.
 - [Account and library](./account-library.md) covers sign-in, like, subscribe, saving, and playlists.
 - [Settings and shortcuts](./settings-shortcuts.md) covers theme, equaliser, shortcuts, history, and Last.fm.
 - [Discord Rich Presence](./discord-presence.md) covers the settings, track activity, elapsed time, and clearing presence.

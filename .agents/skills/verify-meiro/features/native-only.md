@@ -5,6 +5,7 @@ These behaviors need a real window, device, account or network. The headless tes
 ## Sub-features
 
 - `native-window` covers the OS window, title bar, vibrancy, tray, and the mini player window.
+- `native-notch` covers macOS camera cutout placement, rounded window clipping and transparency during resizing, hit testing after the closing animation releases its larger canvas, keyboard focus, menu-bar level, fullscreen/Spaces, Dock reactivation while only the notch is visible, and connecting or disconnecting displays. A physical notched MacBook is needed.
 - `native-audio` covers the real sound card, device selection, and volume.
 - `native-media-keys` covers MPRIS on Linux and Now Playing on macOS (`systemmedia/`).
 - `native-notifications` covers Windows track notifications and their cover icons.

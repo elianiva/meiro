@@ -8,6 +8,7 @@ import (
 	"log"
 	"maps"
 	"os"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -59,20 +60,24 @@ type Settings struct {
 	SignInSource string `json:"signInSource,omitempty"`
 	// StaticLyrics shows lyrics as plain text even when a track has them timed.
 	StaticLyrics bool `json:"staticLyrics,omitempty"`
-	// NotifyTrack shows a desktop notification when a new track starts.
+	// NotifyTrack shows a desktop notification when a new track starts,
+	// except on macOS, where playback is presented by the notch.
 	NotifyTrack bool `json:"notifyTrack"`
 	// GlobalShortcut plays or pauses from anywhere with
 	// CmdOrCtrl+Shift+Space.
 	GlobalShortcut bool `json:"globalShortcut"`
-	// ShowTray keeps an icon in the menu bar with transport controls.
+	// ShowTray keeps an icon with transport controls on platforms with a tray.
+	// macOS uses the notch and Dock instead.
 	ShowTray bool `json:"showTray"`
+	// ShowNotch shows the compact player around a MacBook's camera housing.
+	ShowNotch bool `json:"showNotch"`
 	// TrayMark is the menu bar icon style on macOS and Linux.
 	TrayMark TrayMark `json:"trayMark"`
 	// DiscordPresence shares the current track with the running Discord client.
 	DiscordPresence bool `json:"discordPresence,omitempty"`
 	// CloseToTray hides the window instead of quitting when the user closes
-	// it, while the tray icon is shown. Empty means the user has not chosen
-	// yet, so closing asks.
+	// it. macOS reopens from the Dock; other platforms keep a tray icon.
+	// Empty means the user has not chosen yet, so closing asks.
 	CloseToTray *bool `json:"closeToTray,omitempty"`
 	// OpenAtLogin starts Meiro when the user logs in.
 	OpenAtLogin bool `json:"openAtLogin"`
@@ -106,8 +111,8 @@ const (
 // Defaults is what a first run starts with.
 func Defaults() Settings {
 	return Settings{
-		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: true, ShowTray: true, TrayMark: TrayMarkWordmark,
-		Zoom: DefaultZoom,
+		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: runtime.GOOS != "darwin", ShowTray: runtime.GOOS != "darwin", TrayMark: TrayMarkWordmark,
+		Zoom: DefaultZoom, ShowNotch: true,
 	}
 }
 
@@ -244,6 +249,10 @@ func Load(path string) Settings {
 		read.TrayMark = s.TrayMark
 	}
 	read.Zoom = ClampZoom(read.Zoom)
+	if runtime.GOOS == "darwin" {
+		// Older settings must not bring back duplicate playback surfaces.
+		read.NotifyTrack, read.ShowTray = false, false
+	}
 	return read
 }
 

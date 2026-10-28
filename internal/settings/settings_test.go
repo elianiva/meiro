@@ -3,8 +3,26 @@ package settings
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+func TestMacLoadsLegacyDesktopSettingsWithoutTrayOrBanners(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"showTray":true,"notifyTrack":true,"closeToTray":true,"volume":42}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := runtime.GOOS != "darwin"
+	for _, s := range []Settings{Defaults(), Load(path)} {
+		if s.ShowTray != want || s.NotifyTrack != want {
+			t.Fatalf("desktop options on %s: tray=%v, notifications=%v", runtime.GOOS, s.ShowTray, s.NotifyTrack)
+		}
+	}
+	s := Load(path)
+	if s.CloseToTray == nil || !*s.CloseToTray || s.Volume != 42 {
+		t.Fatal("unrelated playback preferences changed")
+	}
+}
 
 func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")

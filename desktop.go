@@ -32,7 +32,8 @@ type desktop struct {
 	// trayIcon is the resource name last applied to the tray.
 	trayIcon string
 	// mini is the tray's mini player while it is open.
-	mini mini
+	mini  mini
+	notch notchWindow
 	// notificationTray is the temporary full-colour icon used to show a
 	// notification's cover when the user has hidden the persistent tray.
 	notificationTray  *mygo.Tray
@@ -73,8 +74,11 @@ func (d *desktop) update(fn func()) {
 		fn()
 		return
 	}
-	d.win.Update(fn)
-	d.invalidateMini()
+	d.win.Update(func() {
+		fn()
+		d.invalidateMini()
+		d.invalidateNotch()
+	})
 }
 
 // openPath opens a file or folder with the system's default application. It
@@ -91,6 +95,7 @@ func (d *desktop) invalidate() {
 	if d != nil {
 		d.win.Invalidate()
 		d.invalidateMini()
+		d.invalidateNotch()
 	}
 }
 
@@ -131,7 +136,7 @@ func (d *desktop) keepAwake(on bool) {
 // notify announces a track with its cover when the platform supports it, and
 // brings the window back when the user clicks the notification.
 func (d *desktop) notify(item youtube.MusicItem, icon []byte) {
-	if d == nil || !mygo.NotificationsSupported() {
+	if d == nil || runtime.GOOS == "darwin" || !mygo.NotificationsSupported() {
 		return
 	}
 	if d.notification != nil {
@@ -236,7 +241,7 @@ type trayState struct {
 }
 
 // setTray shows the tray icon with state while on is set, and removes it
-// otherwise. On macOS and Windows, a click opens the mini player. Linux uses a
+// otherwise. macOS uses the notch and Dock; Windows opens the mini player. Linux uses a
 // minimal menu to open the main window or quit: AppIndicator does not report
 // icon clicks or position, so MyGo centers tray flyouts in the primary
 // display's work area instead of anchoring them to the icon. It changes the
@@ -244,6 +249,9 @@ type trayState struct {
 func (d *desktop) setTray(on bool, mark settings.TrayMark, state trayState, mini func(*ui.Context), shown func(bool)) {
 	if d == nil {
 		return
+	}
+	if runtime.GOOS == "darwin" {
+		on = false
 	}
 	if !on {
 		if d.tray != nil {
@@ -372,11 +380,15 @@ func (d *desktop) onClose(e *mygo.CloseEvent) {
 	if choice := d.closeChoice(); choice != nil {
 		toTray = *choice
 	} else {
+		message, keep := "Keep Meiro running in the tray, or quit it?", "Minimize to tray"
+		if runtime.GOOS == "darwin" {
+			message, keep = "Keep Meiro running in the background, or quit it? Reopen the window from the Dock.", "Keep running"
+		}
 		res, err := mygo.Dialog.Message(mygo.MessageOptions{
 			Parent:        d.win,
 			Title:         "Close Meiro?",
-			Message:       "Keep Meiro running in the tray, or quit it?",
-			Buttons:       []string{"Minimize to tray", "Close Meiro"},
+			Message:       message,
+			Buttons:       []string{keep, "Close Meiro"},
 			CancelButton:  -1,
 			CheckboxLabel: "Remember my choice",
 		})
@@ -437,6 +449,11 @@ func (d *desktop) close() {
 	if d == nil {
 		return
 	}
+	d.closeNotch()
+	if d.notch.unwatch != nil {
+		d.notch.unwatch()
+		d.notch.unwatch = nil
+	}
 	d.keepAwake(false)
 	mygo.GlobalShortcut.UnregisterAll()
 	if d.notification != nil {
@@ -463,6 +480,11 @@ const meiroTrayID = "meiro-tray"
 // handoff, deep links, notification clicks, power changes, the tray, the
 // global shortcut and the login item. It runs once the window is there.
 func (a *app) setupDesktop() {
+	if runtime.GOOS == "darwin" {
+		// Clear track banners delivered by an earlier build, including a launch
+		// that does not activate the main window.
+		mygo.ClearNotifications()
+	}
 	mygo.App.OnSecondInstance(func(_ []string, _ string) {
 		a.update(a.desktop.bringToFront)
 	})
@@ -477,7 +499,9 @@ func (a *app) setupDesktop() {
 	mygo.Power.OnSuspend(func() { a.update(a.onSuspend) })
 	mygo.Power.OnResume(func() { a.update(a.onResume) })
 	mygo.App.OnActivate(func(visible bool) {
-		if !visible {
+		// A visible notch panel must not prevent a Dock click from reopening
+		// the hidden main window.
+		if !visible || !a.desktop.win.IsVisible() {
 			a.update(a.desktop.bringToFront)
 		}
 	})
@@ -494,6 +518,7 @@ func (a *app) setupDesktop() {
 	})
 	a.desktop.closeToTray(func() *bool { return a.settings.CloseToTray }, a.answerClose)
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.desktop.quitting = true })
+	a.setupNotch()
 	a.syncDesktop()
 	a.syncShortcut()
 	a.desktop.setOpenAtLogin(a.settings.OpenAtLogin)
@@ -505,6 +530,7 @@ func (a *app) syncDesktop() {
 	a.desktop.keepAwake(a.loading() || (a.player.Active() && !a.player.Paused() && !a.player.Ended()))
 	a.desktop.setTray(a.settings.ShowTray, a.settings.TrayMark, trayState{tip: a.trayTip()}, a.miniPlayer, a.setMiniShown)
 	a.desktop.setTitle(a.windowTitle())
+	a.syncNotch()
 }
 
 // windowTitle names the track while it plays, as "Artist - Title" the way
@@ -539,15 +565,14 @@ func (a *app) syncShortcut() {
 }
 
 // answerClose takes the user's answer to the close dialog, and reports
-// whether the window can hide. The choice to hide needs the tray, so it
-// turns the tray on when the tray was refused or is off, and answers no
-// when the system will not show one. With remember it keeps the answer as
-// the CloseToTray setting.
+// whether the window can hide. macOS reopens from the Dock; other platforms
+// need a tray, and cannot hide when the system refuses it. With remember it
+// keeps the answer as the CloseToTray setting.
 func (a *app) answerClose(toTray, remember bool) bool {
 	if toTray {
-		a.settings.ShowTray = true
+		a.settings.ShowTray = runtime.GOOS != "darwin"
 		a.syncDesktop()
-		if a.desktop != nil && a.desktop.trayFailed {
+		if runtime.GOOS != "darwin" && a.desktop != nil && a.desktop.trayFailed {
 			return false
 		}
 	}

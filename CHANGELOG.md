@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **A notch player on macOS.** On a MacBook with a notch, the current cover and an animated playback indicator sit beside the camera. Click either side to open a compact, rounded panel with cover art, track information and synced lyrics side by side. Seek with its progress bar or use previous, play/pause and next without closing the panel. Turn it off in Settings > Desktop.
+
+### Changed
+
+- **Smoother notch transitions on macOS.** The panel expands and contracts with a short fade, reverses smoothly when clicked again, and uses a simple fade with Reduce Motion enabled.
+- **Quieter playback on macOS.** Track information stays in the notch, without notification banners or a Meiro menu bar icon. Keep Meiro running when its window closes and reopen it from the Dock.
+
 ## [0.4.13] - 2026-10-28
 
 ### Added

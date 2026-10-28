@@ -60,7 +60,7 @@ var settingsRows = []settingsRow{
 	{key: "sound", search: "sound audio normalize loudness equaliser volume", card: (*app).soundCard},
 
 	{key: "h-system", heading: "System"},
-	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle", card: (*app).desktopCard},
+	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle notch macbook lyrics", card: (*app).desktopCard},
 	{key: "keyboard", search: "keyboard shortcuts keys", card: (*app).keyboardCard},
 
 	{key: "h-data", heading: "Storage and privacy"},
@@ -581,40 +581,51 @@ func (a *app) chooseAudioCacheDirectory() {
 func (a *app) desktopCard(c *ui.Context) {
 	a.settingsCard(c, "Desktop", m3.IconNotifications, func() {
 		ui.Column(c).Gap(4).Children(func() {
-			a.desktopSwitch(c, "Track notifications", "Announce each new track. Clicking one brings Meiro back.",
-				a.settings.NotifyTrack, func(on bool) {
-					a.settings.NotifyTrack = on
-					if !on {
-						a.notificationArtwork.stop()
+			if runtime.GOOS == "darwin" {
+				a.notchSetting(c)
+				ui.Row(c.Key("keep-running")).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
+					settingLabel(c, "Keep running when closed", "Hide the window and keep Meiro running. Reopen it from the Dock.").Grow(1)
+					on := a.settings.CloseToTray != nil && *a.settings.CloseToTray
+					if m3.Switch(c, &on, "Keep running in background").Changed() {
+						a.answerClose(on, true)
 					}
 				})
-			a.desktopSwitch(c, "Menu bar icon", "Keep Meiro in the menu bar with play, next and quit.",
-				a.settings.ShowTray, func(on bool) {
-					a.settings.ShowTray = on
-					a.syncDesktop()
-				})
-			if trayMarkSupported(runtime.GOOS) {
-				ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
-					settingLabel(c, "Tray icon", "Choose which icon appears in the system tray; the O mark is more subtle.").Grow(1)
-					mark := 0
-					if a.settings.TrayMark == settings.TrayMarkOMark {
-						mark = 1
-					}
-					if m3.ButtonGroup(c, "tray-mark", &mark, []string{"Wordmark", "O mark"}, nil) {
-						if mark == 1 {
-							a.settings.TrayMark = settings.TrayMarkOMark
-						} else {
-							a.settings.TrayMark = settings.TrayMarkWordmark
+			} else {
+				a.desktopSwitch(c, "Track notifications", "Announce each new track. Clicking one brings Meiro back.",
+					a.settings.NotifyTrack, func(on bool) {
+						a.settings.NotifyTrack = on
+						if !on {
+							a.notificationArtwork.stop()
 						}
+					})
+				a.desktopSwitch(c, "Menu bar icon", "Keep Meiro in the menu bar with play, next and quit.",
+					a.settings.ShowTray, func(on bool) {
+						a.settings.ShowTray = on
 						a.syncDesktop()
-						a.saveSettings()
-					}
-				})
+					})
+				if trayMarkSupported(runtime.GOOS) {
+					ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
+						settingLabel(c, "Tray icon", "Choose which icon appears in the system tray; the O mark is more subtle.").Grow(1)
+						mark := 0
+						if a.settings.TrayMark == settings.TrayMarkOMark {
+							mark = 1
+						}
+						if m3.ButtonGroup(c, "tray-mark", &mark, []string{"Wordmark", "O mark"}, nil) {
+							if mark == 1 {
+								a.settings.TrayMark = settings.TrayMarkOMark
+							} else {
+								a.settings.TrayMark = settings.TrayMarkWordmark
+							}
+							a.syncDesktop()
+							a.saveSettings()
+						}
+					})
+				}
+				a.desktopSwitch(c, "Close to tray", "Closing the window keeps Meiro running in the tray instead of quitting.",
+					a.settings.CloseToTray != nil && *a.settings.CloseToTray, func(on bool) {
+						a.answerClose(on, true)
+					})
 			}
-			a.desktopSwitch(c, "Close to tray", "Closing the window keeps Meiro running in the tray instead of quitting.",
-				a.settings.CloseToTray != nil && *a.settings.CloseToTray, func(on bool) {
-					a.answerClose(on, true)
-				})
 			a.desktopSwitch(c, "Global shortcut", "Play or pause from anywhere with "+toggleShortcut+".",
 				a.settings.GlobalShortcut, func(on bool) {
 					a.settings.GlobalShortcut = on

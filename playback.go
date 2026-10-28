@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -203,10 +204,13 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 
 // afterEnter is what a track entered asks for besides its audio.
 func (a *app) afterEnter(item youtube.MusicItem, changed bool) {
+	if changed {
+		a.notch.resetLyrics()
+	}
 	a.ensureUpNext()
 	a.loadPanel()
 	if changed {
-		if a.settings.NotifyTrack {
+		if runtime.GOOS != "darwin" && a.settings.NotifyTrack {
 			a.notifyTrack(item)
 		} else {
 			a.notificationArtwork.stop()

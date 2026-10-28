@@ -84,6 +84,9 @@ func (a *app) setMiniShown(open bool) {
 // Opening the panel, choosing a tab and starting a track call it; building the
 // view never does.
 func (a *app) loadPanel() {
+	if a.notch.expanded {
+		a.loadLyrics()
+	}
 	if !a.nowPlaying.open && !a.nowPlaying.miniOpen {
 		return
 	}
