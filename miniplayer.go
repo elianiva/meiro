@@ -35,7 +35,9 @@ func (a *app) miniPlayer(c *ui.Context) {
 	}
 	col := ui.Column(c.Key("mini")).Fill().Padding(12).Gap(8).Background(surface)
 	if runtime.GOOS != "darwin" {
-		// macOS rounds the popover itself.
+		// macOS rounds the popover itself. Elsewhere the panel rounds its own
+		// corners, so the root must not fill them with the theme's background.
+		c.Root().Background(ui.Transparent)
 		col.Radius(m3.ExtraLarge)
 	}
 	col.Children(func() {

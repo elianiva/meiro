@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **The tray mini player on Windows has rounded corners.** Its corners no longer show a dark square behind the panel.
+
 ## [0.4.15] - 2026-10-28
 
 ### Fixed
