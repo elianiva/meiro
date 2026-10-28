@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "secretfile",
+    srcs = ["secretfile.go"],
+    importpath = "github.com/elianiva/meiro/internal/secretfile",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/fsutil",
+        "@com_github_egoist_mygo//:mygo",
+    ],
+)
+
+go_test(
+    name = "secretfile_test",
+    srcs = ["secretfile_test.go"],
+    embed = [":secretfile"],
+    deps = ["@com_github_egoist_mygo//:mygo"],
+)

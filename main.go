@@ -29,11 +29,11 @@ import (
 
 	"github.com/elianiva/meiro/internal/applog"
 	"github.com/elianiva/meiro/internal/audio"
-	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/diskcache"
 	"github.com/elianiva/meiro/internal/memprof"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
+	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/systemmedia"
@@ -156,16 +156,20 @@ func playerOptions() []player.Option {
 	return nil
 }
 
+// credentialsKey is the one key the saved sessions are encrypted with, so
+// that macOS asks for it once after an update, not once per session.
+const credentialsKey = "credentials-key"
+
 // setup reads the settings, opens the audio cache and the credential store,
 // and makes the public client.
 func (a *app) setup() {
 	if directory, err := mygo.App.Path(mygo.PathUserData); err == nil {
 		a.saver.Path = filepath.Join(directory, "settings.json")
 		a.settings = settings.Load(a.saver.Path)
-		a.account.creds.store = &cookies.FileStore{Path: filepath.Join(directory, "cookie.txt")}
+		a.account.creds.store = &secretfile.File{Path: filepath.Join(directory, "cookie.txt"), Keychain: mygo.Secrets, Name: credentialsKey}
 		a.historyPath = filepath.Join(directory, "history.json")
 		a.restorePlayback(filepath.Join(directory, "playback.json"))
-		a.openScrobbler(filepath.Join(directory, "lastfm-session.txt"), filepath.Join(directory, "lastfm-pending.json"))
+		a.openScrobbler(secretfile.File{Path: filepath.Join(directory, "lastfm-session.txt"), Keychain: mygo.Secrets, Name: credentialsKey}, filepath.Join(directory, "lastfm-pending.json"))
 		a.openCredits(filepath.Join(directory, "credits.json"))
 	} else {
 		a.account.signIn.err = err.Error()
