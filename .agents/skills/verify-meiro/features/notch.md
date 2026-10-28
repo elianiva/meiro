@@ -9,7 +9,8 @@ the right. The previous and next lines frame the active lyric.
 
 - `notch-compact`: cover and five animated bars, resting on pause, with a loading indicator while buffering.
 - `notch-cover-open`: the large cover in the expanded panel opens the current song's Now Playing view in the main window and collapses the notch. It preserves playback and paused state, uses a pointer and Open Now Playing tooltip, supports keyboard activation, and is disabled while fading. The small header cover still expands the notch.
-- `notch-lyrics`: click either wing to expand/collapse; Escape collapses. The panel stays open when the pointer leaves.
+- `notch-lyrics`: click either wing to expand/collapse; Escape collapses.
+- `notch-auto-collapse`: after the pointer leaves the expanded panel for two seconds, it closes with the existing animation. Returning inside cancels the countdown. Hovering gaps or children counts as inside; dragging progress outside and keyboard focus on controls keep it open. Releasing the drag or moving keyboard focus out starts a fresh delay. Reopening, disabling or relocating the notch clears old deadlines.
 - `notch-open`: the expanded header has a 16 point Open Meiro icon in a 32 point target beside collapse, outside the camera area. It brings the existing main window forward, restoring it if hidden or minimized, and collapses the notch through its normal closing animation while playback continues. It fades with the panel and is disabled while fading; compact mode has no extra button.
 - `notch-motion`: opening expands over 240 ms and closing contracts over 200 ms, anchored to the camera. Content fades and lifts slightly; the header cover crossfades with the collapse arrow. Rapid clicks reverse the current animation. Reduce Motion uses a 100 ms fade in place. Fading controls cannot be activated.
 - `notch-transport`: Previous, Play/Pause and Next operate playback without collapsing the panel. Controls stay available while lyrics load or are unavailable.
@@ -33,6 +34,9 @@ the main window from the Open Meiro icon beside collapse or from the Dock. Searc
 `notch` to turn it off or back on.
 Click the large cover inside the expanded notch to open the current song in
 Now Playing directly; the notch collapses as the main window comes forward.
+Move the pointer away for two seconds to collapse automatically, or return
+inside before the delay ends to keep it open. Keyboard focus and progress
+dragging hold it open until the interaction ends.
 
 ## Headless proof recipe
 
@@ -91,6 +95,18 @@ macOS check can prove that the main window actually appears and takes focus.
 For auto-collapse, use `TestNotchOpenMeiroCollapsesWithoutChangingPlayback` and
 compare the proof with the preceding commit where Open Meiro left the panel open.
 
+For pointer departure, use `TestNotchCollapsesTwoSecondsAfterPointerLeaves`:
+expand, move inside a gap and wait five seconds (still open), move outside to
+`(500, 230)` and wait 1.9 seconds (still open), then return inside to cancel.
+Leave again for two seconds; the existing close animation must run before the
+native footprint becomes compact. Repeat with Reduce Motion. Test dragging
+the progress slider outside for longer than two seconds: it must not seek or
+close until release. Focus the slider with Tab, move the pointer out, and keep
+the panel open until `SetFocused(false)`, then wait a fresh two seconds.
+`TestNotchAutoCollapseWaitsForDragAndKeyboard` and
+`TestNotchReopeningDiscardsAutoCollapseDeadline` cover interaction and stale
+wakeups. Use the preceding commit as the proof baseline.
+
 For the cover action, click the compact cover first: only the notch expands.
 Click the large cover (`Open Now Playing`) or focus it with Tab and press Enter.
 The main window must show Now Playing with the current track and its controls,
@@ -114,3 +130,4 @@ Now Playing. Use `TestNotchCoverOpensNowPlaying` and
 - Synced rows use lyric indices inside the track's identity for position transitions, so a new song cannot inherit the previous song's animation state.
 - The native window provides an expanded transparent canvas during motion. UI animation changes the painted rounded panel, and a guarded completion resizes the native window to its compact footprint. The callback reads the latest target so rapid reversals cannot be closed by an old completion.
 - `AnimateTo` respects Reduce Motion by snapping geometry; `AnimateColor` preserves the short opacity fade. The panel background itself never fades.
+- Auto-collapse uses `Context.Now` and `Context.After` on the notch UI thread. Wakeups recheck the current deadline; no timer callback retains UI elements. Mouse-acquired focus alone does not inhibit closing, while visible keyboard focus does. Slider drag capture, rather than pointer containment, determines when a seek ends.

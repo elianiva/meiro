@@ -22,6 +22,7 @@ const (
 	notchRadius        = 20
 	notchOpenDuration  = 240 * time.Millisecond
 	notchCloseDuration = 200 * time.Millisecond
+	notchCollapseDelay = 2 * time.Second
 )
 
 // The player and fetched lyrics belong to app. Only presentation belongs to
@@ -33,6 +34,9 @@ type notchState struct {
 	staticScroll  ui.ScrollState
 	scrub         float64
 	scrubbing     bool
+	collapseAt    time.Time
+	// interacting is rebuilt from the current pass's controls, never UI handles.
+	interacting bool
 }
 
 type notchWindow struct {
@@ -70,6 +74,9 @@ func (a *app) setupNotch() {
 }
 
 func (a *app) setNotchCutout(cutout mygo.Rectangle) {
+	if a.notch.cutout != cutout {
+		a.notch.collapseAt = time.Time{}
+	}
 	a.notch.cutout = cutout
 	a.syncNotch()
 }
@@ -90,6 +97,7 @@ func (a *app) syncNotch() {
 	if !a.settings.ShowNotch || a.current.VideoID == "" || a.notch.cutout.Width <= 0 {
 		a.notch.expanded, a.notch.transitioning = false, false
 		a.notch.scrubbing = false
+		a.notch.collapseAt = time.Time{}
 		if d != nil {
 			d.closeNotch()
 		}
@@ -147,6 +155,7 @@ func (a *app) setNotchExpanded(open bool) {
 		return
 	}
 	a.notch.expanded, a.notch.transitioning = open, true
+	a.notch.collapseAt = time.Time{}
 	a.notch.scrubbing = false
 	if open {
 		a.notch.resetLyrics()
@@ -178,6 +187,7 @@ func (a *app) notchView(c *ui.Context) {
 	// pixels outside the rounded panel reveal the desktop.
 	c.Root().Background(ui.Transparent)
 	n := &a.notch
+	n.interacting = false
 	open := n.expanded
 	reduced := c.Preferences().ReduceMotion
 	headerHeight := float32(n.cutout.Height + 6)
@@ -230,6 +240,7 @@ func (a *app) notchView(c *ui.Context) {
 				launch.Children(func() {
 					ui.Icon(c, m3.IconOpenInNew).FontSize(16).TextColor(color)
 				})
+				n.trackInteraction(launch)
 				if launch.Clicked() {
 					// Release the panel's keyboard focus before focusing the main window.
 					a.setNotchExpanded(false)
@@ -241,6 +252,7 @@ func (a *app) notchView(c *ui.Context) {
 				label = "Close notch lyrics"
 			}
 			cover := ui.ButtonBase(c.Key("notch-cover")).Size(notchWing, headerHeight).Center().Label(label).Cursor(ui.CursorPointer)
+			n.trackInteraction(cover)
 			cover.Children(func() {
 				small := min(float32(26), headerHeight-10)
 				ui.Box(c.Key("small-cover")).Absolute().Size(small, small).Left((notchWing - small) / 2).Top((headerHeight - small) / 2).Opacity(1 - headerOpacity).Children(func() {
@@ -253,6 +265,7 @@ func (a *app) notchView(c *ui.Context) {
 			// The camera occupies this area. Never place a title or a control here.
 			ui.Box(c.Key("camera")).Width(float32(n.cutout.Width)).Height(headerHeight).PassThrough()
 			indicator := ui.ButtonBase(c.Key("notch-indicator")).Size(notchWing, headerHeight).Center().Label(label + " from playback indicator").Cursor(ui.CursorPointer)
+			n.trackInteraction(indicator)
 			indicator.Children(func() {
 				if a.loading() {
 					m3.LoadingIndicatorIn(c, 20, white).Label("Buffering")
@@ -275,6 +288,7 @@ func (a *app) notchView(c *ui.Context) {
 				cover := ui.ButtonBase(c.Key("notch-album")).Size(76, 76).Shrink(0).Radius(12).
 					Label("Open Now Playing").Tooltip("Open Now Playing").Cursor(ui.CursorPointer).
 					Disabled(!open || opacity < 1)
+				n.trackInteraction(cover)
 				cover.Children(func() {
 					a.art(c, a.current.Thumbnail, 192, 76, 12, func() {
 						state := ui.Box(c.Key("cover-state")).Absolute().Top(0).Left(0).Size(76, 76).Radius(12).PassThrough().
@@ -308,11 +322,40 @@ func (a *app) notchView(c *ui.Context) {
 	if c.Shortcut(0, ui.KeyEscape) && n.expanded {
 		a.setNotchExpanded(false)
 	}
+	a.notchAutoCollapse(c, root)
+}
+
+// trackInteraction keeps keyboard focus and held controls from timing out.
+// A mouse click's retained focus alone must not keep the panel open forever.
+func (n *notchState) trackInteraction(control ui.Element) ui.Element {
+	n.interacting = control.FocusVisible() || control.Pressed() || n.interacting
+	return control
+}
+
+func (a *app) notchAutoCollapse(c *ui.Context, panel ui.Element) {
+	n := &a.notch
+	hovered := panel.Hovered() // Observe the whole panel, including gaps and children.
+	if !n.expanded || n.transitioning || hovered || n.scrubbing || n.interacting {
+		n.collapseAt = time.Time{}
+		return
+	}
+	if n.collapseAt.IsZero() {
+		n.collapseAt = c.Now().Add(notchCollapseDelay)
+	}
+	if remaining := n.collapseAt.Sub(c.Now()); remaining > 0 {
+		// A wakeup only rebuilds the UI. Re-entry or a new interaction clears
+		// the deadline, so an old wakeup cannot close a reopened panel.
+		c.After(remaining)
+		return
+	}
+	a.setNotchExpanded(false)
+	c.AnimationFrame()
 }
 
 func (a *app) notchTransport(c *ui.Context) {
+	n := &a.notch
 	ui.Row(c.Key("notch-transport")).Height(40).Shrink(0).Gap(14).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconPrevious, Label: "Previous", Size: m3.ExtraSmall32, Key: "notch-previous"}).Clicked() {
+		if n.trackInteraction(m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconPrevious, Label: "Previous", Size: m3.ExtraSmall32, Key: "notch-previous"})).Clicked() {
 			a.previous()
 		}
 		loading := a.loading()
@@ -322,10 +365,10 @@ func (a *app) notchTransport(c *ui.Context) {
 		} else if a.player.Playing() {
 			icon, label = m3.IconPause, "Pause"
 		}
-		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Size: m3.ExtraSmall32, Loading: loading, Key: "notch-play-pause"}).Clicked() {
+		if n.trackInteraction(m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Size: m3.ExtraSmall32, Loading: loading, Key: "notch-play-pause"})).Clicked() {
 			a.togglePlay()
 		}
-		if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconNext, Label: "Next", Size: m3.ExtraSmall32, Key: "notch-next"}).Clicked() {
+		if n.trackInteraction(m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconNext, Label: "Next", Size: m3.ExtraSmall32, Key: "notch-next"})).Clicked() {
 			a.advance()
 		}
 	})
@@ -347,9 +390,13 @@ func (a *app) notchProgress(c *ui.Context) {
 	ui.Column(c.Key("notch-progress")).FillWidth().Shrink(0).Children(func() {
 		slider := ui.SliderBase(c.Key("notch-position"), &n.scrub, 0, total).
 			Label("Notch position").Height(20).FillWidth().Shrink(0).Disabled(!known).Cursor(ui.CursorPointer)
+		n.trackInteraction(slider)
+		changed := slider.Changed()
+		// Arrow-key seeking may follow mouse focus without a visible focus ring.
+		n.interacting = changed || n.interacting
 		wasScrubbing := n.scrubbing
-		n.scrubbing = slider.Pressed()
-		if known && !n.scrubbing && (wasScrubbing || slider.Changed()) {
+		_, _, n.scrubbing = slider.Dragged()
+		if known && !n.scrubbing && (wasScrubbing || changed) {
 			a.scrub = n.scrub
 			a.seek(time.Duration(n.scrub * float64(time.Second)))
 		}
@@ -411,7 +458,7 @@ func (a *app) notchLyrics(c *ui.Context) {
 		ui.Column(c).Grow(1).MinHeight(0).Center().Gap(2).Children(func() {
 			m3.Text(c, m3.BodySmall, l.err).TextColor(white.Alpha(0.65)).TextAlign(ui.Center).MaxLines(2)
 			if l.videoID == "" {
-				if m3.Button(c, m3.ButtonSpec{Label: "Retry lyrics", Size: m3.ExtraSmall32, Kind: m3.TextOnly, Key: "notch-retry"}).Clicked() {
+				if a.notch.trackInteraction(m3.Button(c, m3.ButtonSpec{Label: "Retry lyrics", Size: m3.ExtraSmall32, Kind: m3.TextOnly, Key: "notch-retry"})).Clicked() {
 					a.loadLyrics()
 				}
 			}
@@ -445,7 +492,9 @@ func (a *app) notchLyrics(c *ui.Context) {
 		})
 	default:
 		m3.Text(c, m3.LabelSmall, "Synced lyrics unavailable").TextColor(white.Alpha(0.5)).TextAlign(ui.Center).Shrink(0)
-		ui.Scroll(c.Key("notch-static")).TrackScroll(&a.notch.staticScroll).Grow(1).MinHeight(0).Children(func() {
+		scroll := ui.Scroll(c.Key("notch-static")).TrackScroll(&a.notch.staticScroll).Grow(1).MinHeight(0)
+		a.notch.interacting = a.notch.interacting || scroll.FocusVisible()
+		scroll.Children(func() {
 			m3.Text(c, m3.BodySmall, l.text).TextColor(white.Alpha(0.85)).LineHeight(1.4).TextAlign(ui.Center)
 		})
 	}

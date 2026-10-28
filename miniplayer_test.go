@@ -748,6 +748,166 @@ func TestNotchProgressSeeksWithoutInterferenceFromTheMainPlayer(t *testing.T) {
 	}
 }
 
+func TestNotchCollapsesTwoSecondsAfterPointerLeaves(t *testing.T) {
+	for _, reduced := range []bool{false, true} {
+		t.Run(strconv.FormatBool(reduced), func(t *testing.T) {
+			a := notchTestApp(t)
+			nt := ui.NewTester(a.notchView, 284, 38)
+			nt.SetPreferences(ui.Preferences{ReduceMotion: reduced})
+			if err := nt.Click("Open notch lyrics"); err != nil {
+				t.Fatal(err)
+			}
+			nt.SetSize(480, 190)
+			nt.Advance(300 * time.Millisecond)
+			// Empty space inside the panel counts as inside, not just controls.
+			nt.Move(240, 60)
+			nt.Advance(5 * time.Second)
+			if !a.notch.expanded {
+				t.Fatal("hovering inside the notch collapsed it")
+			}
+			nt.Move(500, 230)
+			nt.Advance(1900 * time.Millisecond)
+			if !a.notch.expanded {
+				t.Fatal("notch collapsed before two seconds")
+			}
+			nt.Move(300, 100)
+			nt.Advance(3 * time.Second)
+			if !a.notch.expanded {
+				t.Fatal("returning to the notch did not cancel the deadline")
+			}
+			nt.Move(500, 230)
+			nt.Advance(1900 * time.Millisecond)
+			if !a.notch.expanded {
+				t.Fatal("second departure reused an expired deadline")
+			}
+			nt.Advance(100 * time.Millisecond)
+			if a.notch.expanded || !a.notch.transitioning || a.notch.bounds().Height != 190 {
+				t.Fatal("deadline did not start the normal closing animation")
+			}
+			nt.Advance(40 * time.Millisecond)
+			panel, _ := nt.Find("Notch panel")
+			if reduced && panel.H != 190 || !reduced && (panel.H <= 38 || panel.H >= 190) {
+				t.Fatalf("unexpected closing geometry: %+v", panel)
+			}
+			nt.Advance(240 * time.Millisecond)
+			bounds := a.notch.bounds()
+			nt.SetSize(bounds.Width, bounds.Height)
+			if bounds.Width != 284 || bounds.Height != 38 || a.notch.transitioning || nt.HasText("Next") {
+				t.Fatal("auto-collapse left an expanded panel")
+			}
+			if a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != 0 || a.nowPlaying.open {
+				t.Fatal("auto-collapse changed playback or the main player")
+			}
+		})
+	}
+}
+
+func TestNotchAutoCollapseWaitsForDragAndKeyboard(t *testing.T) {
+	for _, keyboard := range []bool{false, true} {
+		t.Run(strconv.FormatBool(keyboard), func(t *testing.T) {
+			a := notchTestApp(t)
+			nt := ui.NewTester(a.notchView, 284, 38)
+			if err := nt.Click("Open notch lyrics"); err != nil {
+				t.Fatal(err)
+			}
+			nt.SetSize(480, 190)
+			nt.Advance(300 * time.Millisecond)
+			if keyboard {
+				nt.Move(500, 230)
+				nt.Advance(time.Second)
+				tabTo(t, nt, "Notch position")
+				nt.Key(0, ui.KeyRight)
+			} else {
+				slider, _ := nt.Find("Notch position")
+				nt.Press(slider.X+slider.W/2, slider.Y+slider.H/2)
+				nt.Move(500, 230)
+			}
+			nt.Advance(3 * time.Second)
+			if !a.notch.expanded {
+				t.Fatal("notch collapsed during an interaction")
+			}
+			if keyboard {
+				if a.seekVersion == 0 {
+					t.Fatal("keyboard seeking stopped working")
+				}
+				nt.SetFocused(false)
+			} else {
+				if !a.notch.scrubbing || a.seekVersion != 0 {
+					t.Fatal("drag ended or sought before pointer release")
+				}
+				nt.Release(500, 230)
+				if a.notch.scrubbing || a.seekVersion == 0 {
+					t.Fatal("pointer release did not commit the seek")
+				}
+			}
+			nt.Advance(1900 * time.Millisecond)
+			if !a.notch.expanded {
+				t.Fatal("interaction did not grant a fresh two-second delay")
+			}
+			nt.Advance(100 * time.Millisecond)
+			if a.notch.expanded {
+				t.Fatal("notch did not collapse after interaction ended")
+			}
+		})
+	}
+}
+
+func TestNotchAutoCollapseWaitsAfterKeyboardSeeking(t *testing.T) {
+	a := notchTestApp(t)
+	nt := ui.NewTester(a.notchView, 284, 38)
+	if err := nt.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	nt.SetSize(480, 190)
+	nt.Advance(300 * time.Millisecond)
+	// Mouse focus has no visible keyboard focus ring, but subsequent arrow
+	// keys must still postpone closing while the user seeks.
+	if err := nt.Click("Notch position"); err != nil {
+		t.Fatal(err)
+	}
+	nt.Move(500, 230)
+	nt.Advance(1500 * time.Millisecond)
+	seekVersion := a.seekVersion
+	nt.Key(0, ui.KeyRight)
+	nt.Advance(1500 * time.Millisecond)
+	if !a.notch.expanded || a.seekVersion <= seekVersion {
+		t.Fatal("keyboard seeking after mouse focus did not postpone closing")
+	}
+	nt.Advance(500 * time.Millisecond)
+	if a.notch.expanded {
+		t.Fatal("mouse-acquired focus kept the notch open after seeking")
+	}
+}
+
+func TestNotchReopeningDiscardsAutoCollapseDeadline(t *testing.T) {
+	a := notchTestApp(t)
+	nt := ui.NewTester(a.notchView, 284, 38)
+	if err := nt.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	nt.SetSize(480, 190)
+	nt.Advance(300 * time.Millisecond)
+	nt.Move(500, 230)
+	nt.Advance(1500 * time.Millisecond)
+	nt.Key(0, ui.KeyEscape)
+	nt.Advance(300 * time.Millisecond)
+	nt.SetSize(284, 38)
+	if err := nt.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	nt.SetSize(480, 190)
+	nt.Advance(300 * time.Millisecond)
+	nt.Move(500, 230)
+	nt.Advance(1900 * time.Millisecond)
+	if !a.notch.expanded {
+		t.Fatal("old deadline closed the reopened notch")
+	}
+	nt.Advance(100 * time.Millisecond)
+	if a.notch.expanded {
+		t.Fatal("reopened notch never armed a fresh deadline")
+	}
+}
+
 func TestNotchCoverOpensNowPlaying(t *testing.T) {
 	for _, input := range []string{"click", "keyboard", "reduce-motion"} {
 		t.Run(input, func(t *testing.T) {

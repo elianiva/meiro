@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **The notch closes automatically when you leave it.** Move the pointer away for two seconds to return to the compact player. Moving back cancels the countdown; dragging progress or keeping keyboard focus on a control holds the panel open.
 - **Open Now Playing from the notch cover.** Click the large artwork to bring Meiro forward on the current song and collapse the notch, preserving playback position and pause state.
 - **Follow artist and album names from the player.** In the main window's player bar and Now Playing, click a linked credit to open its page while music keeps playing. Each credited artist opens separately, and saved queues retain their links.
 - **Open Meiro from the notch.** The expanded panel has a small Open Meiro button beside collapse. It brings the main window forward and smoothly returns the notch to its compact size while playback continues.
