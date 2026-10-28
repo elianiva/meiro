@@ -35,25 +35,38 @@ type BrowseResult struct {
 }
 
 // pageHeading reads the heading an artist, album or playlist puts over its
-// content: the first header renderer with a name, and the picture in it. The
-// renderers differ by page, which is why the one with a name is taken rather
-// than a named one.
+// content. Older pages put it at the top level; current albums put a responsive
+// header in the primary tab. Only the header's thumbnail belongs to the page,
+// not its artist portrait or a picture from the tracks and recommendations.
 func pageHeading(root any) (title, thumbnail string) {
 	object, ok := root.(*jsonObject)
 	if !ok {
 		return "", ""
 	}
-	header, ok := object.get("header").(*jsonObject)
-	if !ok {
-		return "", ""
-	}
-	for _, member := range header.members {
-		renderer, ok := member.value.(*jsonObject)
-		if !ok {
-			continue
+	if header, ok := object.get("header").(*jsonObject); ok {
+		for _, member := range header.members {
+			renderer, ok := member.value.(*jsonObject)
+			if !ok {
+				continue
+			}
+			if title := rendererText(renderer.get("title")); title != "" {
+				return title, rendererThumbnail(renderer.get("thumbnail"))
+			}
 		}
-		if title := rendererText(renderer.get("title")); title != "" {
-			return title, rendererThumbnail(renderer.get("thumbnail"))
+	}
+	contents, _ := nestedObject(root, "contents")
+	page, _ := nestedObject(contents, "twoColumnBrowseResultsRenderer")
+	tabs, _ := page.get("tabs").([]any)
+	for _, tab := range tabs {
+		renderer, _ := nestedObject(tab, "tabRenderer")
+		content, _ := nestedObject(renderer, "content")
+		sections, _ := nestedObject(content, "sectionListRenderer")
+		items, _ := sections.get("contents").([]any)
+		for _, item := range items {
+			header, _ := nestedObject(item, "musicResponsiveHeaderRenderer")
+			if title := rendererText(header.get("title")); title != "" {
+				return title, rendererThumbnail(header.get("thumbnail"))
+			}
 		}
 	}
 	return "", ""

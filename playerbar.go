@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/m3"
+	"github.com/elianiva/meiro/youtube"
 )
 
 // transport builds the controls that start, stop and move through the queue:
@@ -186,7 +187,7 @@ func (a *app) compactVolumeControl(c *ui.Context) {
 
 // trackLine is the name of the current track over who made it, or the
 // reason it does not play.
-func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role) ui.Element {
+func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.Element {
 	sc := m3.Of(c).Scheme
 	return ui.Column(c).Gap(1).MinWidth(0).Children(func() {
 		m3.EmphasizedText(c, title, a.current.Title).SingleLine().TextColor(sc.OnSurface)
@@ -194,8 +195,40 @@ func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role) ui.Element {
 		if a.playErr != "" {
 			line, colour = firstLine(a.playErr), sc.Error
 		}
+		if links && a.playErr == "" {
+			parts := a.current.PlayerByline()
+			subtitle.Style(ui.RichText(c.Key(a.current.VideoID)), false).MaxLines(2).TextColor(colour).Children(func() {
+				for i, part := range parts {
+					if !part.Target().Opens() {
+						ui.Text(c.Key(i), part.Text)
+						continue
+					}
+					link := ui.Link(c.Key(i), part.Text, "").TextColor(colour).Disabled(a.nowPlaying.closing)
+					label := "Go to artist: "
+					if part.Target().Kind == youtube.TargetAlbum {
+						label = "Go to album: "
+					}
+					link.Label(label + part.Text).Tooltip(label + part.Text)
+					if link.Clicked() {
+						a.openPlayerLink(part)
+					}
+				}
+			})
+			return
+		}
 		m3.Text(c, subtitle, line).SingleLine().TextColor(colour)
 	})
+}
+
+// openPlayerLink keeps audio and the queue untouched. The full player finishes
+// its closing animation before navigating; the bar opens the page directly.
+func (a *app) openPlayerLink(part youtube.BylinePart) {
+	if a.nowPlaying.open {
+		a.nowPlaying.navigateTo = &part
+		a.nowPlaying.closing = true
+		return
+	}
+	a.openTarget(part.Target(), detail{title: part.Text})
 }
 
 // playerBar is the floating player: what plays on the left, the transport and
@@ -224,7 +257,7 @@ func (a *app) playerBar(c *ui.Context) {
 					m3.VideoBadge(c, 64)
 				}
 			})
-			a.trackLine(c, m3.TitleSmall, m3.BodySmall).Grow(1)
+			a.trackLine(c, m3.TitleSmall, m3.BodySmall, true).Grow(1)
 		})
 		if info.Clicked() {
 			a.nowPlaying.open, a.nowPlaying.closing = true, false

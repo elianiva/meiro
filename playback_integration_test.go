@@ -1542,6 +1542,111 @@ func TestSheetCornerDoesNotCoverPlayerCloseButton(t *testing.T) {
 	}
 }
 
+func TestPlayerMetadataLinksNavigateWithoutInterruptingPlayback(t *testing.T) {
+	for _, full := range []bool{false, true} {
+		for _, dest := range []struct{ label, path, heading string }{
+			{"Go to artist: Aurora Vale", "/artist/UCartist", "Artist Track"},
+			{"Go to artist: Guest Artist", "/artist/UCguest", "Artist Track"},
+			{"Go to album: Deep Focus", "/album/MPREb_test", "Album Track One"},
+		} {
+			t.Run(strconv.FormatBool(full)+"/"+dest.label, func(t *testing.T) {
+				// The null sink consumes audio faster than real time. Leave
+				// enough audio for keyboard traversal under the race detector.
+				a, r := tonesApp(t, 600)
+				r.url = func(string, int) (string, error) { return r.file, nil }
+				a.router.Push("/playlist/VLPL_metadata")
+				tt := ui.NewTester(a.view, 1440, 900)
+				if err := tt.Click("Linked Track"); err != nil {
+					t.Fatal(err)
+				}
+				pollUntil(t, a, "playing", func() bool { return a.player.Playing() && a.player.Position() > 0 })
+				tt.Frame()
+				if full {
+					if err := tt.Click("Open the player"); err != nil {
+						t.Fatal(err)
+					}
+					tt.Advance(time.Second)
+				}
+				position, resolves, seek := a.player.Position(), r.count("linked-track"), a.seekVersion
+				queue, index := ids(a.queue.items), a.queue.index
+				if full {
+					tabTo(t, tt, dest.label)
+					tt.Key(0, ui.KeyEnter)
+					if !a.nowPlaying.closing {
+						t.Fatal("metadata navigation skipped the close animation")
+					}
+				} else if err := tt.Click(dest.label); err != nil {
+					t.Fatal(err)
+				}
+				tt.Advance(time.Second)
+				if a.router.Path() != dest.path || a.nowPlaying.open || !tt.HasText(dest.heading) {
+					t.Fatalf("metadata did not reveal its page: path %s, player %v, texts %q", a.router.Path(), a.nowPlaying.open, tt.Texts())
+				}
+				if !a.player.Playing() || a.player.Position() < position || a.current.VideoID != "linked-track" || a.queue.index != index || !slices.Equal(queue, ids(a.queue.items)) || a.seekVersion != seek || r.count("linked-track") != resolves {
+					t.Fatalf("metadata navigation changed playback: playing=%v position=%v (was %v) current=%q index=%d (was %d) queue=%v (was %v) seek=%d (was %d) resolves=%d (was %d)", a.player.Playing(), a.player.Position(), position, a.current.VideoID, a.queue.index, index, ids(a.queue.items), queue, a.seekVersion, seek, r.count("linked-track"), resolves)
+				}
+				if err := tt.Click("Back"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Advance(time.Second)
+				if a.router.Path() != "/playlist/VLPL_metadata" || !tt.HasText("Unlinked Track") {
+					t.Fatal("Back did not return to the source page")
+				}
+			})
+		}
+	}
+}
+
+func TestPlayerMetadataLinksStayInMainAppAndDisappearWithTheTrack(t *testing.T) {
+	a, _ := tonesApp(t, 30)
+	a.router.Push("/playlist/VLPL_metadata")
+	tt := ui.NewTester(a.view, 1000, 700)
+	if err := tt.Click("Linked Track"); err != nil {
+		t.Fatal(err)
+	}
+	pollUntil(t, a, "playing", a.player.Playing)
+	if err := tt.Click("Open the player"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(time.Second)
+	if !tt.HasText("Go to album: Deep Focus") || !tt.HasText("Go to artist: Aurora Vale") {
+		t.Fatal("main player has no metadata links")
+	}
+	a.notch.cutout.Width, a.notch.cutout.Height = 180, 32
+	a.settings.ShowNotch = true
+	notch := ui.NewTester(a.notchView, 284, 38)
+	if err := notch.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	notch.SetSize(480, 190)
+	notch.Advance(time.Second)
+	mini := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	for _, panel := range []*ui.Tester{mini, notch} {
+		if panel.HasText("Go to album: Deep Focus") || panel.HasText("Go to artist: Aurora Vale") {
+			t.Fatal("main-app metadata links leaked into a secondary player")
+		}
+	}
+	if err := tt.Click("Next"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(time.Second)
+	if a.current.VideoID != "unlinked-track" || tt.HasText("Go to album: Deep Focus") || tt.HasText("Go to artist: Aurora Vale") || !tt.HasText("Unknown artist • Unknown album") {
+		t.Fatal("unlinked track inherited old destinations or lost its plain metadata")
+	}
+	if err := tt.Click("Previous"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(time.Second)
+	if !tt.HasText("Go to artist: Aurora Vale") {
+		t.Fatal("links did not return with the track")
+	}
+	a.playErr = "This track is unavailable."
+	tt.Frame()
+	if !tt.HasText(a.playErr) || tt.HasText("Go to artist: Aurora Vale") {
+		t.Fatal("metadata links hid the playback error")
+	}
+}
+
 func TestClosingPlayerBuildsThePageUnderThePlayer(t *testing.T) {
 	oldMotion := m3.SpatialDefault
 	m3.SpatialDefault = m3.Spring{Stiffness: 0.01, Damping: 1}

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Follow artist and album names from the player.** In the main window's player bar and Now Playing, click a linked credit to open its page while music keeps playing. Each credited artist opens separately, and saved queues retain their links.
 - **Open Meiro from the notch.** The expanded panel has a small Open Meiro button beside collapse. It brings the main window forward without changing playback or closing the notch.
 - **A notch player on macOS.** On a MacBook with a notch, the current cover and an animated playback indicator sit beside the camera. Click either side to open a compact, rounded panel with cover art, track information and synced lyrics side by side. Seek with its progress bar or use previous, play/pause and next without closing the panel. Turn it off in Settings > Desktop.
 
@@ -15,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Smoother notch transitions on macOS.** The panel expands and contracts with a short fade, reverses smoothly when clicked again, and uses a simple fade with Reduce Motion enabled.
 - **Quieter playback on macOS.** Track information stays in the notch, without notification banners or a Meiro menu bar icon. Keep Meiro running when its window closes and reopen it from the Dock.
+
+### Fixed
+
+- **Album covers load when following a name from the player.** Albums using YouTube Music's newer page layout now show their own artwork instead of a music-note placeholder.
 
 ## [0.4.13] - 2026-10-28
 

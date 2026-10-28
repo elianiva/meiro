@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -74,5 +75,16 @@ func TestWriterAndLoadRoundTripAndRepair(t *testing.T) {
 	}
 	if got := Load(filepath.Join(t.TempDir(), "missing.json")); !got.Empty() {
 		t.Errorf("loaded %+v from a missing file", got)
+	}
+}
+
+func TestQueueRestoresPlayerMetadataLinks(t *testing.T) {
+	parts := []youtube.BylinePart{{Text: "Band", BrowseID: "UCband"}, {Text: " • "}, {Text: "Record", BrowseID: "MPREb_record"}}
+	w := Writer{Path: filepath.Join(t.TempDir(), "playback.json")}
+	w.Save(State{Items: []youtube.MusicItem{{VideoID: "song", Byline: &youtube.TrackByline{Parts: parts}}}, Index: 0, RecStart: -1})
+	w.Wait()
+	got := Load(w.Path)
+	if len(got.Items) != 1 || !slices.Equal(got.Items[0].PlayerByline(), parts) {
+		t.Fatal("restored queue lost artist or album links")
 	}
 }

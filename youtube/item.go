@@ -174,6 +174,66 @@ type MusicItem struct {
 	// none. Artist is the first of them.
 	Artists string `json:"artists,omitempty"`
 	Album   string `json:"album,omitempty"`
+	// Byline preserves the text runs and browse IDs for player navigation.
+	// It is immutable after parsing; a pointer keeps MusicItem comparable.
+	Byline *TrackByline `json:"byline,omitempty"`
+}
+
+// TrackByline keeps the original separators and non-link metadata alongside
+// artist and album links. It is saved with the queue for offline restoration.
+type TrackByline struct {
+	Parts []BylinePart `json:"parts"`
+}
+
+type BylinePart struct {
+	Text     string `json:"text"`
+	BrowseID string `json:"browseId,omitempty"`
+}
+
+// Target accepts only artist and album destinations, including saved data.
+func (p BylinePart) Target() Target {
+	switch {
+	case isArtistID(p.BrowseID):
+		return Target{Kind: TargetArtist, ID: p.BrowseID}
+	case isAlbumID(p.BrowseID):
+		return Target{Kind: TargetAlbum, ID: p.BrowseID}
+	}
+	return Target{}
+}
+
+// PlayerByline also supports older queues that saved a single artist ID.
+// Only a whole metadata segment matching the credited artist becomes a link.
+func (item MusicItem) PlayerByline() []BylinePart {
+	if item.Byline != nil {
+		return item.Byline.Parts
+	}
+	if id := item.ArtistID(); id != "" && item.Artist != "" {
+		segments := strings.Split(item.Subtitle, " • ")
+		matches := 0
+		for _, text := range segments {
+			if text == item.Artist {
+				matches++
+			}
+		}
+		// Old queues cannot distinguish an artist called "Song" from the
+		// kind label when both appear. Leave ambiguous text unlinked.
+		if matches != 1 {
+			return []BylinePart{{Text: item.Subtitle}}
+		}
+		var parts []BylinePart
+		for i, text := range segments {
+			if i > 0 {
+				parts = append(parts, BylinePart{Text: " • "})
+			}
+			part := BylinePart{Text: text}
+			if text == item.Artist {
+				part.BrowseID = id
+			}
+			parts = append(parts, part)
+		}
+		return parts
+	}
+	return []BylinePart{{Text: item.Subtitle}}
 }
 
 // setCredits makes item credit the artists a byline links and the album.

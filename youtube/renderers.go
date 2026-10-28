@@ -171,6 +171,7 @@ func parseMusicCardShelf(renderer *jsonObject) (MusicItem, bool) {
 		}
 	}
 	item.setCredits(bylineCredits(renderer.get("subtitle")))
+	item.setPlayerByline(renderer)
 	if item.VideoID != "" && item.Kind != KindEpisode {
 		// A card of a song plays its video, and says so.
 		item.Kind = KindVideo
@@ -311,6 +312,7 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 		// A two-row item is a song or a video when it carries a video, as the
 		// cards of a home shelf do; one without is an album or an artist.
 		item.setCredits(rendererCredits(renderer))
+		item.setPlayerByline(renderer)
 	}
 	item.PlaylistID, _ = renderer.get("playlistId").(string)
 	item.PlaylistSetID = nestedString(renderer.get("playlistItemData"), "playlistSetVideoId")

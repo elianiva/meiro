@@ -15,6 +15,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
   the vertical volume slider on hover.
 - `play-mini` shows and controls the mini player.
 - `play-mini-navigation` opens an artist page from the mini player's track menu and returns to the main window.
+- `play-metadata-links` opens individually linked artists and albums from the main player bar and Now Playing. Hover underlines names; Tab/Enter activates them. Now Playing closes with its usual animation before navigating. Audio, queue and position continue unchanged. Unknown destinations remain plain text; the notch and tray mini player retain their existing metadata presentation.
 - `play-real-audio` decodes real audio through ffmpeg on the null device.
 
 ## How to get to it (user POV)
@@ -27,6 +28,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - Open the tray mini player from the tray icon on macOS and Windows. On Linux, choose `Open Meiro` from the tray menu to restore the main window; Linux does not offer the tray mini player.
 - In the mini player's queue, right-click a track and choose `Go to artist`. The flyout closes and the main window shows that artist's page.
 - Right click a track for `Play next` and `Add to queue`.
+- In the main player, click an artist or album name below the track title to open its page. Back returns to the page you came from. Metadata can use two lines; clipped links show their full name in a tooltip.
 - In `Up next`, Cmd-click on macOS or Ctrl-click on Windows/Linux to select
   several tracks; Shift-click extends the selection. Drag a selected row to
   reorder the group, or right-click a row and choose `Remove N tracks`.
@@ -60,6 +62,10 @@ Preconditions:
 - **Linux tray.** The minimal AppIndicator menu offers `Open Meiro` and `Quit`. `Open Meiro` restores the main window rather than creating a separate mini-player flyout. The tray also needs the AppIndicator runtime and a StatusNotifier-capable panel; see [Linux troubleshooting](../../../../README.md#troubleshooting).
 
 ## Gotchas
+
+- **Metadata links.** Use `/playlist/VLPL_metadata` in the fake for a song with two artist endpoints and an album in a separate column. Play `Linked Track` with `tonesApp(t, 30)`, then follow `Go to artist: Aurora Vale`, `Go to artist: Guest Artist` and `Go to album: Deep Focus` from both the bar and Now Playing (Tab/Enter too). Assert the route and destination contents, an advancing real player position, unchanged queue/seek version and no new stream resolution. Back must return to the playlist. Next to `Unlinked Track` removes links; Previous restores them, and playback errors still replace metadata. Render the notch and tray player to check neither acquired these links. Persist and reload the queue to verify destinations survive restart. The proof uses the preceding commit and the same canned renderer on both sides, so before fails because the links are absent.
+- Player metadata preserves original runs and their IDs. Do not infer destinations from names, put an album ID in a track's `BrowseID` (which changes its primary target), or mutate shared byline parts. Non-credit runs, such as kind and play count, stay plain text.
+- The null output consumes audio faster than real time. Keyboard traversal with the race detector can finish a 30 second tone before navigation completes; the metadata regression uses a 600 second tone so natural completion is not mistaken for a navigation interruption.
 
 - Sound is not audible in a proof. "Playing" means `a.player.Position()` advanced and ffmpeg exited cleanly on the null device.
 - The app readies the next track ahead of time, so `r.asked` for a later track can be true before it plays. Assert on `a.current.VideoID` and the screen.

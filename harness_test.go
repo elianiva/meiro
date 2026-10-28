@@ -126,6 +126,14 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = playlistPage()
 	case strings.Contains(asked, "VLPL_songs"):
 		reply = playlistSongsResponse
+	case strings.Contains(asked, "VLPL_metadata"):
+		reply = metadataPlaylistResponse
+	case strings.Contains(asked, "VLPL_album_cover"):
+		reply = strings.NewReplacer("Deep Focus", "After Hours", "MPREb_test", "MPREb_nested").Replace(metadataPlaylistResponse)
+	case strings.Contains(asked, "MPREb_nested"):
+		reply = nestedAlbumResponse
+	case strings.Contains(asked, "UCguest"):
+		reply = strings.ReplaceAll(strings.ReplaceAll(artistPage(), fakeArtist, "UCguest"), "Aurora Vale", "Guest Artist")
 	case strings.Contains(asked, "MPREb_test"):
 		reply = albumPage()
 	case strings.Contains(asked, "MPSPPLshow"):
@@ -318,6 +326,40 @@ func albumPage() string {
 	}}
 ]}}}`
 }
+
+// nestedAlbumResponse follows the current album layout: the page header is in
+// the primary tab, with a separate artist portrait; tracks are in the second column.
+const nestedAlbumResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
+"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
+{"musicResponsiveHeaderRenderer":{
+"title":{"runs":[{"text":"After Hours"}]},
+"straplineThumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/artist.png"}]}}},
+"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/album-small.png"},{"url":"https://img.test/album.png"}]}}}
+}}
+]}}}}],
+"secondaryContents":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[
+{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"nested-track"},"flexColumns":[
+{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Album Track One"}]}}}
+]}}
+]}}]}}
+}}}`
+
+// metadataPlaylistResponse includes individually linked artists and a separate
+// album column, as well as a track whose credits have no browse endpoints.
+const metadataPlaylistResponse = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Linked credits"}]}}},
+"contents":{"musicShelfRenderer":{"contents":[
+{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"linked-track"},"flexColumns":[
+{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Linked Track"}]}}},
+{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Song • "},
+{"text":"Aurora Vale","navigationEndpoint":{"browseEndpoint":{"browseId":"UCartist"}}},{"text":" & "},
+{"text":"Guest Artist","navigationEndpoint":{"browseEndpoint":{"browseId":"UCguest"}}},{"text":" • 496M plays"}]}}},
+{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Deep Focus","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_test"}}}]}}}
+],"lengthText":{"simpleText":"0:30"}}},
+{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"unlinked-track"},"flexColumns":[
+{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Unlinked Track"}]}}},
+{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Unknown artist • Unknown album"}]}}}
+],"lengthText":{"simpleText":"0:30"}}}
+]}}}`
 
 // podcastResponse is a podcast show: its heading among its contents, and a
 // shelf of two episodes, newest first.

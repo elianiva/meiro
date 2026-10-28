@@ -125,3 +125,102 @@ func artistBrowseEndpoint(value any) string {
 	}
 	return ""
 }
+
+// setPlayerByline preserves the displayed runs instead of matching artist
+// names inside a flattened string. An album may live in a separate column.
+func (item *MusicItem) setPlayerByline(renderer *jsonObject) {
+	if item.VideoID == "" || item.IsEpisode() {
+		return
+	}
+	sources := []any{renderer.get("subtitle")}
+	var columns []any
+	if flex, ok := renderer.get("flexColumns").([]any); ok {
+		for _, value := range flex[min(1, len(flex)):] {
+			if column, ok := nestedObject(value, "musicResponsiveListItemFlexColumnRenderer"); ok {
+				columns = append(columns, column.get("text"))
+			}
+		}
+	}
+	if len(columns) > 0 {
+		sources = append(sources, columns[0])
+	}
+	sources = append(sources, renderer.get("longBylineText"), renderer.get("shortBylineText"))
+	parts := []BylinePart{{Text: item.Subtitle}}
+	for _, source := range sources {
+		text := rendererText(source)
+		if text == "" || item.Subtitle == "" {
+			continue
+		}
+		if text == item.Subtitle || strings.TrimSuffix(text, " • "+item.Duration) == item.Subtitle {
+			parts = bylineParts(source, len(item.Subtitle))
+			break
+		}
+	}
+	// Some list renderers put the album in their own flex column, while the
+	// visible subtitle contains only artists. Keep its real destination too.
+	hasAlbum := false
+	for _, part := range parts {
+		hasAlbum = hasAlbum || part.Target().Kind == TargetAlbum
+	}
+	if !hasAlbum {
+		for _, source := range append(sources, columns...) {
+			for _, part := range bylineParts(source, len(rendererText(source))) {
+				if part.Target().Kind == TargetAlbum {
+					if item.Subtitle != "" {
+						parts = append(parts, BylinePart{Text: " • "})
+					}
+					parts = append(parts, part)
+					if item.Album == "" {
+						item.Album = part.Text
+					}
+					hasAlbum = true
+					break
+				}
+			}
+			if hasAlbum {
+				break
+			}
+		}
+	}
+	for _, part := range parts {
+		if part.Target().Opens() {
+			item.Byline = &TrackByline{Parts: parts}
+			return
+		}
+	}
+}
+
+// limit excludes a trailing duration already removed from Subtitle.
+func bylineParts(source any, limit int) []BylinePart {
+	object, ok := source.(*jsonObject)
+	if !ok {
+		return nil
+	}
+	runs, _ := object.get("runs").([]any)
+	var parts []BylinePart
+	if len(runs) == 0 {
+		text := rendererText(source)
+		return []BylinePart{{Text: text[:min(len(text), limit)]}}
+	}
+	for _, value := range runs {
+		run, ok := value.(*jsonObject)
+		if !ok || limit <= 0 {
+			continue
+		}
+		text, _ := run.get("text").(string)
+		text = text[:min(len(text), limit)]
+		limit -= len(text)
+		if text == "" {
+			continue
+		}
+		part := BylinePart{Text: text}
+		if endpoint, ok := nestedObject(run.get("navigationEndpoint"), "browseEndpoint"); ok {
+			part.BrowseID, _ = endpoint.get("browseId").(string)
+			if !part.Target().Opens() {
+				part.BrowseID = ""
+			}
+		}
+		parts = append(parts, part)
+	}
+	return parts
+}

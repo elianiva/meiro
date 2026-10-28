@@ -54,7 +54,7 @@ func (a *app) miniPlayer(c *ui.Context) {
 						m3.Text(c, m3.BodySmall, "Pick something in Meiro").TextColor(sc.OnSurfaceVariant)
 					})
 				} else {
-					a.trackLine(c, m3.TitleSmall, m3.BodySmall).Grow(1)
+					a.trackLine(c, m3.TitleSmall, m3.BodySmall, false).Grow(1)
 				}
 			})
 			a.scrubber(c)

@@ -19,6 +19,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/settings"
@@ -28,6 +29,52 @@ import (
 
 // These tests drive the whole app through its window, the way a user does:
 // real pages, real clicks, and a fake YouTube at the network edge.
+
+func TestAlbumCoverLoadsFromPlayerMetadata(t *testing.T) {
+	for _, full := range []bool{false, true} {
+		t.Run(strconv.FormatBool(full), func(t *testing.T) {
+			a, r := tonesApp(t, 600)
+			r.url = func(string, int) (string, error) { return r.file, nil }
+			a.thumbs.Close()
+			a.thumbs = artwork.New(&http.Client{Transport: redArt{}}, func() {})
+			t.Cleanup(a.thumbs.Close)
+			a.router.Push("/playlist/VLPL_album_cover")
+			tt := ui.NewTester(a.view, 1440, 900)
+			if err := tt.Click("Linked Track"); err != nil {
+				t.Fatal(err)
+			}
+			pollUntil(t, a, "playing", a.player.Playing)
+			tt.Frame()
+			if full {
+				if err := tt.Click("Open the player"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Advance(time.Second)
+			}
+			if err := tt.Click("Go to album: After Hours"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Advance(time.Second)
+			if a.router.Path() != "/album/MPREb_nested" || a.page.detail.title != "After Hours" || a.page.detail.art != "https://img.test/album.png" || !tt.HasText("Album Track One") {
+				t.Fatalf("album link lost the header or tracks: path %q, detail %+v, texts %q", a.router.Path(), a.page.detail, tt.Texts())
+			}
+			deadline := time.Now().Add(3 * time.Second)
+			for time.Now().Before(deadline) {
+				tt.Frame()
+				cover, ok := tt.Find("More options for After Hours")
+				if !ok {
+					t.Fatal("album cover is missing")
+				}
+				pixel := tt.Image().RGBAAt(int(cover.X+cover.W/2), int(cover.Y+cover.H/2))
+				if pixel.R > 180 && pixel.G < 30 && pixel.B < 30 {
+					return
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			t.Fatal("album artwork never replaced the placeholder")
+		})
+	}
+}
 
 // signedInApp is an app whose account client speaks for a saved session.
 func signedInApp(t *testing.T) *app {
