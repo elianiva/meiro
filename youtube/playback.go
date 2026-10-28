@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -64,6 +65,106 @@ func (c *Client) Loudness(ctx context.Context, videoID string) (Loudness, error)
 		return Loudness{}, err
 	}
 	return parseLoudness(raw)
+}
+
+// AudioStream returns a direct URL of the best audio of videoID and the
+// track's length, as yt-dlp resolves it with its visionOS client, without
+// running yt-dlp. It asks anonymously, as a visitor: a client with a
+// signed-in session is refused.
+func (c *Client) AudioStream(ctx context.Context, videoID string) (string, time.Duration, error) {
+	if c.cookieAuth != nil {
+		return "", 0, errors.New("youtube: audio streams are resolved anonymously")
+	}
+	if strings.TrimSpace(videoID) == "" {
+		return "", 0, errors.New("youtube: audio stream requires a video ID")
+	}
+	// The player answers a request without a visitor with a bot check.
+	if c.currentVisitorData() == "" {
+		if _, err := c.executeAs(ctx, musicClient, false, "visitor_id", map[string]any{}); err != nil {
+			return "", 0, err
+		}
+	}
+	raw, err := c.executeAs(ctx, visionOSClient, false, "player", map[string]any{
+		"videoId": videoID, "contentCheckOk": true, "racyCheckOk": true,
+	})
+	if err != nil {
+		return "", 0, err
+	}
+	stream, length, err := parseAudioStream(raw)
+	if err != nil {
+		return "", 0, err
+	}
+	// The media server now and then refuses a URL the player just gave out.
+	// Asking for its first byte finds that out here, where the caller can
+	// still resolve it another way, rather than in the player.
+	if err := c.probe(ctx, stream); err != nil {
+		return "", 0, err
+	}
+	return stream, length, nil
+}
+
+// probe asks for the first byte of a media URL, as the player asks for it.
+func (c *Client) probe(ctx context.Context, media string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, media, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Range", "bytes=0-0")
+	req.Header.Set("User-Agent", browserUserAgent)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("youtube: probe audio stream: %w", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("youtube: audio stream answers HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// parseAudioStream picks the audio-only format of the highest bitrate that
+// has a direct URL, as yt-dlp's bestaudio does: of the track's own language,
+// and with its dynamic range left as it was mixed rather than compressed
+// (DRC), which YouTube lists beside it at a slightly higher bitrate.
+func parseAudioStream(raw json.RawMessage) (string, time.Duration, error) {
+	var response struct {
+		PlayabilityStatus struct {
+			Status string `json:"status"`
+			Reason string `json:"reason"`
+		} `json:"playabilityStatus"`
+		StreamingData struct {
+			AdaptiveFormats []struct {
+				MimeType         string `json:"mimeType"`
+				Bitrate          int    `json:"bitrate"`
+				URL              string `json:"url"`
+				ApproxDurationMs string `json:"approxDurationMs"`
+				IsDrc            bool   `json:"isDrc"`
+				AudioTrack       *struct {
+					AudioIsDefault bool `json:"audioIsDefault"`
+				} `json:"audioTrack"`
+			} `json:"adaptiveFormats"`
+		} `json:"streamingData"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return "", 0, err
+	}
+	if status := response.PlayabilityStatus; status.Status != "OK" {
+		return "", 0, fmt.Errorf("youtube: player says %s: %s", status.Status, status.Reason)
+	}
+	best, bitrate, length := "", -1, time.Duration(0)
+	for _, format := range response.StreamingData.AdaptiveFormats {
+		if !strings.HasPrefix(format.MimeType, "audio/") || format.URL == "" || format.Bitrate <= bitrate ||
+			format.IsDrc || format.AudioTrack != nil && !format.AudioTrack.AudioIsDefault {
+			continue
+		}
+		best, bitrate = format.URL, format.Bitrate
+		ms, _ := strconv.ParseInt(format.ApproxDurationMs, 10, 64)
+		length = time.Duration(ms) * time.Millisecond
+	}
+	if best == "" {
+		return "", 0, errors.New("youtube: player lists no audio with a direct URL")
+	}
+	return best, length, nil
 }
 
 // ReportPlayback tells YouTube Music that the account started playing a track,

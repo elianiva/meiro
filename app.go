@@ -20,7 +20,6 @@ import (
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
 	"github.com/elianiva/meiro/internal/settings"
-	"github.com/elianiva/meiro/internal/ytdlp"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/systemmedia"
@@ -198,7 +197,7 @@ func newApp() *app {
 		keyboard:   keyboardState{hintDelay: hintDelay},
 	}
 	a.scrobble = newScrobbler()
-	a.playback = newPlayback(audio.NewURLs(ytdlp.Resolve), a.settings.Volume)
+	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}))), a.settings.Volume)
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.run = func(work func()) {
 		go func() {

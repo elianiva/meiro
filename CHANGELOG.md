@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **Your YouTube Music and Last.fm sessions are encrypted on disk.** The key is in your system's credential store: the Keychain on macOS, the Secret Service (such as GNOME Keyring or KWallet) on Linux, and the Credential Manager on Windows. A session that an earlier version saved is encrypted the first time Meiro reads it, so you stay signed in. On macOS, the first launch after an update asks once to use the key: choose **Always Allow**. On a Linux system without a credential store, the sessions stay in files only your user can read.
+- **Songs start sooner, without a memory spike.** Meiro asks YouTube for a song's audio itself, in a fraction of a second, and only runs yt-dlp when that fails. yt-dlp used to run for every song, taking about two seconds and 70 MB of memory each time, twice when the next song was readied at the same time.
 
 ## [0.4.14] - 2026-10-28
 

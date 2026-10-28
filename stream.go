@@ -6,8 +6,27 @@ import (
 	"time"
 
 	"github.com/elianiva/meiro/internal/audio"
+	"github.com/elianiva/meiro/internal/ytdlp"
 	"github.com/elianiva/meiro/youtube"
 )
+
+// resolveAudio finds a track's audio by asking YouTube's player directly,
+// and falls back to yt-dlp, which knows more ways to ask, when that fails.
+// Asking directly takes a request, where yt-dlp starts a Python process of
+// about 70 MB and takes a couple of seconds.
+func resolveAudio(client *youtube.Client) audio.Resolver {
+	return func(ctx context.Context, videoID string) (string, time.Duration, error) {
+		url, total, err := client.AudioStream(ctx, videoID)
+		if err == nil {
+			return url, total, nil
+		}
+		if ctx.Err() != nil {
+			return "", 0, err
+		}
+		log.Printf("playback: direct resolve failed video_id=%s, trying yt-dlp: %v", videoID, err)
+		return ytdlp.Resolve(ctx, videoID)
+	}
+}
 
 // resolvedAudio is where a track's audio is, and how long it plays.
 type resolvedAudio struct {
