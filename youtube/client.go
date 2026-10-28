@@ -131,6 +131,11 @@ type clientContext struct {
 		ClientName    string `json:"clientName"`
 		ClientVersion string `json:"clientVersion"`
 		VisitorData   string `json:"visitorData,omitempty"`
+		DeviceMake    string `json:"deviceMake,omitempty"`
+		DeviceModel   string `json:"deviceModel,omitempty"`
+		UserAgent     string `json:"userAgent,omitempty"`
+		OSName        string `json:"osName,omitempty"`
+		OSVersion     string `json:"osVersion,omitempty"`
 	} `json:"client"`
 	User *clientUserContext `json:"user,omitempty"`
 }
@@ -191,6 +196,16 @@ const (
 	androidMusicClient innerTubeClient = "ANDROID_MUSIC"
 )
 
+// visionOSClient is the YouTube app for Apple Vision Pro. Its player
+// response lists audio formats with direct URLs, which need neither a
+// signature nor YouTube's JavaScript challenge solved.
+const visionOSClient innerTubeClient = "VISIONOS"
+
+const (
+	visionOSVersion   = "1.02"
+	visionOSUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+)
+
 const (
 	androidMusicVersion   = "7.21.50"
 	androidMusicUserAgent = "com.google.android.apps.youtube.music/" + androidMusicVersion + " (Linux; U; Android 14) gzip"
@@ -213,10 +228,17 @@ func (c *Client) executeAs(ctx context.Context, client innerTubeClient, audioOnl
 		clientName, clientID, clientVersion = "WEB", "1", c.webClientVersion
 	case androidMusicClient:
 		clientName, clientID, clientVersion = "ANDROID_MUSIC", "21", androidMusicVersion
+	case visionOSClient:
+		clientName, clientID, clientVersion = "VISIONOS", "101", visionOSVersion
 	}
 	requestContext := c.context()
 	requestContext.Client.ClientName = clientName
 	requestContext.Client.ClientVersion = clientVersion
+	if client == visionOSClient {
+		device := &requestContext.Client
+		device.DeviceMake, device.DeviceModel, device.UserAgent = "Apple", "RealityDevice17,1", visionOSUserAgent
+		device.OSName, device.OSVersion = "visionOS", "26.5.23O471"
+	}
 	if c.cookieAuth != nil {
 		requestContext.User = &clientUserContext{OnBehalfOfUser: c.cookieAuth.onBehalfOfUser}
 	}
@@ -250,6 +272,9 @@ func (c *Client) executeAs(ctx context.Context, client innerTubeClient, audioOnl
 	req.Header.Set("User-Agent", browserUserAgent)
 	if client == androidMusicClient {
 		req.Header.Set("User-Agent", androidMusicUserAgent)
+	}
+	if client == visionOSClient {
+		req.Header.Set("User-Agent", visionOSUserAgent)
 	}
 	origin := parsedURL.Scheme + "://" + parsedURL.Host
 	req.Header.Set("Origin", origin)

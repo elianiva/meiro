@@ -20,6 +20,7 @@ go_test(
     srcs = [
         "fit_test.go",
         "notification_test.go",
+        "purge_test.go",
     ],
     embed = [":artwork"],
     deps = [

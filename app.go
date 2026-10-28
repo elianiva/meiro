@@ -20,7 +20,6 @@ import (
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
 	"github.com/elianiva/meiro/internal/settings"
-	"github.com/elianiva/meiro/internal/ytdlp"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/systemmedia"
@@ -42,6 +41,9 @@ type app struct {
 	media   systemmedia.Session
 	discord *discordrpc.Session
 	thumbs  *artwork.Cache
+	// displayScale is the largest scale of the displays, which sizes the
+	// artwork asked for; 0 in tests, which ask for the sizes the views name.
+	displayScale float32
 
 	// run runs work off the main thread. Tests replace it with a runner
 	// that runs the work inline, so a frame sees its result at once.
@@ -198,7 +200,7 @@ func newApp() *app {
 		keyboard:   keyboardState{hintDelay: hintDelay},
 	}
 	a.scrobble = newScrobbler()
-	a.playback = newPlayback(audio.NewURLs(ytdlp.Resolve), a.settings.Volume)
+	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}))), a.settings.Volume)
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.run = func(work func()) {
 		go func() {

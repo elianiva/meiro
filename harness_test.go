@@ -101,6 +101,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		} else {
 			fakeLibrary.Store(fakeArtist, strings.HasSuffix(request.URL.Path, "/subscription/subscribe"))
 		}
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"ep-1"`):
+		reply = episodeNextResponse
+	case strings.Contains(asked, "MPPEep-1"):
+		reply = episodeDetailsResponse
 	case strings.HasSuffix(request.URL.Path, "/next") && fakeLikes() != "" && strings.Contains(asked, "vid-3"):
 		reply = nextResponse(fakeLikes())
 	case strings.HasSuffix(request.URL.Path, "/account/account_menu"):
@@ -122,10 +126,18 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = playlistPage()
 	case strings.Contains(asked, "VLPL_songs"):
 		reply = playlistSongsResponse
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"song-related"`):
+		reply = songRelatedNextResponse
+	case strings.Contains(asked, "MPTRsong-related"):
+		reply = songRelatedResponse
 	case strings.Contains(asked, "MPREb_test"):
 		reply = albumPage()
 	case strings.Contains(asked, "MPSPPLshow"):
 		reply = podcastResponse
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"ep-related"`):
+		reply = episodeRelatedNextResponse
+	case strings.Contains(asked, "MPPRep-related"):
+		reply = episodeRelatedResponse
 	case strings.Contains(asked, "FEmusic_library_landing"):
 		libraryLoads.Add(1)
 		reply = libraryPage()
@@ -203,6 +215,30 @@ func nextResponse(like string) string {
 			"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"target":{"videoId":"vid-3"},"likeStatus":"` + like + `"}}]}}}}
 	]}}}}}}]}}}}}`
 }
+
+// episodeNextResponse is what YouTube answers for the episode ep-1 in the
+// player: its tabs, with Details where a song has Lyrics.
+const episodeNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Details","endpoint":{"browseEndpoint":{"browseId":"MPPEep-1","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_DETAILS"}}}}}}
+]}}}}}`
+
+// episodeDetailsResponse is the Details tab of ep-1: a description with a
+// link, a chapter at the start, which names no time, and one further in.
+const episodeDetailsResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicDescriptionShelfRenderer":{
+	"header":{"runs":[{"text":"Reality Checking Productivity"}]},
+	"subheader":{"runs":[{"text":"Deep Questions","navigationEndpoint":{"browseEndpoint":{"browseId":"MPSPPLshow"}}}]},
+	"strapline":{"runs":[{"text":"3.7K views"},{"text":" • "},{"text":"Oct 26, 2026"}]},
+	"description":{"runs":[
+		{"text":"Sponsors: "},
+		{"text":"https://example.com/deep","navigationEndpoint":{"urlEndpoint":{"url":"https://example.com/deep-full"}}},
+		{"text":"\n"},
+		{"text":"0:00","navigationEndpoint":{"watchEndpoint":{"videoId":"ep-1"}}},
+		{"text":" Opening\n"},
+		{"text":"4:26","navigationEndpoint":{"watchEndpoint":{"videoId":"ep-1","startTimeSeconds":266}}},
+		{"text":" Time blocking"}
+	]}
+}}]}}}`
 
 // newTestApp builds an app whose work runs inline, and whose YouTube and
 // artwork requests are answered without the network.
@@ -303,6 +339,25 @@ const exploreResponse = `{"contents":{"sectionListRenderer":{"contents":[
 	}}
 ]}}}`
 
+// songRelatedNextResponse is what YouTube answers for the song song-related
+// in the player: its Related tab.
+const songRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPTRsong-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_TRACK_RELATED"}}}}}}
+]}}}}}`
+
+// songRelatedResponse is the Related tab of song-related: a song, and a
+// playlist to open, in the carousels YouTube Music gives them.
+const songRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Related Song"}]},"subtitle":{"runs":[{"text":"Some Artist"}]},
+		"navigationEndpoint":{"watchEndpoint":{"videoId":"rel-song"}}}}]
+}},{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Recommended playlists"}]}}},
+	"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Related Playlist"}]},"subtitle":{"runs":[{"text":"Playlist"}]},
+		"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_songs","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_PLAYLIST"}}}}}}]
+}}]}}}`
+
 // albumPage is an album as YouTube Music answers one: a header with the
 // button that saves it, and the rows of its tracks. The button says whether the
 // fake account has the album saved.
@@ -330,6 +385,22 @@ const podcastResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 			"onTap":{"watchEndpoint":{"videoId":"ep-1","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_PODCAST_EPISODE"}}}}}}
 	]}}]}}
 }}}`
+
+// episodeRelatedNextResponse is what YouTube answers for the episode
+// ep-related in the player: a Related tab of the page type episodes have,
+// which is not the one songs have.
+const episodeRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPPRep-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_RELATED"}}}}}}
+]}}}}}`
+
+// episodeRelatedResponse is the Related tab of ep-related: other episodes,
+// in the carousel YouTube Music gives them.
+const episodeRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[{"musicMultiRowListItemRenderer":{"title":{"runs":[{"text":"Another Deep Episode"}]},"subtitle":{"runs":[{"text":"3d ago • 1 hr 9 min"}]},
+		"onTap":{"watchEndpoint":{"videoId":"ep-9","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_PODCAST_EPISODE"}}}}}}]
+}}]}}}`
 
 // playlistPage is a playlist the account does not own: a header with the
 // button that saves it, and its videos.

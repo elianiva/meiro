@@ -102,8 +102,9 @@ func loadingIndicator(c *ui.Context, size float32, shape, disc ui.Color) ui.Elem
 // while paused: the mark of the track that is playing.
 func Equalizer(c *ui.Context, size float32, playing bool, color ui.Color) ui.Element {
 	e := ui.Box(c).Size(size, size).Shrink(0)
+	still := c.Preferences().ReduceMotion
 	e.Draw(func(p *ui.Painter, r ui.Rect) {
-		if playing {
+		if playing && !still {
 			animatePaint(p)
 		}
 		now := float64(p.Now().UnixMilli()) / 1000

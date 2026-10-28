@@ -106,6 +106,9 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 		active, inactive, handle = sc.OnSurface.Alpha(0.38), sc.OnSurface.Alpha(0.12), sc.OnSurface.Alpha(0.38)
 	}
 	focused := s.FocusVisible()
+	// A desktop that asks for less motion sees the wave hold still, and the
+	// window draws only when the value changes.
+	still := c.Preferences().ReduceMotion
 
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
 		x0, x1 := r.X+pad, r.X+r.W-pad
@@ -176,7 +179,7 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 				p.Fill(ui.Rect{X: x0, Y: cy - thick/2, W: end - x0, H: thick}, active, radius)
 			} else {
 				phase := float32(0)
-				if spec.Waving {
+				if spec.Waving && !still {
 					animatePaint(p)
 					// The wave travels from the handle back to the start.
 					phase = wavePhase(p.Now().UnixMilli())

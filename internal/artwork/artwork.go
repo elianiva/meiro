@@ -34,11 +34,11 @@ import (
 // GPU as long as the app uses it, so the cache must not grow without end
 // while the user browses. It counts bytes, not bitmaps, because a cover is
 // tens of kilobytes at one size and over a megabyte at another.
-const thumbBudget = 48 << 20
+const thumbBudget = 24 << 20
 
 // thumbSourceBudget bounds compressed pictures kept for rebuilding evicted
 // bitmaps without downloading them again.
-const thumbSourceBudget = 8 << 20
+const thumbSourceBudget = 4 << 20
 
 // Store keeps downloaded pictures beyond the memory the cache may use, so an
 // evicted bitmap is rebuilt from a file and not downloaded again. A
@@ -531,14 +531,11 @@ func notificationIconPNG(data []byte) ([]byte, error) {
 // image.Decode, and this package imports ui, so the artwork formats YouTube
 // serves all decode here.
 func (t *Cache) decode(keys thumbKeys, data []byte, keepSource bool) bool {
-	img, _, err := image.Decode(bytes.NewReader(data))
+	bitmap, err := decodeBitmap(data, keys.size)
 	if err != nil {
 		t.failedFetch(keys.sized, fmt.Errorf("%w: %w", errDecode, err))
 		return false
 	}
-	// Crop and shrink here; MyGo applies the display shape when it draws the
-	// bitmap, so cache entries do not vary with their corner radius.
-	bitmap := ui.NewBitmap(fit(img, keys.size))
 	url := keys.sized
 	t.mu.Lock()
 	delete(t.pending, url)
@@ -550,6 +547,34 @@ func (t *Cache) decode(keys thumbKeys, data []byte, keepSource bool) bool {
 	t.mu.Unlock()
 	t.notify()
 	return true
+}
+
+// decodeBitmap makes the bitmap of a picture, cropped square and shrunk to
+// side pixels across when it is larger. A picture that is already that, as
+// the image host sends a cover asked for at a size, keeps only its
+// compressed bytes: a GPU renderer drops its pixels once it uploaded them,
+// so the texture alone holds them, and decodes them again when it needs
+// them.
+func decodeBitmap(data []byte, side int) (*ui.Bitmap, error) {
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	if config.Width == config.Height && config.Width <= side {
+		bitmap, err := ui.DecodeBitmap(data)
+		if err != nil {
+			return nil, err
+		}
+		bitmap.ReleasePixels()
+		return bitmap, nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	// Crop and shrink here; MyGo applies the display shape when it draws the
+	// bitmap, so cache entries do not vary with their corner radius.
+	return ui.NewBitmap(fit(img, side)), nil
 }
 
 // failedFetch notes a failed download or decode and schedules a redraw for
@@ -864,6 +889,21 @@ type Stats struct {
 	Sources, SourceBytes int
 	// Queued, Failed, Keys and Colours are the sizes of the other indexes.
 	Queued, Failed, Keys, Colours int
+}
+
+// Purge drops every bitmap and compressed picture, for a window that shows
+// none of them: a hidden one. Those asked for again come back from the disk
+// store, or are downloaded again.
+func (t *Cache) Purge() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.bitmaps = make(map[string]*thumb)
+	t.recent.Init()
+	t.held = 0
+	t.sources = make(map[string]*thumbSource)
+	t.sourceHeld = 0
+	t.sizes = make(map[string][]string)
+	t.keys = make(map[thumbRequest]thumbKeys)
 }
 
 // Stats reports what the cache holds now.

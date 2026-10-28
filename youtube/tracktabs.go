@@ -107,25 +107,89 @@ func milliseconds(value any) (time.Duration, bool) {
 	return 0, false
 }
 
-// GetRelated loads the related music tab for a track.
+// EpisodeDetails is what the Details tab of a podcast episode shows, where a
+// song has its lyrics: a line of views, date and length, the title, the show
+// and the episode's description.
+type EpisodeDetails struct {
+	Strapline     string `json:"strapline,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Show          string `json:"show,omitempty"`
+	ShowID        string `json:"showId,omitempty"`
+	ShowThumbnail string `json:"showThumbnail,omitempty"`
+	// Description is the description in runs, as it is written: plain text,
+	// links and the timestamps of its chapters.
+	Description []DescriptionRun `json:"description,omitempty"`
+}
+
+// DescriptionRun is a run of a description. A link has its URL; a timestamp
+// of the episode itself has Timestamp set and At, where in it it seeks to.
+type DescriptionRun struct {
+	Text      string        `json:"text"`
+	URL       string        `json:"url,omitempty"`
+	At        time.Duration `json:"at,omitempty"`
+	Timestamp bool          `json:"timestamp,omitempty"`
+}
+
+// GetEpisodeDetails loads the Details tab of a podcast episode.
+func (c *Client) GetEpisodeDetails(ctx context.Context, videoID string) (*EpisodeDetails, error) {
+	raw, err := c.getTrackTab(ctx, videoID, "MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_DETAILS")
+	if err != nil {
+		return nil, err
+	}
+	shelf := findRenderer(decodeResponse(raw), "musicDescriptionShelfRenderer")
+	if shelf == nil {
+		return nil, errors.New("youtube: episode details have no description")
+	}
+	details := &EpisodeDetails{
+		Strapline:     rendererText(shelf.get("strapline")),
+		Title:         rendererText(shelf.get("header")),
+		Show:          rendererText(shelf.get("subheader")),
+		ShowID:        navigationID(shelf.get("subheader")),
+		ShowThumbnail: rendererThumbnail(shelf.get("subheaderThumbnail")),
+	}
+	runs, _ := nestedObject(shelf, "description")
+	list, _ := runs.get("runs").([]any)
+	for _, value := range list {
+		run, ok := value.(*jsonObject)
+		if !ok {
+			continue
+		}
+		text, _ := run.get("text").(string)
+		part := DescriptionRun{Text: text}
+		endpoint, _ := run.get("navigationEndpoint").(*jsonObject)
+		if link, ok := nestedObject(endpoint, "urlEndpoint"); ok {
+			part.URL, _ = link.get("url").(string)
+		}
+		if watch, ok := nestedObject(endpoint, "watchEndpoint"); ok && watch.get("videoId") == videoID {
+			seconds, _ := watch.get("startTimeSeconds").(float64)
+			part.At, part.Timestamp = time.Duration(seconds)*time.Second, true
+		}
+		details.Description = append(details.Description, part)
+	}
+	return details, nil
+}
+
+// GetRelated loads the related tab for a track, or for a podcast episode,
+// whose tab is of a page type of its own.
 func (c *Client) GetRelated(ctx context.Context, videoID string) (*BrowseResult, error) {
-	raw, err := c.getTrackTab(ctx, videoID, "MUSIC_PAGE_TYPE_TRACK_RELATED")
+	raw, err := c.getTrackTab(ctx, videoID, "MUSIC_PAGE_TYPE_TRACK_RELATED", "MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_RELATED")
 	if err != nil {
 		return nil, err
 	}
 	return c.newBrowseResult(raw), nil
 }
 
-func (c *Client) getTrackTab(ctx context.Context, videoID, pageType string) (json.RawMessage, error) {
-	browseID, err := c.trackTabBrowseID(ctx, videoID, pageType)
+func (c *Client) getTrackTab(ctx context.Context, videoID string, pageTypes ...string) (json.RawMessage, error) {
+	browseID, err := c.trackTabBrowseID(ctx, videoID, pageTypes...)
 	if err != nil {
 		return nil, err
 	}
 	return c.execute(ctx, "browse", map[string]any{"browseId": browseID})
 }
 
-// trackTabBrowseID finds the page of a track's tab, such as its lyrics.
-func (c *Client) trackTabBrowseID(ctx context.Context, videoID, pageType string) (string, error) {
+// trackTabBrowseID finds the page of a track's tab, such as its lyrics: the
+// first of the page types the track has a tab of.
+func (c *Client) trackTabBrowseID(ctx context.Context, videoID string, pageTypes ...string) (string, error) {
 	if strings.TrimSpace(videoID) == "" {
 		return "", errors.New("youtube: video ID is required")
 	}
@@ -133,11 +197,13 @@ func (c *Client) trackTabBrowseID(ctx context.Context, videoID, pageType string)
 	if err != nil {
 		return "", err
 	}
-	browseID := musicTabBrowseID(decodeResponse(raw), pageType)
-	if browseID == "" {
-		return "", fmt.Errorf("youtube: track response has no %s tab", pageType)
+	root := decodeResponse(raw)
+	for _, pageType := range pageTypes {
+		if browseID := musicTabBrowseID(root, pageType); browseID != "" {
+			return browseID, nil
+		}
 	}
-	return browseID, nil
+	return "", fmt.Errorf("youtube: track response has no %s tab", strings.Join(pageTypes, " or "))
 }
 
 func musicTabBrowseID(root any, pageType string) string {

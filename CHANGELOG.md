@@ -9,10 +9,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Playing a song from the Related tab queues only songs.** Up next used to fill with the playlists, albums and artists listed beside it, which could not play.
+- **Playlists, albums, artists and podcasts in the Related tab open when clicked.** Clicking one did nothing; it now opens its page, as it does anywhere else.
+- **The Related tab works for podcast episodes.** It said related songs weren't available; it now lists related episodes and suggested podcasts.
+
+### Added
+
+- **Songs and podcast episodes can play faster or slower.** A speed button beside the volume, in the player bar, the full player and the tray's mini player, picks from 0.5× to 3× without changing the pitch. The track goes on from where it was. Music and podcasts each remember their own speed, so speeding up an episode leaves your songs at the pace you chose for them.
 
 ### Changed
 
+- **Podcast episodes show their details instead of lyrics.** The player's Lyrics tab becomes Details for an episode, as on YouTube Music: views, date and length, the title, the show and the full description. Chapter timestamps jump to that point in the episode, links open in the browser, and the show's name opens its page.
 - **Your YouTube Music and Last.fm sessions are encrypted on disk.** The key is in your system's credential store: the Keychain on macOS, the Secret Service (such as GNOME Keyring or KWallet) on Linux, and the Credential Manager on Windows. A session that an earlier version saved is encrypted the first time Meiro reads it, so you stay signed in. On macOS, the first launch after an update asks once to use the key: choose **Always Allow**. On a Linux system without a credential store, the sessions stay in files only your user can read.
+- **Songs start sooner, without a memory spike.** Meiro asks YouTube for a song's audio itself, in a fraction of a second, and only runs yt-dlp when that fails. yt-dlp used to run for every song, taking about two seconds and 70 MB of memory each time, twice when the next song was readied at the same time. Meiro also no longer runs yt-dlp at launch to read its version.
+- **Meiro uses less memory for artwork.** Covers are kept at the size your screen shows them, so on a screen at 100% scaling a cover holds as little as a quarter of the pixels it used to, and Meiro keeps half as many covers in memory as before. Hiding or minimizing the window lets go of them until you open it again. Where Meiro draws with the GPU, as on a Mac, a cover's pixels are kept only once, by the GPU.
+- **The wavy progress bar and the dancing bars hold still when your system asks for reduced motion.**
 
 ## [0.4.14] - 2026-10-28
 
