@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Podcast episodes show their details instead of lyrics.** The player's Lyrics tab becomes Details for an episode, as on YouTube Music: views, date and length, the title, the show and the full description. Chapter timestamps jump to that point in the episode, links open in the browser, and the show's name opens its page.
+
 ## [0.4.14] - 2026-10-28
 
 ### Fixed
