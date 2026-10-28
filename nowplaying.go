@@ -63,7 +63,11 @@ type relatedState struct {
 	load    task
 	videoID string
 	items   []youtube.MusicItem
-	err     string
+	// tracks are the items that play, which become the queue when one of
+	// them is chosen; the playlists, albums, artists and shows among the
+	// items open a page instead.
+	tracks []youtube.MusicItem
+	err    string
 }
 
 // openPlayer opens the full-screen player on a tab.
@@ -106,7 +110,7 @@ func (a *app) loadRelated() {
 	if id == "" || r.videoID == id {
 		return
 	}
-	r.videoID, r.items, r.err = id, nil, ""
+	r.videoID, r.items, r.tracks, r.err = id, nil, nil, ""
 	client := a.client()
 	startTask(a, &r.load, panelTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
 		return client.GetRelated(ctx, id)
@@ -118,6 +122,11 @@ func (a *app) loadRelated() {
 			r.err = "No related songs for this track."
 		default:
 			r.items = result.Items
+			for _, item := range r.items {
+				if item.IsTrack() {
+					r.tracks = append(r.tracks, item)
+				}
+			}
 		}
 	})
 }
@@ -493,7 +502,7 @@ func (a *app) relatedView(c *ui.Context) {
 	case r.err != "":
 		a.message(c, m3.IconExplore, r.err, "", "", nil)
 	default:
-		items := r.items
+		items, tracks := r.items, r.tracks
 		list := &a.nowPlaying.relatedList
 		list.Key = func(i int) any {
 			if i >= len(items) {
@@ -508,7 +517,7 @@ func (a *app) relatedView(c *ui.Context) {
 			return items[i].Title
 		}
 		ui.List(c, list, len(items), func(i int) {
-			a.songRow(c, items[i], items, songOptions{directQueue: true, source: "Related", list: "related", position: i})
+			a.songRow(c, items[i], tracks, songOptions{directQueue: true, source: "Related", list: "related", position: i, track: -1})
 		}).Grow(1).Padding(0, 8, 16)
 	}
 }

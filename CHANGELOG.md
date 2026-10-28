@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Playing a song from the Related tab queues only songs.** Up next used to fill with the playlists, albums and artists listed beside it, which could not play.
+
 ## [0.4.14] - 2026-10-28
 
 ### Fixed

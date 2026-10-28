@@ -139,6 +139,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		if refuseWrites.Load() {
 			reply, status = rejectedResponse, http.StatusBadRequest
 		}
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"song-mixed"`):
+		reply = mixedRelatedNextResponse
+	case strings.Contains(asked, "MPTRsong-mixed"):
+		reply = mixedRelatedResponse
 	case strings.Contains(asked, "UCartist"):
 		reply = artistPage()
 	case strings.HasSuffix(request.URL.Path, "/browse/edit_playlist"):
@@ -426,6 +430,25 @@ func libraryToggleMenu(id string) string {
 
 // fakeArtist is the channel of the artist the fake's artist page is about.
 const fakeArtist = "UCartist"
+
+// mixedRelatedNextResponse is what YouTube answers for the song song-mixed
+// in the player: its Related tab.
+const mixedRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPTRsong-mixed","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_TRACK_RELATED"}}}}}}
+]}}}}}`
+
+// mixedRelatedResponse is the Related tab of song-mixed: songs, with a
+// playlist and an artist between them, as YouTube Music mixes them.
+const mixedRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"First Related Song"}]},"navigationEndpoint":{"watchEndpoint":{"videoId":"mixed-1"}}}},
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Mixed Playlist"}]},"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_songs"}}}},
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Mixed Artist"}]},"navigationEndpoint":{"browseEndpoint":{"browseId":"UCartist"}}}},
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Second Related Song"}]},"navigationEndpoint":{"watchEndpoint":{"videoId":"mixed-2"}}}}
+	]
+}}]}}}`
 
 // artistPage carries the heading an artist page puts over its content, with
 // the subscribe button in it, which says whether the fake account follows the
