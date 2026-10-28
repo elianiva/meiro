@@ -101,6 +101,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		} else {
 			fakeLibrary.Store(fakeArtist, strings.HasSuffix(request.URL.Path, "/subscription/subscribe"))
 		}
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"ep-1"`):
+		reply = episodeNextResponse
+	case strings.Contains(asked, "MPPEep-1"):
+		reply = episodeDetailsResponse
 	case strings.HasSuffix(request.URL.Path, "/next") && fakeLikes() != "" && strings.Contains(asked, "vid-3"):
 		reply = nextResponse(fakeLikes())
 	case strings.HasSuffix(request.URL.Path, "/account/account_menu"):
@@ -203,6 +207,30 @@ func nextResponse(like string) string {
 			"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"target":{"videoId":"vid-3"},"likeStatus":"` + like + `"}}]}}}}
 	]}}}}}}]}}}}}`
 }
+
+// episodeNextResponse is what YouTube answers for the episode ep-1 in the
+// player: its tabs, with Details where a song has Lyrics.
+const episodeNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Details","endpoint":{"browseEndpoint":{"browseId":"MPPEep-1","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_DETAILS"}}}}}}
+]}}}}}`
+
+// episodeDetailsResponse is the Details tab of ep-1: a description with a
+// link, a chapter at the start, which names no time, and one further in.
+const episodeDetailsResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicDescriptionShelfRenderer":{
+	"header":{"runs":[{"text":"Reality Checking Productivity"}]},
+	"subheader":{"runs":[{"text":"Deep Questions","navigationEndpoint":{"browseEndpoint":{"browseId":"MPSPPLshow"}}}]},
+	"strapline":{"runs":[{"text":"3.7K views"},{"text":" • "},{"text":"Oct 26, 2026"}]},
+	"description":{"runs":[
+		{"text":"Sponsors: "},
+		{"text":"https://example.com/deep","navigationEndpoint":{"urlEndpoint":{"url":"https://example.com/deep-full"}}},
+		{"text":"\n"},
+		{"text":"0:00","navigationEndpoint":{"watchEndpoint":{"videoId":"ep-1"}}},
+		{"text":" Opening\n"},
+		{"text":"4:26","navigationEndpoint":{"watchEndpoint":{"videoId":"ep-1","startTimeSeconds":266}}},
+		{"text":" Time blocking"}
+	]}
+}}]}}}`
 
 // newTestApp builds an app whose work runs inline, and whose YouTube and
 // artwork requests are answered without the network.

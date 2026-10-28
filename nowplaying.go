@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"strconv"
 	"time"
 
@@ -51,11 +52,14 @@ type nowPlayingState struct {
 	volumePopup  bool
 	lyrics       lyricsState
 	lyricsScroll ui.ScrollState
+	details      detailsState
 	related      relatedState
 	relatedList  ui.ListState
 	// miniOpen is whether the tray's mini player shows. Its side panel then
 	// loads what its tab shows, as the full-screen player's does.
 	miniOpen bool
+	// speedMenu is the key of the speed button whose menu is open, or empty.
+	speedMenu string
 }
 
 // relatedState is the related songs of the track playing.
@@ -63,6 +67,15 @@ type relatedState struct {
 	load    task
 	videoID string
 	items   []youtube.MusicItem
+	err     string
+}
+
+// detailsState is the Details tab of the podcast episode playing, which it
+// shows in the place of lyrics.
+type detailsState struct {
+	load    task
+	videoID string
+	details *youtube.EpisodeDetails
 	err     string
 }
 
@@ -89,7 +102,11 @@ func (a *app) loadPanel() {
 	}
 	switch a.nowPlaying.tab {
 	case tabLyrics:
-		a.loadLyrics()
+		if a.current.IsEpisode() {
+			a.loadDetails()
+		} else {
+			a.loadLyrics()
+		}
 	case tabRelated:
 		a.loadRelated()
 	case tabQueue:
@@ -119,6 +136,28 @@ func (a *app) loadRelated() {
 		default:
 			r.items = result.Items
 		}
+	})
+}
+
+// loadDetails fetches the details of the episode playing, once per episode.
+func (a *app) loadDetails() {
+	d := &a.nowPlaying.details
+	id := a.current.VideoID
+	if id == "" || d.videoID == id {
+		return
+	}
+	d.videoID, d.details, d.err = id, nil, ""
+	client := a.client()
+	startTask(a, &d.load, panelTimeout, func(ctx context.Context) (*youtube.EpisodeDetails, error) {
+		return client.GetEpisodeDetails(ctx, id)
+	}, func(details *youtube.EpisodeDetails, err error) {
+		if err != nil {
+			log.Printf("details: video_id=%s: %v", id, err)
+			// Not remembered, so opening the tab or the next episode tries again.
+			d.err, d.videoID = "Couldn't load the details. Try again in a moment.", ""
+			return
+		}
+		d.details = details
 	})
 }
 
@@ -189,8 +228,9 @@ func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 		ui.Row(c).Justify(ui.Center).Children(func() {
 			a.transport(c, 72, 10)
 		})
-		ui.Row(c).Justify(ui.Center).Children(func() {
+		ui.Row(c).Justify(ui.Center).AlignItems(ui.Center).Gap(8).Children(func() {
 			a.volumeControl(c, 200)
+			a.speedControl(c, "np-speed")
 		})
 	}
 	if windowHeight < 700 {
@@ -252,7 +292,11 @@ func (a *app) sidePanel(c *ui.Context, wide, compactQueue bool) {
 		a.nowPlayingTabs(c, compactQueue)
 		switch a.nowPlaying.tab {
 		case tabLyrics:
-			a.lyricsView(c)
+			if a.current.IsEpisode() {
+				a.detailsView(c)
+			} else {
+				a.lyricsView(c)
+			}
 		case tabRelated:
 			a.relatedView(c)
 		case tabQueue:
@@ -281,8 +325,13 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 			if selected {
 				container, content = sc.SecondaryContainer, sc.OnSecondaryContainer
 			}
+			label := t.label
+			if t.tab == tabLyrics && a.current.IsEpisode() {
+				// An episode has its details where a song has its lyrics.
+				label = "Details"
+			}
 			button.Grow(1).Basis(0).MinWidth(0).Height(m3.MinTarget).Center().Radius(m3.Full).
-				Cursor(ui.CursorPointer).Label(t.label).Tooltip(t.label).Background(ui.Transparent)
+				Cursor(ui.CursorPointer).Label(label).Tooltip(label).Background(ui.Transparent)
 			if compact {
 				button.Margin(-4, 0).Draw(func(p *ui.Painter, r ui.Rect) {
 					r.Y += (r.H - 40) / 2
@@ -297,7 +346,7 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 				if compact {
 					role = m3.LabelSmall
 				}
-				text := m3.Text(c, role, t.label).SingleLine().TextAlign(ui.Center).TextColor(content)
+				text := m3.Text(c, role, label).SingleLine().TextAlign(ui.Center).TextColor(content)
 				if selected {
 					text.FontWeight(600)
 				}
@@ -510,5 +559,69 @@ func (a *app) relatedView(c *ui.Context) {
 		ui.List(c, list, len(items), func(i int) {
 			a.songRow(c, items[i], items, songOptions{directQueue: true, source: "Related", list: "related", position: i})
 		}).Grow(1).Padding(0, 8, 16)
+	}
+}
+
+// detailsView shows the Details tab of the episode playing, as YouTube Music
+// does: its views, date and length, its title, its show, and its description,
+// whose timestamps seek and whose links open in the browser.
+func (a *app) detailsView(c *ui.Context) {
+	sc := m3.Of(c).Scheme
+	d := &a.nowPlaying.details
+	switch {
+	case d.load.busy():
+		ui.Column(c).Grow(1).Center().Children(func() { m3.LoadingIndicator(c, 56, true) })
+	case d.err != "":
+		a.message(c, m3.IconLyrics, d.err, "", "", nil)
+	case d.details != nil:
+		details := d.details
+		// Keyed by the episode, so the next one starts at the top.
+		ui.Scroll(c.Key("details-"+d.videoID)).Grow(1).Padding(8, 24, 24).Children(func() {
+			ui.Column(c).FillWidth().Gap(8).Children(func() {
+				if details.Strapline != "" {
+					m3.Text(c, m3.BodyMedium, details.Strapline).TextColor(sc.OnSurfaceVariant)
+				}
+				m3.EmphasizedText(c, m3.TitleLarge, details.Title).TextColor(sc.OnSurface).Selectable()
+				if details.Show != "" {
+					a.detailsShow(c, details)
+				}
+				m3.BodyMedium.Style(ui.RichText(c), false).Margin(8, 0, 0).TextColor(sc.OnSurfaceVariant).Selectable().Children(func() {
+					for i, run := range details.Description {
+						part := ui.Text(c.Key(i), run.Text)
+						switch {
+						case run.Timestamp:
+							part.TextColor(sc.Primary).FontWeight(600).Cursor(ui.CursorPointer)
+							if part.Clicked() {
+								a.seek(run.At)
+							}
+						case run.URL != "":
+							part.TextColor(sc.Primary).Cursor(ui.CursorPointer).Tooltip(run.URL)
+							if part.Clicked() {
+								if err := a.openURL(run.URL); err != nil {
+									log.Printf("details: could not open %s: %v", run.URL, err)
+								}
+							}
+						}
+					}
+				})
+			})
+		})
+	}
+}
+
+// detailsShow is the episode's show, which opens the show's page.
+func (a *app) detailsShow(c *ui.Context, details *youtube.EpisodeDetails) {
+	sc := m3.Of(c).Scheme
+	show := ui.ButtonBase(c.Key("details-show")).Row().AlignSelf(ui.Start).Gap(8).AlignItems(ui.Center).
+		Padding(4, 8, 4, 4).Margin(0, -4).Radius(m3.Full).Cursor(ui.CursorPointer).Label(details.Show)
+	show.Background(m3.Layer(sc.SurfaceContainerLow, sc.OnSurface, hoverOpacity(show.Hovered() || show.FocusVisible())))
+	show.Children(func() {
+		if details.ShowThumbnail != "" {
+			a.art(c, details.ShowThumbnail, 48, 24, m3.Full)
+		}
+		m3.Text(c, m3.TitleSmall, details.Show).TextColor(sc.OnSurface).SingleLine()
+	})
+	if show.Clicked() && details.ShowID != "" {
+		a.openTarget(youtube.Target{Kind: youtube.TargetPodcast, ID: details.ShowID}, detail{title: details.Show, art: details.ShowThumbnail})
 	}
 }
