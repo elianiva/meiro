@@ -82,6 +82,10 @@ func main() {
 			a.media = session
 		}
 		a.setupDesktop()
+		// A hidden window shows no artwork: what the artwork held goes back
+		// to the system while the music plays on.
+		a.desktop.win.OnHide(a.releaseArtwork)
+		a.desktop.win.OnMinimize(a.releaseArtwork)
 		a.syncSystemMedia()
 		// Background work reaches the window through the desktop, so it
 		// starts only once the window is there.
@@ -107,6 +111,13 @@ func main() {
 		os.Exit(1)
 	}
 	closeLog()
+}
+
+// releaseArtwork drops the decoded artwork and returns the memory to the
+// system.
+func (a *app) releaseArtwork() {
+	a.thumbs.Purge()
+	a.run(debug.FreeOSMemory)
 }
 
 // displayScale is the largest scale of the displays, 2 when none says.

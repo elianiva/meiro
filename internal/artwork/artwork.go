@@ -866,6 +866,21 @@ type Stats struct {
 	Queued, Failed, Keys, Colours int
 }
 
+// Purge drops every bitmap and compressed picture, for a window that shows
+// none of them: a hidden one. Those asked for again come back from the disk
+// store, or are downloaded again.
+func (t *Cache) Purge() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.bitmaps = make(map[string]*thumb)
+	t.recent.Init()
+	t.held = 0
+	t.sources = make(map[string]*thumbSource)
+	t.sourceHeld = 0
+	t.sizes = make(map[string][]string)
+	t.keys = make(map[thumbRequest]thumbKeys)
+}
+
 // Stats reports what the cache holds now.
 func (t *Cache) Stats() Stats {
 	t.mu.Lock()
