@@ -748,10 +748,11 @@ func TestNotchProgressSeeksWithoutInterferenceFromTheMainPlayer(t *testing.T) {
 	}
 }
 
-func TestNotchOpenMeiroKeepsPanelAndPlayback(t *testing.T) {
+func TestNotchOpenMeiroCollapsesWithoutChangingPlayback(t *testing.T) {
 	for _, cutoutWidth := range []int{180, 380} {
 		t.Run(strconv.Itoa(cutoutWidth), func(t *testing.T) {
 			a := notchTestApp(t)
+			a.router.Push("/home")
 			a.notch.cutout.Width = cutoutWidth
 			calls := 0
 			a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
@@ -777,34 +778,43 @@ func TestNotchOpenMeiroKeepsPanelAndPlayback(t *testing.T) {
 			tabTo(t, tt, "Notch position")
 			tt.Key(0, ui.KeyEnd)
 			position, seekVersion := a.playbackPosition(), a.seekVersion
-			if err := tt.Click("Open Meiro"); err != nil {
-				t.Fatal(err)
-			}
-			tabTo(t, tt, "Open Meiro")
-			tt.Key(0, ui.KeyEnter)
-			tt.Advance(300 * time.Millisecond)
-			// The headless desktop is nil; native Show/Restore/Focus needs macOS.
-			// This proves the new target does not collapse, seek, or restart audio.
-			if !a.notch.expanded || a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != position || a.seekVersion != seekVersion || calls != 1 || !tt.HasText("Keep these lyrics") {
-				t.Fatal("opening Meiro changed the notch, playback, or fetched lyrics again")
-			}
-			if err := tt.Click("Close notch lyrics"); err != nil {
-				t.Fatal(err)
-			}
-			tt.Advance(240 * time.Millisecond)
-			bounds = a.notch.bounds()
-			tt.SetSize(bounds.Width, bounds.Height)
-			if tt.HasText("Open Meiro") || a.notch.expanded {
-				t.Fatal("collapse kept the main-window button visible")
-			}
-			if err := tt.Click("Open notch lyrics from playback indicator"); err != nil {
-				t.Fatal(err)
-			}
-			bounds = a.notch.bounds()
-			tt.SetSize(bounds.Width, bounds.Height)
-			tt.Advance(300 * time.Millisecond)
-			if !tt.HasText("Open Meiro") {
-				t.Fatal("main-window button did not return after reopening")
+			for _, input := range []string{"click", "keyboard", "reduce-motion"} {
+				reduced := input == "reduce-motion"
+				tt.SetPreferences(ui.Preferences{ReduceMotion: reduced})
+				opened := a.notch.bounds()
+				if input == "keyboard" {
+					tabTo(t, tt, "Open Meiro")
+					tt.Key(0, ui.KeyEnter)
+				} else if err := tt.Click("Open Meiro"); err != nil {
+					t.Fatal(err)
+				}
+				if a.notch.expanded || !a.notch.transitioning || a.notch.bounds() != opened {
+					t.Fatalf("%s: opening Meiro did not start an animated collapse", input)
+				}
+				tt.Advance(40 * time.Millisecond)
+				panel, _ := tt.Find("Notch panel")
+				if reduced && panel.H != float32(opened.Height) || !reduced && (panel.H <= 38 || panel.H >= float32(opened.Height)) {
+					t.Fatalf("%s: collapse skipped the expected transition: %+v", input, panel)
+				}
+				tt.Advance(240 * time.Millisecond)
+				bounds = a.notch.bounds()
+				tt.SetSize(bounds.Width, bounds.Height)
+				if bounds.Width != cutoutWidth+2*notchWing || bounds.Height != 38 || a.notch.transitioning || tt.HasText("Open Meiro") || tt.HasText("Keep these lyrics") || tt.HasText("Next") {
+					t.Fatalf("%s: opening Meiro left an expanded notch", input)
+				}
+				// The headless desktop is nil; native Show/Restore/Focus needs macOS.
+				if a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != position || a.seekVersion != seekVersion || calls != 1 || a.nowPlaying.open || a.router.Path() != "/home" {
+					t.Fatalf("%s: opening Meiro changed playback, the main page, or fetched lyrics again", input)
+				}
+				if err := tt.Click("Open notch lyrics from playback indicator"); err != nil {
+					t.Fatal(err)
+				}
+				bounds = a.notch.bounds()
+				tt.SetSize(bounds.Width, bounds.Height)
+				tt.Advance(300 * time.Millisecond)
+				if !tt.HasText("Open Meiro") || !tt.HasText("Keep these lyrics") || calls != 1 {
+					t.Fatal("reopening did not restore the panel and cached lyrics")
+				}
 			}
 		})
 	}

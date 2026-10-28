@@ -9,7 +9,7 @@ the right. The previous and next lines frame the active lyric.
 
 - `notch-compact`: cover and five animated bars, resting on pause, with a loading indicator while buffering.
 - `notch-lyrics`: click either wing to expand/collapse; Escape collapses. The panel stays open when the pointer leaves.
-- `notch-open`: the expanded header has a 16 point Open Meiro icon in a 32 point target beside collapse, outside the camera area. It brings the existing main window forward, restoring it if hidden or minimized, without changing playback or the expanded state. It fades with the panel and is disabled while fading; compact mode has no extra button.
+- `notch-open`: the expanded header has a 16 point Open Meiro icon in a 32 point target beside collapse, outside the camera area. It brings the existing main window forward, restoring it if hidden or minimized, and collapses the notch through its normal closing animation while playback continues. It fades with the panel and is disabled while fading; compact mode has no extra button.
 - `notch-motion`: opening expands over 240 ms and closing contracts over 200 ms, anchored to the camera. Content fades and lifts slightly; the header cover crossfades with the collapse arrow. Rapid clicks reverse the current animation. Reduce Motion uses a 100 ms fade in place. Fading controls cannot be activated.
 - `notch-transport`: Previous, Play/Pause and Next operate playback without collapsing the panel. Controls stay available while lyrics load or are unavailable.
 - `notch-shape`: a 480 × 190 point expanded panel for a 180 × 32 point cutout, with 20 point corners and transparent pixels outside them. The native window clips to the same radius. A 76 point cover, single-line track metadata and two-line active lyrics stay in separate columns.
@@ -77,12 +77,16 @@ must show the neutral placeholder.
 For Open Meiro, verify the compact notch has no extra button, expand, and
 check the new target stays left of collapse without overlapping the camera.
 Repeat with a wider cutout. Seek, then click Open Meiro and activate it with
-Tab/Enter: the track, position, paused state and expanded panel stay unchanged,
-and lyrics are not fetched again. Collapse and reopen through the indicator;
-the extra button disappears and returns. Capture the hover tooltip as well.
+Tab/Enter: the notch starts closing, keeps its native canvas until the animation
+finishes, then returns to compact size. The track, position, paused state and
+main page stay unchanged, and lyrics are not fetched again. Repeat with Reduce
+Motion to verify the fade without resizing mid-transition. Reopen through the
+indicator; the button and cached lyrics return. Capture the hover tooltip as well.
 Use the preceding notch commit as the before reference: a base without the
 notch cannot run this scenario. The headless desktop is nil, so only a native
 macOS check can prove that the main window actually appears and takes focus.
+For auto-collapse, use `TestNotchOpenMeiroCollapsesWithoutChangingPlayback` and
+compare the proof with the preceding commit where Open Meiro left the panel open.
 
 ## Gotchas
 

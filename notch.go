@@ -231,6 +231,8 @@ func (a *app) notchView(c *ui.Context) {
 					ui.Icon(c, m3.IconOpenInNew).FontSize(16).TextColor(color)
 				})
 				if launch.Clicked() {
+					// Release the panel's keyboard focus before focusing the main window.
+					a.setNotchExpanded(false)
 					a.desktop.bringToFront()
 				}
 			}

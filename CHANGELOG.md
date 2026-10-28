@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Follow artist and album names from the player.** In the main window's player bar and Now Playing, click a linked credit to open its page while music keeps playing. Each credited artist opens separately, and saved queues retain their links.
-- **Open Meiro from the notch.** The expanded panel has a small Open Meiro button beside collapse. It brings the main window forward without changing playback or closing the notch.
+- **Open Meiro from the notch.** The expanded panel has a small Open Meiro button beside collapse. It brings the main window forward and smoothly returns the notch to its compact size while playback continues.
 - **A notch player on macOS.** On a MacBook with a notch, the current cover and an animated playback indicator sit beside the camera. Click either side to open a compact, rounded panel with cover art, track information and synced lyrics side by side. Seek with its progress bar or use previous, play/pause and next without closing the panel. Turn it off in Settings > Desktop.
 
 ### Changed

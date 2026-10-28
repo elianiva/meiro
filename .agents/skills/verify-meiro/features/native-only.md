@@ -30,7 +30,7 @@ These behaviors need a real window, device, account or network. The headless tes
 - **No native screen recorder is installed.** `scripts/native.sh capture-loop [interval-seconds] [duration-seconds] [name]` is the standard timed screenshot fallback and writes timestamps alongside PNG frames. Successive `shot` captures with step notes are also fine. Do not stitch the stills into an MP4 or call it a real recording.
 
 - **What does run.** `systemmedia` has its own unit tests. `go test ./systemmedia/ ./player/ ./internal/...` exercises them without a device.
-- **Notch Open Meiro.** On a notched Mac, hide the main window, expand the notch and click Open Meiro; repeat with the window minimized. Verify the existing window is restored and focused while the notch stays expanded and playback continues. Headless tests cannot prove these OS effects.
+- **Notch Open Meiro.** On a notched Mac, hide the main window, expand the notch and click Open Meiro; repeat with the window minimized. Verify the existing window is restored and focused while the notch animates back to compact size and playback continues. After closing, the notch must release its larger hit area and leave keyboard focus on the main window. Headless tests cannot prove these OS effects.
 - **Cross-build.** `bazel build --config=darwin-arm64 //...` and the other `--config` targets in `.bazelrc` type-check a platform you cannot run.
 - **Everything else.** Write a short checklist in the PR, with the OS, what you ran and what you saw. Do not claim it from the headless proof.
 
