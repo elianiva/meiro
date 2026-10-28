@@ -117,7 +117,7 @@ func openLog() (dir string, closeLog func()) {
 		log.Printf("finding the logs folder: %v", err)
 		return "", func() {}
 	}
-	tools := applog.NewLazy("ffmpeg, yt-dlp: looking up")
+	tools := applog.NewLazy("ffmpeg: looking up")
 	file, err := applog.Open(dir, logHeader(tools))
 	if err != nil {
 		log.Printf("opening the log file: %v", err)
@@ -130,10 +130,10 @@ func openLog() (dir string, closeLog func()) {
 	return dir, func() { _ = file.Close() }
 }
 
-// toolVersions asks the tools the app ships for their versions.
+// toolVersions asks ffmpeg for its version. yt-dlp's is left to a report:
+// asking it starts Python, some 50 MB for a moment, on every launch.
 func toolVersions() string {
-	info := report.Collect(context.Background(), mygo.App.Version())
-	return fmt.Sprintf("ffmpeg %s, yt-dlp %s", info.FFmpeg, info.YtDlp)
+	return "ffmpeg " + report.FFmpeg(context.Background())
 }
 
 // logHeader names the versions in use, for the top of each log file.

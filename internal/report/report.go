@@ -42,8 +42,14 @@ func Collect(ctx context.Context, app string) Info {
 		OS:     runtime.GOOS,
 		Arch:   runtime.GOARCH,
 		YtDlp:  toolVersion(ctx, "yt-dlp", "--version", ParseYtDlp),
-		FFmpeg: toolVersion(ctx, "ffmpeg", "-version", ParseFFmpeg),
+		FFmpeg: FFmpeg(ctx),
 	}
+}
+
+// FFmpeg reads the version of the ffmpeg the app would run. Unlike
+// yt-dlp's, which starts Python, it costs next to nothing.
+func FFmpeg(ctx context.Context) string {
+	return toolVersion(ctx, "ffmpeg", "-version", ParseFFmpeg)
 }
 
 // toolVersion runs the tool the app would run and parses its answer.
