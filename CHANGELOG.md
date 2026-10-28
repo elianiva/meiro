@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Playlists, albums, artists and podcasts in the Related tab open when clicked.** Clicking one did nothing; it now opens its page, as it does anywhere else.
+
 ## [0.4.14] - 2026-10-28
 
 ### Fixed

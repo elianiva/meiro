@@ -121,6 +121,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = playlistPage()
 	case strings.Contains(asked, "VLPL_songs"):
 		reply = playlistSongsResponse
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"song-related"`):
+		reply = songRelatedNextResponse
+	case strings.Contains(asked, "MPTRsong-related"):
+		reply = songRelatedResponse
 	case strings.Contains(asked, "MPREb_test"):
 		reply = albumPage()
 	case strings.Contains(asked, "MPSPPLshow"):
@@ -297,6 +301,25 @@ const exploreResponse = `{"contents":{"sectionListRenderer":{"contents":[
 		]
 	}}
 ]}}}`
+
+// songRelatedNextResponse is what YouTube answers for the song song-related
+// in the player: its Related tab.
+const songRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPTRsong-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_TRACK_RELATED"}}}}}}
+]}}}}}`
+
+// songRelatedResponse is the Related tab of song-related: a song, and a
+// playlist to open, in the carousels YouTube Music gives them.
+const songRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Related Song"}]},"subtitle":{"runs":[{"text":"Some Artist"}]},
+		"navigationEndpoint":{"watchEndpoint":{"videoId":"rel-song"}}}}]
+}},{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Recommended playlists"}]}}},
+	"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Related Playlist"}]},"subtitle":{"runs":[{"text":"Playlist"}]},
+		"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_songs","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_PLAYLIST"}}}}}}]
+}}]}}}`
 
 // albumPage is an album as YouTube Music answers one: a header with the
 // button that saves it, and the rows of its tracks. The button says whether the
