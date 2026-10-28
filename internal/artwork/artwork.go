@@ -531,14 +531,11 @@ func notificationIconPNG(data []byte) ([]byte, error) {
 // image.Decode, and this package imports ui, so the artwork formats YouTube
 // serves all decode here.
 func (t *Cache) decode(keys thumbKeys, data []byte, keepSource bool) bool {
-	img, _, err := image.Decode(bytes.NewReader(data))
+	bitmap, err := decodeBitmap(data, keys.size)
 	if err != nil {
 		t.failedFetch(keys.sized, fmt.Errorf("%w: %w", errDecode, err))
 		return false
 	}
-	// Crop and shrink here; MyGo applies the display shape when it draws the
-	// bitmap, so cache entries do not vary with their corner radius.
-	bitmap := ui.NewBitmap(fit(img, keys.size))
 	url := keys.sized
 	t.mu.Lock()
 	delete(t.pending, url)
@@ -550,6 +547,34 @@ func (t *Cache) decode(keys thumbKeys, data []byte, keepSource bool) bool {
 	t.mu.Unlock()
 	t.notify()
 	return true
+}
+
+// decodeBitmap makes the bitmap of a picture, cropped square and shrunk to
+// side pixels across when it is larger. A picture that is already that, as
+// the image host sends a cover asked for at a size, keeps only its
+// compressed bytes: a GPU renderer drops its pixels once it uploaded them,
+// so the texture alone holds them, and decodes them again when it needs
+// them.
+func decodeBitmap(data []byte, side int) (*ui.Bitmap, error) {
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	if config.Width == config.Height && config.Width <= side {
+		bitmap, err := ui.DecodeBitmap(data)
+		if err != nil {
+			return nil, err
+		}
+		bitmap.ReleasePixels()
+		return bitmap, nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	// Crop and shrink here; MyGo applies the display shape when it draws the
+	// bitmap, so cache entries do not vary with their corner radius.
+	return ui.NewBitmap(fit(img, side)), nil
 }
 
 // failedFetch notes a failed download or decode and schedules a redraw for
