@@ -1,8 +1,6 @@
 package cookies
 
 import (
-	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -55,25 +53,5 @@ func TestZenProfileRootsPointAtTheFlatpakDataDirectory(t *testing.T) {
 	}
 	if profiles := firefoxProfiles(roots); !slices.Contains(profiles, profile) {
 		t.Errorf("firefoxProfiles = %v, want %s", profiles, profile)
-	}
-}
-
-func TestFileStoreRoundTrip(t *testing.T) {
-	store := &FileStore{Path: filepath.Join(t.TempDir(), "nested", "cookie.txt")}
-	ctx := context.Background()
-	if _, err := store.Load(ctx); !errors.Is(err, ErrNotSaved) {
-		t.Fatalf("an empty store loaded %v", err)
-	}
-	if err := store.Save(ctx, "SAPISID=a"); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := store.Load(ctx); err != nil || got != "SAPISID=a" {
-		t.Fatalf("Load = %q, %v", got, err)
-	}
-	if err := store.Delete(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Load(ctx); !errors.Is(err, ErrNotSaved) {
-		t.Errorf("a deleted store loaded %v", err)
 	}
 }

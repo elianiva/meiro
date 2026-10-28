@@ -78,7 +78,7 @@ type Settings struct {
 	OpenAtLogin bool `json:"openAtLogin"`
 	// LastFMUser is the Last.fm account plays are scrobbled to, or empty when
 	// none is connected. Its session key is not kept here: see
-	// lastfm.SessionStore.
+	// secretfile.File.
 	LastFMUser string `json:"lastfmUser,omitempty"`
 	// LastFMPaused keeps the account connected and stops scrobbling.
 	LastFMPaused bool `json:"lastfmPaused,omitempty"`

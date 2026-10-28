@@ -10,6 +10,7 @@ import (
 
 	"github.com/elianiva/meiro/internal/credits"
 	"github.com/elianiva/meiro/internal/lastfm"
+	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -62,7 +63,7 @@ type scrobbler struct {
 	// store keeps the session key, apart from the settings, and outbox the
 	// plays that qualified and have not been delivered. Both are zero-value
 	// safe: without a path they keep nothing.
-	store  lastfm.SessionStore
+	store  secretfile.File
 	outbox *lastfm.Outbox
 	// credits is who made the tracks seen so far, which fills in the tracks a
 	// list left the artist out of without asking YouTube Music again.
@@ -344,11 +345,11 @@ func deliver(ctx context.Context, client *lastfm.Client, key string, outbox *las
 	}
 }
 
-// openScrobbler finds the session key's file and reads the plays that were
-// waiting when the app last closed: a small file, like the settings.
-func (a *app) openScrobbler(sessionPath, outboxPath string) {
+// openScrobbler keeps the session key in session and reads the plays that
+// were waiting when the app last closed: a small file, like the settings.
+func (a *app) openScrobbler(session secretfile.File, outboxPath string) {
 	s := &a.scrobble
-	s.store = lastfm.SessionStore{Path: sessionPath}
+	s.store = session
 	s.outbox = lastfm.OpenOutbox(outboxPath)
 }
 
@@ -363,8 +364,8 @@ func (a *app) loadScrobbleSession() {
 		return
 	}
 	store := s.store
-	startTask(a, &s.load, noTimeout, func(context.Context) (string, error) {
-		return store.Load()
+	startTask(a, &s.load, noTimeout, func(ctx context.Context) (string, error) {
+		return store.Load(ctx)
 	}, func(key string, err error) {
 		if err != nil {
 			log.Printf("last.fm: reading the saved session: %v", err)

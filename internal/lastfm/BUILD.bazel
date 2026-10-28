@@ -6,7 +6,6 @@ go_library(
         "client.go",
         "listen.go",
         "outbox.go",
-        "session.go",
     ],
     importpath = "github.com/elianiva/meiro/internal/lastfm",
     visibility = ["//:__subpackages__"],
