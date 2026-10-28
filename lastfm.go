@@ -140,7 +140,7 @@ func (a *app) finishConnect(session lastfm.Session) {
 		if store.Path == "" {
 			return os.ErrNotExist
 		}
-		return store.Save(session.Key)
+		return store.Save(context.Background(), session.Key)
 	}, func(err error) {
 		if err != nil {
 			log.Printf("last.fm: saving the session: %v", err)
@@ -182,7 +182,7 @@ func (a *app) disconnectLastFM() {
 		if store.Path == "" {
 			return nil
 		}
-		return store.Delete()
+		return store.Delete(context.Background())
 	}, func(err error) {
 		if err != nil {
 			log.Printf("last.fm: removing the saved session: %v", err)

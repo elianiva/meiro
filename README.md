@@ -313,10 +313,13 @@ replaces the cookies of a session while a browser has it open, and the older
 copy then stops working. A copy like this can end within hours, and you have to
 sign in again. Prefer the browser window.
 
-Meiro stores the session in the system credential store where available. If
-the system has no credential store, Meiro uses a file that only your user can
-read. A locked or failing credential store does not trigger this fallback.
-Choose **Sign out** to remove Meiro's saved session.
+Meiro stores the session in a file that only your user can read, encrypted
+with a key it keeps in the system credential store: the Keychain on macOS, the
+Secret Service (such as GNOME Keyring or KWallet) on Linux, and the Credential
+Manager on Windows. On macOS, the first launch after an update asks once to
+use the key: choose **Always Allow**. If the system has no credential store,
+the file is not encrypted. A locked or failing credential store does not make
+Meiro write the session unencrypted. Choose **Sign out** to remove Meiro's saved session.
 
 Public browsing and playback do not need an account.
 
@@ -413,12 +416,13 @@ What Meiro keeps on your device:
 - **Settings**, **listening history** (the latest plays, used for the stats),
   and the **playback state**, in the app's user data folder. Settings has a
   button to clear the history.
-- **Your session**, if you sign in, in the system credential store, or, when
-  there is none, in a file readable only by your user. **Sign out** removes it.
+- **Your session**, if you sign in, in a file readable only by your user,
+  encrypted with a key in the system credential store when there is one.
+  **Sign out** removes it.
   The session has the same access to your account as the browser session it
   came from, so treat it like a password.
-- **Your Last.fm session**, if you connect Last.fm, in a file readable only by
-  your user, apart from the settings, which hold only the account's name. Meiro
+- **Your Last.fm session**, if you connect Last.fm, stored the same way,
+  apart from the settings, which hold only the account's name. Meiro
   never sees your Last.fm password: you approve it on Last.fm's own page.
   Plays that could not be sent wait in a file beside it. **Disconnect** deletes
   both.

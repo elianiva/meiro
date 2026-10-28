@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elianiva/meiro/internal/cookies"
+	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -98,7 +99,7 @@ const credentialTimeout = 30 * time.Second
 // load reads the saved cookie.
 func (c *credentials) load(ctx context.Context) (string, error) {
 	if c.store == nil {
-		return "", cookies.ErrNotSaved
+		return "", secretfile.ErrNotSaved
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -364,7 +365,7 @@ func (a *app) restoreAccount() {
 		return acc.renewSession(ctx, cookie, from, attempt)
 	}, func(s *session, err error) {
 		switch {
-		case errors.Is(err, cookies.ErrNotSaved):
+		case errors.Is(err, secretfile.ErrNotSaved):
 		case errors.Is(err, errSessionGone):
 			a.expireSession()
 		case err != nil:
