@@ -19,6 +19,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/lastfm"
+	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -84,7 +85,7 @@ func scrobbleApp(t *testing.T) (*app, *fakeScrobbler, string) {
 	t.Cleanup(server.Close)
 	dir := t.TempDir()
 	a.scrobble.client = &lastfm.Client{Key: "key", Secret: "secret", Root: server.URL}
-	a.openScrobbler(filepath.Join(dir, "session"), filepath.Join(dir, "pending.json"))
+	a.openScrobbler(lastFMSession(dir), filepath.Join(dir, "pending.json"))
 	a.settings.LastFMUser, a.scrobble.session = "neo", "SK"
 	// The clock stands a few minutes after the plays listenTo makes.
 	a.scrobble.now = func() time.Time { return time.Date(2026, 3, 1, 12, 10, 0, 0, time.UTC) }
@@ -159,7 +160,7 @@ func TestConnectingInTheMiddleOfATrackSendsNowPlaying(t *testing.T) {
 	t.Cleanup(server.Close)
 	a.scrobble.client = &lastfm.Client{Key: "key", Secret: "secret", Root: server.URL}
 	dir := t.TempDir()
-	a.openScrobbler(filepath.Join(dir, "session"), filepath.Join(dir, "pending.json"))
+	a.openScrobbler(lastFMSession(dir), filepath.Join(dir, "pending.json"))
 	q := []youtube.MusicItem{song("a")}
 	a.play(q[0], q) // before Last.fm is connected
 	pollUntil(t, a, "playback", a.player.Playing)
@@ -419,7 +420,7 @@ func TestATransientFailureKeepsThePlayForARestart(t *testing.T) {
 
 	// The app is closed and opened again, and Last.fm is back.
 	b, f2, _ := scrobbleApp(t)
-	b.openScrobbler(filepath.Join(dir, "session"), filepath.Join(dir, "pending.json"))
+	b.openScrobbler(lastFMSession(dir), filepath.Join(dir, "pending.json"))
 	t.Cleanup(b.scrobble.outbox.Wait)
 	if b.scrobble.outbox.Len() != 1 {
 		t.Fatalf("the play did not survive the restart: %d pending", b.scrobble.outbox.Len())
@@ -492,7 +493,7 @@ func TestARequestLastFmRejectsForGoodIsDroppedNotRetried(t *testing.T) {
 }
 
 func TestConnectingPausingAndDisconnectingInSettings(t *testing.T) {
-	a, f, dir := scrobbleApp(t)
+	a, f, _ := scrobbleApp(t)
 	a.settings.LastFMUser, a.scrobble.session = "", ""
 	f.approvals = 2 // the user takes a moment to approve
 	var opened []string
@@ -517,7 +518,7 @@ func TestConnectingPausingAndDisconnectingInSettings(t *testing.T) {
 	if n := len(f.called("auth.getSession")); n != 3 {
 		t.Errorf("%d getSession calls, want 3: two before the approval, one after", n)
 	}
-	if key, err := (&lastfm.SessionStore{Path: filepath.Join(dir, "session")}).Load(); err != nil || key != "SESSION-KEY" {
+	if key, err := a.scrobble.store.Load(context.Background()); err != nil || key != "SESSION-KEY" {
 		t.Errorf("saved session = %q, %v", key, err)
 	}
 	a.saver.Wait()
@@ -552,7 +553,7 @@ func TestConnectingPausingAndDisconnectingInSettings(t *testing.T) {
 	if a.settings.LastFMUser != "" || a.scrobble.session != "" || a.scrobble.outbox.Len() != 0 {
 		t.Errorf("after disconnecting: user %q, session %q, pending %d", a.settings.LastFMUser, a.scrobble.session, a.scrobble.outbox.Len())
 	}
-	if _, err := (&lastfm.SessionStore{Path: filepath.Join(dir, "session")}).Load(); !errors.Is(err, lastfm.ErrNoSession) {
+	if _, err := a.scrobble.store.Load(context.Background()); !errors.Is(err, secretfile.ErrNotSaved) {
 		t.Errorf("the session key is still saved: %v", err)
 	}
 	before := f.total()

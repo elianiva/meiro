@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **Podcast episodes show their details instead of lyrics.** The player's Lyrics tab becomes Details for an episode, as on YouTube Music: views, date and length, the title, the show and the full description. Chapter timestamps jump to that point in the episode, links open in the browser, and the show's name opens its page.
+- **Your YouTube Music and Last.fm sessions are encrypted on disk.** The key is in your system's credential store: the Keychain on macOS, the Secret Service (such as GNOME Keyring or KWallet) on Linux, and the Credential Manager on Windows. A session that an earlier version saved is encrypted the first time Meiro reads it, so you stay signed in. On macOS, the first launch after an update asks once to use the key: choose **Always Allow**. On a Linux system without a credential store, the sessions stay in files only your user can read.
 
 ## [0.4.14] - 2026-10-28
 

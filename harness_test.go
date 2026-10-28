@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -16,10 +17,10 @@ import (
 
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/audio"
-	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
+	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -767,7 +768,7 @@ type memoryStore struct {
 
 func (m *memoryStore) Load(context.Context) (string, error) {
 	if m.cookie == "" {
-		return "", cookies.ErrNotSaved
+		return "", secretfile.ErrNotSaved
 	}
 	return m.cookie, nil
 }
@@ -780,4 +781,9 @@ func (m *memoryStore) Save(_ context.Context, cookie string) error {
 func (m *memoryStore) Delete(context.Context) error {
 	m.cookie = ""
 	return nil
+}
+
+// lastFMSession is where a test app keeps its Last.fm session key.
+func lastFMSession(dir string) secretfile.File {
+	return secretfile.File{Path: filepath.Join(dir, "session"), Keychain: secretfile.NoKeychain{}, Name: "lastfm-session"}
 }
