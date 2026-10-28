@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/egoist/mygo/ui"
@@ -305,12 +306,33 @@ func artRadius(item youtube.MusicItem, square float32) float32 {
 // art shows the artwork at url in a square of size points with rounded
 // corners. The picture is asked for at pixels across; MyGo rounds it as drawn.
 func (a *app) art(c *ui.Context, url string, pixels int, size, radius float32, overlays ...func()) ui.Element {
-	return m3.Art(c, a.thumbs.Bitmap(url, pixels), size, radius, overlays...)
+	return m3.Art(c, a.thumbs.Bitmap(url, a.artPixels(pixels, size)), size, radius, overlays...)
 }
 
 // avatar is a person's picture on a disc of size points, rounded like art.
 func (a *app) avatar(c *ui.Context, name, url string, pixels int, size float32) {
-	m3.Avatar(c, name, a.thumbs.Bitmap(url, pixels), size)
+	m3.Avatar(c, name, a.thumbs.Bitmap(url, a.artPixels(pixels, size)), size)
+}
+
+// artSteps are the sizes pictures are asked for at, so that a window being
+// resized asks for few of them.
+var artSteps = [...]int{64, 96, 128, 192, 256, 320, 384, 448, 512, 640}
+
+// artPixels is the size to ask for a picture drawn size DIPs across: as many
+// pixels as the sharpest display shows of it, rounded up to a step, and never
+// more than the view asked for. A cover's memory grows with the square of
+// its size, so a display at scale 1 holds a quarter of what one at 2 does.
+func (a *app) artPixels(pixels int, size float32) int {
+	if a.displayScale == 0 {
+		return pixels
+	}
+	need := int(math.Ceil(float64(size * a.displayScale * a.zoom())))
+	for _, step := range artSteps {
+		if step >= need {
+			return min(step, pixels)
+		}
+	}
+	return pixels
 }
 
 // card shows an album, a playlist, an artist or a song as artwork over its

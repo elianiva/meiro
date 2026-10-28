@@ -34,11 +34,11 @@ import (
 // GPU as long as the app uses it, so the cache must not grow without end
 // while the user browses. It counts bytes, not bitmaps, because a cover is
 // tens of kilobytes at one size and over a megabyte at another.
-const thumbBudget = 48 << 20
+const thumbBudget = 24 << 20
 
 // thumbSourceBudget bounds compressed pictures kept for rebuilding evicted
 // bitmaps without downloading them again.
-const thumbSourceBudget = 8 << 20
+const thumbSourceBudget = 4 << 20
 
 // Store keeps downloaded pictures beyond the memory the cache may use, so an
 // evicted bitmap is rebuilt from a file and not downloaded again. A

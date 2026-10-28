@@ -41,6 +41,9 @@ type app struct {
 	media   systemmedia.Session
 	discord *discordrpc.Session
 	thumbs  *artwork.Cache
+	// displayScale is the largest scale of the displays, which sizes the
+	// artwork asked for; 0 in tests, which ask for the sizes the views name.
+	displayScale float32
 
 	// run runs work off the main thread. Tests replace it with a runner
 	// that runs the work inline, so a frame sees its result at once.

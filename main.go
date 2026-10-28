@@ -61,6 +61,8 @@ func main() {
 	a.logsDir = logsDir
 	mygo.App.WhenReady(func() {
 		a.setup()
+		a.displayScale = displayScale()
+		mygo.Screen.OnDisplaysChanged(func() { a.update(func() { a.displayScale = displayScale() }) })
 		a.desktop = &desktop{win: mygo.NewWindow(mygo.WindowOptions{
 			Title:         "Meiro",
 			Width:         1180,
@@ -105,6 +107,18 @@ func main() {
 		os.Exit(1)
 	}
 	closeLog()
+}
+
+// displayScale is the largest scale of the displays, 2 when none says.
+func displayScale() float32 {
+	scale := 0.0
+	for _, d := range mygo.Screen.Displays() {
+		scale = max(scale, d.ScaleFactor)
+	}
+	if scale <= 0 {
+		return 2
+	}
+	return float32(scale)
 }
 
 // openLog sends the standard logger, and slog, to the log file as well as to
