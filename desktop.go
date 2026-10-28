@@ -109,7 +109,7 @@ func (d *desktop) invalidateMini() {
 
 // bringToFront shows the window when closing it hid it, restores it when it
 // is minimized, and takes the focus, for a second launch, a deep link, a
-// notification click or the mini player's Open Meiro button.
+// notification click or the mini/notch player's Open Meiro button.
 func (d *desktop) bringToFront() {
 	if d == nil {
 		return

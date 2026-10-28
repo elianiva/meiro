@@ -56,6 +56,7 @@ var (
 	IconChevronLeft   = svg("M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z")
 	IconExpandMore    = svg("M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z")
 	IconExpandLess    = svg("M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z")
+	IconOpenInNew     = svg("M19 19H5V5h7V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z")
 	IconClose         = svg("M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z")
 	IconCheck         = svg("M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z")
 	IconAdd           = svg("M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z")

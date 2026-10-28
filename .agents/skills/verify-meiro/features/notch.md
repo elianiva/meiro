@@ -9,6 +9,7 @@ the right. The previous and next lines frame the active lyric.
 
 - `notch-compact`: cover and five animated bars, resting on pause, with a loading indicator while buffering.
 - `notch-lyrics`: click either wing to expand/collapse; Escape collapses. The panel stays open when the pointer leaves.
+- `notch-open`: the expanded header has a 16 point Open Meiro icon in a 32 point target beside collapse, outside the camera area. It brings the existing main window forward, restoring it if hidden or minimized, without changing playback or the expanded state. It fades with the panel and is disabled while fading; compact mode has no extra button.
 - `notch-motion`: opening expands over 240 ms and closing contracts over 200 ms, anchored to the camera. Content fades and lifts slightly; the header cover crossfades with the collapse arrow. Rapid clicks reverse the current animation. Reduce Motion uses a 100 ms fade in place. Fading controls cannot be activated.
 - `notch-transport`: Previous, Play/Pause and Next operate playback without collapsing the panel. Controls stay available while lyrics load or are unavailable.
 - `notch-shape`: a 480 × 190 point expanded panel for a 180 × 32 point cutout, with 20 point corners and transparent pixels outside them. The native window clips to the same radius. A 76 point cover, single-line track metadata and two-line active lyrics stay in separate columns.
@@ -27,7 +28,7 @@ beside the camera. Use the three buttons below the track information to control
 playback, or drag the progress bar to seek. Click the upper collapse arrow or
 indicator, or press Escape, to collapse. The player remains
 available when the main window is hidden with Keep running when closed. Reopen
-the main window from the Dock. Search Settings for
+the main window from the Open Meiro icon beside collapse or from the Dock. Search Settings for
 `notch` to turn it off or back on.
 
 ## Headless proof recipe
@@ -73,6 +74,16 @@ first track's artwork, click Next, let the new artwork arrive, then release the
 old response and assert that the new cover stays. Next to a track with no cover
 must show the neutral placeholder.
 
+For Open Meiro, verify the compact notch has no extra button, expand, and
+check the new target stays left of collapse without overlapping the camera.
+Repeat with a wider cutout. Seek, then click Open Meiro and activate it with
+Tab/Enter: the track, position, paused state and expanded panel stay unchanged,
+and lyrics are not fetched again. Collapse and reopen through the indicator;
+the extra button disappears and returns. Capture the hover tooltip as well.
+Use the preceding notch commit as the before reference: a base without the
+notch cannot run this scenario. The headless desktop is nil, so only a native
+macOS check can prove that the main window actually appears and takes focus.
+
 ## Gotchas
 
 - Tests render the exact native UI but cannot prove window placement, menu-bar level, focus, Spaces/fullscreen, or screen hotplug. These require macOS and a physical notched display.
@@ -81,6 +92,7 @@ must show the neutral placeholder.
 - No microphone, audio capture, or FFT is used. The bars are a decorative playback indicator and respect Reduce Motion.
 - `m3.Provide` resets the root background. Set it transparent after providing the theme, or a rectangular backing remains behind the rounded panel.
 - Expanded mode replaces the small header cover with a collapse arrow; artwork is displayed once, below the camera. It requests a larger thumbnail for Retina rendering.
+- The Open Meiro button uses its own 32 point target rather than the general icon button's larger hit area, so it cannot steal clicks from collapse. Expanded bounds reserve space on both sides even with a wide camera cutout.
 - Synced rows use lyric indices inside the track's identity for position transitions, so a new song cannot inherit the previous song's animation state.
 - The native window provides an expanded transparent canvas during motion. UI animation changes the painted rounded panel, and a guarded completion resizes the native window to its compact footprint. The callback reads the latest target so rapid reversals cannot be closed by an old completion.
 - `AnimateTo` respects Reduce Motion by snapping geometry; `AnimateColor` preserves the short opacity fade. The panel background itself never fades.

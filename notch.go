@@ -16,6 +16,7 @@ import (
 
 const (
 	notchWing          = 52
+	notchOpenTarget    = 32
 	notchLyricsWidth   = 480
 	notchLyricsHeight  = 152
 	notchRadius        = 20
@@ -78,7 +79,7 @@ func (n *notchState) bounds() mygo.Rectangle {
 	// Keep the full canvas until the closing animation has finished. Only the
 	// painted panel changes size; text keeps its layout instead of stretching.
 	if n.expanded || n.transitioning {
-		w = max(w, notchLyricsWidth)
+		w = max(w+2*notchOpenTarget, notchLyricsWidth)
 		h += notchLyricsHeight
 	}
 	return mygo.Rectangle{X: n.cutout.X + (n.cutout.Width-w)/2, Y: n.cutout.Y, Width: w, Height: h}
@@ -181,7 +182,7 @@ func (a *app) notchView(c *ui.Context) {
 	reduced := c.Preferences().ReduceMotion
 	headerHeight := float32(n.cutout.Height + 6)
 	compactWidth := float32(n.cutout.Width + 2*notchWing)
-	fullWidth := max(compactWidth, float32(notchLyricsWidth))
+	fullWidth := max(compactWidth+2*notchOpenTarget, float32(notchLyricsWidth))
 	canvasWidth, _ := c.Size()
 	root := ui.Column(c.Key("notch")).Absolute().Top(0).Background(ui.RGB(0, 0, 0)).Radius(notchRadius).Clip().Label("Notch panel")
 	target, duration := float32(0), notchCloseDuration
@@ -216,6 +217,23 @@ func (a *app) notchView(c *ui.Context) {
 	}
 	root.Children(func() {
 		ui.Row(c.Key("notch-header")).Height(headerHeight).FillWidth().Shrink(0).Justify(ui.Center).Children(func() {
+			if open || n.transitioning {
+				// Keep the camera and the existing wings centred. This extra
+				// target fits in the space revealed to the left when expanded.
+				launch := ui.ButtonBase(c.Key("notch-open")).Absolute().
+					Left((width-compactWidth)/2-notchOpenTarget).Top((headerHeight-notchOpenTarget)/2).
+					Size(notchOpenTarget, notchOpenTarget).Center().Radius(8).
+					Label("Open Meiro").Tooltip("Open Meiro").Cursor(ui.CursorPointer).
+					Disabled(!open || opacity < 1).Opacity(opacity)
+				color := white.Alpha(0.7)
+				launch.Background(m3.StateFill(ui.Transparent, color, launch.Hovered(), launch.Pressed(), launch.FocusVisible()))
+				launch.Children(func() {
+					ui.Icon(c, m3.IconOpenInNew).FontSize(16).TextColor(color)
+				})
+				if launch.Clicked() {
+					a.desktop.bringToFront()
+				}
+			}
 			label := "Open notch lyrics"
 			if n.expanded {
 				label = "Close notch lyrics"
