@@ -58,6 +58,8 @@ type nowPlayingState struct {
 	// miniOpen is whether the tray's mini player shows. Its side panel then
 	// loads what its tab shows, as the full-screen player's does.
 	miniOpen bool
+	// speedMenu is the key of the speed button whose menu is open, or empty.
+	speedMenu string
 }
 
 // relatedState is the related songs of the track playing.
@@ -230,8 +232,9 @@ func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 		ui.Row(c).Justify(ui.Center).Children(func() {
 			a.transport(c, 72, 10)
 		})
-		ui.Row(c).Justify(ui.Center).Children(func() {
+		ui.Row(c).Justify(ui.Center).AlignItems(ui.Center).Gap(8).Children(func() {
 			a.volumeControl(c, 200)
+			a.speedControl(c, "np-speed")
 		})
 	}
 	if windowHeight < 700 {

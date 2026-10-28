@@ -91,6 +91,10 @@ type Settings struct {
 	// EQBands holds each band's gain in dB, low to high, one per the player's
 	// equaliser frequencies.
 	EQBands []float64 `json:"eqBands,omitempty"`
+	// PodcastSpeed is how fast podcast episodes play, and MusicSpeed how fast
+	// everything else does, 1 or 0 for their own pace.
+	PodcastSpeed float64 `json:"podcastSpeed,omitempty"`
+	MusicSpeed   float64 `json:"musicSpeed,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.

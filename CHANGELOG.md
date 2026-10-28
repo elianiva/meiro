@@ -8,7 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Playlists, albums, artists and podcasts in the Related tab open when clicked.** Clicking one did nothing; it now opens its page, as it does anywhere else.
 - **The Related tab works for podcast episodes.** It said related songs weren't available; it now lists related episodes and suggested podcasts.
+
+### Added
+
+- **Songs and podcast episodes can play faster or slower.** A speed button beside the volume, in the player bar, the full player and the tray's mini player, picks from 0.5× to 3× without changing the pitch. The track goes on from where it was. Music and podcasts each remember their own speed, so speeding up an episode leaves your songs at the pace you chose for them.
 
 ### Changed
 

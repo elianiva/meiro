@@ -966,6 +966,77 @@ func TestAPodcastEpisodeComesBackWhereItStopped(t *testing.T) {
 	}
 }
 
+// An episode plays at the speed chosen from the player bar, and goes on at it
+// from where it was. Music keeps a speed of its own, chosen the same way, and
+// the next episode plays at the speed chosen for podcasts.
+func TestEpisodesAndMusicPlayAtTheirOwnChosenSpeeds(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	tone := filepath.Join(t.TempDir(), "tone.wav")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=duration=120", tone).CombinedOutput(); err != nil {
+		t.Fatalf("making a tone: %v: %s", err, out)
+	}
+	a, r := playbackApp(t)
+	r.url = func(string, int) (string, error) { return tone, nil }
+	a.router.Push("/podcast/MPSPPLshow")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	playing := func(id string) func() bool {
+		return func() bool { a.poll(); return a.current.VideoID == id && a.player.Playing() }
+	}
+
+	if err := tt.Click("Episode One"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, playing("ep-1"))
+	a.player.Seek(70 * time.Second)
+	waitFor(t, func() bool { return a.player.Position() >= 70*time.Second })
+	tt.Frame()
+	if err := tt.Click("1×"); err != nil {
+		t.Fatalf("no speed button for an episode: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if err := tt.Click("2×"); err != nil {
+		t.Fatalf("no 2× in the speed menu: %v in %q", err, tt.Texts())
+	}
+	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 2 && a.player.Playing() })
+	if a.current.VideoID != "ep-1" || a.player.Position() < 70*time.Second {
+		t.Errorf("after the change %s plays at %v, want ep-1 from 70s or past it", a.current.VideoID, a.player.Position())
+	}
+	tt.Frame()
+	if !tt.HasText("2×") || a.settings.PodcastSpeed != 2 {
+		t.Errorf("the button reads %q and the setting is %v, want 2×", tt.Texts(), a.settings.PodcastSpeed)
+	}
+
+	a.play(tracks("song")[0], nil)
+	waitFor(t, playing("song"))
+	if got := a.player.Speed(); got != 1 {
+		t.Errorf("a song plays at %v×, want its own pace until music has a speed", got)
+	}
+	tt.Frame()
+	if err := tt.Click("1×"); err != nil {
+		t.Fatalf("no speed button for a song: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if err := tt.Click("1.5×"); err != nil {
+		t.Fatalf("no 1.5× in the speed menu: %v in %q", err, tt.Texts())
+	}
+	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 1.5 && a.player.Playing() })
+	if a.settings.MusicSpeed != 1.5 || a.settings.PodcastSpeed != 2 {
+		t.Errorf("music speed %v and podcast speed %v, want 1.5 and the 2 kept", a.settings.MusicSpeed, a.settings.PodcastSpeed)
+	}
+
+	if err := tt.Click("Episode Two"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, playing("ep-2"))
+	if got := a.player.Speed(); got != 2 {
+		t.Errorf("the next episode plays at %v×, want the 2× chosen", got)
+	}
+}
+
 // A signed-in episode can resume from YouTube's account progress when there
 // is no local position. A local position wins when both are available, and a
 // signed-out session ignores the account hint. Pausing sends a final interval.

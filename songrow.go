@@ -208,7 +208,9 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			}
 		}
 		switch {
-		case o.directQueue:
+		case o.directQueue && item.IsTrack():
+			// Only a song plays from the list; an album, a playlist, an
+			// artist or a show in it opens its page below.
 			index := o.track
 			if index < 0 {
 				index = indexOf(queue, item.VideoID)

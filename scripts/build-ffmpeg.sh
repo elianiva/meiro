@@ -5,7 +5,8 @@
 #   scripts/build-ffmpeg.sh windows-amd64
 #
 # Meiro uses ffmpeg for one thing: decoding the audio of one stream (Opus in
-# WebM, AAC in MP4, and the files of the audio cache) to raw PCM, and reading
+# WebM, AAC in MP4, and the files of the audio cache) to raw PCM, at the
+# playback speed chosen (atempo), and reading
 # the length of a cached file. So the build keeps just that: the demuxers,
 # decoders and filters it needs, plus HTTP(S) for the stream itself. It is
 # about 7 MB, where a full build is over 100 MB, and it is LGPL.
@@ -66,7 +67,7 @@ configure=(
 	--enable-parser=opus,aac,vorbis,flac,mpegaudio
 	--enable-decoder=opus,aac,vorbis,mp3,mp3float,flac,pcm_s16le,pcm_f32le
 	--enable-encoder=pcm_s16le --enable-muxer=pcm_s16le
-	--enable-filter=abuffer,abuffersink,aformat,aresample,anull,atrim,apad,volume,equalizer
+	--enable-filter=abuffer,abuffersink,aformat,aresample,anull,atrim,apad,volume,equalizer,atempo
 )
 case "$platform" in
 	linux-*)

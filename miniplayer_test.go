@@ -180,6 +180,28 @@ func TestMinimizeToTrayShowsTheTrayWithoutRememberingTheChoice(t *testing.T) {
 	}
 }
 
+func TestRelatedPlaylistOpensItsPage(t *testing.T) {
+	a := newTestApp(t)
+	song := youtube.MusicItem{VideoID: "song-related", Title: "Playing Song", Kind: youtube.KindTrack}
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{song}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	tt.Frame()
+	if err := tt.Click("Related"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	// A playlist among the related songs opens its page rather than trying
+	// to play, and the song goes on playing.
+	if err := tt.Click("Related Playlist"); err != nil {
+		t.Fatal(err)
+	}
+	if a.path() != "/playlist/VLPL_songs" || a.current.VideoID != "song-related" {
+		t.Fatalf("the playlist went to %q, playing %q", a.path(), a.current.VideoID)
+	}
+}
+
 func TestLyricsSwitchBetweenSyncedAndStatic(t *testing.T) {
 	a := newTestApp(t)
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
