@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/lru"
 	"github.com/elianiva/meiro/internal/playstate"
+	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -30,7 +32,7 @@ type playback struct {
 	seekTarget  time.Duration
 	seekVersion uint64
 	volume      float64
-	muted       float64 // the volume to return to, while muted
+	muted       float64 // the last volume above 0, to return to on unmute
 	loudness    float64
 	loudnessOK  bool
 	loudnessMap *lru.Cache[string, youtube.Loudness]
@@ -63,6 +65,8 @@ type playback struct {
 	// seeking moves the player to seekTarget; it is busy while the decode is
 	// being restarted there.
 	seeking task
+	// speeding changes the player's speed to the current track's.
+	speeding task
 	// preload resolves the next track and has the player decode it ahead of
 	// the end of the current one; preloaded is what it left with the player,
 	// and preloadFailed the track it could not, which is not tried again
@@ -193,6 +197,8 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 	// the decode the seek was moving is about to be replaced.
 	a.seeking.stop()
 	a.seekTarget = 0
+	// The track's audio starts at the track's own speed.
+	a.speeding.stop()
 	// What was being readied was for the track after the old one.
 	a.preload.stop()
 	a.preloaded, a.preloadFailed = preloadedAudio{}, ""
@@ -605,20 +611,79 @@ func (a *app) setShuffle(on bool) {
 // setVolume sets the volume, from 0 to 100, and keeps it for the next run.
 func (a *app) setVolume(v float64) {
 	a.volume = min(max(v, 0), 100)
+	if a.volume > 0 {
+		a.muted = a.volume
+	}
 	a.player.SetVolume(playbackVolume(a.volume, a.loudness, a.loudnessOK && a.settings.NormalizeLoudness))
 	a.settings.Volume = a.volume
 	a.syncSystemMedia()
 }
 
-// toggleMute silences the player, or brings the volume back, never quieter
-// than 40.
-func (a *app) toggleMute() {
-	if a.volume > 0 {
-		a.muted = a.volume
-		a.setVolume(0)
+// playbackSpeeds are the speeds a track can play at.
+var playbackSpeeds = []float64{0.5, 0.8, 1, 1.2, 1.5, 1.8, 2, 2.5, 3}
+
+// speedFor is how fast item plays: an episode at the speed chosen for
+// podcasts, anything else at the one chosen for music.
+func (a *app) speedFor(item youtube.MusicItem) float64 {
+	speed := a.settings.MusicSpeed
+	if item.IsEpisode() {
+		speed = a.settings.PodcastSpeed
+	}
+	if slices.Contains(playbackSpeeds, speed) {
+		return speed
+	}
+	return 1
+}
+
+// applyCrossfade sends the crossfade length to the player, zero when it is off.
+func (a *app) applyCrossfade() {
+	var fade time.Duration
+	if a.settings.Crossfade {
+		fade = time.Duration(settings.ClampCrossfade(a.settings.CrossfadeSeconds)) * time.Second
+	}
+	a.player.SetCrossfade(fade)
+}
+
+// setSpeed chooses how fast tracks like the current one play, podcast
+// episodes or music, keeps the choice, and plays the current track at it.
+func (a *app) setSpeed(speed float64) {
+	if a.current.IsEpisode() {
+		a.settings.PodcastSpeed = speed
+	} else {
+		a.settings.MusicSpeed = speed
+	}
+	a.saveSettings()
+	a.applySpeed()
+}
+
+// applySpeed plays the current track at its speed, if it does not already.
+// Changing the speed restarts the decode, which is not for the main thread to
+// do. While the track's audio is on its way this is left to the work that
+// finds it, which applies the speed once it plays.
+func (a *app) applySpeed() {
+	if a.stream.busy() {
 		return
 	}
-	a.setVolume(max(a.muted, 40))
+	speed := a.speedFor(a.current)
+	startTask(a, &a.speeding, noTimeout, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, a.player.SetSpeed(ctx, speed)
+	}, func(struct{}, error) {
+		a.syncSystemMedia()
+	})
+}
+
+// toggleMute silences the player, or brings back the last volume above 0. With
+// no such volume in this run, it unmutes to 40.
+func (a *app) toggleMute() {
+	switch {
+	case a.volume > 0:
+		a.muted = a.volume // the volume from settings at startup skips setVolume
+		a.setVolume(0)
+	case a.muted > 0:
+		a.setVolume(a.muted)
+	default:
+		a.setVolume(40)
+	}
 }
 
 // cycleRepeat goes from not repeating to repeating the queue to repeating the

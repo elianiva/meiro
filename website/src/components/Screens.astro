@@ -1,0 +1,117 @@
+---
+import Section from "./Section.astro";
+import SectionHead from "./SectionHead.astro";
+
+const tabs = [
+  { id: "home", name: "Home", height: 888, alt: "Home with recommendations and recent plays", text: "Recommendations, new releases and what you played last, without a tab to find." },
+  { id: "search", name: "Search", height: 888, alt: "Search results for an artist, with filters", text: "Songs, albums, artists and playlists, with filters. Recent searches are kept." },
+  { id: "player", name: "Player", height: 888, alt: "The full player with the queue and related songs", text: "The queue, the lyrics and related songs on one screen. A small player follows you while you browse." },
+  { id: "lyrics", name: "Lyrics", height: 916, alt: "Synced lyrics with the current line lit", text: "The line being sung is the line that is lit. Switch to plain text to read ahead." },
+  { id: "library", name: "Library", height: 888, alt: "Library with playlists and followed artists", text: "Liked songs, your playlists and the artists you follow. Sort a playlist or search inside it." },
+  { id: "stats", name: "Stats", height: 888, alt: "Listening statistics by day", text: "How much you listened to, day by day. The history stays on your computer and you can delete it." },
+];
+---
+
+<Section id="screens">
+  <div class="wrap">
+    <SectionHead title="A player, not a web page" lead="Tired of Electron? Me too. That is why Meiro is not a glorified web page, but an actual desktop app." />
+    <div class="group/tour reveal grid grid-cols-[minmax(0,400px)_minmax(0,1fr)] items-start gap-[clamp(32px,5vw,80px)] max-lg:grid-cols-[1fr]" id="tour">
+      <div class="sticky top-27.5 grid gap-1 max-lg:static max-lg:grid-cols-[repeat(3,auto)] max-lg:gap-1.5 max-lg:overflow-x-auto" role="group" aria-label="Pages of the app">
+        {
+          tabs.map((tab, i) => (
+            <div class:list={["group/tab rounded-[20px] px-5.5 py-4.5 transition-[background-color] duration-250 [&.on]:bg-bg-soft max-lg:px-4.5 max-lg:py-3", i === 0 && "on"]} data-tab-item>
+              <button
+                class="group/btn block w-full cursor-pointer border-none bg-transparent p-0 text-left"
+                type="button"
+                id={`tab-${tab.id}`}
+                aria-controls="shots"
+                aria-pressed={i === 0}
+                aria-describedby={`desc-${tab.id}`}
+                data-shot={tab.id}
+                data-alt={tab.alt}
+              >
+                <span class="block text-h3 leading-[1.1] tracking-[-0.035em] text-muted transition-[color] duration-200 group-hover/btn:text-ink group-[.on]/tab:text-ink max-lg:text-[18px]">{tab.name}</span>
+              </button>
+              <p class="grid grid-rows-[0fr] [transition:grid-template-rows_0.4s_var(--ease-glide)] group-[.on]/tab:grid-rows-[1fr] max-lg:hidden" id={`desc-${tab.id}`}>
+                <span class="block overflow-hidden before:block before:h-2.5 before:content-['']">{tab.text}</span>
+              </p>
+              <span class="mt-4 block h-1 overflow-hidden rounded-sm bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] opacity-0 transition-opacity duration-300 group-[.on]/tab:opacity-100 max-lg:hidden" aria-hidden="true">
+                <i class="block h-full w-full origin-left scale-x-0 bg-accent group-[.on]/tab:group-[.auto]/tour:animate-tab-fill" />
+              </span>
+            </div>
+          ))
+        }
+      </div>
+      <div>
+        <div class="relative aspect-[1440/888] overflow-hidden rounded-card bg-field transition-[background-color] duration-400" id="shots" aria-live="polite">
+          {
+            tabs.map((tab, i) => (
+              <img
+                class:list={["absolute inset-0 size-full object-cover opacity-0 [transform:scale(1.03)] [transition:opacity_0.5s_ease,transform_0.8s_var(--ease-glide)] [&.on]:[transform:none] [&.on]:opacity-100", i === 0 && "on"]}
+                src={`/assets/screens/${tab.id}.webp`}
+                alt={i === 0 ? tab.alt : ""}
+                width="1440"
+                height={tab.height}
+                loading={i === 0 ? undefined : "lazy"}
+                data-for={tab.id}
+              />
+            ))
+          }
+        </div>
+        <p class="mt-4 text-small text-muted lg:hidden" id="tour-cap">{tabs[0].text}</p>
+      </div>
+    </div>
+  </div>
+</Section>
+
+<script>
+  import { arrive } from "../scripts/arrive";
+
+  /* Tabs, with a timer that hands over to the visitor on first touch. */
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const tour = document.getElementById("tour")!;
+  const tabs = [...tour.querySelectorAll<HTMLButtonElement>("[data-shot]")];
+  const items = [...tour.querySelectorAll<HTMLElement>("[data-tab-item]")];
+  const shots = [...tour.querySelectorAll<HTMLImageElement>("[data-for]")];
+  const cap = document.getElementById("tour-cap")!;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let current = 0;
+
+  function showTab(i: number) {
+    current = i;
+    tabs.forEach((tab, n) => {
+      const on = n === i;
+      tab.setAttribute("aria-pressed", String(on));
+      items[n].classList.toggle("on", on);
+      if (!on) return;
+      for (const img of shots) {
+        const match = img.dataset.for === tab.dataset.shot;
+        img.classList.toggle("on", match);
+        img.alt = match ? tab.dataset.alt! : "";
+      }
+      cap.textContent = items[n].querySelector("p span")!.textContent;
+    });
+    // Restart the progress bar.
+    tour.classList.remove("auto");
+    void tour.offsetWidth;
+    if (timer) tour.classList.add("auto");
+  }
+  function stopTour() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    tour.classList.remove("auto");
+  }
+  function startTour() {
+    if (reduce || timer) return;
+    tour.classList.add("auto");
+    timer = setInterval(() => showTab((current + 1) % tabs.length), 6000);
+  }
+  tabs.forEach((tab, n) =>
+    tab.addEventListener("click", () => {
+      stopTour();
+      showTab(n);
+    }),
+  );
+  showTab(0);
+  arrive("#tour", startTour);
+</script>

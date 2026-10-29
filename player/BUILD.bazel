@@ -4,6 +4,7 @@ go_library(
     name = "player",
     srcs = [
         "equalizer.go",
+        "fade.go",
         "null.go",
         "player.go",
         "window_unix.go",
@@ -18,6 +19,7 @@ go_test(
     name = "player_test",
     srcs = [
         "eq_test.go",
+        "fade_test.go",
         "integration_test.go",
         "player_test.go",
     ],

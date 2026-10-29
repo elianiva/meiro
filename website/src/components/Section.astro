@@ -1,0 +1,10 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+type Props = HTMLAttributes<"section">;
+const { class: className, ...rest } = Astro.props;
+---
+
+<section class:list={["scroll-mt-[calc(-1*var(--gap))] py-(--gap)", className]} {...rest}>
+  <slot />
+</section>

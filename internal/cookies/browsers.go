@@ -99,11 +99,11 @@ func heliumDir() string {
 		}
 		return filepath.Join(home, "Library", "Application Support", "net.imput.helium")
 	case "linux":
-		config, err := os.UserConfigDir()
+		home, err := os.UserHomeDir()
 		if err != nil {
 			return ""
 		}
-		return filepath.Join(config, "net.imput.helium")
+		return filepath.Join(userConfigDir(home), "net.imput.helium")
 	}
 	return ""
 }
@@ -173,7 +173,7 @@ func chromiumBrowserSelectors(browser string) []string {
 	if err != nil {
 		return []string{chromiumSpec(browser, sessionKeyring())}
 	}
-	config, _ := os.UserConfigDir()
+	config := userConfigDir(home)
 	root := chromiumProfileRoot(browser, home, config, os.Getenv("LOCALAPPDATA"), runtime.GOOS)
 	// yt-dlp does not find the key a Chromium browser encrypts its cookies
 	// with under its own default on Linux, so the keyring that holds it goes
@@ -186,7 +186,7 @@ func firefoxBrowserSelectors() []string {
 	if err != nil {
 		return []string{"firefox"}
 	}
-	config, _ := os.UserConfigDir()
+	config := userConfigDir(home)
 	return profileSelectors("firefox", firefoxProfiles(firefoxProfileRoots(home, config, runtime.GOOS)), true)
 }
 
@@ -195,7 +195,7 @@ func zenBrowserSelectors() []string {
 	if err != nil {
 		return nil
 	}
-	config, _ := os.UserConfigDir()
+	config := userConfigDir(home)
 	return profileSelectors("firefox", firefoxProfiles(zenProfileRoots(home, config, runtime.GOOS)), false)
 }
 

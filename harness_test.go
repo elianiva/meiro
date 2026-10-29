@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -16,10 +17,10 @@ import (
 
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/audio"
-	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
+	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -105,6 +106,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		} else {
 			fakeLibrary.Store(fakeArtist, strings.HasSuffix(request.URL.Path, "/subscription/subscribe"))
 		}
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"ep-1"`):
+		reply = episodeNextResponse
+	case strings.Contains(asked, "MPPEep-1"):
+		reply = episodeDetailsResponse
 	case strings.HasSuffix(request.URL.Path, "/next") && fakeLikes() != "" && strings.Contains(asked, "vid-3"):
 		reply = nextResponse(fakeLikes())
 	case strings.HasSuffix(request.URL.Path, "/account/account_menu"):
@@ -134,10 +139,18 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = nestedAlbumResponse
 	case strings.Contains(asked, "UCguest"):
 		reply = strings.ReplaceAll(strings.ReplaceAll(artistPage(), fakeArtist, "UCguest"), "Aurora Vale", "Guest Artist")
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"song-related"`):
+		reply = songRelatedNextResponse
+	case strings.Contains(asked, "MPTRsong-related"):
+		reply = songRelatedResponse
 	case strings.Contains(asked, "MPREb_test"):
 		reply = albumPage()
 	case strings.Contains(asked, "MPSPPLshow"):
 		reply = podcastResponse
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"ep-related"`):
+		reply = episodeRelatedNextResponse
+	case strings.Contains(asked, "MPPRep-related"):
+		reply = episodeRelatedResponse
 	case strings.Contains(asked, "FEmusic_library_landing"):
 		libraryLoads.Add(1)
 		reply = libraryPage()
@@ -152,6 +165,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		if refuseWrites.Load() {
 			reply, status = rejectedResponse, http.StatusBadRequest
 		}
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"song-mixed"`):
+		reply = mixedRelatedNextResponse
+	case strings.Contains(asked, "MPTRsong-mixed"):
+		reply = mixedRelatedResponse
 	case strings.Contains(asked, "UCartist"):
 		reply = artistPage()
 	case strings.HasSuffix(request.URL.Path, "/browse/edit_playlist"):
@@ -211,6 +228,30 @@ func nextResponse(like string) string {
 			"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"target":{"videoId":"vid-3"},"likeStatus":"` + like + `"}}]}}}}
 	]}}}}}}]}}}}}`
 }
+
+// episodeNextResponse is what YouTube answers for the episode ep-1 in the
+// player: its tabs, with Details where a song has Lyrics.
+const episodeNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Details","endpoint":{"browseEndpoint":{"browseId":"MPPEep-1","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_DETAILS"}}}}}}
+]}}}}}`
+
+// episodeDetailsResponse is the Details tab of ep-1: a description with a
+// link, a chapter at the start, which names no time, and one further in.
+const episodeDetailsResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicDescriptionShelfRenderer":{
+	"header":{"runs":[{"text":"Reality Checking Productivity"}]},
+	"subheader":{"runs":[{"text":"Deep Questions","navigationEndpoint":{"browseEndpoint":{"browseId":"MPSPPLshow"}}}]},
+	"strapline":{"runs":[{"text":"3.7K views"},{"text":" • "},{"text":"Oct 26, 2026"}]},
+	"description":{"runs":[
+		{"text":"Sponsors: "},
+		{"text":"https://example.com/deep","navigationEndpoint":{"urlEndpoint":{"url":"https://example.com/deep-full"}}},
+		{"text":"\n"},
+		{"text":"0:00","navigationEndpoint":{"watchEndpoint":{"videoId":"ep-1"}}},
+		{"text":" Opening\n"},
+		{"text":"4:26","navigationEndpoint":{"watchEndpoint":{"videoId":"ep-1","startTimeSeconds":266}}},
+		{"text":" Time blocking"}
+	]}
+}}]}}}`
 
 // newTestApp builds an app whose work runs inline, and whose YouTube and
 // artwork requests are answered without the network.
@@ -311,6 +352,25 @@ const exploreResponse = `{"contents":{"sectionListRenderer":{"contents":[
 	}}
 ]}}}`
 
+// songRelatedNextResponse is what YouTube answers for the song song-related
+// in the player: its Related tab.
+const songRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPTRsong-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_TRACK_RELATED"}}}}}}
+]}}}}}`
+
+// songRelatedResponse is the Related tab of song-related: a song, and a
+// playlist to open, in the carousels YouTube Music gives them.
+const songRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Related Song"}]},"subtitle":{"runs":[{"text":"Some Artist"}]},
+		"navigationEndpoint":{"watchEndpoint":{"videoId":"rel-song"}}}}]
+}},{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Recommended playlists"}]}}},
+	"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Related Playlist"}]},"subtitle":{"runs":[{"text":"Playlist"}]},
+		"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_songs","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_PLAYLIST"}}}}}}]
+}}]}}}`
+
 // albumPage is an album as YouTube Music answers one: a header with the
 // button that saves it, and the rows of its tracks. The button says whether the
 // fake account has the album saved.
@@ -372,6 +432,22 @@ const podcastResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 			"onTap":{"watchEndpoint":{"videoId":"ep-1","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_PODCAST_EPISODE"}}}}}}
 	]}}]}}
 }}}`
+
+// episodeRelatedNextResponse is what YouTube answers for the episode
+// ep-related in the player: a Related tab of the page type episodes have,
+// which is not the one songs have.
+const episodeRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPPRep-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_RELATED"}}}}}}
+]}}}}}`
+
+// episodeRelatedResponse is the Related tab of ep-related: other episodes,
+// in the carousel YouTube Music gives them.
+const episodeRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[{"musicMultiRowListItemRenderer":{"title":{"runs":[{"text":"Another Deep Episode"}]},"subtitle":{"runs":[{"text":"3d ago • 1 hr 9 min"}]},
+		"onTap":{"watchEndpoint":{"videoId":"ep-9","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_PODCAST_EPISODE"}}}}}}]
+}}]}}}`
 
 // playlistPage is a playlist the account does not own: a header with the
 // button that saves it, and its videos.
@@ -473,6 +549,25 @@ func libraryToggleMenu(id string) string {
 
 // fakeArtist is the channel of the artist the fake's artist page is about.
 const fakeArtist = "UCartist"
+
+// mixedRelatedNextResponse is what YouTube answers for the song song-mixed
+// in the player: its Related tab.
+const mixedRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
+	{"tabRenderer":{"title":"Up next"}},
+	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPTRsong-mixed","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_TRACK_RELATED"}}}}}}
+]}}}}}`
+
+// mixedRelatedResponse is the Related tab of song-mixed: songs, with a
+// playlist and an artist between them, as YouTube Music mixes them.
+const mixedRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
+	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
+	"contents":[
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"First Related Song"}]},"navigationEndpoint":{"watchEndpoint":{"videoId":"mixed-1"}}}},
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Mixed Playlist"}]},"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_songs"}}}},
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Mixed Artist"}]},"navigationEndpoint":{"browseEndpoint":{"browseId":"UCartist"}}}},
+		{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Second Related Song"}]},"navigationEndpoint":{"watchEndpoint":{"videoId":"mixed-2"}}}}
+	]
+}}]}}}`
 
 // artistPage carries the heading an artist page puts over its content, with
 // the subscribe button in it, which says whether the fake account follows the
@@ -786,7 +881,7 @@ type memoryStore struct {
 
 func (m *memoryStore) Load(context.Context) (string, error) {
 	if m.cookie == "" {
-		return "", cookies.ErrNotSaved
+		return "", secretfile.ErrNotSaved
 	}
 	return m.cookie, nil
 }
@@ -799,4 +894,9 @@ func (m *memoryStore) Save(_ context.Context, cookie string) error {
 func (m *memoryStore) Delete(context.Context) error {
 	m.cookie = ""
 	return nil
+}
+
+// lastFMSession is where a test app keeps its Last.fm session key.
+func lastFMSession(dir string) secretfile.File {
+	return secretfile.File{Path: filepath.Join(dir, "session"), Keychain: secretfile.NoKeychain{}, Name: "lastfm-session"}
 }

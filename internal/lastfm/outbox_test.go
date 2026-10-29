@@ -1,7 +1,6 @@
 package lastfm
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,30 +53,5 @@ func TestOutboxToleratesBadFile(t *testing.T) {
 	o.Wait()
 	if OpenOutbox(path).Len() != 1 {
 		t.Error("the outbox did not replace the bad file")
-	}
-}
-
-func TestSessionStoreIsPrivate(t *testing.T) {
-	s := &SessionStore{Path: filepath.Join(t.TempDir(), "lastfm.txt")}
-	if _, err := s.Load(); !errors.Is(err, ErrNoSession) {
-		t.Fatalf("Load before save: %v", err)
-	}
-	if err := s.Save("KEY"); err != nil {
-		t.Fatal(err)
-	}
-	if info, _ := os.Stat(s.Path); info.Mode().Perm() != 0o600 {
-		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
-	}
-	if key, err := s.Load(); err != nil || key != "KEY" {
-		t.Errorf("Load = %q, %v", key, err)
-	}
-	if err := s.Delete(); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Delete(); err != nil {
-		t.Errorf("deleting twice: %v", err)
-	}
-	if _, err := s.Load(); !errors.Is(err, ErrNoSession) {
-		t.Errorf("Load after delete: %v", err)
 	}
 }

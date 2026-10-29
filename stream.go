@@ -6,8 +6,27 @@ import (
 	"time"
 
 	"github.com/elianiva/meiro/internal/audio"
+	"github.com/elianiva/meiro/internal/ytdlp"
 	"github.com/elianiva/meiro/youtube"
 )
+
+// resolveAudio finds a track's audio by asking YouTube's player directly,
+// and falls back to yt-dlp, which knows more ways to ask, when that fails.
+// Asking directly takes a request, where yt-dlp starts a Python process of
+// about 70 MB and takes a couple of seconds.
+func resolveAudio(client *youtube.Client) audio.Resolver {
+	return func(ctx context.Context, videoID string) (string, time.Duration, error) {
+		url, total, err := client.AudioStream(ctx, videoID)
+		if err == nil {
+			return url, total, nil
+		}
+		if ctx.Err() != nil {
+			return "", 0, err
+		}
+		log.Printf("playback: direct resolve failed video_id=%s, trying yt-dlp: %v", videoID, err)
+		return ytdlp.Resolve(ctx, videoID)
+	}
+}
 
 // resolvedAudio is where a track's audio is, and how long it plays.
 type resolvedAudio struct {
@@ -31,10 +50,14 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 	loudnessClient := a.loudnessClient(item.VideoID)
 	known, knownOK := a.loudnessMap.Get(item.VideoID)
 	volume, normalize := a.volume, a.settings.NormalizeLoudness
+	speed := a.speedFor(item)
 	streams := a.streams
 	log.Printf("playback: resolving video_id=%s", item.VideoID)
 	startTask(a, &a.stream, audio.ResolveTimeout, func(ctx context.Context) (resolvedAudio, error) {
 		a.player.Stop()
+		if err := a.player.SetSpeed(ctx, speed); err != nil {
+			return resolvedAudio{}, err
+		}
 		// The gain is in place before the device starts, so a track that is
 		// louder or quieter than the last one does not begin at the wrong
 		// volume for a moment. A lookup that fails, or that runs past
@@ -84,6 +107,7 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 			return
 		}
 		log.Printf("playback: audio started video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
+		a.applySpeed() // a speed chosen while the audio was on its way
 		a.audioStarted(item, found, a.player.Position(), changed, cache)
 		a.syncSystemMedia()
 	})
@@ -147,7 +171,9 @@ func (a *app) syncPreload() {
 	if !ok || a.preload.busy() && a.preloadFor != next.VideoID {
 		a.preload.stop()
 	}
-	if !ok || a.stream.busy() || a.preload.busy() || a.preloadFailed == next.VideoID ||
+	// A track that plays at another speed starts on its own: the player
+	// follows on at the speed of the track before.
+	if !ok || a.stream.busy() || a.preload.busy() || a.preloadFailed == next.VideoID || a.speedFor(next) != a.speedFor(a.current) ||
 		a.player.Preloaded() == next.VideoID || a.total <= 0 || !a.player.Playing() ||
 		a.total-a.player.Position() > preloadLead {
 		return
@@ -290,6 +316,7 @@ func (a *app) recoverStream(failure string) bool {
 			return
 		}
 		a.applyLoudness()
+		a.applySpeed()
 		if paused && bySleep && !a.suspendedWhilePlaying {
 			a.player.Resume() // the wake came while the stream was on its way
 		}

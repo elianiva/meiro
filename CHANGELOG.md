@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Tracks can crossfade.** A new Playback section in Settings fades the end of a song out while the next one fades in. Choose 1 to 12 seconds, and turn it off to go back to gapless playback.
 - **The notch closes automatically when you leave it.** Move the pointer away for two seconds to return to the compact player. Moving back cancels the countdown; dragging progress or keeping keyboard focus on a control holds the panel open.
 - **Open Now Playing from the notch cover.** Click the large artwork to bring Meiro forward on the current song and collapse the notch, preserving playback position and pause state.
 - **Follow artist and album names from the player.** In the main window's player bar and Now Playing, click a linked credit to open its page while music keeps playing. Each credited artist opens separately, and saved queues retain their links.
@@ -21,10 +22,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **The window buttons on Windows show in the light theme.** The minimise, maximise and close buttons were white on a light window when Windows was dark; they now follow the theme you chose.
+- **The tray mini player on Windows has rounded corners.** Its corners no longer show a dark square behind the panel.
 - **Compact notch clicks respond reliably.** Clicking the cover or playback indicator opens the panel even when the mouse is held briefly or Meiro gains focus during the click.
 - **Reopen Meiro from the notch after closing its window.** On a notched Mac, the notch player keeps the main window available in the background by default. Open Meiro restores it and collapses the notch. Choosing to quit closes the notch as well, and explicit background preferences are respected.
 - **The macOS notch gives focus back to the menu bar.** The compact player no longer keeps keyboard focus, and clicking outside an expanded notch releases it without interrupting playback or the collapse animation.
 - **Album covers load when following a name from the player.** Albums using YouTube Music's newer page layout now show their own artwork instead of a music-note placeholder.
+
+## [0.4.15] - 2026-10-28
+
+### Fixed
+
+- **Playing a song from the Related tab queues only songs.** Up next used to fill with the playlists, albums and artists listed beside it, which could not play.
+- **Playlists, albums, artists and podcasts in the Related tab open when clicked.** Clicking one did nothing; it now opens its page, as it does anywhere else.
+- **The Related tab works for podcast episodes.** It said related songs weren't available; it now lists related episodes and suggested podcasts.
+
+### Added
+
+- **Songs and podcast episodes can play faster or slower.** A speed button beside the volume, in the player bar, the full player and the tray's mini player, picks from 0.5× to 3× without changing the pitch. The track goes on from where it was. Music and podcasts each remember their own speed, so speeding up an episode leaves your songs at the pace you chose for them.
+
+### Changed
+
+- **Podcast episodes show their details instead of lyrics.** The player's Lyrics tab becomes Details for an episode, as on YouTube Music: views, date and length, the title, the show and the full description. Chapter timestamps jump to that point in the episode, links open in the browser, and the show's name opens its page.
+- **Your YouTube Music and Last.fm sessions are encrypted on disk.** The key is in your system's credential store: the Keychain on macOS, the Secret Service (such as GNOME Keyring or KWallet) on Linux, and the Credential Manager on Windows. A session that an earlier version saved is encrypted the first time Meiro reads it, so you stay signed in. On macOS, the first launch after an update asks once to use the key: choose **Always Allow**. On a Linux system without a credential store, the sessions stay in files only your user can read.
+- **Songs start sooner, without a memory spike.** Meiro asks YouTube for a song's audio itself, in a fraction of a second, and only runs yt-dlp when that fails. yt-dlp used to run for every song, taking about two seconds and 70 MB of memory each time, twice when the next song was readied at the same time. Meiro also no longer runs yt-dlp at launch to read its version.
+- **Meiro uses less memory for artwork.** Covers are kept at the size your screen shows them, so on a screen at 100% scaling a cover holds as little as a quarter of the pixels it used to, and Meiro keeps half as many covers in memory as before. Hiding or minimizing the window lets go of them until you open it again. Where Meiro draws with the GPU, as on a Mac, a cover's pixels are kept only once, by the GPU.
+- **The wavy progress bar and the dancing bars hold still when your system asks for reduced motion.**
+
+## [0.4.14] - 2026-10-28
+
+### Fixed
+
+- **Unmuting brings back the volume you had.** It no longer jumps to 40% when the volume was lower.
+- **The Flatpak can sign in with your browser.** Import from a browser reads the profiles of your Chrome, Brave, Edge, Helium, Firefox or Zen, and the keyring that unlocks Chromium cookies. Sign in with a browser window needs one permission the Flatpak does not ask for by default: the dialog shows the `flatpak override` command that grants it, with a button to copy it. After you run it and restart Meiro, the window opens your default browser, whether you installed it natively, with Flatpak or with Snap.
 
 ## [0.4.13] - 2026-10-28
 

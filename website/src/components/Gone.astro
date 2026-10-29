@@ -1,0 +1,36 @@
+---
+import Section from "./Section.astro";
+import SectionHead from "./SectionHead.astro";
+
+const items = [
+  { word: "Chromium", text: "The window is drawn natively. There is no browser engine to carry around." },
+  { word: "Ads", text: "Meiro plays the audio stream. With no page, there is no ad slot to fill." },
+  { word: "Telemetry", text: "No analytics of its own, and no account needed to listen." },
+  { word: "Video", text: "The song plays. The picture does not." },
+];
+---
+
+<Section class="bg-night text-night-ink" id="gone">
+  <div class="wrap">
+    <SectionHead title="What Meiro leaves out" />
+    <ul class="grid">
+      {
+        items.map(({ word, text }) => (
+          <li class="group/gone grid grid-cols-[minmax(0,1fr)_minmax(0,340px)] items-center gap-x-16 gap-y-8 py-[clamp(20px,3vw,40px)] max-md:grid-cols-[1fr] max-md:gap-1" data-strike>
+            <span class="relative justify-self-start text-[clamp(56px,11vw,160px)] leading-none font-semibold tracking-[-0.055em] [transition:opacity_0.6s_ease_0.45s] group-[.in]/gone:opacity-40 after:absolute after:-right-[0.04em] after:-left-[0.04em] after:top-[54%] after:h-[0.085em] after:origin-left after:scale-x-0 after:rounded-[99px] after:bg-night-accent after:[transition:scale_0.7s_var(--ease-glide)_0.3s,background-color_0.4s_ease] group-[.in]/gone:after:scale-x-100">
+              {word}
+            </span>
+            <p class="max-w-[30ch] text-night-muted">{text}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</Section>
+
+<script>
+  import { arrive } from "../scripts/arrive";
+
+  /* Each word is struck through as it arrives. */
+  arrive("[data-strike]", undefined, "0px 0px -25% 0px");
+</script>

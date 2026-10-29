@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -29,6 +30,9 @@ type signInState struct {
 	try task
 	// inWindow is set while the browser window waits for the user.
 	inWindow bool
+	// hostAccess is set when the Flatpak could not open a browser window, so
+	// the dialog shows the command that lets it.
+	hostAccess bool
 	// advanced shows the ways to sign in that copy a session from a browser
 	// the user keeps using: importing it, and pasting its Cookie header.
 	advanced bool
@@ -36,7 +40,7 @@ type signInState struct {
 
 // reset empties the dialog. Its task is the caller's to stop.
 func (s *signInState) reset() {
-	s.open, s.err, s.attempt, s.cookie, s.browsers, s.importFailed, s.inWindow, s.advanced = false, "", 0, "", false, "", false, false
+	s.open, s.err, s.attempt, s.cookie, s.browsers, s.importFailed, s.inWindow, s.hostAccess, s.advanced = false, "", 0, "", false, "", false, false, false
 }
 
 // openSignIn opens the dialog that takes the cookie of the user's browser
@@ -125,7 +129,7 @@ func (a *app) importSignIn(browser cookies.Source) {
 func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(context.Context) (string, error)) {
 	acc := &a.account
 	s := &acc.signIn
-	s.err, s.importFailed = "", ""
+	s.err, s.importFailed, s.hostAccess = "", "", false
 	attempt := s.attempt
 	startTask(a, &s.try, timeout, func(ctx context.Context) (*session, error) {
 		cookie, err := read(ctx)
@@ -142,6 +146,7 @@ func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(con
 		if err != nil {
 			s.err = err.Error()
 			s.importFailed = from.browser
+			s.hostAccess = errors.Is(err, cookies.ErrNeedsHostAccess)
 			return
 		}
 		s.reset()
@@ -204,7 +209,16 @@ func (a *app) signInDialog(c *ui.Context) {
 			})
 		}
 		m3.Text(c, m3.BodyMedium, "Meiro saves the session in a file in its data folder that only your user can read. Sign out to remove Meiro's saved copy.").TextColor(sc.OnSurfaceVariant)
-		if s.err != "" {
+		if s.hostAccess {
+			m3.Text(c, m3.BodyMedium, "To open your browser, Meiro needs permission to start programs outside its Flatpak sandbox. Run this command, then restart Meiro:").TextColor(sc.Error)
+			ui.Column(c).Padding(12, 16).Radius(m3.Large).Background(sc.SurfaceContainerHighest).Children(func() {
+				m3.Text(c, m3.BodyMedium, cookies.HostAccessCommand).TextColor(sc.OnSurface).Selectable()
+			})
+			if m3.Button(c, m3.ButtonSpec{Label: "Copy command", Icon: m3.IconCopy, Kind: m3.Tonal, Key: "copy-host-access"}).Clicked() {
+				c.WriteClipboard(cookies.HostAccessCommand)
+				c.Toast("Command copied")
+			}
+		} else if s.err != "" {
 			m3.Text(c, m3.BodyMedium, s.err).TextColor(sc.Error).MaxLines(4)
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {

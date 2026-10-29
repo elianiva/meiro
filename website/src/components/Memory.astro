@@ -1,0 +1,71 @@
+---
+import Section from "./Section.astro";
+import SectionHead from "./SectionHead.astro";
+
+// One dot is 20 MB. `maybe` dots are what a tab picks up as you keep listening.
+const rows = [
+  { name: "Meiro", note: "Typical use", dots: 5, maybe: 0, mb: 100, range: "", tab: false },
+  { name: "A browser tab", note: "Grows with use", dots: 15, maybe: 25, mb: 300, range: "–800", tab: true },
+];
+---
+
+<Section id="memory">
+  <div class="wrap">
+    <SectionHead
+      title="A tab keeps growing. Meiro stays put."
+      lead="A YouTube Music tab opens around 300 MB, then swells the longer you listen, up to 800. Meiro stays near 100 all day, because it draws its own window instead of carrying Chromium around."
+    />
+    <div class="group/mem grid gap-[clamp(40px,5vw,72px)]" id="mem">
+      {
+        rows.map((row) => (
+          <div class="grid grid-cols-[230px_minmax(0,1fr)_clamp(220px,26vw,360px)] items-center gap-8 max-lg:grid-cols-[1fr_auto] max-lg:gap-x-6 max-lg:gap-y-4">
+            <div>
+              <strong class="block text-[24px] leading-[1.15] tracking-[-0.02em]">{row.name}</strong>
+              <span class="text-muted max-sm:hidden">{row.note}</span>
+            </div>
+            <div class="grid grid-cols-[repeat(20,1fr)] gap-[clamp(5px,0.8vw,12px)] max-lg:col-span-full max-lg:row-2 max-lg:grid-cols-[repeat(10,1fr)]" aria-hidden="true">
+              {Array.from({ length: row.dots + row.maybe }, (_, i) => (
+                <i
+                  class:list={[
+                    "aspect-square rounded-circle opacity-0 [transform:scale(0.6)] [transition:transform_0.5s_var(--ease-glide),opacity_0.4s_ease,background-color_0.4s_ease] group-[.in]/mem:[transform:none]",
+                    !row.tab && "bg-accent group-[.in]/mem:opacity-100",
+                    row.tab && i < row.dots && "bg-ink group-[.in]/mem:opacity-100",
+                    row.tab && i >= row.dots && "bg-muted group-[.in]/mem:opacity-32",
+                  ]}
+                  style={`transition-delay:${i * 24}ms`}
+                />
+              ))}
+            </div>
+            <div class="text-right text-[clamp(38px,5.4vw,80px)] leading-none font-semibold tracking-[-0.05em] whitespace-nowrap tabular-nums">
+              <span data-to={row.mb}>{row.mb}</span>{row.range && <span class="opacity-0 [transition:opacity_0.5s_ease_1.6s] group-[.in]/mem:opacity-100">{row.range}</span>}<small class="ml-1.5 text-[0.34em] font-medium tracking-normal text-muted">MB</small>
+            </div>
+          </div>
+        ))
+      }
+      <p class="-mt-2 text-small text-muted">One dot is 20 MB. Meiro can drop to about 99 MB. The fainter dots are what a tab picks up as you keep listening.</p>
+      <p class="sr-only">Meiro uses about 100 MB of memory. YouTube Music in a browser tab uses 600 to 800 MB.</p>
+    </div>
+  </div>
+</Section>
+
+<script>
+  import { arrive } from "../scripts/arrive";
+
+  /* The numbers count up while the dots pop in. */
+  arrive(
+    "#mem",
+    (mem) => {
+      mem.querySelectorAll<HTMLElement>("[data-to]").forEach((el) => {
+        const to = Number(el.dataset.to);
+        const start = performance.now();
+        const span = 1000 + (to > 100 ? 700 : 0);
+        (function frame(now: number) {
+          const t = Math.min(1, (now - start) / span);
+          el.textContent = String(Math.round(to * (1 - Math.pow(1 - t, 3))));
+          if (t < 1) requestAnimationFrame(frame);
+        })(start);
+      });
+    },
+    "0px 0px -20% 0px",
+  );
+</script>

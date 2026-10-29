@@ -1,0 +1,16 @@
+---
+interface Props {
+  title: string;
+  text: string;
+  class?: string;
+}
+const { title, text, class: className } = Astro.props;
+---
+
+<article class:list={["reveal flex flex-col justify-between gap-8 rounded-card bg-bg-soft p-[clamp(28px,3.4vw,52px)] transition-[background-color] duration-400", className]}>
+  <div>
+    <h3 class="text-h3 text-balance">{title}</h3>
+    <p class="mt-3 max-w-[34ch]">{text}</p>
+  </div>
+  <slot />
+</article>

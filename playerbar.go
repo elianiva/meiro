@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -185,6 +186,60 @@ func (a *app) compactVolumeControl(c *ui.Context) {
 	})
 }
 
+// speedLabel names a playback speed as "1.5×".
+func speedLabel(speed float64) string {
+	return strconv.FormatFloat(speed, 'f', -1, 64) + "×"
+}
+
+// speedControl is the button that shows how fast the current track plays and
+// opens the menu that chooses it; key tells the player's buttons apart.
+func (a *app) speedControl(c *ui.Context, key string) {
+	sc := m3.Of(c).Scheme
+	speed := a.speedFor(a.current)
+	anchor := m3.Button(c, m3.ButtonSpec{Label: speedLabel(speed), Kind: m3.TextOnly, Size: m3.Small40, Key: key})
+	// A menu ignores the press that lands on the button that opened it, so
+	// the button closes it, as the account menu's button does.
+	if anchor.Clicked() {
+		if a.nowPlaying.speedMenu == key {
+			a.nowPlaying.speedMenu = ""
+		} else {
+			a.nowPlaying.speedMenu = key
+		}
+	}
+	open := a.nowPlaying.speedMenu == key
+	if !open {
+		return
+	}
+	m3.Menu(c, anchor, &open, 200, func() {
+		m3.Text(c, m3.LabelMedium, "Playback speed").Padding(12, 12, 4).TextColor(sc.OnSurfaceVariant)
+		for _, choice := range playbackSpeeds {
+			label := speedLabel(choice)
+			if choice == 1 {
+				label = "Normal"
+			}
+			row := ui.ButtonBase(c.Key("speed-" + label))
+			row.Height(36).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).Label(label).
+				Role(ui.RoleMenuItemRadio).Checked(choice == speed).
+				Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+			row.Children(func() {
+				if choice == speed {
+					ui.Icon(c, m3.IconCheck).FontSize(22).TextColor(sc.Primary)
+				} else {
+					ui.Box(c).Size(22, 22)
+				}
+				m3.Text(c, m3.BodyLarge, label).Grow(1).SingleLine().TextColor(sc.OnSurface)
+			})
+			if row.Clicked() {
+				open = false
+				a.setSpeed(choice)
+			}
+		}
+	})
+	if !open {
+		a.nowPlaying.speedMenu = ""
+	}
+}
+
 // trackLine is the name of the current track over who made it, or the
 // reason it does not play.
 func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.Element {
@@ -276,9 +331,11 @@ func (a *app) playerBar(c *ui.Context) {
 			a.scrubber(c)
 		})
 
+		// The buttons on the right never overflow the bar: when their share is
+		// too narrow for them, the track's share gives way.
 		end := ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(8)
 		if roomy {
-			end.Grow(1).Basis(0).MinWidth(0)
+			end.Grow(1).Basis(0)
 		} else {
 			end.Shrink(0)
 		}
@@ -288,6 +345,7 @@ func (a *app) playerBar(c *ui.Context) {
 			} else {
 				a.compactVolumeControl(c)
 			}
+			a.speedControl(c, "bar-speed")
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconQueue, Label: "Up next", Key: "bar-queue"}).Clicked() {
 				a.openPlayer(tabQueue, true)
 			}

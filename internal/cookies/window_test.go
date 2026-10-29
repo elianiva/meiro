@@ -771,6 +771,62 @@ func TestFindBrowserKeepsChromiumFirstWhenNothingIsDefaulted(t *testing.T) {
 	}
 }
 
+// TestFindBrowserInAFlatpakAsksTheHost checks that, inside a Flatpak, the
+// browsers and the default are read on the host through flatpak-spawn, and
+// that the profile goes where the host browser can see it.
+func TestFindBrowserInAFlatpakAsksTheHost(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Flatpak is Linux")
+	}
+	home := t.TempDir()
+	cache := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("FLATPAK_ID", "com.elianiva.meiro")
+	t.Setenv("XDG_CACHE_HOME", cache)
+	sandbox := t.TempDir()
+	host := t.TempDir()
+	t.Setenv("PATH", sandbox)
+	scripts := map[string]string{
+		filepath.Join(sandbox, "flatpak-spawn"): "#!/bin/sh\n[ \"$1 $2\" = \"--host --watch-bus\" ] || exit 99\nshift 2\nPATH=" + host + ":/bin:/usr/bin exec \"$@\"\n",
+		filepath.Join(host, "xdg-settings"):     "#!/bin/sh\necho chromium.desktop\n",
+		filepath.Join(host, "google-chrome"):    "#!/bin/sh\n",
+		filepath.Join(host, "chromium"):         "#!/bin/sh\n",
+	}
+	for path, body := range scripts {
+		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	b, ok := findBrowser(context.Background(), true)
+	if !ok {
+		t.Fatal("findBrowser found no browser on the host")
+	}
+	if b.path != "chromium" {
+		t.Errorf("findBrowser picked %s, want the host's default chromium", b.path)
+	}
+	if b.profileRoot != cache {
+		t.Errorf("profileRoot = %q, want the cache directory the host shares, %s", b.profileRoot, cache)
+	}
+}
+
+// TestSignInWindowInAFlatpakWithoutHostAccessAsksForIt checks that a Flatpak
+// that may not reach the host says so, rather than that no browser exists.
+func TestSignInWindowInAFlatpakWithoutHostAccessAsksForIt(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Flatpak is Linux")
+	}
+	t.Setenv("FLATPAK_ID", "com.elianiva.meiro")
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	if err := os.WriteFile(filepath.Join(bin, "flatpak-spawn"), []byte("#!/bin/sh\necho 'Portal call failed: org.freedesktop.DBus.Error.ServiceUnknown' >&2\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SignInWindow(context.Background(), WindowOptions{}); !errors.Is(err, ErrNeedsHostAccess) {
+		t.Errorf("err = %v, want ErrNeedsHostAccess", err)
+	}
+}
+
 // TestLinuxCandidatesUseXDGDataHome checks a user Flatpak install under a
 // custom XDG_DATA_HOME is found at the path Flatpak actually uses.
 func TestLinuxCandidatesUseXDGDataHome(t *testing.T) {

@@ -1,0 +1,47 @@
+---
+import Section from "./Section.astro";
+import SectionHead from "./SectionHead.astro";
+
+const releases = "https://github.com/elianiva/meiro/releases/latest";
+const platforms = [
+  { os: "mac", name: "macOS", text: "A universal .dmg for Apple Silicon and Intel. Not notarized yet." },
+  { os: "win", name: "Windows", text: "A portable .zip or the setup .exe. The Windows build is untested." },
+  { os: "linux", name: "Linux", text: "AppImage, .deb, .rpm, .flatpak or .tar.gz, for amd64 and arm64. The .deb and .rpm install the tray library for you." },
+];
+---
+
+<Section class="scroll-mt-0 pt-0!" id="download">
+  <div class="wrap grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-start gap-[clamp(40px,6vw,96px)] max-lg:grid-cols-[1fr]">
+    <SectionHead title="Download Meiro" lead="Free and open source. CI builds every release from the source you can read on GitHub." bare />
+    <div class="reveal grid gap-3 [--d:1]">
+      {
+        platforms.map(({ os, name, text }) => (
+          <a
+            class="group/os grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1.5 rounded-card bg-bg-soft px-7.5 py-6.5 no-underline [transition:background-color_0.3s_ease,translate_0.2s_var(--ease-glide)] hover:translate-x-1.5 hover:bg-field [&.recommended]:-order-1 [&.recommended]:bg-field [&.recommended]:text-field-ink max-sm:grid-cols-[minmax(0,1fr)] max-sm:p-5.5"
+            data-os={os}
+            href={releases}
+          >
+            <span class="text-h3 leading-[1.05] tracking-[-0.04em]">{name}</span>
+            <span class="col-1 max-w-[44ch] text-muted group-[.recommended]/os:text-field-ink group-[.recommended]/os:opacity-80">{text}</span>
+            <span class="col-2 row-[1/span_2] inline-flex h-11 items-center rounded-pill bg-accent px-5.5 text-[16px] font-semibold text-accent-ink transition-[background-color] duration-400 max-sm:col-1 max-sm:row-auto max-sm:mt-3 max-sm:justify-center">
+              Download
+            </span>
+          </a>
+        ))
+      }
+      <p class="mt-9 max-w-[58ch] text-small text-muted">
+        Meiro is beta and unofficial. It uses YouTube's private interfaces, so a change on YouTube's side can break browsing, playback or sign-in until an update ships. See the <a
+          href="https://github.com/elianiva/meiro#known-issues">known issues</a
+        >. Minimal builds are on the same releases page.
+      </p>
+    </div>
+  </div>
+</Section>
+
+<script>
+  import { detectOS } from "../scripts/os";
+
+  /* Put the visitor's own platform first. */
+  const os = detectOS();
+  if (os) document.querySelector(`[data-os="${os}"]`)?.classList.add("recommended");
+</script>

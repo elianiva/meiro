@@ -19,6 +19,15 @@ import (
 // installed.
 var ErrNoBrowser = errors.New("no Chrome, Edge, Brave, Helium, Vivaldi, Chromium, Firefox or Zen browser was found")
 
+// ErrNeedsHostAccess reports that Meiro runs in a Flatpak that may not start
+// programs on the host, so it can neither find nor open the user's browser.
+// HostAccessCommand grants the permission.
+var ErrNeedsHostAccess = errors.New("the Flatpak may not start programs outside its sandbox")
+
+// HostAccessCommand gives this Flatpak the permission ErrNeedsHostAccess
+// asks for.
+const HostAccessCommand = "flatpak override --user --talk-name=org.freedesktop.Flatpak com.elianiva.meiro"
+
 // errFirefoxNeedsYtDlp reports that a Firefox or Zen browser is installed,
 // but yt-dlp is missing, so its session cannot be read.
 var errFirefoxNeedsYtDlp = errors.New("signing in with Firefox or Zen needs yt-dlp")
@@ -110,6 +119,9 @@ func SignInWindow(ctx context.Context, options WindowOptions) (string, error) {
 	if options.retry.grace == 0 {
 		options.retry.grace = firefoxReadGrace
 	}
+	if options.Executable == "" && !hostReachable(ctx) {
+		return "", ErrNeedsHostAccess
+	}
 	read := options.read
 	canReadFirefox := read != nil || ytDlpAvailable()
 	b, ok := options.browser(ctx, canReadFirefox)
@@ -141,7 +153,7 @@ func SignInWindow(ctx context.Context, options WindowOptions) (string, error) {
 
 	ctx, cancel := context.WithTimeout(ctx, SignInTimeout)
 	defer cancel()
-	cmd := proc.Command(ctx, b.path, b.windowArgs(profile, options.URL)...)
+	cmd := hostCommand(ctx, b.path, b.windowArgs(profile, options.URL)...)
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("start the browser: %w", err)
 	}

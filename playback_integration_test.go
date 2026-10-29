@@ -473,6 +473,12 @@ func TestNormalizationToggleImmediatelyUpdatesPlayerVolume(t *testing.T) {
 
 func TestVolumeAndMutePersistToSettings(t *testing.T) {
 	a, _ := playbackApp(t)
+	a.volume = 30 // as restored from settings at startup
+	a.toggleMute()
+	a.toggleMute()
+	if a.settings.Volume != 30 {
+		t.Errorf("unmuting the startup volume restored %v, want 30", a.settings.Volume)
+	}
 	a.setVolume(30)
 	if a.settings.Volume != 30 || a.player.Volume() != 0.3 {
 		t.Errorf("volume: settings %v, player %v", a.settings.Volume, a.player.Volume())
@@ -482,8 +488,14 @@ func TestVolumeAndMutePersistToSettings(t *testing.T) {
 		t.Errorf("mute left the player at %v", a.player.Volume())
 	}
 	a.toggleMute()
-	if a.settings.Volume != 40 { // unmuting never comes back quieter than 40
-		t.Errorf("unmuting restored %v, want 40", a.settings.Volume)
+	if a.settings.Volume != 30 {
+		t.Errorf("unmuting restored %v, want 30", a.settings.Volume)
+	}
+	a.setVolume(15)
+	a.setVolume(0) // the slider dragged down to 0
+	a.toggleMute()
+	if a.settings.Volume != 15 {
+		t.Errorf("unmuting after the slider went to 0 restored %v, want 15", a.settings.Volume)
 	}
 	a.setVolume(500)
 	if a.settings.Volume != 100 {
@@ -951,6 +963,77 @@ func TestAPodcastEpisodeComesBackWhereItStopped(t *testing.T) {
 	waitFor(t, playing("ep-1"))
 	if pos := a.player.Position(); pos < 70*time.Second {
 		t.Errorf("episode one came back at %v, want where it stopped, 70s or past it", pos)
+	}
+}
+
+// An episode plays at the speed chosen from the player bar, and goes on at it
+// from where it was. Music keeps a speed of its own, chosen the same way, and
+// the next episode plays at the speed chosen for podcasts.
+func TestEpisodesAndMusicPlayAtTheirOwnChosenSpeeds(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	tone := filepath.Join(t.TempDir(), "tone.wav")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=duration=120", tone).CombinedOutput(); err != nil {
+		t.Fatalf("making a tone: %v: %s", err, out)
+	}
+	a, r := playbackApp(t)
+	r.url = func(string, int) (string, error) { return tone, nil }
+	a.router.Push("/podcast/MPSPPLshow")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	playing := func(id string) func() bool {
+		return func() bool { a.poll(); return a.current.VideoID == id && a.player.Playing() }
+	}
+
+	if err := tt.Click("Episode One"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, playing("ep-1"))
+	a.player.Seek(70 * time.Second)
+	waitFor(t, func() bool { return a.player.Position() >= 70*time.Second })
+	tt.Frame()
+	if err := tt.Click("1×"); err != nil {
+		t.Fatalf("no speed button for an episode: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if err := tt.Click("2×"); err != nil {
+		t.Fatalf("no 2× in the speed menu: %v in %q", err, tt.Texts())
+	}
+	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 2 && a.player.Playing() })
+	if a.current.VideoID != "ep-1" || a.player.Position() < 70*time.Second {
+		t.Errorf("after the change %s plays at %v, want ep-1 from 70s or past it", a.current.VideoID, a.player.Position())
+	}
+	tt.Frame()
+	if !tt.HasText("2×") || a.settings.PodcastSpeed != 2 {
+		t.Errorf("the button reads %q and the setting is %v, want 2×", tt.Texts(), a.settings.PodcastSpeed)
+	}
+
+	a.play(tracks("song")[0], nil)
+	waitFor(t, playing("song"))
+	if got := a.player.Speed(); got != 1 {
+		t.Errorf("a song plays at %v×, want its own pace until music has a speed", got)
+	}
+	tt.Frame()
+	if err := tt.Click("1×"); err != nil {
+		t.Fatalf("no speed button for a song: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if err := tt.Click("1.5×"); err != nil {
+		t.Fatalf("no 1.5× in the speed menu: %v in %q", err, tt.Texts())
+	}
+	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 1.5 && a.player.Playing() })
+	if a.settings.MusicSpeed != 1.5 || a.settings.PodcastSpeed != 2 {
+		t.Errorf("music speed %v and podcast speed %v, want 1.5 and the 2 kept", a.settings.MusicSpeed, a.settings.PodcastSpeed)
+	}
+
+	if err := tt.Click("Episode Two"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, playing("ep-2"))
+	if got := a.player.Speed(); got != 2 {
+		t.Errorf("the next episode plays at %v×, want the 2× chosen", got)
 	}
 }
 

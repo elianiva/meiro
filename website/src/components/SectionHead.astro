@@ -1,0 +1,14 @@
+---
+interface Props {
+  title: string;
+  lead?: string;
+  /** Drop the space below, when the heading sits in a grid. */
+  bare?: boolean;
+}
+const { title, lead, bare = false } = Astro.props;
+---
+
+<div class:list={[!bare && "mb-[clamp(48px,6vw,88px)]"]}>
+  <h2 class="reveal max-w-[17ch] text-h2 text-balance">{title}</h2>
+  {lead && <p class="reveal mt-7 max-w-[46ch] text-lead text-pretty [--d:1]">{lead}</p>}
+</div>

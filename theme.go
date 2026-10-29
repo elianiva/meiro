@@ -29,6 +29,9 @@ type themeState struct {
 	previews    map[m3.Style]m3.Scheme
 	previewSeed ui.Color
 	previewDark bool
+	// buttonsDark is the appearance the window buttons were last drawn for,
+	// once buttonsSet.
+	buttonsDark, buttonsSet bool
 }
 
 // themeGlide is how long a change of colours takes.

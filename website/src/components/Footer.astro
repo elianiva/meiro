@@ -1,0 +1,53 @@
+---
+const links = [
+  { href: "https://github.com/elianiva/meiro", label: "GitHub" },
+  { href: "https://github.com/elianiva/meiro/releases/latest", label: "Releases" },
+  { href: "https://github.com/elianiva/meiro/issues", label: "Issues" },
+  { href: "https://github.com/elianiva/meiro/blob/master/CHANGELOG.md", label: "Changelog" },
+];
+const mark = "w-full h-auto js:translate-y-9 js:opacity-0 js:[transition:opacity_1.4s_ease,translate_1.4s_var(--ease-glide)] js:group-[.in]/mark:translate-y-0 js:group-[.in]/mark:opacity-40";
+---
+
+<!-- The name comes back at full width. -->
+<footer class="bg-bg-soft pt-[clamp(56px,7vw,96px)] pb-8 transition-[background-color] duration-400">
+  <div class="wrap">
+    <div class="relative z-1 flex flex-wrap justify-between gap-10">
+      <div class="grid max-w-[38ch] gap-3">
+        <span class="flex items-center gap-3.5 text-[24px] tracking-[-0.02em]"><img class="size-14 rounded-[14px]" src="/assets/brand/icon.svg" alt="" width="56" height="56" /><strong>Meiro</strong></span>
+        <p>A native desktop player for YouTube Music. No browser engine, no ads, about 100&nbsp;MB of memory.</p>
+        <p class="text-[14px] text-muted">Beta and unofficial. Built with Go and MyGO!!!!!.</p>
+      </div>
+      <div class="flex gap-[clamp(32px,6vw,96px)]">
+        <div>
+          <h2 class="mb-3.5 text-[16px] font-semibold">Project</h2>
+          <ul class="grid gap-2">
+            {
+              links.map(({ href, label }) => (
+                <li>
+                  <a class="text-muted no-underline hover:text-ink hover:underline" href={href}>{label}</a>
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div
+      class="group/mark mt-[clamp(-130px,-9vw,-50px)] max-sm:mt-4 mb-[clamp(24px,3vw,40px)] max-h-[clamp(130px,27vw,380px)] overflow-hidden [mask-image:linear-gradient(to_bottom,#000_0%,rgba(0,0,0,0.55)_45%,transparent_92%)]"
+      data-mark
+      aria-hidden="true"
+    >
+      <img class:list={[mark, "dark:hidden"]} src="/assets/brand/wordmark-light.svg" alt="" width="466" height="156" />
+      <img class:list={[mark, "hidden dark:block"]} src="/assets/brand/wordmark-dark.svg" alt="" width="466" height="156" />
+    </div>
+    <div class="flex flex-wrap justify-center gap-x-8 gap-y-2 text-center text-small text-muted">
+      <p>Free software under the <a href="https://github.com/elianiva/meiro/blob/master/LICENSE">GPLv3</a>. Not affiliated with YouTube or Google.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  import { arrive } from "../scripts/arrive";
+
+  arrive("[data-mark]", undefined, "0px 0px -5% 0px");
+</script>

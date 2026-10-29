@@ -1,0 +1,123 @@
+---
+import Icon from "./Icon.astro";
+import Panel from "./Panel.astro";
+import Section from "./Section.astro";
+import SectionHead from "./SectionHead.astro";
+import { presets, bands } from "../data/eq";
+
+const keys = [
+  ["Play or pause", ["Space"]],
+  ["Previous track", ["⇧", "⌘", "J"]],
+  ["Next track", ["⇧", "⌘", "L"]],
+  ["Volume up", ["⇧", "⌘", "I"]],
+  ["Volume down", ["⇧", "⌘", "O"]],
+  ["Mute", ["⇧", "⌘", "M"]],
+  ["Shuffle", ["⇧", "⌘", "S"]],
+  ["Repeat", ["⇧", "⌘", "R"]],
+] as const;
+
+const features = [
+  { icon: "window", title: "Tray mini player", text: "Close the window and the music keeps playing. On macOS and Windows the tray opens a small player." },
+  { icon: "keys", title: "Media keys", text: "Your keyboard keys, the Now Playing widget on a Mac and the media controls on Linux." },
+  { icon: "history", title: "Last.fm", text: "Scrobbles what you play, while you want it to. Pause it any time." },
+  { icon: "chat", title: "Discord", text: "Shows the track, the cover and a time bar on your profile, if you turn it on." },
+  { icon: "bolt", title: "Recent songs, saved", text: "Songs you played lately load faster next time. You choose how many to keep." },
+  { icon: "update", title: "Updates itself", text: "Checks for a new version once a day. You can turn it off." },
+] as const;
+
+const fade = "transition-[background-color] duration-400";
+---
+
+<Section id="details">
+  <div class="wrap">
+    <SectionHead title="Made to stay open all day" />
+    <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-[clamp(16px,2vw,28px)] max-lg:grid-cols-[1fr]">
+      <Panel title="Ten bands, ten presets" text="Pick a preset and the bands move. Volume levelling keeps every song at a similar loudness.">
+        <div id="eq">
+          <div class="flex flex-wrap gap-2" role="group" aria-label="Equaliser presets">
+            {
+              presets.map(([name], i) => (
+                <button
+                  class="h-9.5 cursor-pointer rounded-pill border-none bg-bg px-4 text-[14px] font-medium [transition:background-color_0.25s_ease,color_0.25s_ease,scale_0.15s_ease] hover:bg-field active:scale-95 aria-pressed:bg-accent aria-pressed:text-accent-ink"
+                  type="button"
+                  aria-pressed={i === 0}
+                  data-preset={i}
+                >
+                  {name}
+                </button>
+              ))
+            }
+          </div>
+          <div class:list={["mt-5 grid grid-cols-[repeat(10,1fr)] gap-2 rounded-[22px] bg-bg px-2 pt-6 pb-3.5 max-sm:gap-0.5 max-sm:px-1 max-sm:pt-4 max-sm:pb-2.5", fade]} aria-hidden="true">
+            {
+              bands.map((hz) => (
+                <div class="grid justify-items-center gap-3" data-band>
+                  <span class:list={["relative h-[clamp(120px,12vw,180px)] w-1.5 rounded-md bg-field", fade]}>
+                    <i class="absolute inset-x-0 top-1/2 h-0 rounded-md bg-accent [transition:top_0.55s_var(--ease-glide),height_0.55s_var(--ease-glide),background-color_0.4s_ease]" />
+                    <i class="absolute top-1/2 left-1/2 -mt-[11px] -ml-[11px] size-5.5 rounded-circle bg-accent [transition:top_0.55s_var(--ease-glide),background-color_0.4s_ease]" />
+                  </span>
+                  <span class="text-[14px] text-muted tabular-nums max-sm:text-[12px]">{hz}</span>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </Panel>
+      <Panel title="Every action has a key" text="Rebind any of them in Settings." class="[--d:1]">
+        <ul class="grid gap-1">
+          {
+            keys.map(([action, caps]) => (
+              <li class="flex items-center justify-between gap-4 rounded-[14px] px-3 py-2.5 transition-[background-color] duration-200 hover:bg-bg">
+                <span>{action}</span>
+                <span class="inline-flex gap-1">
+                  {caps.map((cap) => (
+                    <kbd class:list={["inline-grid h-8 min-w-8 place-items-center rounded-[10px] bg-field px-2.5 font-sans text-[14px] leading-[normal] font-semibold text-field-ink", fade]}>{cap}</kbd>
+                  ))}
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </Panel>
+    </div>
+    <div class="mt-[clamp(64px,7vw,104px)] grid grid-cols-[repeat(3,minmax(0,1fr))] gap-x-[clamp(24px,3vw,48px)] gap-y-[clamp(36px,4vw,64px)] max-lg:grid-cols-[1fr]">
+      {
+        features.map((feature, i) => (
+          <div class="reveal grid grid-cols-[56px_minmax(0,1fr)] items-start gap-x-4.5 max-sm:grid-cols-[48px_minmax(0,1fr)]" style={`--d:${i % 3}`}>
+            <span class:list={["row-[1/span_2] grid size-14 place-items-center rounded-circle bg-field text-field-ink max-sm:size-12", fade]}>
+              <Icon name={feature.icon} class="size-6.5 fill-current" />
+            </span>
+            <h3 class="pt-1.5 text-[24px] leading-[1.2] font-semibold tracking-[-0.02em]">{feature.title}</h3>
+            <p class="mt-2 max-w-[34ch] text-muted">{feature.text}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</Section>
+
+<script>
+  import { arrive } from "../scripts/arrive";
+  import { presets } from "../data/eq";
+
+  /* Equaliser: the real presets from the app, drawn live. */
+  const eq = document.getElementById("eq")!;
+  const chips = [...eq.querySelectorAll<HTMLButtonElement>("[data-preset]")];
+  const bands = [...eq.querySelectorAll("[data-band]")].map((band) => {
+    const [fill, thumb] = band.querySelectorAll("i");
+    return { fill, thumb };
+  });
+  function setPreset(n: number) {
+    chips.forEach((chip, k) => chip.setAttribute("aria-pressed", String(k === n)));
+    presets[n][1].forEach((gain, k) => {
+      const mid = 50;
+      const y = mid - (gain / 12) * 50;
+      bands[k].thumb.style.top = y + "%";
+      bands[k].fill.style.top = Math.min(y, mid) + "%";
+      bands[k].fill.style.height = (Math.abs(gain) / 12) * 50 + "%";
+    });
+  }
+  chips.forEach((chip, n) => chip.addEventListener("click", () => setPreset(n)));
+  setPreset(0);
+  arrive("#eq", () => setTimeout(() => setPreset(6), 500), "0px 0px -20% 0px");
+</script>

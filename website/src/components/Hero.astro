@@ -1,0 +1,46 @@
+---
+import Button from "./Button.astro";
+import NowPlaying from "./NowPlaying.astro";
+---
+
+<section class="overflow-hidden bg-field pt-[clamp(120px,11vw,168px)] text-field-ink transition-[background-color] duration-400" id="top">
+  <div class="wrap grid grid-cols-[minmax(0,1fr)] justify-between gap-0 text-center max-lg:grid-cols-[1fr]">
+    <div>
+      <h1 class="text-display whitespace-nowrap max-lg:whitespace-normal">
+        YouTube Music,<br />without the <span
+          class="relative inline-block animate-bloat-fade transition-[color] duration-400 after:absolute after:-right-[0.03em] after:-left-[0.03em] after:top-[56%] after:h-[0.09em] after:origin-left after:scale-x-0 after:animate-bloat-strike after:rounded-[99px] after:bg-[oklch(0.58_0.22_27)] motion-reduce:text-[color-mix(in_oklab,var(--color-field-ink)_38%,var(--color-field))] motion-reduce:after:scale-x-100"
+          >bloat</span
+        >.
+      </h1>
+      <p class="mx-auto mt-6 max-w-[34ch] text-[clamp(19px,1.7vw,24px)] leading-[1.35] text-pretty">A native player with no browser inside. No ads, about 100&nbsp;MB.</p>
+    </div>
+    <div class="grid justify-items-center">
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
+        <Button href="#download" size="lg" id="hero-download">
+          <svg class="size-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 20h16"></path></svg>
+          <span>Download Meiro</span>
+        </Button>
+        <a
+          class="text-[16px] font-semibold underline decoration-[color-mix(in_oklab,currentColor_30%,transparent)] decoration-2 underline-offset-6 transition-[text-decoration-color] duration-200 hover:decoration-current"
+          href="https://github.com/elianiva/meiro">Source on GitHub</a
+        >
+      </div>
+      <p class="mt-3.5 text-center text-small opacity-75">Free and open source.</p>
+    </div>
+  </div>
+  <div class="wrap relative mt-[clamp(72px,7vw,112px)] max-sm:mt-26">
+    <p class="absolute -top-22 right-[4%] z-2 m-0 -rotate-4 text-right font-hand text-[clamp(24px,2.4vw,34px)] leading-none font-semibold text-field-ink transition-[color] duration-400 max-lg:-top-19 max-lg:right-[2%]" aria-hidden="true">
+      try clicking around,<br />it's real!
+      <svg class="absolute top-10 -left-16 h-[54px] w-[70px] rotate-8 max-lg:-left-12.5 max-lg:w-14" viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M104 6C70 4 30 18 18 70"></path><path d="M6 54l12 18 18-12"></path></svg>
+    </p>
+    <div class="relative"><NowPlaying hero /></div>
+    <div class="pointer-events-none absolute size-px overflow-hidden opacity-0" aria-hidden="true"><div id="yt"></div></div>
+  </div>
+</section>
+
+<script>
+  import { detectOS, osNames } from "../scripts/os";
+
+  const os = detectOS();
+  if (os) document.querySelector("#hero-download span")!.textContent = "Download for " + osNames[os];
+</script>

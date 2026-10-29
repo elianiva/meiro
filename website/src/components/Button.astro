@@ -1,0 +1,26 @@
+---
+interface Props {
+  href: string;
+  size?: "sm" | "md" | "lg";
+  class?: string;
+  id?: string;
+}
+const { href, size = "md", class: className, id } = Astro.props;
+const sizes = {
+  sm: "h-10.5 px-5.5 text-[16px]",
+  md: "h-11 px-5.5 text-[16px]",
+  lg: "h-14.5 px-7.5 text-[18px]",
+};
+---
+
+<a
+  id={id}
+  href={href}
+  class:list={[
+    "inline-flex cursor-pointer items-center justify-center gap-2.5 rounded-pill border-none bg-accent font-semibold text-accent-ink no-underline [transition:translate_0.18s_var(--ease-glide),scale_0.18s_var(--ease-glide),background-color_0.4s_ease,color_0.4s_ease] hover:-translate-y-0.5 active:translate-y-0 active:scale-97",
+    sizes[size],
+    className,
+  ]}
+>
+  <slot />
+</a>

@@ -1,0 +1,103 @@
+---
+import Button from "./Button.astro";
+
+const capsule = "rounded-pill bg-capsule [box-shadow:var(--shadow-capsule)] transition-[background-color] duration-400";
+const links = [
+  { href: "#memory", label: "Memory", d: "M15 9H9v6h6V9zm-2 4h-2v-2h2v2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2h2zm-4 6H7V7h10v10z" },
+  { href: "#screens", label: "Screens", d: "M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z" },
+  { href: "#colour", label: "Colour", d: "M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.2-.64-1.67a.528.528 0 0 1-.13-.33c0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm3-4C8.67 7 8 6.33 8 5.5S8.67 4 9.5 4s1.5.67 1.5 1.5S10.33 7 9.5 7zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 4 14.5 4s1.5.67 1.5 1.5S15.33 7 14.5 7zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 8 17.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" },
+  { href: "#details", label: "Details", d: "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z" },
+];
+---
+
+<header class="pointer-events-none sticky top-0 z-40 h-0">
+  <div class="wrap flex items-center gap-4 pt-3.5 *:pointer-events-auto">
+    <a class:list={[capsule, "flex h-13 items-center px-5.5 max-sm:h-11.5 max-sm:px-4.5"]} href="#top" aria-label="Meiro, back to top">
+      <img class="h-6.5 w-auto dark:hidden over-dark:hidden" src="/assets/brand/wordmark-light.svg" alt="Meiro" width="466" height="156" />
+      <img class="hidden h-6.5 w-auto dark:block over-dark:block" src="/assets/brand/wordmark-dark.svg" alt="Meiro" width="466" height="156" />
+    </a>
+    <nav class:list={[capsule, "mx-auto flex gap-0.5 p-1.25 max-sm:hidden"]} aria-label="Sections">
+      {
+        links.map(({ href, label, d }) => (
+          <a
+            href={href}
+            data-spy
+            class="inline-flex h-10.5 items-center gap-2 rounded-pill px-4.5 text-[15px] font-semibold text-muted no-underline [transition:background-color_0.3s_ease,color_0.2s_ease] hover:text-ink aria-[current=true]:bg-field aria-[current=true]:text-field-ink over-dark:text-night-muted over-dark:hover:text-night-ink over-dark:aria-[current=true]:bg-night-field over-dark:aria-[current=true]:text-night-ink max-lg:gap-0 max-lg:px-3 max-lg:text-[0px]"
+          >
+            <svg class="size-5 fill-current" viewBox="0 0 24 24" aria-hidden="true"><path d={d} /></svg>
+            {label}
+          </a>
+        ))
+      }
+    </nav>
+    <div class:list={[capsule, "flex items-center gap-1.5 p-1.25 max-sm:ml-auto max-sm:p-0.5"]}>
+      <button
+        class="inline-flex size-10.5 cursor-pointer items-center justify-center rounded-pill border-none bg-transparent p-0 text-ink [transition:background-color_0.2s_ease,scale_0.15s_ease] hover:bg-field active:scale-94 over-dark:text-night-ink over-dark:hover:bg-night-field"
+        id="theme-toggle"
+        type="button"
+        aria-label="Switch to dark theme"
+        aria-pressed="false"
+      >
+        <svg class="size-4.5 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"></path></svg>
+        <svg class="hidden size-4.5 dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+      </button>
+      <Button href="#download" size="sm" class="max-sm:hidden">Download</Button>
+    </div>
+  </div>
+</header>
+
+<script>
+  const root = document.documentElement;
+
+  /* Theme */
+  const toggle = document.getElementById("theme-toggle")!;
+  const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  function applyTheme(theme: string, persist: boolean) {
+    root.dataset.theme = theme;
+    const dark = theme === "dark";
+    toggle.setAttribute("aria-pressed", String(dark));
+    toggle.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+    if (themeColor) themeColor.content = dark ? "#16111a" : "#fbf8f9";
+    if (persist) {
+      try {
+        localStorage.setItem("meiro-theme", theme);
+      } catch {}
+    }
+  }
+  applyTheme(root.dataset.theme!, false);
+  toggle.addEventListener("click", () => {
+    applyTheme(root.dataset.theme === "dark" ? "light" : "dark", true);
+  });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (event) => {
+    let saved = null;
+    try {
+      saved = localStorage.getItem("meiro-theme");
+    } catch {}
+    if (!saved) applyTheme(event.matches ? "dark" : "light", false);
+  });
+
+  /* The header borrows the dark section's surface while it is over it. */
+  const night = document.getElementById("gone")!;
+  function updateHeader() {
+    const y = window.scrollY + 73;
+    if (y >= night.offsetTop && y < night.offsetTop + night.offsetHeight) root.dataset.overDark = "true";
+    else delete root.dataset.overDark;
+  }
+
+  /* The nav marks the section in view. */
+  const spy = [...document.querySelectorAll<HTMLAnchorElement>("[data-spy]")];
+  function updateSpy() {
+    const y = window.scrollY + window.innerHeight * 0.35;
+    let current: HTMLAnchorElement | null = null;
+    for (const a of spy) {
+      const section = document.querySelector<HTMLElement>(a.getAttribute("href")!);
+      if (section && y >= section.offsetTop && y < section.offsetTop + section.offsetHeight) current = a;
+    }
+    for (const a of spy) a.setAttribute("aria-current", String(a === current));
+  }
+  window.addEventListener("scroll", updateSpy, { passive: true });
+  updateSpy();
+  updateHeader();
+  window.addEventListener("scroll", updateHeader, { passive: true });
+  window.addEventListener("resize", updateHeader);
+</script>

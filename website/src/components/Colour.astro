@@ -1,0 +1,16 @@
+---
+import NowPlaying from "./NowPlaying.astro";
+import Section from "./Section.astro";
+import SectionHead from "./SectionHead.astro";
+---
+
+<!-- The whole field follows the song. -->
+<Section class="bg-field text-field-ink transition-[background-color] duration-400" id="colour">
+  <div class="wrap">
+    <SectionHead
+      title="The cover picks the colour"
+      lead="Meiro takes a colour from the album art and builds the whole window from it. Pick a song in the queue, or press play, and watch this page follow."
+    />
+    <div class="reveal [--d:1]"><NowPlaying /></div>
+  </div>
+</Section>

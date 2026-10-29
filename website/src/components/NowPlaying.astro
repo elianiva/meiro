@@ -1,0 +1,346 @@
+---
+// A picture of the app's Now Playing screen that really plays. It keeps the
+// app's own surfaces. The page shows it twice; both copies show one state,
+// kept in scripts/player.ts.
+import Icon from "./Icon.astro";
+import { songs, clock } from "../data/songs";
+
+interface Props {
+  /** Rises out of the hero's floor, so only the top corners are round. */
+  hero?: boolean;
+}
+const { hero = false } = Astro.props;
+const first = songs[0];
+const rail = [
+  { icon: "home", label: "Home" },
+  { icon: "search", label: "Search" },
+  { icon: "explore", label: "Explore" },
+  { icon: "library", label: "Library" },
+  { icon: "recap", label: "Recap" },
+] as const;
+const icon = "size-6 flex-none fill-current";
+const small = "size-5.5 flex-none fill-current";
+const control =
+  "inline-flex size-11 cursor-pointer items-center justify-center rounded-circle border-none bg-transparent p-0 [transition:background-color_0.2s_ease,color_0.2s_ease,scale_0.15s_ease] hover:bg-field active:scale-92 aria-pressed:bg-field aria-pressed:text-accent disabled:cursor-default disabled:opacity-38 disabled:hover:bg-transparent";
+const fade = "transition-[background-color] duration-400";
+---
+
+<div
+  class:list={[
+    "grid grid-cols-[92px_minmax(0,1fr)] overflow-hidden bg-bg-soft text-ink max-lg:grid-cols-[1fr]",
+    hero ? "rounded-t-[26px]" : "rounded-[26px]",
+    fade,
+  ]}
+  role="group"
+  aria-label="Meiro player preview"
+>
+  <div class="flex flex-col items-center gap-5.5 pt-14 pb-5 text-[13px] font-medium max-lg:hidden" aria-hidden="true">
+    <span class="mb-1 grid size-11 place-items-center"><Icon name="menu" class={icon} /></span>
+    {
+      rail.map((item, i) => (
+        <span class="grid w-full justify-items-center gap-1 text-ink">
+          <Icon name={item.icon} class={i === 0 ? "h-8 w-14 flex-none rounded-2xl bg-field px-4 py-1 fill-current" : icon} />
+          {item.label}
+        </span>
+      ))
+    }
+    <span class="mt-auto grid w-full justify-items-center gap-1 text-ink"><Icon name="settings" class={icon} />Settings</span>
+  </div>
+  <div class:list={["relative my-3 mr-3 rounded-[22px] bg-bg px-7 pt-6.5 pb-7 max-lg:m-2.5 max-sm:m-1.5 max-sm:px-3 max-sm:pt-4 max-sm:pb-3", fade]}>
+    <div class="absolute -top-0.5 -left-20 flex gap-2 max-lg:hidden" aria-hidden="true">
+      <i class="size-3 rounded-circle bg-[#ff5f57]"></i><i class="size-3 rounded-circle bg-[#febc2e]"></i><i class="size-3 rounded-circle bg-[#28c840]"></i>
+    </div>
+    <p class="flex items-center gap-3 text-[18px] font-medium"><Icon name="down" class={icon} />Now playing</p>
+    <div class="mt-2.5 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-9 max-lg:grid-cols-[1fr]">
+      <div class="grid content-start justify-items-center gap-4.5 pt-4.5 pb-1.5 *:w-[min(100%,330px)]">
+        <div class="aspect-square overflow-hidden rounded-[26px] bg-field [box-shadow:var(--shadow-cover)]">
+          <img class="size-full object-cover" data-cover src={first.cover} alt="" width="380" height="380" />
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <strong class="block text-[24px] leading-[1.2] font-medium tracking-[-0.01em]" data-title>{first.title}</strong>
+            <span class="block text-muted" data-artist>{first.artist}</span>
+          </div>
+          <button
+            class="group/like grid size-10 flex-none cursor-pointer place-items-center rounded-circle border-none bg-field p-0 [transition:background-color_0.4s_ease,color_0.2s_ease,scale_0.15s_ease] hover:brightness-95 active:scale-92 aria-pressed:text-accent"
+            type="button"
+            data-like
+            aria-label="Like"
+            aria-pressed="false"
+          >
+            <Icon name="heart" class="size-5 flex-none fill-current group-aria-pressed/like:hidden" />
+            <Icon name="favorite" class="hidden size-5 flex-none fill-current group-aria-pressed/like:block" />
+          </button>
+        </div>
+        <div class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 text-[14px] tabular-nums">
+          <span data-now>0:00</span>
+          <svg class="box-content block h-5 w-full cursor-pointer touch-none overflow-visible rounded-lg py-2.5 fill-current" data-wave viewBox="0 0 240 20" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0">
+            <line class="fill-none stroke-field stroke-4 [stroke-linecap:round] transition-[stroke] duration-400" data-rest></line>
+            <path class="fill-none stroke-accent stroke-4 [stroke-linecap:round] transition-[stroke] duration-400" data-fill></path>
+            <rect class="fill-accent transition-[fill] duration-400" data-thumb width="4" height="18" rx="2"></rect>
+            <circle class="fill-accent transition-[fill] duration-400" data-dot r="2"></circle>
+          </svg>
+          <span data-len>{clock(first.len)}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <button class={control} type="button" data-shuffle aria-label="Shuffle" aria-pressed="false"><Icon name="shuffle" class={small} /></button>
+          <button class={control} type="button" data-prev aria-label="Previous song"><Icon name="prev" class={small} /></button>
+          <button
+            class="inline-flex size-19 cursor-pointer items-center justify-center rounded-circle border-none bg-accent p-0 text-accent-ink [transition:background-color_0.4s_ease,scale_0.15s_ease] hover:brightness-110 active:scale-92"
+            type="button"
+            data-play
+            aria-label="Play"
+            aria-pressed="false"
+          >
+            <Icon name="play" class="size-8.5 flex-none fill-current playing:hidden" />
+            <Icon name="pause" class="hidden size-8.5 flex-none fill-current playing:block" />
+          </button>
+          <button class={control} type="button" data-next aria-label="Next song"><Icon name="next" class={small} /></button>
+          <button class={control} type="button" data-repeat aria-label="Repeat: off" aria-pressed="false">
+            <Icon name="repeat" class={small} />
+            <Icon name="repeatOne" class={`hidden ${small}`} />
+          </button>
+        </div>
+        <div class="flex items-center justify-center gap-3.5">
+          <button class="-m-1.5 grid size-8 flex-none cursor-pointer place-items-center rounded-circle border-none bg-transparent p-0 transition-[background-color] duration-200 hover:bg-field" type="button" data-mute aria-label="Mute" aria-pressed="false">
+            <Icon name="vol" class="size-5 flex-none fill-current" />
+            <Icon name="volUp" class="hidden size-5 flex-none fill-current" />
+            <Icon name="volOff" class="hidden size-5 flex-none fill-current" />
+          </button>
+          <span class="-my-2.5 max-w-45 flex-1 cursor-pointer touch-none rounded-sm py-2.5" data-volume role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="72">
+            <i class="relative block h-1 rounded-sm bg-field">
+              <b class="absolute inset-y-0 left-0 w-[72%] rounded-sm bg-accent after:absolute after:-top-[7px] after:-right-0.5 after:h-4.5 after:w-1 after:rounded-[3px] after:bg-accent"></b>
+            </i>
+          </span>
+        </div>
+      </div>
+      <div class:list={["grid content-start gap-2.5 rounded-[26px] bg-bg-soft p-4.5 max-sm:p-2", fade]}>
+        <div class="grid grid-cols-[repeat(3,1fr)] text-center text-[14px] font-medium" aria-hidden="true">
+          <span class:list={["rounded-pill bg-field py-3 font-semibold", fade]}>Up next</span><span class="rounded-pill py-3">Lyrics</span><span class="rounded-pill py-3">Related</span>
+        </div>
+        <p class="px-2 pt-1.5 text-[13px] text-muted">Playing from<strong class="block text-[15px] font-semibold text-ink">ゆあるなんね</strong></p>
+        <div class="flex items-center justify-between gap-4 px-2 py-1 text-[13px] text-muted">
+          <span id={hero ? "autoplay-hero" : "autoplay"}><strong class="block text-[16px] text-ink">Auto-play</strong>Add similar music when this queue ends.</span>
+          <button
+            class:list={[
+              "group/switch grid h-8 w-13 flex-none cursor-pointer place-items-center rounded-2xl border-none bg-accent p-0 pl-5 text-accent-ink [transition:background-color_0.4s_ease,padding_0.25s_var(--ease-glide)] aria-[checked=false]:bg-field aria-[checked=false]:pr-5 aria-[checked=false]:pl-0",
+            ]}
+            type="button"
+            role="switch"
+            aria-checked="true"
+            aria-labelledby={hero ? "autoplay-hero" : "autoplay"}
+            data-autoplay
+          >
+            <Icon name="check" class="size-4.5 flex-none rounded-circle bg-accent-ink fill-current p-[3px] text-accent transition-[background-color] duration-200 group-aria-[checked=false]/switch:bg-muted group-aria-[checked=false]/switch:text-muted" />
+          </button>
+        </div>
+        <div class="flex items-center justify-between px-2 pt-2 pb-0.5 text-[14px] text-muted">
+          <span data-count>{songs.length - 1} up next</span>
+          <button class="-my-1 cursor-pointer border-none bg-transparent p-0 py-1 text-[14px] font-semibold text-accent transition-[color] duration-400 hover:underline disabled:cursor-default disabled:opacity-38 disabled:hover:no-underline" type="button" data-clear>Clear queue</button>
+        </div>
+        <div class="grid gap-0.5" role="list" aria-label="Queue">
+          {
+            songs.map((song, i) => (
+              <div
+                class="group grid grid-cols-[minmax(0,1fr)_28px] items-center gap-3.5 rounded-[18px] py-1.5 pr-2.5 pl-1.5 max-sm:gap-2 max-sm:pr-1.5 transition-[background-color] duration-250 hover:bg-[color-mix(in_oklab,var(--color-field)_45%,transparent)] data-current:bg-field"
+                role="listitem"
+                data-row={i}
+                data-current={i === 0 ? "" : undefined}
+              >
+                <button class="grid w-full cursor-pointer grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3.5 max-sm:grid-cols-[48px_minmax(0,1fr)_auto] max-sm:gap-3 rounded-xl border-none bg-transparent p-0 text-left" type="button" data-song={i} aria-current={i === 0}>
+                  <img class="size-14 rounded-xl bg-field object-cover max-sm:size-12" src={song.cover} alt="" width="56" height="56" />
+                  <span class="grid min-w-0">
+                    <span class="truncate text-[16px] leading-[1.3]">{song.title}</span>
+                    <span class="truncate text-[13px] text-muted group-data-current:text-field-ink group-data-current:opacity-75">{song.artist}</span>
+                  </span>
+                  <span class="text-[14px] text-muted tabular-nums group-data-current:text-field-ink group-data-current:opacity-75">{clock(song.len)}</span>
+                </button>
+                <button
+                  class="-m-1 grid size-7 cursor-pointer place-items-center rounded-circle border-none bg-transparent p-0 transition-[background-color] duration-200 hover:bg-field group-data-current:invisible"
+                  type="button"
+                  data-remove={i}
+                  aria-label={`Remove ${song.title} from the queue`}
+                >
+                  <Icon name="close" class="size-4.5 flex-none fill-muted" />
+                </button>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { songs, clock } from "../data/songs";
+  import * as player from "../scripts/player";
+
+  const { state } = player;
+  const root = document.documentElement;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const all = <T extends Element = HTMLElement>(sel: string) => [...document.querySelectorAll<T>(sel)];
+  const on = (sel: string, fn: (el: HTMLElement) => void) => all(sel).forEach((el) => el.addEventListener("click", () => fn(el)));
+
+  /* Material 3 Expressive progress: a wavy active track, a pill handle, a straight inactive track that ends in a dot. */
+  let phase = 0;
+  let raf = 0;
+  let last = 0;
+  function drawWaves() {
+    const len = state.lens[player.current()];
+    const frac = Math.min(1, state.elapsed / len);
+    all<SVGSVGElement>("[data-wave]").forEach((svg) => {
+      const W = svg.clientWidth || 240, H = 20, mid = H / 2, amp = 3, lambda = 30;
+      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      svg.setAttribute("aria-valuemax", String(Math.round(len)));
+      svg.setAttribute("aria-valuenow", String(Math.round(state.elapsed)));
+      svg.setAttribute("aria-valuetext", clock(state.elapsed) + " of " + clock(len));
+      const x = 2 + frac * (W - 4), gap = 7;
+      let d = "";
+      const end = Math.max(2, x - gap);
+      for (let px = 2; px <= end; px += 1.5) {
+        const a = amp * Math.min(1, (px - 2) / 14);
+        d += (d ? "L" : "M") + px.toFixed(1) + " " + (mid + a * Math.sin((px / lambda) * 6.2832 + phase)).toFixed(2);
+      }
+      svg.querySelector("[data-fill]")!.setAttribute("d", d || "M2 " + mid);
+      const rest = svg.querySelector<SVGLineElement>("[data-rest]")!;
+      rest.setAttribute("x1", String(Math.min(W - 2, x + gap)));
+      rest.setAttribute("x2", String(W - 8));
+      rest.setAttribute("y1", String(mid));
+      rest.setAttribute("y2", String(mid));
+      rest.style.visibility = x + gap < W - 8 ? "visible" : "hidden";
+      const thumb = svg.querySelector("[data-thumb]")!;
+      thumb.setAttribute("x", String(x - 2));
+      thumb.setAttribute("y", String((H - 18) / 2));
+      const dot = svg.querySelector("[data-dot]")!;
+      dot.setAttribute("cx", String(W - 2));
+      dot.setAttribute("cy", String(mid));
+    });
+  }
+  function spin(now: number) {
+    phase += ((now - last) / 1000) * 7;
+    last = now;
+    drawWaves();
+    raf = state.playing ? requestAnimationFrame(spin) : 0;
+  }
+  window.addEventListener("resize", drawWaves);
+
+  /* Every copy shows the one state. */
+  function render() {
+    const now = player.current();
+    const song = songs[now];
+    const pressed = (sel: string, value: boolean, label?: string) =>
+      all(sel).forEach((el) => {
+        el.setAttribute("aria-pressed", String(value));
+        if (label) el.setAttribute("aria-label", label);
+      });
+    root.classList.toggle("is-playing", state.playing);
+    all<HTMLImageElement>("[data-cover]").forEach((el) => {
+      if (el.getAttribute("src") !== song.cover) el.src = song.cover;
+    });
+    all("[data-title]").forEach((el) => (el.textContent = song.title));
+    all("[data-artist]").forEach((el) => (el.textContent = song.artist));
+    all("[data-now]").forEach((el) => (el.textContent = clock(state.elapsed)));
+    all("[data-len]").forEach((el) => (el.textContent = clock(state.lens[now])));
+    pressed("[data-play]", state.playing, state.playing ? "Pause" : "Play");
+    pressed("[data-like]", state.liked.has(now), state.liked.has(now) ? "Unlike" : "Like");
+    pressed("[data-shuffle]", state.shuffle);
+    pressed("[data-repeat]", state.repeat !== "off", "Repeat: " + state.repeat);
+    all("[data-repeat]").forEach((el) => {
+      const [loop, one] = el.querySelectorAll("svg");
+      loop.classList.toggle("hidden", state.repeat === "track");
+      one.classList.toggle("hidden", state.repeat !== "track");
+    });
+    all<HTMLButtonElement>("[data-next]").forEach((el) => (el.disabled = !player.hasNext()));
+
+    // The speaker shows how loud it is: quiet, loud or silent.
+    const level = state.volume === 0 ? 2 : state.volume < 45 ? 0 : 1;
+    pressed("[data-mute]", state.volume === 0, state.volume === 0 ? "Unmute" : "Mute");
+    all("[data-mute] svg").forEach((el, i) => el.classList.toggle("hidden", i % 3 !== level));
+    all("[data-volume]").forEach((el) => {
+      el.setAttribute("aria-valuenow", String(state.volume));
+      el.querySelector("b")!.style.width = state.volume + "%";
+    });
+
+    all("[data-autoplay]").forEach((el) => el.setAttribute("aria-checked", String(state.autoPlay)));
+    all("[data-count]").forEach((el) => (el.textContent = player.remaining() + " up next"));
+    all<HTMLButtonElement>("[data-clear]").forEach((el) => (el.disabled = player.remaining() < 1));
+    // The rows keep their markup; the queue sets their order, and hides the ones it dropped.
+    all("[data-row]").forEach((row) => {
+      const id = Number(row.dataset.row);
+      const at = state.queue.indexOf(id);
+      row.hidden = at < 0;
+      row.style.order = String(at);
+      row.toggleAttribute("data-current", id === now);
+      row.querySelector("[data-song]")!.setAttribute("aria-current", String(id === now));
+    });
+
+    drawWaves();
+    if (state.playing && !raf && !reduce) {
+      last = performance.now();
+      raf = requestAnimationFrame(spin);
+    }
+  }
+
+  on("[data-play]", () => player.setPlaying(!state.playing));
+  on("[data-next]", player.next);
+  on("[data-prev]", player.previous);
+  on("[data-shuffle]", player.toggleShuffle);
+  on("[data-repeat]", player.cycleRepeat);
+  on("[data-like]", player.toggleLike);
+  on("[data-mute]", player.toggleMute);
+  on("[data-autoplay]", player.toggleAutoPlay);
+  on("[data-clear]", player.clearUpcoming);
+  on("[data-song]", (el) => player.play(Number(el.dataset.song)));
+  on("[data-remove]", (el) => player.remove(Number(el.dataset.remove)));
+
+  /* Sliders: drag with a pointer, or step with the arrow keys. */
+  function slider(sel: string, set: (frac: number, commit: boolean) => void, step: (dir: number) => void, inset = 0) {
+    all(sel).forEach((el) => {
+      const at = (e: PointerEvent) => {
+        const r = el.getBoundingClientRect();
+        return (e.clientX - r.left - inset) / (r.width - 2 * inset);
+      };
+      let dragging = false;
+      el.addEventListener("pointerdown", (e) => {
+        dragging = true;
+        el.setPointerCapture(e.pointerId);
+        set(at(e), false);
+      });
+      el.addEventListener("pointermove", (e) => dragging && set(at(e), false));
+      el.addEventListener("pointerup", (e) => {
+        if (!dragging) return;
+        dragging = false;
+        set(at(e), true);
+      });
+      el.addEventListener("pointercancel", () => {
+        dragging = false;
+        set(NaN, true);
+      });
+      el.addEventListener("keydown", (e) => {
+        const dir = ({ ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 } as Record<string, number>)[e.key];
+        if (e.key === "Home") set(0, true);
+        else if (e.key === "End") set(0.999, true);
+        else if (dir) step(dir);
+        else return;
+        e.preventDefault();
+      });
+    });
+  }
+  slider(
+    "[data-wave]",
+    (frac, commit) => {
+      player.setDragging(!commit);
+      if (!Number.isNaN(frac)) player.seek(frac * state.lens[player.current()], commit);
+    },
+    (dir) => player.seek(state.elapsed + dir * 5, true),
+    2,
+  );
+  slider(
+    "[data-volume]",
+    (frac) => !Number.isNaN(frac) && player.setVolume(frac * 100),
+    (dir) => player.setVolume(state.volume + dir * 5),
+  );
+
+  player.subscribe(render);
+</script>

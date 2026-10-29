@@ -29,11 +29,11 @@ import (
 
 	"github.com/elianiva/meiro/internal/applog"
 	"github.com/elianiva/meiro/internal/audio"
-	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/diskcache"
 	"github.com/elianiva/meiro/internal/memprof"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
+	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/systemmedia"
@@ -61,6 +61,8 @@ func main() {
 	a.logsDir = logsDir
 	mygo.App.WhenReady(func() {
 		a.setup()
+		a.displayScale = displayScale()
+		mygo.Screen.OnDisplaysChanged(func() { a.update(func() { a.displayScale = displayScale() }) })
 		a.desktop = &desktop{win: mygo.NewWindow(mygo.WindowOptions{
 			Title:         "Meiro",
 			Width:         1180,
@@ -80,6 +82,10 @@ func main() {
 			a.media = session
 		}
 		a.setupDesktop()
+		// A hidden window shows no artwork: what the artwork held goes back
+		// to the system while the music plays on.
+		a.desktop.win.OnHide(a.releaseArtwork)
+		a.desktop.win.OnMinimize(a.releaseArtwork)
 		a.syncSystemMedia()
 		// Background work reaches the window through the desktop, so it
 		// starts only once the window is there.
@@ -107,6 +113,25 @@ func main() {
 	closeLog()
 }
 
+// releaseArtwork drops the decoded artwork and returns the memory to the
+// system.
+func (a *app) releaseArtwork() {
+	a.thumbs.Purge()
+	a.run(debug.FreeOSMemory)
+}
+
+// displayScale is the largest scale of the displays, 2 when none says.
+func displayScale() float32 {
+	scale := 0.0
+	for _, d := range mygo.Screen.Displays() {
+		scale = max(scale, d.ScaleFactor)
+	}
+	if scale <= 0 {
+		return 2
+	}
+	return float32(scale)
+}
+
 // openLog sends the standard logger, and slog, to the log file as well as to
 // standard error, and returns the folder the log is in and what closes the
 // file. A log that cannot be
@@ -117,7 +142,7 @@ func openLog() (dir string, closeLog func()) {
 		log.Printf("finding the logs folder: %v", err)
 		return "", func() {}
 	}
-	tools := applog.NewLazy("ffmpeg, yt-dlp: looking up")
+	tools := applog.NewLazy("ffmpeg: looking up")
 	file, err := applog.Open(dir, logHeader(tools))
 	if err != nil {
 		log.Printf("opening the log file: %v", err)
@@ -130,10 +155,10 @@ func openLog() (dir string, closeLog func()) {
 	return dir, func() { _ = file.Close() }
 }
 
-// toolVersions asks the tools the app ships for their versions.
+// toolVersions asks ffmpeg for its version. yt-dlp's is left to a report:
+// asking it starts Python, some 50 MB for a moment, on every launch.
 func toolVersions() string {
-	info := report.Collect(context.Background(), mygo.App.Version())
-	return fmt.Sprintf("ffmpeg %s, yt-dlp %s", info.FFmpeg, info.YtDlp)
+	return "ffmpeg " + report.FFmpeg(context.Background())
 }
 
 // logHeader names the versions in use, for the top of each log file.
@@ -156,16 +181,20 @@ func playerOptions() []player.Option {
 	return nil
 }
 
+// credentialsKey is the one key the saved sessions are encrypted with, so
+// that macOS asks for it once after an update, not once per session.
+const credentialsKey = "credentials-key"
+
 // setup reads the settings, opens the audio cache and the credential store,
 // and makes the public client.
 func (a *app) setup() {
 	if directory, err := mygo.App.Path(mygo.PathUserData); err == nil {
 		a.saver.Path = filepath.Join(directory, "settings.json")
 		a.settings = settings.Load(a.saver.Path)
-		a.account.creds.store = &cookies.FileStore{Path: filepath.Join(directory, "cookie.txt")}
+		a.account.creds.store = &secretfile.File{Path: filepath.Join(directory, "cookie.txt"), Keychain: mygo.Secrets, Name: credentialsKey}
 		a.historyPath = filepath.Join(directory, "history.json")
 		a.restorePlayback(filepath.Join(directory, "playback.json"))
-		a.openScrobbler(filepath.Join(directory, "lastfm-session.txt"), filepath.Join(directory, "lastfm-pending.json"))
+		a.openScrobbler(secretfile.File{Path: filepath.Join(directory, "lastfm-session.txt"), Keychain: mygo.Secrets, Name: credentialsKey}, filepath.Join(directory, "lastfm-pending.json"))
 		a.openCredits(filepath.Join(directory, "credits.json"))
 	} else {
 		a.account.signIn.err = err.Error()
@@ -174,6 +203,7 @@ func (a *app) setup() {
 	a.volume = a.settings.Volume
 	a.player.SetVolume(a.volume / 100)
 	a.loadEQ()
+	a.applyCrossfade()
 	a.openAudioCache()
 	a.openArtworkCache()
 }

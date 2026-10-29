@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"strconv"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/keymap"
@@ -24,7 +25,9 @@ func (a *app) view(c *ui.Context) {
 	// The zoom comes first: the frame that sets another one builds again at
 	// the new size, and everything below measures the window it zoomed.
 	c.SetZoom(a.zoom())
-	m3.Provide(c, a.resolveTheme(c))
+	th := a.resolveTheme(c)
+	m3.Provide(c, th)
+	a.syncWindowButtons(th.Dark)
 	a.updateHints(c)
 	// The window paints no background of its own: the rail, the sheet's
 	// border and the sheet between them cover it, so a frame fills the window
@@ -60,6 +63,21 @@ func (a *app) view(c *ui.Context) {
 	a.crashDialog(c)
 	m3.Snackbars(c, 0)
 	a.shortcuts(c)
+}
+
+// syncWindowButtons draws the Windows window controls for the app's
+// appearance. They follow the system's otherwise, so a light app on a dark
+// desktop got light glyphs on the light tint.
+func (a *app) syncWindowButtons(dark bool) {
+	if a.desktop == nil || a.desktop.win == nil || a.theme.buttonsSet && a.theme.buttonsDark == dark {
+		return
+	}
+	src := mygo.ThemeLight
+	if dark {
+		src = mygo.ThemeDark
+	}
+	a.desktop.win.SetWindowButtonsTheme(src)
+	a.theme.buttonsSet, a.theme.buttonsDark = true, dark
 }
 
 // navigate opens a page that takes no ID.

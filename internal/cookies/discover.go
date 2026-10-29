@@ -109,7 +109,13 @@ func browserCandidates() []candidate {
 // manager is asked as well, because an export or snap link can outlive an
 // uninstall and must not win over a working native browser.
 func (b candidate) installed(ctx context.Context) bool {
-	if filepath.IsAbs(b.path) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if sandboxed() {
+		if hostCommand(ctx, "sh", "-c", `command -v -- "$1"`, "sh", b.path).Run() != nil {
+			return false
+		}
+	} else if filepath.IsAbs(b.path) {
 		info, err := os.Stat(b.path)
 		if err != nil || info.IsDir() {
 			return false
@@ -117,13 +123,11 @@ func (b candidate) installed(ctx context.Context) bool {
 	} else if _, err := exec.LookPath(b.path); err != nil {
 		return false
 	}
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
 	switch {
 	case b.flatpakID != "":
-		return proc.Command(ctx, "flatpak", "info", b.flatpakID).Run() == nil
+		return hostCommand(ctx, "flatpak", "info", b.flatpakID).Run() == nil
 	case b.snapName != "":
-		return proc.Command(ctx, "snap", "list", b.snapName).Run() == nil
+		return hostCommand(ctx, "snap", "list", b.snapName).Run() == nil
 	}
 	return true
 }
@@ -188,7 +192,7 @@ func defaultBrowserID(ctx context.Context) string {
 	defer cancel()
 	switch runtime.GOOS {
 	case "linux":
-		out, err := proc.Command(ctx, "xdg-settings", "get", "default-web-browser").Output()
+		out, err := hostCommand(ctx, "xdg-settings", "get", "default-web-browser").Output()
 		if err != nil {
 			return ""
 		}
@@ -343,10 +347,18 @@ func linuxCandidates(table []browserSpec) []candidate {
 	_, snapErr := exec.LookPath("snap")
 	hasFlatpak := flatpakErr == nil
 	hasSnap := snapErr == nil
+	// The sandbox shares neither the host's tools nor its /tmp. The host is
+	// asked about each install, and a native browser gets its profile in the
+	// cache directory, which is at the same path on both sides.
+	nativeRoot := ""
+	if sandboxed() {
+		hasFlatpak, hasSnap = true, true
+		nativeRoot, _ = os.UserCacheDir()
+	}
 	var out []candidate
 	for _, spec := range table {
 		for _, command := range spec.commands {
-			out = append(out, candidate{kind: spec.kind, family: spec.family, path: command})
+			out = append(out, candidate{kind: spec.kind, family: spec.family, path: command, profileRoot: nativeRoot})
 		}
 		if home == "" {
 			continue
@@ -380,10 +392,58 @@ func linuxCandidates(table []browserSpec) []candidate {
 // userDataHome is the directory Flatpak names XDG_DATA_HOME: its own variable
 // when set, and the ~/.local/share default otherwise.
 func userDataHome(home string) string {
-	if data := os.Getenv("XDG_DATA_HOME"); data != "" {
+	if data := os.Getenv(hostVariable("XDG_DATA_HOME")); data != "" {
 		return data
 	}
 	return filepath.Join(home, ".local", "share")
+}
+
+// userConfigDir is where the user's browsers keep their profiles.
+func userConfigDir(home string) string {
+	if !sandboxed() {
+		config, _ := os.UserConfigDir()
+		return config
+	}
+	if config := os.Getenv(hostVariable("XDG_CONFIG_HOME")); config != "" {
+		return config
+	}
+	return filepath.Join(home, ".config")
+}
+
+// hostVariable names the variable that holds the host's value of an XDG base
+// directory. Inside a Flatpak the plain name points at this app's own
+// directory, and Flatpak passes the host's value with a HOST_ prefix.
+func hostVariable(name string) string {
+	if sandboxed() {
+		return "HOST_" + name
+	}
+	return name
+}
+
+// sandboxed reports whether this app runs in a Flatpak, where the user's
+// browsers, their package managers and xdg-settings are on the host.
+func sandboxed() bool { return os.Getenv("FLATPAK_ID") != "" }
+
+// hostReachable reports whether hostCommand can run anything. A Flatpak
+// reaches the host only when the user granted it org.freedesktop.Flatpak,
+// which the bundle does not ask for.
+func hostReachable(ctx context.Context) bool {
+	if !sandboxed() {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	return hostCommand(ctx, "true").Run() == nil
+}
+
+// hostCommand is proc.Command run where the user's browsers are. Inside a
+// Flatpak it goes through flatpak-spawn, whose --watch-bus ends the host
+// command when flatpak-spawn is killed.
+func hostCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
+	if !sandboxed() {
+		return proc.Command(ctx, name, args...)
+	}
+	return proc.Command(ctx, "flatpak-spawn", append([]string{"--host", "--watch-bus", name}, args...)...)
 }
 
 // darwinCandidates builds the app bundle install of every row under each

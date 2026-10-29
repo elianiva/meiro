@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -58,6 +59,9 @@ var settingsRows = []settingsRow{
 	{key: "h-look", heading: "Appearance and sound"},
 	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic", card: (*app).appearanceCard},
 	{key: "sound", search: "sound audio normalize loudness equaliser volume", card: (*app).soundCard},
+
+	{key: "h-playback", heading: "Playback"},
+	{key: "crossfade", search: "crossfade fade transition gap between tracks songs seconds", card: (*app).crossfadeCard},
 
 	{key: "h-system", heading: "System"},
 	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle notch macbook lyrics", card: (*app).desktopCard},
@@ -389,6 +393,38 @@ func (a *app) soundCard(c *ui.Context) {
 					m3.Text(c, m3.LabelLarge, eqLabels[i]).TextColor(sc.OnSurfaceVariant)
 				})
 			}
+		})
+	})
+}
+
+// crossfadeCard fades the end of a track into the start of the next. The
+// player takes a change live, so the slider applies as it moves and the
+// settings are saved once it has been quiet.
+func (a *app) crossfadeCard(c *ui.Context) {
+	sc := m3.Of(c).Scheme
+	a.settingsCard(c, "Crossfade", m3.IconMusicNote, func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Fade between tracks", "").Grow(1)
+			on := a.settings.Crossfade
+			if m3.Switch(c, &on, "Crossfade on").Changed() {
+				a.settings.Crossfade = on
+				a.applyCrossfade()
+				a.saveSettings()
+			}
+		})
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			m3.Text(c, m3.LabelLarge, "Duration").TextColor(sc.OnSurfaceVariant).Width(64).Shrink(0)
+			value := float64(settings.ClampCrossfade(a.settings.CrossfadeSeconds))
+			slider := m3.Slider(c, &value, settings.MinCrossfade, settings.MaxCrossfade, m3.SliderSpec{
+				Label: "Crossfade duration", Thickness: 16, Key: "crossfade-seconds", Disabled: !a.settings.Crossfade,
+			}).Grow(1)
+			if slider.Changed() {
+				a.settings.CrossfadeSeconds = int(math.Round(value))
+				a.applyCrossfade()
+				a.saveSettings()
+			}
+			m3.EmphasizedText(c, m3.TitleMedium, strconv.Itoa(settings.ClampCrossfade(a.settings.CrossfadeSeconds))+" s").
+				Width(48).Shrink(0).TextAlign(ui.End).TextColor(sc.OnSurface)
 		})
 	})
 }

@@ -1902,6 +1902,39 @@ func TestSignInWithABrowserWindow(t *testing.T) {
 	}
 }
 
+// A Flatpak that may not start the browser shows the command that lets it,
+// and copies it, and a window that then works clears it.
+func TestSignInWindowShowsTheFlatpakOverride(t *testing.T) {
+	a := newTestApp(t)
+	a.account.window = func(context.Context) (string, error) { return "", cookies.ErrNeedsHostAccess }
+	a.openSignIn()
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Sign in with a browser window"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText(cookies.HostAccessCommand) {
+		t.Fatalf("the dialog does not show the override: %q", tt.Texts())
+	}
+	if err := tt.Click("Copy command"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := tt.Clipboard(); got != cookies.HostAccessCommand {
+		t.Errorf("clipboard = %q, want %q", got, cookies.HostAccessCommand)
+	}
+
+	a.account.window = func(context.Context) (string, error) { return "", cookies.ErrWindowClosed }
+	if err := tt.Click("Sign in with a browser window"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText(cookies.HostAccessCommand) || !tt.HasText(cookies.ErrWindowClosed.Error()) {
+		t.Errorf("a later failure still shows the override: %q", tt.Texts())
+	}
+}
+
 func TestGoingBackRestoresWhereAPageWasScrolled(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/settings")

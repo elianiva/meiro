@@ -1,0 +1,81 @@
+---
+import "../styles/global.css";
+import { songs } from "../data/songs";
+
+const title = "Meiro · YouTube Music, without the bloat";
+const image = "https://meiro.elianiva.com/assets/og.jpg";
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Meiro",
+  description: "A native desktop player for YouTube Music with no browser engine and no ads.",
+  applicationCategory: "MultimediaApplication",
+  operatingSystem: "macOS, Windows, Linux",
+  url: "https://meiro.elianiva.com/",
+  downloadUrl: "https://github.com/elianiva/meiro/releases/latest",
+  license: "https://www.gnu.org/licenses/gpl-3.0.html",
+  image,
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  author: { "@type": "Person", name: "elianiva", url: "https://github.com/elianiva" },
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content="Meiro is a free, native desktop player for YouTube Music. About 100 MB of memory, no browser engine, no ads, synced lyrics, and colours taken from the album art. For macOS, Windows and Linux." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fbf8f9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16111a" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://meiro.elianiva.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Meiro" />
+    <meta property="og:url" content="https://meiro.elianiva.com/" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content="A free, native desktop player for YouTube Music. About 100 MB of memory, no browser engine, no ads, synced lyrics." />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta property="og:image:alt" content="Meiro wordmark over fanned screenshots of the app, on a pale blue and rose glow." />
+    <meta property="og:locale" content="en" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content="A free, native desktop player for YouTube Music. About 100 MB of memory, no ads." />
+    <meta name="twitter:image" content={image} />
+    <meta name="twitter:image:alt" content="Meiro wordmark over fanned screenshots of the app." />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/assets/brand/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/favicon-64.png" sizes="64x64" type="image/png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <link rel="preload" href="/assets/fonts/GoogleSans.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline define:vars={{ h: songs[0].h, c: songs[0].c }}>
+      (function () {
+        var root = document.documentElement;
+        // Take the first song's colour before the first paint, so the page does not fade to it.
+        root.style.setProperty("--h", h);
+        root.style.setProperty("--c", c);
+        var theme;
+        try {
+          theme = localStorage.getItem("meiro-theme");
+        } catch (error) {}
+        if (theme !== "light" && theme !== "dark") {
+          theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        root.dataset.theme = theme;
+        root.classList.add("js");
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.content = theme === "dark" ? "#16111a" : "#fbf8f9";
+      })();
+    </script>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

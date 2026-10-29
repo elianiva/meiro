@@ -122,12 +122,32 @@ if [[ "$variant" == full ]]; then
     "$build/files/share/icons/hicolor/512x512/apps/$app_id.png"
   sed -e 's/^Exec=.*/Exec=meiro %U/' -e "s/^Icon=.*/Icon=$app_id/" \
     "$dist/meiro.desktop" > "$build/files/share/applications/$app_id.desktop"
+  # Import reads the user's browser profiles, and the Secret Service key that
+  # encrypts a Chromium browser's cookies. The sign-in window also starts the
+  # browser on the host through flatpak-spawn, which needs
+  # org.freedesktop.Flatpak. That would leave the sandbox, so the bundle does
+  # not ask for it: the dialog shows the override that grants it. A Flatpak
+  # or Snap browser needs write access too: its sign-in profile is made in
+  # its data.
+  browser_access=(--talk-name=org.freedesktop.secrets)
+  for dir in xdg-config/google-chrome xdg-config/BraveSoftware \
+    xdg-config/microsoft-edge xdg-config/net.imput.helium \
+    xdg-config/mozilla xdg-config/zen home/.mozilla home/.zen; do
+    browser_access+=("--filesystem=$dir:ro")
+  done
+  for dir in com.google.Chrome org.chromium.Chromium com.microsoft.Edge \
+    com.brave.Browser com.vivaldi.Vivaldi org.mozilla.firefox \
+    app.zen_browser.zen; do
+    browser_access+=("--filesystem=~/.var/app/$dir")
+  done
+  browser_access+=('--filesystem=~/snap/chromium' '--filesystem=~/snap/firefox')
   flatpak build-finish "$build" --command=meiro \
     --share=network --share=ipc \
     --socket=wayland --socket=fallback-x11 --socket=pulseaudio --device=dri \
     --talk-name=org.kde.StatusNotifierWatcher \
     --talk-name=org.freedesktop.Notifications \
-    --own-name='org.mpris.MediaPlayer2.meiro.*'
+    --own-name='org.mpris.MediaPlayer2.meiro.*' \
+    "${browser_access[@]}"
   flatpak build-export --arch="$appimage_arch" "$repo" "$build"
   flatpak build-bundle --arch="$appimage_arch" \
     --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \

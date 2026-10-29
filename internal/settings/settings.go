@@ -83,7 +83,7 @@ type Settings struct {
 	OpenAtLogin bool `json:"openAtLogin"`
 	// LastFMUser is the Last.fm account plays are scrobbled to, or empty when
 	// none is connected. Its session key is not kept here: see
-	// lastfm.SessionStore.
+	// secretfile.File.
 	LastFMUser string `json:"lastfmUser,omitempty"`
 	// LastFMPaused keeps the account connected and stops scrobbling.
 	LastFMPaused bool `json:"lastfmPaused,omitempty"`
@@ -96,6 +96,14 @@ type Settings struct {
 	// EQBands holds each band's gain in dB, low to high, one per the player's
 	// equaliser frequencies.
 	EQBands []float64 `json:"eqBands,omitempty"`
+	// Crossfade fades the end of a track into the start of the next, for
+	// CrossfadeSeconds.
+	Crossfade        bool `json:"crossfade,omitempty"`
+	CrossfadeSeconds int  `json:"crossfadeSeconds,omitempty"`
+	// PodcastSpeed is how fast podcast episodes play, and MusicSpeed how fast
+	// everything else does, 1 or 0 for their own pace.
+	PodcastSpeed float64 `json:"podcastSpeed,omitempty"`
+	MusicSpeed   float64 `json:"musicSpeed,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.
@@ -112,8 +120,25 @@ const (
 func Defaults() Settings {
 	return Settings{
 		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: runtime.GOOS != "darwin", ShowTray: runtime.GOOS != "darwin", TrayMark: TrayMarkWordmark,
-		Zoom: DefaultZoom, ShowNotch: true,
+		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade,
 	}
+}
+
+// The crossfade lengths the settings offer, in seconds.
+const (
+	MinCrossfade     = 1
+	MaxCrossfade     = 12
+	DefaultCrossfade = 5
+)
+
+// ClampCrossfade keeps a crossfade length between the ones the settings
+// offer, and reads the zero value of a settings file that has none as the
+// default.
+func ClampCrossfade(seconds int) int {
+	if seconds == 0 {
+		return DefaultCrossfade
+	}
+	return min(max(seconds, MinCrossfade), MaxCrossfade)
 }
 
 // The interface zooms the app offers, as percentages, and the step between
@@ -253,6 +278,7 @@ func Load(path string) Settings {
 		// Older settings must not bring back duplicate playback surfaces.
 		read.NotifyTrack, read.ShowTray = false, false
 	}
+	read.CrossfadeSeconds = ClampCrossfade(read.CrossfadeSeconds)
 	return read
 }
 

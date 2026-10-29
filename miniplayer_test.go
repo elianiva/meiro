@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -191,6 +192,28 @@ func TestKeepRunningUsesTheDockOnMacAndTrayElsewhere(t *testing.T) {
 	}
 }
 
+func TestRelatedPlaylistOpensItsPage(t *testing.T) {
+	a := newTestApp(t)
+	song := youtube.MusicItem{VideoID: "song-related", Title: "Playing Song", Kind: youtube.KindTrack}
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{song}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	tt.Frame()
+	if err := tt.Click("Related"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	// A playlist among the related songs opens its page rather than trying
+	// to play, and the song goes on playing.
+	if err := tt.Click("Related Playlist"); err != nil {
+		t.Fatal(err)
+	}
+	if a.path() != "/playlist/VLPL_songs" || a.current.VideoID != "song-related" {
+		t.Fatalf("the playlist went to %q, playing %q", a.path(), a.current.VideoID)
+	}
+}
+
 func TestLyricsSwitchBetweenSyncedAndStatic(t *testing.T) {
 	a := newTestApp(t)
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
@@ -227,6 +250,28 @@ func TestLyricsSwitchBetweenSyncedAndStatic(t *testing.T) {
 	}
 }
 
+func TestPlayingFromRelatedQueuesOnlySongs(t *testing.T) {
+	a := newTestApp(t)
+	song := youtube.MusicItem{VideoID: "song-mixed", Title: "Playing Song", Kind: youtube.KindTrack}
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{song}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	tt.Frame()
+	if err := tt.Click("Related"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	// The songs play with each other as the queue; the playlist and the
+	// artist between them are not queued.
+	if err := tt.Click("First Related Song"); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(a.queue.items[:a.queue.limit(false)]); !slices.Equal(got, []string{"mixed-1", "mixed-2"}) || a.queue.source != "Related" {
+		t.Fatalf("playing from Related queued %v from %q", got, a.queue.source)
+	}
+}
+
 func TestFailedLyricsLookupIsTriedAgain(t *testing.T) {
 	a := newTestApp(t)
 	calls := 0
@@ -253,6 +298,42 @@ func TestFailedLyricsLookupIsTriedAgain(t *testing.T) {
 	tt.Frame()
 	if calls != 2 || !tt.HasText("first words") {
 		t.Fatalf("the lookup was not tried again: %d calls, %q", calls, tt.Texts())
+	}
+}
+
+func TestEpisodeShowsDetailsInsteadOfLyrics(t *testing.T) {
+	a := newTestApp(t)
+	var opened []string
+	a.openURL = func(link string) error { opened = append(opened, link); return nil }
+	episode := youtube.MusicItem{VideoID: "ep-1", Title: "Reality Checking Productivity", Kind: youtube.KindEpisode}
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{episode}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	tt.Frame()
+	if tt.HasText("Lyrics") {
+		t.Fatalf("an episode offers lyrics: %q", tt.Texts())
+	}
+	if err := tt.Click("Details"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"3.7K views • Oct 26, 2026", "Reality Checking Productivity", "Deep Questions", "4:26 Time blocking"} {
+		if !tt.HasText(want) {
+			t.Fatalf("the details lack %q: %q", want, tt.Texts())
+		}
+	}
+	if err := tt.Click("4:26"); err != nil {
+		t.Fatal(err)
+	}
+	if a.seekTarget != 266*time.Second {
+		t.Fatalf("the chapter seeks to %v", a.seekTarget)
+	}
+	if err := tt.Click("https://example.com/deep"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(opened, []string{"https://example.com/deep-full"}) {
+		t.Fatalf("the link opened %v", opened)
 	}
 }
 
@@ -1364,5 +1445,23 @@ func TestNotchIndicatorFollowsBufferingPlaybackAndPause(t *testing.T) {
 	nt.Advance(time.Second)
 	if !bytes.Equal(before, nt.Image().Pix) {
 		t.Fatal("paused indicator kept animating")
+	}
+}
+
+func TestEpisodeRelatedTabListsEpisodes(t *testing.T) {
+	a := newTestApp(t)
+	episode := youtube.MusicItem{VideoID: "ep-related", Title: "Reality Checking Productivity", Kind: youtube.KindEpisode}
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{episode}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	tt.Frame()
+	// Its Related tab is of the page type episodes have, not songs'.
+	if err := tt.Click("Related"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Another Deep Episode") {
+		t.Fatalf("the related episodes are missing: %q", tt.Texts())
 	}
 }

@@ -1,0 +1,169 @@
+/* Tailwind without preflight: the page keeps its own small reset below. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* The header over the dark "What Meiro leaves out" section. */
+@custom-variant over-dark (&:where([data-over-dark="true"], [data-over-dark="true"] *));
+@custom-variant playing (&:where(.is-playing *));
+@custom-variant js (&:where(.js *));
+
+@font-face {
+  font-family: "Caveat";
+  src: url("/assets/fonts/Caveat.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Google Sans";
+  src: url("/assets/fonts/GoogleSans.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* The page takes its colour from one seed: a hue and a chroma, set by the
+   song that is "playing". Every colour below is built from those two numbers. */
+@property --h { syntax: "<number>"; inherits: true; initial-value: 232; }
+@property --c { syntax: "<number>"; inherits: true; initial-value: 0.1; }
+
+@theme {
+  --breakpoint-*: initial;
+  --breakpoint-sm: 561px;
+  --breakpoint-md: 701px;
+  --breakpoint-lg: 1001px;
+
+  --font-sans: "Google Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-hand: "Caveat", cursive;
+
+  /* Five type sizes: display, heading, subheading, body, small. */
+  --text-display: clamp(40px, 6.4vw, 96px);
+  --text-display--line-height: 0.92;
+  --text-display--letter-spacing: -0.055em;
+  --text-display--font-weight: 600;
+  --text-h2: clamp(38px, 5.4vw, 80px);
+  --text-h2--line-height: 0.98;
+  --text-h2--letter-spacing: -0.045em;
+  --text-h2--font-weight: 600;
+  --text-h3: clamp(24px, 2.6vw, 36px);
+  --text-h3--line-height: 1.08;
+  --text-h3--letter-spacing: -0.03em;
+  --text-h3--font-weight: 600;
+  --text-lead: clamp(18px, 1.5vw, 21px);
+  --text-small: 14px;
+  --text-small--line-height: 1.5;
+
+  --radius-card: 28px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+  --ease-glide: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --default-transition-timing-function: ease;
+
+  --shadow-capsule: 0 0 0 1px color-mix(in oklab, var(--color-ink) 8%, transparent), 0 10px 30px -18px oklch(0.2 0.05 var(--h) / 0.5);
+  --shadow-cover: 0 0 0 4px var(--color-bg), 0 0 0 5px var(--color-field);
+
+  --animate-bloat-fade: bloat-fade 0.7s ease 1.3s forwards;
+  --animate-bloat-strike: bloat-strike 0.7s var(--ease-glide) 0.9s forwards;
+  --animate-tab-fill: tab-fill 6s linear forwards;
+
+  @keyframes bloat-fade { to { color: color-mix(in oklab, var(--color-field-ink) 38%, var(--color-field)); } }
+  @keyframes bloat-strike { to { scale: 1 1; } }
+  @keyframes tab-fill { to { scale: 1 1; } }
+}
+
+@theme static {
+  --color-bg: oklch(0.985 calc(var(--c) * 0.07) var(--h));
+  --color-bg-soft: oklch(0.955 calc(var(--c) * 0.12) var(--h));
+  --color-field: oklch(0.91 calc(var(--c) * 0.3) var(--h));
+  --color-field-ink: oklch(0.24 calc(var(--c) * 0.45) var(--h));
+  --color-ink: oklch(0.21 calc(var(--c) * 0.12) var(--h));
+  --color-muted: oklch(0.44 calc(var(--c) * 0.14) var(--h));
+  --color-accent: oklch(0.47 var(--c) var(--h));
+  --color-accent-ink: oklch(0.99 0 0);
+  --color-night: oklch(0.17 calc(var(--c) * 0.2) var(--h));
+  --color-night-ink: oklch(0.96 calc(var(--c) * 0.05) var(--h));
+  --color-night-muted: oklch(0.76 calc(var(--c) * 0.12) var(--h));
+  --color-night-accent: oklch(0.74 calc(var(--c) * 1.05) var(--h));
+  --color-night-field: oklch(0.34 calc(var(--c) * 0.5) var(--h));
+  --color-capsule: oklch(1 0 0);
+}
+
+@layer base {
+  :root {
+    --h: 232;
+    --c: 0.1;
+    --head: 72px;
+    --gap: clamp(112px, 13vw, 200px);
+    transition: --h 0.9s ease, --c 0.9s ease;
+  }
+  html[data-theme="dark"] {
+    --color-bg: oklch(0.175 calc(var(--c) * 0.12) var(--h));
+    --color-bg-soft: oklch(0.215 calc(var(--c) * 0.22) var(--h));
+    --color-field: oklch(0.3 calc(var(--c) * 0.4) var(--h));
+    --color-field-ink: oklch(0.95 calc(var(--c) * 0.1) var(--h));
+    --color-ink: oklch(0.96 calc(var(--c) * 0.04) var(--h));
+    --color-muted: oklch(0.76 calc(var(--c) * 0.1) var(--h));
+    --color-accent: oklch(0.82 calc(var(--c) * 0.85) var(--h));
+    --color-accent-ink: oklch(0.2 calc(var(--c) * 0.3) var(--h));
+    --color-night: oklch(0.13 calc(var(--c) * 0.15) var(--h));
+    --color-capsule: color-mix(in oklab, var(--color-bg-soft) 50%, var(--color-field));
+  }
+  html[data-over-dark="true"] {
+    --color-capsule: oklch(0.24 calc(var(--c) * 0.3) var(--h));
+  }
+
+  * { box-sizing: border-box; }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: calc(var(--head) + 24px);
+    background: var(--color-bg);
+  }
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 18px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  img { display: block; max-width: 100%; height: auto; }
+  a { color: inherit; text-underline-offset: 3px; }
+  button { font: inherit; color: inherit; }
+  h1, h2, h3, p, ul, ol, figure { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
+  [hidden]:where(:not([hidden="until-found"])) { display: none !important; }
+  ::selection { background: var(--color-field); color: var(--color-field-ink); }
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: 6px; }
+
+  @media (max-width: 560px) {
+    :root { --head: 60px; --gap: 80px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    :root, * { transition-duration: 0.01ms !important; transition-delay: 0s !important; animation: none !important; }
+  }
+}
+
+/* The page column. */
+@utility wrap {
+  width: min(1240px, calc(100% - 48px));
+  margin-inline: auto;
+  @variant max-sm { width: calc(100% - 32px); }
+}
+
+/* Parts of a section arrive one after another, once. The script adds `in`. */
+@utility reveal {
+  .js & {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.7s ease, transform 0.8s var(--ease-glide);
+    transition-delay: calc(var(--d, 0) * 80ms);
+  }
+  .js &.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .js & { opacity: 1; transform: none; }
+  }
+}

@@ -1,0 +1,33 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Hero from "../components/Hero.astro";
+import Memory from "../components/Memory.astro";
+import Gone from "../components/Gone.astro";
+import Screens from "../components/Screens.astro";
+import Colour from "../components/Colour.astro";
+import Details from "../components/Details.astro";
+import Download from "../components/Download.astro";
+import Footer from "../components/Footer.astro";
+---
+
+<Layout>
+  <a class="absolute top-0 -left-[9999px] z-100 rounded-br-[14px] bg-bg-soft px-4.5 py-3 focus:left-0" href="#main">Skip to content</a>
+  <Header />
+  <main id="main">
+    <Hero />
+    <Memory />
+    <Gone />
+    <Screens />
+    <Colour />
+    <Details />
+    <Download />
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+  import { arrive } from "../scripts/arrive";
+
+  arrive(".reveal");
+</script>
