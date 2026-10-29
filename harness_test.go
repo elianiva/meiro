@@ -118,6 +118,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.Contains(asked, `"continuation":"home-more"`):
 		homeMoreRequests.Add(1)
 		reply = homeMoreResponse
+	case strings.Contains(asked, "VLPL_paginated"):
+		reply = paginatedPlaylistResponse(0, 100, "playlist-tracks", "playlist-more")
+	case strings.Contains(asked, `"continuation":"playlist-tracks"`):
+		reply = paginatedPlaylistResponse(100, 146, "", "")
 	case strings.Contains(asked, `"continuation":"playlist-more"`):
 		reply = playlistSuggestionsResponse
 	case strings.Contains(asked, "FEmusic_listening_review"):
@@ -852,4 +856,16 @@ func (m *memoryStore) Delete(context.Context) error {
 // lastFMSession is where a test app keeps its Last.fm session key.
 func lastFMSession(dir string) secretfile.File {
 	return secretfile.File{Path: filepath.Join(dir, "session"), Keychain: secretfile.NoKeychain{}, Name: "lastfm-session"}
+}
+
+func paginatedPlaylistResponse(start, end int, next, suggestions string) string {
+	var items []string
+	for i := start; i < end; i++ {
+		items = append(items, fmt.Sprintf(`{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"track-%d"},"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Track %d"}]}}}]}}`, i, i))
+	}
+	kind := "musicPlaylistShelfRenderer"
+	if start > 0 {
+		kind = "musicPlaylistShelfContinuation"
+	}
+	return fmt.Sprintf(`{"contents":{"%s":{"contents":[%s],"continuations":[{"nextContinuationData":{"continuation":%q}}]}},"continuations":[{"nextContinuationData":{"continuation":%q}}]}`, kind, strings.Join(items, ","), next, suggestions)
 }
