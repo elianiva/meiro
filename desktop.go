@@ -368,8 +368,22 @@ func (d *desktop) closeToTray(setting func() *bool, answer func(toTray, remember
 	d.win.OnLeaveFullScreen(d.hideAfterLeavingFullScreen)
 }
 
-// onClose decides between hiding the window and letting the close through.
-// An unset setting asks; the dialog's checkbox keeps the answer, and
+// closeToBackgroundChoice preserves an explicit preference. With no choice
+// yet, enabling the player on a notched Mac also keeps its main window alive
+// when closed, ready for Open Meiro. Other desktops still ask on first close.
+func (a *app) closeToBackgroundChoice() *bool {
+	if a.settings.CloseToTray != nil {
+		return a.settings.CloseToTray
+	}
+	if runtime.GOOS == "darwin" && a.settings.ShowNotch && a.notch.cutout.Width > 0 {
+		keep := true
+		return &keep
+	}
+	return nil
+}
+
+// onClose decides between hiding the window and quitting.
+// An unresolved choice asks; the dialog's checkbox keeps the answer, and
 // dismissing the dialog keeps the window and asks again next time. It runs
 // on the main thread.
 func (d *desktop) onClose(e *mygo.CloseEvent) {
@@ -382,7 +396,7 @@ func (d *desktop) onClose(e *mygo.CloseEvent) {
 	} else {
 		message, keep := "Keep Meiro running in the tray, or quit it?", "Minimize to tray"
 		if runtime.GOOS == "darwin" {
-			message, keep = "Keep Meiro running in the background, or quit it? Reopen the window from the Dock.", "Keep running"
+			message, keep = "Keep Meiro running in the background, or quit it? Reopen the window from the Dock or notch.", "Keep running"
 		}
 		res, err := mygo.Dialog.Message(mygo.MessageOptions{
 			Parent:        d.win,
@@ -404,6 +418,12 @@ func (d *desktop) onClose(e *mygo.CloseEvent) {
 	if d.answerClose(toTray, remember) {
 		e.PreventDefault()
 		d.hideToTray()
+	} else if runtime.GOOS == "darwin" {
+		// A remaining notch would keep the event loop alive after the main
+		// window was destroyed. An explicit quit must close every window;
+		// OnBeforeQuit lets the close handlers pass through on that second pass.
+		e.PreventDefault()
+		mygo.App.Quit()
 	}
 }
 
@@ -516,7 +536,7 @@ func (a *app) setupDesktop() {
 			}
 		})
 	})
-	a.desktop.closeToTray(func() *bool { return a.settings.CloseToTray }, a.answerClose)
+	a.desktop.closeToTray(a.closeToBackgroundChoice, a.answerClose)
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.desktop.quitting = true })
 	a.setupNotch()
 	a.syncDesktop()

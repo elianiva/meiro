@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Compact notch clicks respond reliably.** Clicking the cover or playback indicator opens the panel even when the mouse is held briefly or Meiro gains focus during the click.
+- **Reopen Meiro from the notch after closing its window.** On a notched Mac, the notch player keeps the main window available in the background by default. Open Meiro restores it and collapses the notch. Choosing to quit closes the notch as well, and explicit background preferences are respected.
+- **The macOS notch gives focus back to the menu bar.** The compact player no longer keeps keyboard focus, and clicking outside an expanded notch releases it without interrupting playback or the collapse animation.
 - **Album covers load when following a name from the player.** Albums using YouTube Music's newer page layout now show their own artwork instead of a music-note placeholder.
 
 ## [0.4.13] - 2026-10-28

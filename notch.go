@@ -132,6 +132,7 @@ func (a *app) syncNotch() {
 		d.notch.bounds = bounds
 		w.SetBounds(bounds)
 	}
+	setNotchFocusable(w, a.notch.expanded)
 	w.Invalidate()
 }
 
@@ -162,10 +163,15 @@ func (a *app) setNotchExpanded(open bool) {
 		a.loadLyrics()
 	}
 	a.syncNotch()
-	// Closing returns the keyboard to the app beneath the nonactivating panel.
-	if !open && a.desktop != nil {
+	// Only an explicit expansion takes the keyboard. Closing gives it back
+	// before the shrinking animation finishes.
+	if a.desktop != nil {
 		if w := a.desktop.notch.win.Load(); w != nil {
-			releaseNotchFocus(w)
+			if open {
+				focusNotchWindow(w)
+			} else {
+				releaseNotchFocus(w)
+			}
 		}
 	}
 }

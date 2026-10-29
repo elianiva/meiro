@@ -345,6 +345,53 @@ func TestMacDesktopOffersNotchAndBackgroundPlayback(t *testing.T) {
 	}
 }
 
+func TestNotchBackgroundDefaultCanBeOverriddenAndSaved(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS notch close behavior")
+	}
+	for _, notchAvailable := range []bool{true, false} {
+		t.Run(strconv.FormatBool(notchAvailable), func(t *testing.T) {
+			a := notchTestApp(t)
+			if !notchAvailable {
+				a.notch.cutout = mygo.Rectangle{}
+			}
+			a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+			a.router.Push("/settings")
+			tt := ui.NewTester(a.view, 1000, 700)
+			if err := tt.Click("Search settings"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Type("desktop")
+			tt.Advance(time.Second)
+			// The first click reverses the displayed default: a supported notch
+			// starts on, while a Mac without one still starts off.
+			if err := tt.Click("Keep running in background"); err != nil {
+				t.Fatal(err)
+			}
+			a.saver.Wait()
+			saved := settings.Load(a.saver.Path)
+			if saved.CloseToTray == nil || *saved.CloseToTray == notchAvailable {
+				t.Fatal("background switch did not reflect the notch default or save its override")
+			}
+			// A saved preference wins even after reconnecting a notched display.
+			a.settings = saved
+			a.notch.cutout.Width = 180
+			tt.Frame()
+			if err := tt.Click("Keep running in background"); err != nil {
+				t.Fatal(err)
+			}
+			a.saver.Wait()
+			saved = settings.Load(a.saver.Path)
+			if saved.CloseToTray == nil || *saved.CloseToTray != notchAvailable {
+				t.Fatal("notch default replaced an explicit close preference")
+			}
+			if saved.ShowTray || saved.NotifyTrack || a.current.VideoID != "a" || a.player.Playing() {
+				t.Fatal("changing close behavior affected desktop notifications or playback")
+			}
+		})
+	}
+}
+
 func TestNotchArtworkIgnoresLatePreviousCover(t *testing.T) {
 	a := notchTestApp(t)
 	oldRequested, releaseOld := make(chan struct{}, 1), make(chan struct{})
@@ -876,6 +923,49 @@ func TestNotchAutoCollapseWaitsAfterKeyboardSeeking(t *testing.T) {
 	nt.Advance(500 * time.Millisecond)
 	if a.notch.expanded {
 		t.Fatal("mouse-acquired focus kept the notch open after seeking")
+	}
+}
+
+func TestNotchCompactWingsCompleteHeldClicks(t *testing.T) {
+	for _, label := range []string{"Open notch lyrics", "Open notch lyrics from playback indicator"} {
+		t.Run(label, func(t *testing.T) {
+			a := notchTestApp(t)
+			nt := ui.NewTester(a.notchView, 284, 38)
+			for range 3 {
+				nt.SetFocused(false)
+				r, ok := nt.Find(label)
+				if !ok {
+					t.Fatal("compact wing disappeared after collapsing")
+				}
+				x, y := r.X+r.W/2, r.Y+r.H/2
+				nt.Press(x, y)
+				nt.SetFocused(true) // AppKit can make the panel key on mouse down.
+				nt.Advance(500 * time.Millisecond)
+				if a.notch.expanded {
+					t.Fatal("press opened the notch before release")
+				}
+				nt.Release(142, 19) // Cancel over the non-interactive camera gap.
+				if a.notch.expanded {
+					t.Fatal("cancelled press opened the notch")
+				}
+				nt.SetFocused(false)
+				nt.Press(x, y)
+				nt.SetFocused(true)
+				nt.Advance(500 * time.Millisecond)
+				nt.Release(x+1, y)
+				if !a.notch.expanded {
+					t.Fatal("held click did not expand the notch on release")
+				}
+				nt.SetSize(480, 190)
+				nt.Advance(300 * time.Millisecond)
+				nt.Key(0, ui.KeyEscape)
+				nt.Advance(300 * time.Millisecond)
+				nt.SetSize(284, 38)
+				if a.notch.expanded || a.notch.transitioning || a.current.VideoID != "a" || a.player.Playing() {
+					t.Fatal("collapse changed playback or left an active transition")
+				}
+			}
+		})
 	}
 }
 

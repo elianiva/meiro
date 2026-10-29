@@ -1,0 +1,92 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+	"github.com/go-macos/objc"
+
+	"github.com/elianiva/meiro/internal/playstate"
+)
+
+func TestMain(m *testing.M) {
+	if os.Getenv("MEIRO_NATIVE_REOPEN") == "" {
+		os.Exit(m.Run())
+	}
+	if path := os.Getenv("MEIRO_NATIVE_LOG"); path != "" {
+		f, err := os.Create(path)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		log.SetOutput(io.MultiWriter(os.Stdout, f))
+		log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	}
+	mygo.App.SetName("Meiro Reopen Verification")
+	a := newTestApp(&testing.T{})
+	q := tracks("a", "b")
+	q[0].Title, q[1].Title = "Offline track A", "Offline track B"
+	q[0].Duration, q[1].Duration = "0:50", "0:50"
+	a.queue.restore(playstate.State{Items: q, Index: 0, RecStart: -1})
+	a.current, a.total, a.resumeID = q[0], 50*time.Second, "a"
+	mygo.App.WhenReady(func() {
+		a.desktop = &desktop{win: mygo.NewWindow(mygo.WindowOptions{
+			Title: "Meiro Reopen Verification", Width: 1000, Height: 700,
+			Content: ui.View(a.frame),
+		})}
+		d := a.desktop
+		state := func(event string) {
+			log.Printf("%s main_destroyed=%t visible=%t focused=%t native=%t notch=%t track=%s playing=%t", event,
+				d.win.IsDestroyed(), d.win.IsVisible(), d.win.IsFocused(), d.win.NativeHandle() != 0, d.notch.win.Load() != nil, a.current.VideoID, a.player.Playing())
+		}
+		d.win.OnHide(func() { state("HIDE") })
+		d.win.OnShow(func() { state("SHOW") })
+		d.win.OnFocus(func() { state("FOCUS") })
+		d.win.OnClosed(func() { a.stopTicking(); state("CLOSED") })
+		a.setupDesktop()
+		state("READY")
+		if os.Getenv("MEIRO_NATIVE_LOG") != "" {
+			traceNotchClicks(a)
+		}
+	})
+	if err := mygo.App.Run(); err != nil {
+		panic(fmt.Sprint(err))
+	}
+	log.Print("APP QUIT")
+}
+
+// Observe the native press/focus ordering without changing event delivery.
+func traceNotchClicks(a *app) {
+	w := a.desktop.notch.win.Load()
+	if w == nil {
+		return
+	}
+	native := objc.ID(w.NativeHandle())
+	note := func(kind string) {
+		log.Printf("NOTCH %s key=%t expanded=%t transition=%t bounds=%+v", kind,
+			objc.Send[bool](native, objc.Sel("isKeyWindow")), a.notch.expanded, a.notch.transitioning, w.Bounds())
+	}
+	w.OnFocus(func() { note("FOCUS") })
+	w.OnBlur(func() { note("BLUR") })
+	events := objc.ClassID("NSEvent")
+	block := objc.NewBlock(func(_ objc.Block, event objc.ID) objc.ID {
+		if event.Send(objc.Sel("window")) == native {
+			log.Printf("EVENT type=%d location=%+v", objc.Send[uint](event, objc.Sel("type")),
+				objc.Send[objc.NSPoint](event, objc.Sel("locationInWindow")))
+			note("EVENT")
+			w.Update(func() { note("AFTER EVENT") })
+		}
+		return event
+	})
+	monitor := events.Send(objc.Sel("addLocalMonitorForEventsMatchingMask:handler:"), uint64(1<<1|1<<2), block)
+	w.OnClosed(func() {
+		events.Send(objc.Sel("removeMonitor:"), monitor)
+		block.Release()
+	})
+}

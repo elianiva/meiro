@@ -54,8 +54,88 @@ func prepareNotchWindow(w *mygo.Window) {
 	// level is below it. Keep the footprint limited to the notch and its wings.
 	window.Send(objc.Sel("setLevel:"), 25)
 	window.Send(objc.Sel("setCanHide:"), false)
+	// Compact playback needs clicks, not keyboard ownership. Expanded controls
+	// opt in explicitly so Tab, seeking and Escape still work.
+	setNotchFocusable(w, false)
+	window.Send(objc.Sel("setAnimationBehavior:"), 2) // NSWindowAnimationBehaviorNone; the UI animates.
+	watchNotchOutsideClicks(w)
+}
+
+func setNotchFocusable(w *mygo.Window, focusable bool) {
+	objc.ID(w.NativeHandle()).Send(objc.Sel("setBecomesKeyOnlyIfNeeded:"), !focusable)
+}
+
+func focusNotchWindow(w *mygo.Window) {
+	objc.ID(w.NativeHandle()).Send(objc.Sel("makeKeyWindow"))
 }
 
 func releaseNotchFocus(w *mygo.Window) {
-	objc.ID(w.NativeHandle()).Send(objc.Sel("resignKeyWindow"))
+	window := objc.ID(w.NativeHandle())
+	if window == 0 || !objc.Send[bool](window, objc.Sel("isKeyWindow")) {
+		return
+	}
+	// resignKeyWindow is an AppKit notification, not a request to release the
+	// nonactivating panel's keyboard ownership. Order out and back in during
+	// the same event turn, without becoming key or activating the application.
+	// This leaves the UI's collapse animation and native bounds intact.
+	visible := objc.Send[bool](window, objc.Sel("isVisible"))
+	window.Send(objc.Sel("orderOut:"), objc.ID(0))
+	if visible {
+		window.Send(objc.Sel("orderFrontRegardless"))
+	}
+}
+
+func watchNotchOutsideClicks(w *mygo.Window) {
+	// Nonactivating panels need not receive a blur when another application's
+	// menu bar is clicked. Observe pointer events; never consume or replay them.
+	// Both AppKit monitor handlers run on the main thread.
+	const presses = uint64(1<<1 | 1<<3 | 1<<25) // left, right, other mouse down
+	const releases = uint64(1<<2 | 1<<4 | 1<<26)
+	events := objc.ClassID("NSEvent")
+	// Track delivered presses, including accessibility-generated events. The
+	// hardware button snapshot need not reflect events queued by those tools.
+	var held uint64
+	releaseCompact := func() {
+		window := objc.ID(w.NativeHandle())
+		if held == 0 && window != 0 && objc.Send[bool](window, objc.Sel("becomesKeyOnlyIfNeeded")) {
+			releaseNotchFocus(w)
+		}
+	}
+	w.OnFocus(func() {
+		// Activation can make even the compact panel key. Update can run
+		// between down and up; ordering out then would cancel MyGo's click.
+		w.Update(releaseCompact)
+	})
+	w.OnBlur(func() { held = 0 })
+	globalBlock := objc.NewBlock(func(_ objc.Block, _ objc.ID) {
+		releaseNotchFocus(w)
+	})
+	localBlock := objc.NewBlock(func(_ objc.Block, event objc.ID) objc.ID {
+		kind := objc.Send[uint](event, objc.Sel("type"))
+		button := uint64(1) << objc.Send[uint](event, objc.Sel("buttonNumber"))
+		switch {
+		case releases&(uint64(1)<<kind) != 0:
+			held &^= button
+			// Let MyGo finish the press before releasing focus. If its view
+			// has already expanded, leave the keyboard with the controls.
+			w.Update(releaseCompact)
+		case event.Send(objc.Sel("window")) == objc.ID(w.NativeHandle()):
+			held |= button
+		default:
+			releaseNotchFocus(w)
+		}
+		return event
+	})
+	global := events.Send(objc.Sel("addGlobalMonitorForEventsMatchingMask:handler:"), presses, globalBlock)
+	local := events.Send(objc.Sel("addLocalMonitorForEventsMatchingMask:handler:"), presses|releases, localBlock)
+	w.OnClosed(func() {
+		if global != 0 {
+			events.Send(objc.Sel("removeMonitor:"), global)
+		}
+		if local != 0 {
+			events.Send(objc.Sel("removeMonitor:"), local)
+		}
+		globalBlock.Release()
+		localBlock.Release()
+	})
 }
