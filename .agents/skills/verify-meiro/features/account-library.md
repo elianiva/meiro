@@ -46,3 +46,5 @@ Preconditions:
 - Counters and `lastWrite` are process globals. Do not use `t.Parallel` in a proof that reads them.
 - Use the counters, `written()`, `likeWrite()` and `subscriptionWrite()` as the second view of a write. A button label alone does not prove the request was sent.
 - Saving an album and liking a track both count in `likeWrites`. Reset or compare a delta.
+
+- **Large playlists.** `/playlist/VLPL_paginated` supplies 100 initial songs, a song-shelf continuation with 46 more, and a separate suggestions continuation. `TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions` checks all 146 playable songs, their last ID, and suggestions kept separate.

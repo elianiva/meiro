@@ -196,6 +196,7 @@ func (a *app) setup() {
 		a.restorePlayback(filepath.Join(directory, "playback.json"))
 		a.openScrobbler(secretfile.File{Path: filepath.Join(directory, "lastfm-session.txt"), Keychain: mygo.Secrets, Name: credentialsKey}, filepath.Join(directory, "lastfm-pending.json"))
 		a.openCredits(filepath.Join(directory, "credits.json"))
+		a.openDownloads(filepath.Join(directory, "Downloads"))
 	} else {
 		a.account.signIn.err = err.Error()
 	}
@@ -266,6 +267,7 @@ func (a *app) shutdown() {
 	a.savePlayback(0)
 	a.saver.Wait()
 	a.historyWriter.Wait()
+	a.downloads.writer.Wait()
 	a.playSave.writer.Wait()
 	a.scrobble.outbox.Wait()
 	a.scrobble.credits.Wait()

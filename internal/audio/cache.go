@@ -438,6 +438,14 @@ func audioCacheExtension(ext string) bool {
 // one. The URL itself is already signed, so no cookie is needed.
 const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
+// Fetch saves the audio stream at streamURL into a new temporary directory
+// inside dir, whose name starts with a dot, and returns the file's path. Only a
+// complete file is returned. The caller moves the file where it belongs and
+// removes the temporary directory.
+func Fetch(ctx context.Context, streamURL, dir string) (string, error) {
+	return downloadURL(ctx, http.DefaultClient, streamURL, dir)
+}
+
 // downloadURL saves an audio stream the app already resolved for
 // playback into a temporary directory inside the cache. The direct URL
 // carries its own authentication and expiry, so no second yt-dlp run is

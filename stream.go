@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"github.com/elianiva/meiro/internal/audio"
@@ -52,6 +53,7 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 	volume, normalize := a.volume, a.settings.NormalizeLoudness
 	speed := a.speedFor(item)
 	streams := a.streams
+	local := a.downloaded(item.VideoID)
 	log.Printf("playback: resolving video_id=%s", item.VideoID)
 	startTask(a, &a.stream, audio.ResolveTimeout, func(ctx context.Context) (resolvedAudio, error) {
 		a.player.Stop()
@@ -76,7 +78,7 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 			}
 		}
 		a.player.SetVolume(playbackVolume(volume, known.LoudnessDB, knownOK && normalize))
-		found, err := findAudio(ctx, streams, item, cache)
+		found, err := findAudio(ctx, streams, item, local, cache)
 		found.loudness, found.loudnessOK = fresh, freshOK
 		if err != nil || ctx.Err() != nil {
 			return found, err
@@ -179,10 +181,11 @@ func (a *app) syncPreload() {
 		return
 	}
 	cache := a.currentAudioCache()
+	local := a.downloaded(next.VideoID)
 	a.preloadFor = next.VideoID
 	a.fetchLoudness(next, &a.preloadLoudnessLoad)
 	startTask(a, &a.preload, audio.ResolveTimeout, func(ctx context.Context) (preloadedAudio, error) {
-		found, err := findAudio(ctx, a.streams, next, cache)
+		found, err := findAudio(ctx, a.streams, next, local, cache)
 		if err == nil {
 			err = ctx.Err()
 		}
@@ -290,6 +293,7 @@ func (a *app) recoverStream(failure string) bool {
 	}
 	paused, bySleep := a.player.Paused(), a.suspendedWhilePlaying
 	cache := a.currentAudioCache()
+	local := a.downloaded(item.VideoID)
 	log.Printf("playback: stream broke off video_id=%s at=%s attempt=%d/%d: %s", item.VideoID, at.Round(time.Second), attempt, maxRecoveries, failure)
 	a.fetchLoudness(item, &a.loudnessLoad)
 	startTask(a, &a.stream, audio.ResolveTimeout+time.Duration(attempt)*recoveryBackoff, func(ctx context.Context) (resolvedAudio, error) {
@@ -297,7 +301,7 @@ func (a *app) recoverStream(failure string) bool {
 			return resolvedAudio{}, err
 		}
 		a.streams.Forget(item.VideoID)
-		found, err := findAudio(ctx, a.streams, item, cache)
+		found, err := findAudio(ctx, a.streams, item, local, cache)
 		if err != nil || ctx.Err() != nil {
 			return found, err
 		}
@@ -325,11 +329,23 @@ func (a *app) recoverStream(failure string) bool {
 	return true
 }
 
-// findAudio is where a track's audio is: in the cache, or from yt-dlp.
-func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem, cache *audio.Cache) (resolvedAudio, error) {
+// findAudio is where a track's audio is: in local, the file it was downloaded
+// to, if that is still there, in the cache, or from yt-dlp.
+func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem, local string, cache *audio.Cache) (resolvedAudio, error) {
 	found := resolvedAudio{total: parseDuration(item.Duration)}
-	if path, ok := cache.Get(item.VideoID); ok {
+	if local != "" {
+		if _, err := os.Stat(local); err != nil {
+			log.Printf("playback: downloaded audio unavailable video_id=%s: %v", item.VideoID, err)
+			local = ""
+		}
+	}
+	path, ok := local, local != ""
+	if ok {
+		log.Printf("playback: playing downloaded audio video_id=%s", item.VideoID)
+	} else if path, ok = cache.Get(item.VideoID); ok {
 		log.Printf("playback: audio cache hit video_id=%s", item.VideoID)
+	}
+	if ok {
 		found.url, found.fromCache = path, true
 		if found.total <= 0 {
 			// A track cached ahead of time was never resolved, so its
@@ -357,7 +373,7 @@ func (a *app) warmNext() {
 		return
 	}
 	next := a.queue.at(a.queue.index + 1)
-	if next.VideoID == "" || next.VideoID == a.current.VideoID {
+	if next.VideoID == "" || next.VideoID == a.current.VideoID || a.isDownloaded(next.VideoID) {
 		return
 	}
 	cache := a.currentAudioCache()

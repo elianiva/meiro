@@ -2077,3 +2077,22 @@ func TestTheCurrentTabPutsThePlayerAway(t *testing.T) {
 		t.Errorf("the tab moved the page to %q", after.title)
 	}
 }
+
+func TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	a.router.Push("/playlist/VLPL_paginated")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for range 30 {
+		tt.Frame()
+	}
+	if got := len(a.page.playable); got != 146 {
+		t.Fatalf("playlist has %d playable songs, want all 146", got)
+	}
+	if got := a.page.playable[145].VideoID; got != "track-145" {
+		t.Fatalf("last playlist song = %q, want track-145", got)
+	}
+	if got := len(a.page.feed.similar); got != 7 {
+		t.Fatalf("playlist has %d suggestions, want 7 kept separate", got)
+	}
+}

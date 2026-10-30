@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "offline",
+    srcs = ["offline.go"],
+    importpath = "github.com/elianiva/meiro/internal/offline",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/audio",
+        "//internal/fsutil",
+        "//internal/proc",
+        "//youtube",
+    ],
+)
+
+go_test(
+    name = "offline_test",
+    srcs = ["offline_test.go"],
+    embed = [":offline"],
+    deps = ["//youtube"],
+)

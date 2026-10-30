@@ -143,6 +143,9 @@ type app struct {
 	statsRange          int // days the stats page covers: 7, 14 or 30
 	stats               statsMemo
 
+	// downloads is the music saved to play offline.
+	downloads downloads
+
 	// audioCache is the cache playback uses now; the settings page swaps it
 	// from the main thread while background work holds on to the one it
 	// started with.

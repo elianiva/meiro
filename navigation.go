@@ -74,6 +74,8 @@ type pageData struct {
 	// still rebuilds them.
 	rowsDirty bool
 	rowsKey   rowsKey
+	// downloads is the version of the downloads the Downloads page shows.
+	downloads int
 	// list is where the page is scrolled to, kept with it so that going back
 	// to a page shows it where it was left.
 	list *ui.ListState
@@ -219,6 +221,12 @@ func (a *app) loadPage(r *route, id string) {
 			feed.more, feed.moreErr = "", ""
 			return
 		}
+		// Offline, a downloaded album or playlist shows what was downloaded
+		// of it.
+		if downloaded, ok := a.offlinePage(id); ok && r.isDetail() && errors.Is(err, youtube.ErrUnreachable) {
+			a.applyPage(p, r, path, client, downloaded, false)
+			return
+		}
 		if err != nil {
 			p.rowsDirty = true
 			feed.loading, feed.partial = false, false
@@ -233,10 +241,16 @@ func (a *app) loadPage(r *route, id string) {
 		a.applyPage(p, r, path, client, result, false)
 		// A playlist page shows its whole playlist and what YouTube suggests
 		// under it, so the page asks for both as it opens.
-		if r.id == routePlaylist && feed.more != "" {
-			token := feed.more
+		if r.id == routePlaylist {
+			token, suggestions := feed.more, ""
+			for _, section := range feed.sections {
+				if (section.Kind == "musicPlaylistShelfRenderer" || section.Kind == "playlistVideoListRenderer") && section.ContinuationToken != "" {
+					token, suggestions = section.ContinuationToken, feed.more
+					break
+				}
+			}
 			p.feed.more = ""
-			a.loadPlaylistRest(p, client, token)
+			a.loadPlaylistRest(p, client, token, suggestions)
 		}
 	})
 }
@@ -245,12 +259,19 @@ func (a *app) loadPage(r *route, id string) {
 // playlist that came after its first page join it, and the first answer that
 // is a shelf is what YouTube suggests under the playlist, which the page shows
 // after it, a few at a time.
-func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token string) {
+func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token, suggestions string) {
 	if token == "" || a.pageSimilar.busy() {
 		return
 	}
 	startTask(a, &a.pageSimilar, moreTimeout, func(ctx context.Context) (moreItems, error) {
-		return readPlaylistRest(ctx, token, client.ContinueBrowse)
+		more, err := readPlaylistRest(ctx, token, client.ContinueBrowse)
+		if err != nil || len(more.sections) > 0 || suggestions == "" || suggestions == token {
+			return more, err
+		}
+		rest, err := readPlaylistRest(ctx, suggestions, client.ContinueBrowse)
+		more.items = append(more.items, rest.items...)
+		more.sections, more.next = rest.sections, rest.next
+		return more, err
 	}, func(more moreItems, err error) {
 		p.rowsDirty = true
 		if err != nil {

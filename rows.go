@@ -112,6 +112,12 @@ type rowsKey struct {
 // build, so an idle page reuses them frame after frame.
 func (a *app) syncRows() {
 	r, _ := a.route()
+	// A click that opens the Downloads page builds rows in the same frame,
+	// while the page held is still the one being left: only once the app
+	// has caught up with the router is the page the Downloads page's own.
+	if r.id == routeDownloads && a.location == a.router.Location() {
+		a.syncDownloadsPage()
+	}
 	s := a.pageState()
 	key := rowsKey{
 		path: a.path(), detail: a.page.detail,
@@ -192,7 +198,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			rows = append(rows, row{kind: rowHeading, title: "Songs", shelf: "playlist-sort-header", track: -1})
 		}
 	}
-	vertical := collection || r.id == routeSearch
+	vertical := collection || r.id == routeSearch || r.id == routeDownloads
 	// A playlist narrowed to a search shows only the songs that match, and
 	// the queue it gathers is still the whole playlist: playing a match
 	// plays the playlist from that song's own place in it.

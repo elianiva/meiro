@@ -64,6 +64,7 @@ func (a *app) hero(c *ui.Context) {
 					a.shufflePage()
 				}
 				a.libraryButton(c)
+				a.downloadButton(c)
 				a.subscribeButton(c)
 				if r.id == routePlaylist {
 					// One call site, beside the buttons that play the page:

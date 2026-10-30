@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"math/rand/v2"
 	"time"
 
@@ -146,6 +147,9 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, then func
 		return client.GetPlaylist(ctx, target.ID)
 	}, func(result *youtube.BrowseResult, err error) {
 		a.openingKey = ""
+		if downloaded, ok := a.offlinePage(target.ID); ok && errors.Is(err, youtube.ErrUnreachable) {
+			result, err = downloaded, nil
+		}
 		if err != nil {
 			a.notice = "Could not open “" + item.Title + "”: " + firstLine(err.Error())
 			return

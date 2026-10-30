@@ -45,6 +45,12 @@ var errWindowGone = errors.New("the sign-in window is gone")
 // password and a second factor.
 const SignInTimeout = 5 * time.Minute
 
+// signInURL is the Google sign-in page that returns to YouTube Music once the
+// user signs in. It has the form of the Sign in link on youtube.com: the
+// youtube.com/signin handler in "continue" is what sets the YouTube cookies. Opening it, not the YouTube Music home page, puts the
+// sign-in form in front of the user at once.
+const signInURL = "https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26next%3Dhttps%253A%252F%252Fmusic.youtube.com%252F"
+
 // firefoxRetry paces the Firefox profile read.
 type firefoxRetry struct {
 	// recheck is how long a read result of "not signed in" stays trusted
@@ -105,7 +111,7 @@ type WindowOptions struct {
 // closed does not.
 func SignInWindow(ctx context.Context, options WindowOptions) (string, error) {
 	if options.URL == "" {
-		options.URL = "https://music.youtube.com"
+		options.URL = signInURL
 	}
 	if options.Poll == 0 {
 		options.Poll = time.Second

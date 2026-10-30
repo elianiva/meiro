@@ -19,8 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Smoother notch transitions on macOS.** The panel expands and contracts with a short fade, reverses smoothly when clicked again, and uses a simple fade with Reduce Motion enabled.
 - **Quieter playback on macOS.** Track information stays in the notch, without notification banners or a Meiro menu bar icon. Keep Meiro running when its window closes and reopen it from the Dock.
+- **Songs, albums and playlists can be downloaded to play offline.** Choose Download in a song's menu, or on an album or playlist page. The new Downloads page lists what you saved, and it plays without a network. Downloaded songs show a check beside their length. ([#242](https://github.com/elianiva/meiro/issues/242))
+- **The sign-in window opens on the Google sign-in page.** It used to open the YouTube Music home page, and you had to find its Sign in button.
 
 ### Fixed
+
+- **Large playlists load all their songs.** Songs beyond the first page no longer disappear when YouTube puts their next-page link on the song list.
 
 - **The window buttons on Windows show in the light theme.** The minimise, maximise and close buttons were white on a light window when Windows was dark; they now follow the theme you chose.
 - **The tray mini player on Windows has rounded corners.** Its corners no longer show a dark square behind the panel.

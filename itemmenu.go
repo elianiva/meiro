@@ -108,6 +108,17 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 			a.startRadio(item, key)
 			close()
 		}
+		if (target.Kind == youtube.TargetAlbum || target.Kind == youtube.TargetPlaylist) && a.downloads.dir != "" {
+			if _, _, saved, _ := a.collectionDownload(target.ID); saved {
+				if m3.MenuItem(c, "Remove download", m3.IconDelete).Clicked() {
+					a.removeCollectionDownload(target.ID)
+					close()
+				}
+			} else if m3.MenuItem(c, "Download", m3.IconDownload).Clicked() {
+				a.withCollectionTracks(item, key, func(songs []youtube.MusicItem) { a.downloadCollection(item, songs) })
+				close()
+			}
+		}
 		if target.ID != "" && m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
 			c.WriteClipboard(youtube.BrowseURL(target.ID))
 			c.Toast("Link copied")
@@ -159,6 +170,17 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 		if item.VideoID != "" && m3.MenuItem(c, "Add to playlist", m3.IconLibrary).Clicked() {
 			a.openAddToPlaylist(item)
 			close()
+		}
+		if a.canDownload(item) {
+			if a.isDownloaded(item.VideoID) || a.downloading(item.VideoID) {
+				if m3.MenuItem(c, "Remove download", m3.IconDelete).Clicked() {
+					a.removeDownload(item.VideoID)
+					close()
+				}
+			} else if m3.MenuItem(c, "Download", m3.IconDownload).Clicked() {
+				a.downloadSong(item)
+				close()
+			}
 		}
 		if r, playlistID := a.route(); item.VideoID != "" && item.PlaylistSetID != "" && r.id == routePlaylist && m3.MenuItem(c, "Remove from playlist", m3.IconClose).Clicked() {
 			a.removeFromPlaylist(playlistID, item)

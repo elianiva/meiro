@@ -152,6 +152,9 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 					m3.Text(c, subtitleRole, item.Subtitle).SingleLine().TextColor(subColour)
 				}
 			})
+			if isSong && a.isDownloaded(item.VideoID) {
+				ui.Icon(c, m3.IconDownloadDone).FontSize(18).TextColor(subColour).Label("Downloaded")
+			}
 			switch {
 			case item.Duration != "":
 				m3.Text(c, m3.BodyMedium, item.Duration).SingleLine().Width(48).TextAlign(ui.End).

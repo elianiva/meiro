@@ -138,6 +138,7 @@ go_library(
         "desktop.go",
         "desktop_notify_other.go",
         "desktop_notify_windows.go",
+        "downloads.go",
         "episodes.go",
         "eq.go",
         "fonts.go",
@@ -197,6 +198,7 @@ go_library(
         "//internal/lrclib",
         "//internal/lru",
         "//internal/memprof",
+        "//internal/offline",
         "//internal/playstate",
         "//internal/proc",
         "//internal/report",
@@ -242,6 +244,7 @@ go_test(
     srcs = [
         "accountview_test.go",
         "crash_test.go",
+        "downloads_test.go",
         "eq_test.go",
         "harness_test.go",
         "integration_test.go",

@@ -21,6 +21,7 @@ const (
 	routeHome
 	routeExplore
 	routeLibrary
+	routeDownloads
 	routeRecap
 	routeSearch
 	routeSettings
@@ -145,6 +146,10 @@ func appRoutes() []route {
 				return c.StreamLibrary(ctx, nil)
 			},
 			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists.", "your songs, albums and playlists"},
+		},
+		{
+			// Downloads are read from disk, not loaded: the page works offline.
+			id: routeDownloads, empty: emptyMessage{"No downloads yet", "Download songs, albums and playlists to play them offline."}, pattern: "/downloads", title: "Downloads", rail: &railEntry{label: "Downloads", icon: m3.IconDownload, filled: m3.IconDownloadFilled}, heading: heading("Downloads"), nav: routeDownloads, source: "Downloads", bare: true,
 		},
 		{
 			id: routeRecap, empty: emptyMessage{"No recap yet", "Listen to some music and your recap will fill in."}, pattern: "/recap", title: "Recap", rail: &railEntry{label: "Recap", icon: m3.IconTrending, filled: m3.IconTrending, withAccount: true}, heading: heading("Recap"), nav: routeRecap, source: "Your recap",
