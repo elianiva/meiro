@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **The volume slider can follow a logarithmic curve.** Turn on Logarithmic volume under Settings → Sound for finer steps at low volumes. It is off by default. ([#245](https://github.com/elianiva/meiro/issues/245))
+- **The theme follows settings.json while Meiro runs.** Wallpaper tools such as matugen and pywal can write a new seed colour, and Meiro recolours without a restart. The file is read again a moment after it changes, and a half-written file waits for the next read.
 - **Tracks can crossfade.** A new Playback section in Settings fades the end of a song out while the next one fades in. Choose 1 to 12 seconds, and turn it off to go back to gapless playback.
 - **The notch closes automatically when you leave it.** Move the pointer away for two seconds to return to the compact player. Moving back cancels the countdown; dragging progress or keeping keyboard focus on a control holds the panel open.
 - **Open Now Playing from the notch cover.** Click the large artwork to bring Meiro forward on the current song and collapse the notch, preserving playback position and pause state.

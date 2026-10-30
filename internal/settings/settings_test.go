@@ -59,6 +59,12 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 	}
 }
 
+func TestParseRejectsAFileStillBeingWritten(t *testing.T) {
+	if _, err := Parse([]byte(`{"seed":`)); err == nil {
+		t.Fatal("Parse accepted a half-written file")
+	}
+}
+
 func TestClampZoomKeepsTheInterfaceReadable(t *testing.T) {
 	for _, tc := range []struct{ in, want int }{
 		{0, DefaultZoom}, // a settings file from before the field

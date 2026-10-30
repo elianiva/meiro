@@ -169,6 +169,7 @@ go_library(
         "search.go",
         "settingsabout.go",
         "settingspage.go",
+        "settingswatch.go",
         "shell.go",
         "shortcuts.go",
         "signin.go",
@@ -214,6 +215,7 @@ go_library(
         "@com_github_egoist_mygo//plugins/updater/native",
         "@com_github_egoist_mygo//ui",
         "@com_github_egoist_mygo//ui/chart",
+        "@com_github_fsnotify_fsnotify//:fsnotify",
     ] + select({
         "@rules_go//go/platform:darwin": [
             "@com_github_go_macos_objc//:objc",
@@ -257,6 +259,7 @@ go_test(
         "queue_test.go",
         "routes_test.go",
         "scrobble_test.go",
+        "settingswatch_test.go",
         "shortcuts_test.go",
         "states_test.go",
         "subscription_test.go",

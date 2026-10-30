@@ -241,40 +241,51 @@ func (s *Settings) Forget(query string) {
 // Load reads the settings file, and returns the defaults for one that is
 // missing or unreadable.
 func Load(path string) Settings {
-	s := Defaults()
 	if path == "" {
-		return s
+		return Defaults()
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Printf("reading settings: %v", err)
 		}
-		return s
+		return Defaults()
 	}
-	// Start from defaults so settings added later get their default when an
-	// older settings file does not contain the new field yet.
-	read := s
-	if err := json.Unmarshal(data, &read); err != nil {
+	s, err := Parse(data)
+	if err != nil {
 		// The next save replaces the file, so say what was lost.
 		log.Printf("settings in %s are not readable, starting from the defaults: %v", path, err)
-		return s
+		return Defaults()
+	}
+	return s
+}
+
+// Parse reads settings from data and repairs values a hand-edited file may
+// hold. It reports an error for data that is not settings JSON, so a watcher
+// can wait for the rest of a file that is still being written.
+func Parse(data []byte) (Settings, error) {
+	// Start from defaults so settings added later get their default when an
+	// older settings file does not contain the new field yet.
+	defaults := Defaults()
+	read := defaults
+	if err := json.Unmarshal(data, &read); err != nil {
+		return defaults, err
 	}
 	if len(read.Recent) > maxRecent {
 		read.Recent = read.Recent[:maxRecent]
 	}
 	if read.Volume < 0 || read.Volume > 100 {
-		read.Volume = s.Volume
+		read.Volume = defaults.Volume
 	}
 	read.CacheSongs = audio.ValidLimit(read.CacheSongs)
 	if _, ok := ParseSeed(read.Seed); !ok {
-		read.Seed = s.Seed
+		read.Seed = defaults.Seed
 	}
 	if read.Mode == "" {
-		read.Mode = s.Mode
+		read.Mode = defaults.Mode
 	}
 	if read.TrayMark != TrayMarkWordmark && read.TrayMark != TrayMarkOMark {
-		read.TrayMark = s.TrayMark
+		read.TrayMark = defaults.TrayMark
 	}
 	read.Zoom = ClampZoom(read.Zoom)
 	if runtime.GOOS == "darwin" {
@@ -282,7 +293,7 @@ func Load(path string) Settings {
 		read.NotifyTrack, read.ShowTray = false, false
 	}
 	read.CrossfadeSeconds = ClampCrossfade(read.CrossfadeSeconds)
-	return read
+	return read, nil
 }
 
 // save writes the settings atomically.
@@ -357,6 +368,13 @@ func (w *Writer) drain(done chan struct{}) {
 			log.Printf("saving settings: %v", err)
 		}
 	}
+}
+
+// Pending reports whether a save is waiting or on its way to disk.
+func (w *Writer) Pending() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.running
 }
 
 // Wait flushes the latest pending settings state and returns once its write is

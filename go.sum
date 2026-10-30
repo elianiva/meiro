@@ -6,6 +6,8 @@ github.com/ebitengine/purego v0.11.2 h1:WWiTx8rD8zYdOwSj8O/NiNbsOvSAgJMTlyV1XlbU
 github.com/ebitengine/purego v0.11.2/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
 github.com/egoist/mygo v0.7.2 h1:ITbzb9+u8GXjDZFkHsnIiBRayV7WQPFzM3whsIOm7F8=
 github.com/egoist/mygo v0.7.2/go.mod h1:dVav53PwF2xEotjf4oA5lTY2Jp2exgzyjLhbSXhbMwE=
+github.com/fsnotify/fsnotify v1.10.1 h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx59Ho=
+github.com/fsnotify/fsnotify v1.10.1/go.mod h1:TLheqan6HD6GBK6PrDWyDPBaEV8LspOxvPSjC+bVfgo=
 github.com/go-macos/objc v0.11.2 h1:d6+Zf3SA4zpclfFDcLB6Ttlb3o7cXt8Ah1oGhC+5/C8=
 github.com/go-macos/objc v0.11.2/go.mod h1:G2YcKu5C2Xs08vcM/CUUUeYUi9YeCHmkWcW+5RGwE/g=
 github.com/go-text/typesetting v0.3.5 h1:XZPUooClHY0Vf/rFyUyuPRNEkawARaFzLMQcXLSEyPk=

@@ -97,6 +97,7 @@ func main() {
 		// Browsing decodes and drops pictures in bursts, and the runtime
 		// keeps the freed memory for a while before it gives it back.
 		a.every(30*time.Second, debug.FreeOSMemory)
+		a.watchSettings()
 		a.watchSession()
 		a.every(flushInterval, func() { a.update(a.flushScrobbles) })
 		a.desktop.win.OnClosed(a.stopTicking)

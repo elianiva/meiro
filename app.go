@@ -59,6 +59,10 @@ type app struct {
 	// What the user chose, and the writer that keeps it.
 	settings settings.Settings
 	saver    settings.Writer
+	// settingsSeen is the last settings.json content the watcher read, so it
+	// notices only a change it has not handled. watchSettings starts it, and
+	// then only the watcher's goroutine touches it.
+	settingsSeen []byte
 	// playSave keeps the queue and position for the next run.
 	playSave playbackSave
 

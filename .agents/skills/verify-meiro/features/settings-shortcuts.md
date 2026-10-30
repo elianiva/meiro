@@ -5,6 +5,7 @@ A user changes the theme and equaliser, rebinds shortcuts, clears history, opens
 ## Sub-features
 
 - `settings-theme` switches `Dark` and a seed colour such as `Rose`.
+- `settings-hot-reload` writes `settings.json` while the app runs and sees the new theme and playback settings apply without a restart.
 - `settings-persist` writes `settings.json` and reads it back.
 - `settings-eq` toggles `Equaliser on`, picks a preset, and changes slider gains live without restarting the current stream.
 - `settings-shortcuts` shows, records, conflicts and resets shortcuts, and runs the defaults.
@@ -30,6 +31,7 @@ Preconditions:
 - `a := newTestApp(t)`, `a.saver.Path = filepath.Join(t.TempDir(), "settings.json")`, `a.router.Push("/settings")`, a window of 1000x900.
 
 - **Theme.** Verified. `p.click("Dark", "dark")`, `p.click("Rose", "rose")`. Then `a.saver.Save(&a.settings)`, `a.saver.Wait()` and read the file. Mirror `TestSettingsPersistAcrossRestarts`.
+- **Hot reload.** Verified by `TestSettingsFileChangesApplyWithoutARestart`. Set `a.saver.Path`, write a `settings.json` with the seed, mode, volume and equaliser you want, set `a.settingsSeen` to the file's bytes, and call `a.checkSettings()`; the test main thread applies it inline. A tester that provides `a.resolveTheme(c)` shows the new primary colour after `tt.Advance(themeGlide)`.
 - **Restart.** Build a second `newTestApp(t)` and `settings.Load(path)`. The mode and seed came back.
 - **Shortcut.** Mirror `TestRecordingANewShortcut`. Press the key with `tt.Key(mods, key)`, never by calling the action.
 - **Keyboard-only navigation.** Mirror `TestKeyboardMenusKeepFocusAndRunActions`, `TestKeyboardPlayerTabsAndQueue`, `TestKeyboardOpensTheCoverMenu` and `TestKeyboardVolumeIsSaved` in `shortcuts_test.go`. The `tabTo` helper only sends Tab; verify the next action's focus explicitly. Test volume at 920 and 1280 pixels: the narrow popup must survive focus moving from Mute to Volume. `TestSeekingMovesThePlayerOffTheMainThread` checks Home and Right against the real decoder position, not only the scrubber value.
@@ -43,6 +45,7 @@ Preconditions:
 ## Gotchas
 
 - Settings write through a debounced `Writer`. Call `Save` and `Wait` before you read the file.
+- The settings watcher skips the file while `a.saver.Pending()`, so wait for the app's own write before changing the file in a hot-reload proof.
 - Shortcut tests press `ui.Cmd` and let the app map it, as `shortcuts_test.go` does. Copy that.
 - `tt.Focused("Track a")` also reports true when the enclosing queue list has focus. Use Home then Down to select a specific queue row; do not treat that label alone as proof of which row is selected.
 - Give popover panels stable keys before building their children. A focus tooltip can change the order of overlays; without a key, tabbing from Mute to Volume rebuilds the slider under a different identity and restores focus to Mute.
