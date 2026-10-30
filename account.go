@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +24,8 @@ type session struct {
 	// channel is the channel the session acts as, or "" for the account's
 	// default one.
 	channel string
+	// accountIndex selects the Google account within the cookie's session.
+	accountIndex int
 	// channels are the channels the account can act as, once they are read.
 	channels []youtube.AccountChannel
 }
@@ -196,16 +200,16 @@ var errSessionGone = errors.New("YouTube did not recognise the cookie as a signe
 // openSession signs in with cookie as channel, and falls back to the
 // account's default channel when that one is gone. It runs off the main
 // thread.
-func (s *accountState) openSession(ctx context.Context, cookie, channel string) (*session, error) {
+func (s *accountState) openSession(ctx context.Context, cookie string, from sessionSource) (*session, error) {
 	open := func(channel string) (*session, error) {
-		auth, err := youtube.NewCookieAuth(cookie, youtube.CookieOptions{OnBehalfOfUser: channel})
+		auth, err := youtube.NewCookieAuth(cookie, youtube.CookieOptions{AccountIndex: from.accountIndex, OnBehalfOfUser: channel})
 		if err != nil {
 			return nil, err
 		}
 		client := s.newClient(auth)
 		details, err := client.GetAccountDetails(ctx)
 		if errors.Is(err, youtube.ErrUnauthorized) {
-			return nil, errSessionGone
+			return nil, fmt.Errorf("YouTube rejected the session for Google account %d: %w", from.accountIndex, errSessionGone)
 		}
 		if err != nil {
 			return nil, err
@@ -213,12 +217,20 @@ func (s *accountState) openSession(ctx context.Context, cookie, channel string) 
 		// YouTube answers a retired session with signed-out content rather
 		// than an error: an account without a name or a channel is none.
 		if details == nil || details.Name == "" && details.ChannelID == "" {
-			return nil, errSessionGone
+			return nil, fmt.Errorf("YouTube returned no account name or channel for Google account %d: %w", from.accountIndex, errSessionGone)
 		}
-		return &session{client: client, cookie: cookie, details: *details, channel: channel}, nil
+		if from.email != "" {
+			if details.Email == "" {
+				return nil, errors.New("YouTube returned no email address for the selected Google account; Meiro could not verify your selection")
+			}
+			if !strings.EqualFold(details.Email, from.email) {
+				return nil, errors.New("YouTube returned a different Google account than the one you selected; Meiro did not save the session")
+			}
+		}
+		return &session{client: client, cookie: cookie, details: *details, channel: channel, accountIndex: from.accountIndex}, nil
 	}
-	opened, err := open(channel)
-	if err != nil && channel != "" && !errors.Is(err, errSessionGone) {
+	opened, err := open(from.channel)
+	if err != nil && from.channel != "" && !errors.Is(err, errSessionGone) {
 		return open("")
 	}
 	return opened, err
@@ -227,8 +239,10 @@ func (s *accountState) openSession(ctx context.Context, cookie, channel string) 
 // sessionSource is what a sign-in remembers to sign in again with: the
 // channel it acts as and the browser it came from, "" for a pasted one.
 type sessionSource struct {
-	channel string
-	browser string
+	channel      string
+	browser      string
+	accountIndex int
+	email        string
 }
 
 // signInTimeout bounds reading a browser's session and asking YouTube about
@@ -240,7 +254,7 @@ const signInTimeout = 90 * time.Second
 // which is the one place that still holds a session YouTube accepts, and that
 // session is kept instead. It runs off the main thread.
 func (s *accountState) renewSession(ctx context.Context, cookie string, from sessionSource, attempt uint64) (*session, error) {
-	opened, err := s.openSession(ctx, cookie, from.channel)
+	opened, err := s.openSession(ctx, cookie, from)
 	if err == nil || !errors.Is(err, errSessionGone) {
 		return opened, err
 	}
@@ -254,7 +268,7 @@ func (s *accountState) renewSession(ctx context.Context, cookie string, from ses
 	defer cancel()
 	fresh, readErr := browser.Read(readCtx)
 	if readErr == nil {
-		opened, readErr = s.openSession(readCtx, fresh, from.channel)
+		opened, readErr = s.openSession(readCtx, fresh, from)
 	}
 	if readErr != nil {
 		// What the browser ran into is worth adding, unless it is the same
@@ -280,8 +294,10 @@ func (a *app) useSession(s *session, from sessionSource) {
 	a.account.session = s
 	a.account.expired = ""
 	a.account.signIn.err = ""
-	if a.settings.Channel != s.channel || a.settings.SignInSource != from.browser {
+	if a.settings.Channel != s.channel || a.settings.SignInSource != from.browser ||
+		a.settings.AccountIndex != s.accountIndex || a.settings.AccountEmail != s.details.Email {
 		a.settings.Channel, a.settings.SignInSource = s.channel, from.browser
+		a.settings.AccountIndex, a.settings.AccountEmail = s.accountIndex, s.details.Email
 		a.saveSettings()
 	}
 	a.accountChanged()
@@ -291,7 +307,7 @@ func (a *app) useSession(s *session, from sessionSource) {
 	spawn(a, func() []youtube.AccountChannel {
 		ctx, cancel := context.WithTimeout(context.Background(), credentialTimeout)
 		defer cancel()
-		list, err := s.client.GetAccounts(ctx)
+		list, err := s.client.GetSignInAccounts(ctx)
 		if err != nil || list == nil {
 			return nil
 		}
@@ -355,7 +371,7 @@ func (a *app) restoreAccount() {
 	if acc.creds.store == nil {
 		return
 	}
-	from := sessionSource{channel: a.settings.Channel, browser: a.settings.SignInSource}
+	from := sessionSource{channel: a.settings.Channel, browser: a.settings.SignInSource, accountIndex: a.settings.AccountIndex, email: a.settings.AccountEmail}
 	attempt := acc.creds.attempt.Load()
 	startTask(a, &acc.restore, accountTimeout+signInTimeout, func(ctx context.Context) (*session, error) {
 		cookie, err := acc.creds.load(ctx)
@@ -396,7 +412,7 @@ func (a *app) checkSession() {
 	if current == nil || acc.check.busy() {
 		return
 	}
-	from := sessionSource{channel: a.settings.Channel, browser: a.settings.SignInSource}
+	from := sessionSource{channel: a.settings.Channel, browser: a.settings.SignInSource, accountIndex: a.settings.AccountIndex, email: a.settings.AccountEmail}
 	attempt := acc.creds.attempt.Load()
 	startTask(a, &acc.check, accountTimeout+signInTimeout, func(ctx context.Context) (*session, error) {
 		return acc.renewSession(ctx, current.cookie, from, attempt)
@@ -420,14 +436,14 @@ func (a *app) checkSession() {
 
 // switchChannel makes the session act as another of the account's channels
 // and reloads the page, so it shows that channel's account.
-func (a *app) switchChannel(channel string) {
+func (a *app) switchChannel(channel string, accountIndex int) {
 	current := a.account.session
-	if current == nil || channel == current.channel {
+	if current == nil || channel == current.channel && accountIndex == current.accountIndex {
 		return
 	}
-	from := sessionSource{channel: channel, browser: a.settings.SignInSource}
+	from := sessionSource{channel: channel, browser: a.settings.SignInSource, accountIndex: accountIndex}
 	startTask(a, &a.account.switching, accountTimeout, func(ctx context.Context) (*session, error) {
-		auth, err := youtube.NewCookieAuth(current.cookie, youtube.CookieOptions{OnBehalfOfUser: channel})
+		auth, err := youtube.NewCookieAuth(current.cookie, youtube.CookieOptions{AccountIndex: accountIndex, OnBehalfOfUser: channel})
 		if err != nil {
 			return nil, err
 		}
@@ -439,7 +455,7 @@ func (a *app) switchChannel(channel string) {
 		if err != nil {
 			return nil, err
 		}
-		return &session{client: client, cookie: current.cookie, details: *details, channel: channel}, nil
+		return &session{client: client, cookie: current.cookie, details: *details, channel: channel, accountIndex: accountIndex}, nil
 	}, func(s *session, err error) {
 		if err != nil {
 			a.notice = "Could not switch channel: " + err.Error()

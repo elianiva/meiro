@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,11 +37,16 @@ type signInState struct {
 	// advanced shows the ways to sign in that copy a session from a browser
 	// the user keeps using: importing it, and pasting its Cookie header.
 	advanced bool
+	// accounts waits for an explicit choice before an imported session is saved.
+	accounts []youtube.AccountChannel
+	imported string
+	source   string
 }
 
 // reset empties the dialog. Its task is the caller's to stop.
 func (s *signInState) reset() {
 	s.open, s.err, s.attempt, s.cookie, s.browsers, s.importFailed, s.inWindow, s.hostAccess, s.advanced = false, "", 0, "", false, "", false, false, false
+	s.accounts, s.imported, s.source = nil, "", ""
 }
 
 // openSignIn opens the dialog that takes the cookie of the user's browser
@@ -116,12 +122,41 @@ func (a *app) windowSignIn() {
 	a.trySignIn(sessionSource{channel: a.settings.Channel}, cookies.SignInTimeout+signInTimeout, a.account.window)
 }
 
-// importSignIn takes the session of a browser the user is signed in with.
+// importSignIn reads the browser's accounts without choosing or saving one.
 func (a *app) importSignIn(browser cookies.Source) {
-	if a.account.signIn.try.busy() {
+	s := &a.account.signIn
+	if s.try.busy() {
 		return
 	}
-	a.trySignIn(sessionSource{channel: a.settings.Channel, browser: browser.Label}, signInTimeout, browser.Read)
+	s.err, s.importFailed, s.hostAccess = "", "", false
+	type importedAccounts struct {
+		cookie   string
+		accounts []youtube.AccountChannel
+	}
+	startTask(a, &s.try, signInTimeout, func(ctx context.Context) (importedAccounts, error) {
+		cookie, err := browser.Read(ctx)
+		if err != nil {
+			return importedAccounts{}, err
+		}
+		auth, err := youtube.NewCookieAuth(cookie, youtube.CookieOptions{})
+		if err != nil {
+			return importedAccounts{}, err
+		}
+		list, err := a.account.newClient(auth).GetSignInAccounts(ctx)
+		if err != nil {
+			return importedAccounts{}, err
+		}
+		if list == nil || len(list.Items) == 0 {
+			return importedAccounts{}, errors.New("YouTube did not return any accounts; sign in at music.youtube.com in that browser, then try again")
+		}
+		return importedAccounts{cookie: cookie, accounts: list.Items}, nil
+	}, func(result importedAccounts, err error) {
+		if err != nil {
+			s.err, s.importFailed = err.Error(), browser.Label
+			return
+		}
+		s.accounts, s.imported, s.source = result.accounts, result.cookie, browser.Label
+	})
 }
 
 // trySignIn reads a cookie, asks YouTube whom it signs in, and keeps it as
@@ -136,7 +171,7 @@ func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(con
 		if err != nil {
 			return nil, err
 		}
-		opened, err := acc.openSession(ctx, cookie, from.channel)
+		opened, err := acc.openSession(ctx, cookie, from)
 		if err != nil {
 			return nil, err
 		}
@@ -153,7 +188,7 @@ func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(con
 		// The browser the session came from is where it is read again once
 		// YouTube retires its cookie. A pasted session names none, which is
 		// also what forgets a browser the user has moved on from.
-		a.useSession(opened, sessionSource{channel: opened.channel, browser: from.browser})
+		a.useSession(opened, from)
 	})
 }
 
@@ -161,6 +196,10 @@ func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(con
 func (a *app) signInDialog(c *ui.Context) {
 	s := &a.account.signIn
 	if !s.open {
+		return
+	}
+	if s.accounts != nil {
+		a.signInAccountPicker(c)
 		return
 	}
 	busy := s.try.busy()
@@ -232,6 +271,57 @@ func (a *app) signInDialog(c *ui.Context) {
 			// window and an import start as soon as they are picked.
 			if s.advanced && m3.Button(c, m3.ButtonSpec{Label: "Sign in", Disabled: busy || strings.TrimSpace(s.cookie) == "", Key: "submit-sign-in"}).Clicked() {
 				a.submitSignIn()
+			}
+		})
+	})
+}
+
+// signInAccountPicker keeps the browser session private until the user chooses
+// the Google account and channel Meiro should act as.
+func (a *app) signInAccountPicker(c *ui.Context) {
+	s := &a.account.signIn
+	busy := s.try.busy()
+	sc := m3.Of(c).Scheme
+	m3.Dialog(c, &s.open, 520, func() {
+		m3.EmphasizedText(c, m3.HeadlineSmall, "Choose your YouTube account")
+		m3.Text(c, m3.BodyMedium, "Choose the account or channel to use from "+s.source+". Meiro remembers your choice.").TextColor(sc.OnSurfaceVariant)
+		for i, account := range s.accounts {
+			row := ui.ButtonBase(c.Key("sign-in-account-" + strconv.Itoa(i)))
+			row.Height(72).PaddingX(16).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).
+				Cursor(ui.CursorPointer).Label(account.Name).Disabled(busy || account.Disabled).
+				Background(m3.StateFill(sc.SurfaceContainerHigh, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+			row.Children(func() {
+				a.avatar(c, account.Name, account.Thumbnail, 96, 40)
+				ui.Column(c).Grow(1).Gap(4).Children(func() {
+					m3.Text(c, m3.TitleMedium, account.Name).SingleLine()
+					switch {
+					case account.Email != "":
+						m3.Text(c, m3.BodySmall, account.Email).SingleLine().TextColor(sc.OnSurfaceVariant)
+					case account.Handle != "":
+						m3.Text(c, m3.BodySmall, account.Handle).SingleLine().TextColor(sc.OnSurfaceVariant)
+					case account.Byline != "":
+						m3.Text(c, m3.BodySmall, account.Byline).SingleLine().TextColor(sc.OnSurfaceVariant)
+					}
+				})
+			})
+			if row.Clicked() {
+				cookie := s.imported
+				a.trySignIn(sessionSource{channel: account.ChannelID, accountIndex: account.AccountIndex, browser: s.source, email: account.Email},
+					signInTimeout, func(context.Context) (string, error) { return cookie, nil })
+			}
+		}
+		if s.err != "" {
+			m3.Text(c, m3.BodyMedium, s.err).TextColor(sc.Error).MaxLines(4)
+		}
+		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+			if busy {
+				m3.LoadingIndicator(c, 40, false)
+			}
+			if m3.Button(c, m3.ButtonSpec{Label: "Back", Kind: m3.TextOnly, Disabled: busy, Key: "back-sign-in"}).Clicked() {
+				s.accounts, s.imported, s.source, s.err = nil, "", "", ""
+			}
+			if m3.Button(c, m3.ButtonSpec{Label: "Cancel", Kind: m3.TextOnly, Key: "cancel-sign-in"}).Clicked() {
+				a.dismissSignIn()
 			}
 		})
 	})

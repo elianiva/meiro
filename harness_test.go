@@ -114,7 +114,7 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = nextResponse(fakeLikes())
 	case strings.HasSuffix(request.URL.Path, "/account/account_menu"):
 		reply = signedInAccountMenu
-	case strings.HasSuffix(request.URL.Path, "/account/accounts_list"):
+	case strings.HasSuffix(request.URL.Path, "/account/accounts_list"), strings.HasSuffix(request.URL.Path, "/getAccountSwitcherEndpoint"):
 		reply = accountsResponse
 	case strings.HasSuffix(request.URL.Path, "/music/get_search_suggestions"):
 		reply = suggestionsResponse
@@ -751,6 +751,58 @@ const accountsResponse = `{"accountSectionListRenderer":{"contents":[{"accountIt
 	{"accountItemRenderer":{"accountName":{"simpleText":"Music channel"},"hasChannel":true,"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"pageIdToken":{"pageId":"UC-music"}}]}}}},
 	{"accountItemRenderer":{"accountName":{"simpleText":"Studio channel"},"hasChannel":true,"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"pageIdToken":{"pageId":"UC-studio"}}]}}}}
 ]}}]}}`
+
+// multiAccountMusic distinguishes Google accounts that share the same cookies.
+// Both primary channels have empty channel IDs: only X-Goog-Authuser separates them.
+type multiAccountMusic struct {
+	fresh             string
+	swapped           bool
+	omitEmail         bool
+	omitSwitcherEmail bool
+	index             string
+	pageID            string
+}
+
+func (m *multiAccountMusic) RoundTrip(request *http.Request) (*http.Response, error) {
+	var reply string
+	switch {
+	case strings.HasSuffix(request.URL.Path, "/account/accounts_list"), strings.HasSuffix(request.URL.Path, "/getAccountSwitcherEndpoint"):
+		reply = multiAccountsResponse
+		if m.swapped {
+			reply = strings.NewReplacer("personal@example.test", "music@example.test", "music@example.test", "personal@example.test").Replace(reply)
+		}
+		if m.omitSwitcherEmail {
+			reply = strings.NewReplacer("personal@example.test", "", "music@example.test", "").Replace(reply)
+		}
+	case strings.HasSuffix(request.URL.Path, "/account/account_menu"):
+		m.index, m.pageID = request.Header.Get("X-Goog-Authuser"), request.Header.Get("X-Goog-PageId")
+		reply = signedOutAccountMenu
+		if strings.Contains(request.Header.Get("Cookie"), m.fresh) {
+			name, email := "Personal account", "personal@example.test"
+			if m.index == "1" && !m.swapped {
+				name, email = "Music account", "music@example.test"
+			}
+			if m.pageID == "UC-music-brand" {
+				name = "Music brand"
+			}
+			if m.omitEmail {
+				email = ""
+			}
+			reply = fmt.Sprintf(`{"activeAccountHeaderRenderer":{"accountName":{"simpleText":%q},"email":{"simpleText":%q}}}`, name, email)
+		}
+	default:
+		return fakeMusic{}.RoundTrip(request)
+	}
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(reply)), Request: request}, nil
+}
+
+const multiAccountsResponse = `{"sections":[{"accountSectionListRenderer":{"header":{"googleAccountHeaderRenderer":{"email":{"simpleText":"personal@example.test"}}},"contents":[{"accountItemSectionRenderer":{"contents":[
+	{"accountItemRenderer":{"accountName":{"simpleText":"Personal account"},"accountByline":{"simpleText":"personal@example.test"},"isSelected":true,"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"accountSigninToken":{"signinUrl":"https://www.youtube.com/signin?authuser=0"}}]}}}},
+	{"compactLinkRenderer":{"title":{"simpleText":"View all channels"}}}
+]}}]}},{"accountSectionListRenderer":{"header":{"googleAccountHeaderRenderer":{"email":{"simpleText":"music@example.test"}}},"contents":[{"accountItemSectionRenderer":{"contents":[
+	{"accountItemRenderer":{"accountName":{"simpleText":"Music account"},"accountByline":{"simpleText":"music@example.test"},"isSelected":true,"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"accountSigninToken":{"signinUrl":"https://www.youtube.com/signin?authuser=1"}}]}}}},
+	{"accountItemRenderer":{"accountName":{"simpleText":"Music brand"},"channelHandle":{"simpleText":"@music-brand"},"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"accountSigninToken":{"signinUrl":"/signin?authuser=1"}},{"pageIdToken":{"pageId":"UC-music-brand"}}]}}}}
+]}}]}}]}`
 
 // refusingMusic answers the account menu the way YouTube answers for a session
 // it has stopped accepting, until it is asked with the cookie the browser

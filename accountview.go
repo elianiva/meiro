@@ -66,22 +66,22 @@ func (a *app) channelItems(c *ui.Context, current *session) {
 	}
 	hasSelectedChannel := false
 	for _, channel := range current.channels {
-		if channel.Selected {
+		if channel.Selected && channel.AccountIndex == current.accountIndex {
 			hasSelectedChannel = true
 			break
 		}
 	}
 	sc := m3.Of(c).Scheme
-	m3.Text(c, m3.LabelMedium, "Channel").Padding(12, 12, 4).TextColor(sc.OnSurfaceVariant)
+	m3.Text(c, m3.LabelMedium, "Account / channel").Padding(12, 12, 4).TextColor(sc.OnSurfaceVariant)
 	for i, channel := range current.channels {
 		name := channel.Name
 		if name == "" {
 			name = channel.Handle
 		}
 		row := ui.ButtonBase(c.Key("channel-" + channel.ChannelID + "-" + strconv.Itoa(i)))
-		row.Height(48).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).Label(name).
+		row.Height(48).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).Label(name).Disabled(channel.Disabled).
 			Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
-		selected := accountChannelSelected(channel, hasSelectedChannel, current.channel)
+		selected := channel.AccountIndex == current.accountIndex && accountChannelSelected(channel, hasSelectedChannel, current.channel)
 		row.Children(func() {
 			if selected {
 				ui.Icon(c, m3.IconCheck).FontSize(22).TextColor(sc.Primary)
@@ -92,7 +92,7 @@ func (a *app) channelItems(c *ui.Context, current *session) {
 		})
 		if row.Clicked() && !selected {
 			a.menuOpen = false
-			a.switchChannel(channel.ChannelID)
+			a.switchChannel(channel.ChannelID, channel.AccountIndex)
 		}
 	}
 	ui.Divider(c)

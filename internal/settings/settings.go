@@ -61,6 +61,10 @@ type Settings struct {
 	// Channel is the signed-in account's channel to act as, or empty for the
 	// account's default one.
 	Channel string `json:"channel,omitempty"`
+	// AccountIndex selects the Google account within a browser session.
+	AccountIndex int `json:"accountIndex,omitempty"`
+	// AccountEmail detects a browser session whose Google accounts were reordered.
+	AccountEmail string `json:"accountEmail,omitempty"`
 	// SignInSource is the browser the session was imported from, or empty for
 	// one that was pasted. YouTube retires the cookie of a browser session as
 	// the browser goes on using it, so this is where the session is read again

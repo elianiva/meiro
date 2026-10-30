@@ -4,7 +4,7 @@ A user signs in, sees their library, likes tracks, subscribes to artists, saves 
 
 ## Sub-features
 
-- `account-signin` signs in with a browser window, an imported browser session, or a pasted Cookie header.
+- `account-signin` signs in with a browser window, an imported browser session, or a pasted Cookie header. Browser imports ask which Google account and YouTube channel to use before saving the session.
 - `account-restore` restores the session at start and clears it on sign out.
 - `account-rejected` asks to sign in again when YouTube refuses the session.
 - `library-save` saves and removes an album or playlist, from the page and from its card.
@@ -39,11 +39,14 @@ Preconditions:
 - **Delete a playlist.** On `/library`, right-click the `Hype` card and choose `Delete playlist`. The dialog names the playlist (`“Hype” is deleted from your account, and this cannot be undone.`) and writes nothing until it is answered: `playlistDeletes.Load()` stays `0` after `Cancel`, which leaves the card where it was. `Delete` writes one `playlist/delete` with `playlistId` `PLhype`, takes the card off the page and shows `Deleted “Hype”`. The menu on a playlist page offers the same entry, and deleting the playlist that page shows leaves for the library.
 - **Refused.** `resetFakes()`, `refuseWrites.Store(true)`, then click `Save to library`. Verified: the button still reads `Save to library`.
 - **Sign in.** Mirror `TestSignInWithABrowserWindow` and `TestFailedBrowserImportOffersPastingTheCookieHeader`. A window shorter than the dialog scrolls it (`TestSignInDialogScrollsInAShortWindow`): the panel carries the label `dialog-panel`, and a text the panel clips keeps that label with a zero-height box until scrolling brings it into the panel.
+- **Choose an imported account.** Mirror `TestImportedAccountChoiceSurvivesRestartAndRefresh`: Account → Sign in → Advanced → Import from a browser → Helium shows `Choose your YouTube account`. `multiAccountMusic` distinguishes `Personal account` (Google index 0), `Music account` (index 1, no brand ID), and `Music brand` (index 1, `UC-music-brand`). Neither importing nor cancelling saves a cookie. Choosing the second account sends `X-Goog-Authuser: 1`, saves the account index and email with the channel and browser, and restores the same identity after a restart or cookie refresh. Switching channels keeps the Google index; switching to Personal uses index 0. A reordered Google session whose email no longer matches the saved choice must stay signed out rather than use another person. The picker has Back and Cancel, remains open after a rejected selection, and fits a 1000×480 window with three choices; longer lists scroll using the shared dialog.
 
 ## Gotchas
 
 - A signed-out app shows no like, save or subscribe buttons. Prove that too (`TestSignedOutHasNoLike`).
 - The fake accepts any `SAPISID=test` cookie. It says nothing about real YouTube auth. See [native-only.md](./native-only.md).
+- Imported account discovery uses the web `/getAccountSwitcherEndpoint` response (including its XSSI prefix and Google-account section emails), not the InnerTube channel-only list. Mocked tests verify parsing, selected-account request headers, disk persistence and refresh, but do not verify a live multi-account Helium session. On the macOS runner the orb-native helper cannot start: it requires systemd and passwordless sudo; headless screenshots cover rendering, not the native window.
+- A real Helium import reached the picker but failed because the Music account details omitted email. `GetAccountDetails` now falls back to the web switcher's section email for the requested Google account index, not a display name or list position. The regression scenario exercises sign-in, restart, refresh and switching with email-free Music headers, and refuses missing switcher emails or a reordered account whose email differs. The user confirmed that sign-in works with their real Helium session after this fix; live restart and refresh remain unverified. Do not treat missing account metadata as proof that a working browser session expired.
 - Counters and `lastWrite` are process globals. Do not use `t.Parallel` in a proof that reads them.
 - Use the counters, `written()`, `likeWrite()` and `subscriptionWrite()` as the second view of a write. A button label alone does not prove the request was sent.
 - Saving an album and liking a track both count in `likeWrites`. Reset or compare a delta.
