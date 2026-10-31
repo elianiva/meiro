@@ -220,3 +220,56 @@ func writeSettingsFile(t *testing.T, path string, s settings.Settings) {
 		t.Fatal(err)
 	}
 }
+
+func TestColorsFileThemesTheWindow(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(dir, "settings.json")
+	a.colorsPath = filepath.Join(dir, "colors.json")
+	a.settings = settings.Defaults()
+	a.settings.Seed, a.settings.Mode = "#6750a4", "dark"
+	writeSettingsFile(t, a.saver.Path, a.settings)
+	a.settingsSeen, _ = os.ReadFile(a.saver.Path)
+	derived := m3.New(a.settings.Theme(uiFont), true).Scheme
+
+	// The light set is left out: a mode with no colours keeps the seed's own.
+	file := `{"dark": {"primary": "#00e63a", "on_primary": "#003910", "surface": "#101510"}}`
+	if err := os.WriteFile(a.colorsPath, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.checkColors()
+	shown := func(mode string) m3.Scheme {
+		a.settings.Mode = mode
+		var s m3.Scheme
+		tt := ui.NewTester(func(c *ui.Context) { s = a.resolveTheme(c).Scheme; ui.Box(c).Size(10, 10) }, 100, 100)
+		tt.Frame()
+		tt.Advance(themeGlide + 20*time.Millisecond)
+		return s
+	}
+	got := shown("dark")
+	if got.Primary != ui.Hex("#00e63a") || got.Surface != ui.Hex("#101510") {
+		t.Errorf("colours did not apply: primary %v, surface %v", got.Primary, got.Surface)
+	}
+	if got.Secondary != derived.Secondary {
+		t.Errorf("a role the file leaves out changed: %v, want %v", got.Secondary, derived.Secondary)
+	}
+
+	if got, want := shown("light").Primary, m3.New(a.settings.Theme(uiFont), false).Scheme.Primary; got != want {
+		t.Errorf("light primary = %v, want the seed's %v", got, want)
+	}
+	if err := os.WriteFile(a.colorsPath, []byte(`{"dark": {"primary": "#00e`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.checkColors()
+	if got := shown("dark"); got.Primary != ui.Hex("#00e63a") {
+		t.Errorf("a half-written file changed the colours: %v", got.Primary)
+	}
+
+	if err := os.Remove(a.colorsPath); err != nil {
+		t.Fatal(err)
+	}
+	a.checkColors()
+	if got := shown("dark"); got.Primary != derived.Primary {
+		t.Errorf("primary = %v after the file went, want the seed's %v", got.Primary, derived.Primary)
+	}
+}

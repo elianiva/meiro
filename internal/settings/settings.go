@@ -393,3 +393,40 @@ func (w *Writer) Wait() {
 	w.mu.Unlock()
 	<-done
 }
+
+// ParseColors reads the colours file: an object with "light" and "dark"
+// objects that map role names, such as "primary" or "surface_container_high",
+// to "#rrggbb". It says no to a file that is not that, or that names a colour
+// it cannot read or a role that does not exist, so a typo is not lost quietly.
+func ParseColors(data []byte) (*m3.Colors, error) {
+	var file struct {
+		Light, Dark map[string]string
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		return nil, err
+	}
+	read := func(appearance string, in map[string]string) (map[string]ui.Color, error) {
+		out := make(map[string]ui.Color, len(in))
+		var scratch m3.Scheme
+		for role, text := range in {
+			if scratch.Role(role) == nil {
+				return nil, fmt.Errorf("%s: %q is not a colour role", appearance, role)
+			}
+			colour, ok := ParseSeed(text)
+			if !ok {
+				return nil, fmt.Errorf("%s.%s: %q is not #rrggbb", appearance, role, text)
+			}
+			out[role] = colour
+		}
+		return out, nil
+	}
+	light, err := read("light", file.Light)
+	if err != nil {
+		return nil, err
+	}
+	dark, err := read("dark", file.Dark)
+	if err != nil {
+		return nil, err
+	}
+	return &m3.Colors{Light: light, Dark: dark}, nil
+}

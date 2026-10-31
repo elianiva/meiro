@@ -45,6 +45,7 @@ func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 	if a.settings.Dynamic && t.dynamicOK {
 		cfg.Seed = t.dynamic
 	}
+	cfg.Colors = a.colors
 	dark := c.Theme().Dark
 	if t.cached == nil || t.cachedCfg != cfg || t.cachedDark != dark {
 		t.cached, t.cachedCfg, t.cachedDark = m3.New(cfg, dark), cfg, dark

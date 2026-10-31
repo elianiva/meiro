@@ -15,6 +15,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/m3"
 )
 
 // settingsDebounce gives one save's burst of file events time to settle
@@ -35,33 +36,39 @@ func (a *app) watchSettings() {
 		return
 	}
 	a.settingsSeen, _ = os.ReadFile(a.saver.Path)
+	a.colorsSeen, _ = os.ReadFile(a.colorsPath)
 	path := a.saver.Path
+	check := func() {
+		a.checkSettings()
+		a.checkColors()
+	}
 	a.run(func() {
-		watcher, err := newSettingsWatcher(filepath.Dir(path), filepath.Base(path), settingsDebounce, a.checkSettings)
+		watcher, err := newSettingsWatcher(filepath.Dir(path), filepath.Base(path), settingsDebounce, check, filepath.Base(a.colorsPath))
 		if err == nil {
 			// Catch a change between the first read and the watch starting.
-			a.checkSettings()
+			check()
 			err = watcher.run(a.stop)
 		}
 		if err != nil {
 			log.Printf("watching settings: %v; checking once a second instead", err)
-			a.every(settingsCheckEvery, a.checkSettings)
+			a.every(settingsCheckEvery, check)
 		}
 	})
 }
 
-// settingsWatcher watches the directory settings.json is in. A tool that
+// settingsWatcher watches the directory settings.json and colors.json are in. A tool that
 // writes a temporary file and renames it over settings.json breaks a watch on
 // the file itself; watching the directory sees the new name.
 type settingsWatcher struct {
 	events   *fsnotify.Watcher
-	name     string
+	names    []string
 	debounce time.Duration
 	changed  func()
 }
 
-// newSettingsWatcher starts watching dir for changes to name.
-func newSettingsWatcher(dir, name string, debounce time.Duration, changed func()) (*settingsWatcher, error) {
+// newSettingsWatcher starts watching dir for changes to name and to the files
+// named in more.
+func newSettingsWatcher(dir, name string, debounce time.Duration, changed func(), more ...string) (*settingsWatcher, error) {
 	events, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -70,7 +77,7 @@ func newSettingsWatcher(dir, name string, debounce time.Duration, changed func()
 		_ = events.Close()
 		return nil, err
 	}
-	return &settingsWatcher{events: events, name: name, debounce: debounce, changed: changed}, nil
+	return &settingsWatcher{events: events, names: append([]string{name}, more...), debounce: debounce, changed: changed}, nil
 }
 
 // run waits for the OS to report a change to the settings file, debounces the
@@ -87,7 +94,7 @@ func (s *settingsWatcher) run(stop <-chan struct{}) error {
 			if !ok {
 				return errors.New("the file watcher stopped")
 			}
-			if filepath.Base(event.Name) != s.name {
+			if !slices.Contains(s.names, filepath.Base(event.Name)) {
 				continue
 			}
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
@@ -118,6 +125,45 @@ func (a *app) checkSettings() {
 	}
 	a.settingsSeen = data
 	a.update(func() { a.reloadSettings(data) })
+}
+
+// readColors reads colors.json, or returns nil when there is none or it is
+// not a colours file. It runs off the main thread, or before any exists.
+func (a *app) readColors() *m3.Colors {
+	data, err := os.ReadFile(a.colorsPath)
+	if err != nil {
+		return nil
+	}
+	colors, err := settings.ParseColors(data)
+	if err != nil {
+		log.Printf("reading %s: %v", a.colorsPath, err)
+		return nil
+	}
+	return colors
+}
+
+// checkColors reads colors.json and hands a change to the main thread. A file
+// that is half written or wrong keeps the colours the app has; a file that is
+// gone gives the theme back to the seed. It runs off the main thread.
+func (a *app) checkColors() {
+	data, err := os.ReadFile(a.colorsPath)
+	if err != nil {
+		data = nil
+	}
+	if bytes.Equal(data, a.colorsSeen) {
+		return
+	}
+	var colors *m3.Colors
+	if data != nil {
+		if colors, err = settings.ParseColors(data); err != nil {
+			return // still being written, or wrong; the next change reads it again
+		}
+	}
+	a.colorsSeen = data
+	a.update(func() {
+		a.colors = colors
+		a.refresh()
+	})
 }
 
 // reloadSettings applies settings another program wrote. It runs on the main
