@@ -52,11 +52,17 @@ func (n *notchState) resetLyrics() {
 
 func (a *app) notchSetting(c *ui.Context) {
 	ui.Row(c.Key("notch-setting")).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
-		settingLabel(c, "Notch player", "Show album art and playback beside the MacBook notch. Click to open synced lyrics.").Grow(1)
+		description := "Show album art and playback beside the MacBook notch. Turn off to use the menu bar mini player."
+		if !a.settings.ShowNotch {
+			description = "The menu bar mini player is active. Turn on to use the MacBook notch."
+		} else if !a.notchEnabled() {
+			description = "The menu bar mini player is active until a display with a notch is available."
+		}
+		settingLabel(c, "Notch player", description).Grow(1)
 		on := a.settings.ShowNotch
 		if m3.Switch(c, &on, "Show notch player").Changed() {
 			a.settings.ShowNotch = on
-			a.syncNotch()
+			a.syncDesktop()
 			a.saveSettings()
 		}
 	})
@@ -78,7 +84,13 @@ func (a *app) setNotchCutout(cutout mygo.Rectangle) {
 		a.notch.collapseAt = time.Time{}
 	}
 	a.notch.cutout = cutout
-	a.syncNotch()
+	a.syncDesktop()
+}
+
+// notchEnabled is the chosen desktop player, independent of whether a track
+// is loaded. Losing the display must not overwrite the saved preference.
+func (a *app) notchEnabled() bool {
+	return a.settings.ShowNotch && a.notch.cutout.Width > 0 && a.notch.cutout.Height > 0
 }
 
 func (n *notchState) bounds() mygo.Rectangle {
@@ -94,7 +106,7 @@ func (n *notchState) bounds() mygo.Rectangle {
 
 func (a *app) syncNotch() {
 	d := a.desktop
-	if !a.settings.ShowNotch || a.current.VideoID == "" || a.notch.cutout.Width <= 0 {
+	if !a.notchEnabled() || a.current.VideoID == "" {
 		a.notch.expanded, a.notch.transitioning = false, false
 		a.notch.scrubbing = false
 		a.notch.collapseAt = time.Time{}
@@ -178,7 +190,7 @@ func (a *app) setNotchExpanded(open bool) {
 
 func (a *app) notchView(c *ui.Context) {
 	c.Root().Background(ui.Transparent)
-	if a.current.VideoID == "" || !a.settings.ShowNotch {
+	if a.current.VideoID == "" || !a.notchEnabled() {
 		return
 	}
 	white := ui.RGB(255, 255, 255)

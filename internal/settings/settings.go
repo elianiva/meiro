@@ -64,22 +64,24 @@ type Settings struct {
 	// StaticLyrics shows lyrics as plain text even when a track has them timed.
 	StaticLyrics bool `json:"staticLyrics,omitempty"`
 	// NotifyTrack shows a desktop notification when a new track starts,
-	// except on macOS, where playback is presented by the notch.
+	// except on macOS, where playback is presented by the notch or menu bar.
 	NotifyTrack bool `json:"notifyTrack"`
 	// GlobalShortcut plays or pauses from anywhere with
 	// CmdOrCtrl+Shift+Space.
 	GlobalShortcut bool `json:"globalShortcut"`
 	// ShowTray keeps an icon with transport controls on platforms with a tray.
-	// macOS uses the notch and Dock instead.
+	// On macOS the menu bar follows ShowNotch and display availability instead.
 	ShowTray bool `json:"showTray"`
-	// ShowNotch shows the compact player around a MacBook's camera housing.
+	// ShowNotch prefers the compact player around a MacBook's camera housing;
+	// macOS uses the menu bar mini player when it is off or no notch is available.
 	ShowNotch bool `json:"showNotch"`
 	// TrayMark is the menu bar icon style on macOS and Linux.
 	TrayMark TrayMark `json:"trayMark"`
 	// DiscordPresence shares the current track with the running Discord client.
 	DiscordPresence bool `json:"discordPresence,omitempty"`
 	// CloseToTray hides the window instead of quitting when the user closes
-	// it. macOS reopens from the Dock; other platforms keep a tray icon.
+	// it. macOS reopens from the Dock, notch or menu bar; other platforms keep
+	// a tray icon.
 	// Empty means the user has not chosen yet, so closing asks.
 	CloseToTray *bool `json:"closeToTray,omitempty"`
 	// OpenAtLogin starts Meiro when the user logs in.
@@ -289,7 +291,8 @@ func Parse(data []byte) (Settings, error) {
 	}
 	read.Zoom = ClampZoom(read.Zoom)
 	if runtime.GOOS == "darwin" {
-		// Older settings must not bring back duplicate playback surfaces.
+		// macOS has no track banners; its menu bar follows the notch choice and
+		// available display, not the legacy ShowTray preference.
 		read.NotifyTrack, read.ShowTray = false, false
 	}
 	read.CrossfadeSeconds = ClampCrossfade(read.CrossfadeSeconds)

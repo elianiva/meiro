@@ -19,8 +19,8 @@ the right. The previous and next lines frame the active lyric.
 - `notch-progress`: the thin position slider shows elapsed and total time. Pointer release or keyboard changes seek; another player window cannot end its drag. Unknown duration disables seeking.
 - `notch-sync`: line selection follows playback position and seeks; changing songs supersedes pending lyrics.
 - `notch-fallback`: plain lyrics scroll independently; missing lyrics and failed requests have separate states, with Retry for failures.
-- `notch-settings`: Settings > Desktop > Notch player persists, enabled by default. Only macOS shows the setting.
-- `notch-only-desktop`: macOS has no track banners or menu bar icon, including with legacy settings. Settings offers Keep running when closed; hiding the main window does not turn the tray back on, and the Dock reopens the main window even while the notch is visible.
+- `notch-settings`: Settings > Desktop > Notch player persists, enabled by default. Only macOS shows the setting. Turning it off immediately switches to the menu bar icon and the existing mini player; turning it back on removes that icon when a notched display is available. Editing `showNotch` in settings.json switches the same way without a restart.
+- `notch-desktop-choice`: macOS uses the menu bar mini player when the notch is disabled or no built-in notched display is available. Display loss/reconnection swaps the player without changing the saved notch preference, queue, playback or explicit background choice. The player choice does not depend on whether a track is loaded. Legacy `showTray` cannot hide the fallback or duplicate an enabled notch. Track banners stay off. Other platforms retain their tray preference. Settings offers Keep running when closed; the Dock can also reopen the main window.
 - `notch-artwork`: the active track's thumbnail is shown; a late cover for an older track cannot replace it. Missing covers use a neutral music-note placeholder.
 - `notch-native`: only a built-in screen with an AppKit camera cutout gets a panel. Display changes reposition it or remove it.
 - `notch-menu-bar`: the compact panel does not retain keyboard focus. Expanding opts in for Tab, seeking and Escape; collapsing or clicking outside releases native focus without swallowing the click. Wi-Fi, battery and date controls outside the panel remain usable.
@@ -34,7 +34,9 @@ playback, or drag the progress bar to seek. Click the upper collapse arrow or
 indicator, or press Escape, to collapse. The player remains
 available when the main window is hidden with Keep running when closed. Reopen
 the main window from the Open Meiro icon beside collapse or from the Dock. Search Settings for
-`notch` to turn it off or back on.
+`notch` to switch between the notch and menu bar mini player. With the notch
+enabled but its display unavailable, Settings explains that the menu bar is
+active until the display returns.
 Click the large cover inside the expanded notch to open the current song in
 Now Playing directly; the notch collapses as the main window comes forward.
 Move the pointer away for two seconds to collapse automatically, or return
@@ -75,10 +77,27 @@ disabled during the fade. Repeat with Reduce Motion: geometry does not
 interpolate, content stays in place, and the final footprint shrinks only after
 the fade. Disabling the notch while it animates must remove it immediately.
 
+For desktop choice, search Settings for `notch`, expand the panel and turn
+`Show notch player` off. Verify the panel closes, Settings describes the menu
+bar mini player, and the saved preference survives a fresh app. Turn it back
+on and verify the compact player returns. Simulate display notifications via
+`setNotchCutout`: losing the cutout selects the menu bar and clears expansion;
+restoring it at a different origin selects the compact notch without rewriting
+settings.json. `TestNotchDisplayChangesRestoreTheMenuBarWithoutSaving` covers
+this transition and the paused queue. `TestNotchFallbackKeepsAudioAndMiniPlayerControls`
+plays real generated audio, switches through Settings and display changes,
+and pauses/resumes from the fallback mini player without resolving the song again.
+`TestSettingsFileChangesSwitchTheMacDesktopPlayer` proves that editing only
+`showNotch` also clears an expanded panel and switches the player immediately.
+Use the previous commit for the before/after proof. Headless tests check the
+chosen desktop player and its content; they cannot prove native tray creation,
+popover anchoring or real lid/display notifications.
+
 For desktop cleanup, load a legacy settings file with `showTray` and
-`notifyTrack` enabled. Search Settings for `desktop`; the old notification and
-tray controls must be absent on macOS. Click `Keep running in background` and
-read the saved file: background operation is enabled, tray and banners are not.
+`notifyTrack` enabled. Search Settings for `desktop`; the separate notification
+and tray switches must be absent on macOS. Click `Keep running in background`
+and read the saved file: background operation is enabled and banners remain
+off. The menu bar follows the notch/display choice, not the stored `showTray`.
 Other platforms retain their desktop controls. For cover identity, delay the
 first track's artwork, click Next, let the new artwork arrive, then release the
 old response and assert that the new cover stays. Next to a track with no cover

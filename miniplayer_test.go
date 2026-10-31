@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -164,7 +165,7 @@ func TestMiniPlayerRendersWithPopoverVibrancy(t *testing.T) {
 	}
 }
 
-func TestKeepRunningUsesTheDockOnMacAndTrayElsewhere(t *testing.T) {
+func TestKeepRunningMakesTheMenuBarAvailable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp(t)
 	a.saver.Path = path
@@ -178,6 +179,9 @@ func TestKeepRunningUsesTheDockOnMacAndTrayElsewhere(t *testing.T) {
 	wantTray := runtime.GOOS != "darwin"
 	if a.settings.ShowTray != wantTray || saved.ShowTray != wantTray {
 		t.Fatalf("keep running has the wrong tray state: in memory %v, saved %v, want %v", a.settings.ShowTray, saved.ShowTray, wantTray)
+	}
+	if !a.trayEnabled() {
+		t.Fatal("keeping the window in the background left no menu bar player")
 	}
 	if a.settings.CloseToTray != nil || saved.CloseToTray != nil {
 		t.Fatalf("an answer without Remember was kept: in memory %v, saved %v", a.settings.CloseToTray, saved.CloseToTray)
@@ -406,6 +410,13 @@ func TestMacDesktopOffersNotchAndBackgroundPlayback(t *testing.T) {
 		if !tt.HasText("Track notifications") || !tt.HasText("Menu bar icon") || tt.HasText("Keep running when closed") {
 			t.Fatal("non-Mac desktop controls changed")
 		}
+		if err := tt.Click("Menu bar icon"); err != nil {
+			t.Fatal(err)
+		}
+		a.saver.Wait()
+		if a.trayEnabled() || settings.Load(a.saver.Path).ShowTray {
+			t.Fatal("the macOS fallback overrode another platform's hidden tray preference")
+		}
 		return
 	}
 	for _, label := range []string{"Track notifications", "Menu bar icon", "Tray icon", "Close to tray"} {
@@ -422,7 +433,10 @@ func TestMacDesktopOffersNotchAndBackgroundPlayback(t *testing.T) {
 	a.saver.Wait()
 	saved := settings.Load(a.saver.Path)
 	if saved.CloseToTray == nil || !*saved.CloseToTray || saved.ShowTray || saved.NotifyTrack || a.settings.ShowTray {
-		t.Fatal("background playback did not persist without tray or banners")
+		t.Fatal("background playback changed legacy tray settings or enabled banners")
+	}
+	if !a.trayEnabled() {
+		t.Fatal("a Mac without a notch lost the menu bar player")
 	}
 }
 
@@ -752,7 +766,7 @@ func TestNotchSettingIsMacOnlyAndPersists(t *testing.T) {
 		}
 		return
 	}
-	if !a.settings.ShowNotch {
+	if !a.settings.ShowNotch || a.trayEnabled() {
 		t.Fatal("notch must default to enabled")
 	}
 	panel := ui.NewTester(a.notchView, 284, 38)
@@ -764,17 +778,134 @@ func TestNotchSettingIsMacOnlyAndPersists(t *testing.T) {
 	}
 	a.saver.Wait()
 	panel.Frame()
-	if a.settings.ShowNotch || settings.Load(a.saver.Path).ShowNotch || a.notch.expanded || panel.HasText("Open notch lyrics") {
+	if a.settings.ShowNotch || settings.Load(a.saver.Path).ShowNotch || a.notch.expanded || panel.HasText("Open notch lyrics") || !a.trayEnabled() {
 		t.Fatal("disabled notch stayed visible or was not saved")
+	}
+	if !tt.HasText("The menu bar mini player is active. Turn on to use the MacBook notch.") {
+		t.Fatal("the setting did not explain the menu bar fallback")
+	}
+	restored := notchTestApp(t)
+	restored.settings = settings.Load(a.saver.Path)
+	if !restored.trayEnabled() || restored.notchEnabled() || restored.settings.NotifyTrack {
+		t.Fatal("relaunch did not keep the menu bar choice without notifications")
 	}
 	if err := tt.Click("Show notch player"); err != nil {
 		t.Fatal(err)
 	}
 	a.saver.Wait()
 	panel.Frame()
-	if !settings.Load(a.saver.Path).ShowNotch || !panel.HasText("Open notch lyrics") {
+	if !settings.Load(a.saver.Path).ShowNotch || !panel.HasText("Open notch lyrics") || a.trayEnabled() {
 		t.Fatal("notch did not return after re-enabling")
 	}
+}
+
+func TestNotchDisplayChangesRestoreTheMenuBarWithoutSaving(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS desktop player selection")
+	}
+	a := notchTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	keep := true
+	a.settings.CloseToTray = &keep
+	a.saveSettings()
+	a.saver.Wait()
+	before, err := os.ReadFile(a.saver.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.router.Push("/settings")
+	main := ui.NewTester(a.view, 1000, 900)
+	if err := main.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	main.Type("notch")
+	panel := ui.NewTester(a.notchView, 284, 38)
+	if err := panel.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	// A display notification removes the built-in cutout (for example in
+	// clamshell mode). The saved preference must survive the temporary loss.
+	a.setNotchCutout(mygo.Rectangle{})
+	panel.Frame()
+	main.Frame()
+	if !a.trayEnabled() || a.notch.expanded || a.notch.transitioning || panel.HasText("Notch panel") {
+		t.Fatal("losing the notched display did not switch to the menu bar")
+	}
+	if !main.HasText("The menu bar mini player is active until a display with a notch is available.") {
+		t.Fatal("the unavailable display was not explained in Settings")
+	}
+	mini := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	if !mini.HasText("Track a") || !mini.HasText("Play") || !mini.HasText("Open Meiro") {
+		t.Fatal("the fallback mini player lost the current song or controls")
+	}
+	a.setNotchCutout(mygo.Rectangle{X: -1200, Y: -800, Width: 220, Height: 32})
+	panel.SetSize(324, 38)
+	main.Frame()
+	if a.trayEnabled() || !panel.HasText("Open notch lyrics") || a.notch.expanded {
+		t.Fatal("reconnecting the display did not restore a compact notch")
+	}
+	a.saver.Wait()
+	after, err := os.ReadFile(a.saver.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) || !a.settings.ShowNotch || !*a.closeToBackgroundChoice() || a.settings.NotifyTrack {
+		t.Fatal("display changes rewrote the notch/background choice or enabled banners")
+	}
+	if a.current.VideoID != "a" || a.player.Playing() || a.queue.len() != 2 {
+		t.Fatal("switching desktop players changed the paused queue")
+	}
+}
+
+func TestNotchFallbackKeepsAudioAndMiniPlayerControls(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS desktop player selection")
+	}
+	a, r := tonesApp(t, 600)
+	r.url = func(string, int) (string, error) { return r.file, nil }
+	a.notch.cutout = mygo.Rectangle{Width: 180, Height: 32}
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.router.Push("/album/MPREb_test")
+	main := ui.NewTester(a.view, 1000, 900)
+	if err := main.Click("Album Track One"); err != nil {
+		t.Fatal(err)
+	}
+	pollUntil(t, a, "playing audio", func() bool { return a.player.Playing() && a.player.Position() > 0 })
+	position, seek, resolves := a.player.Position(), a.seekVersion, r.count("vid-3")
+	a.router.Push("/settings")
+	main.Frame()
+	if err := main.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	main.Type("notch")
+	if err := main.Click("Show notch player"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.trayEnabled() || !a.player.Playing() || a.player.Position() < position || a.seekVersion != seek || r.count("vid-3") != resolves {
+		t.Fatal("turning off the notch interrupted or restarted audio")
+	}
+	mini := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	if err := mini.Click("Pause"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.player.Paused() {
+		t.Fatal("the menu bar mini player did not pause audio")
+	}
+	if err := mini.Click("Play"); err != nil {
+		t.Fatal(err)
+	}
+	if err := main.Click("Show notch player"); err != nil {
+		t.Fatal(err)
+	}
+	a.setNotchCutout(mygo.Rectangle{})
+	if !a.trayEnabled() || !a.player.Playing() {
+		t.Fatal("losing the display interrupted playback or hid the fallback")
+	}
+	a.setNotchCutout(mygo.Rectangle{Width: 180, Height: 32})
+	if a.trayEnabled() || !a.player.Playing() || a.player.Position() < position || a.current.VideoID != "vid-3" || r.count("vid-3") != resolves || len(a.history) != 1 {
+		t.Fatal("returning to the notch interrupted or restarted audio")
+	}
+	a.saver.Wait()
 }
 
 func TestNotchLongLyricsLeaveRoomForControls(t *testing.T) {

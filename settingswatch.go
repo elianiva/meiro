@@ -178,7 +178,7 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 		a.keyboard.keys = nil
 		a.keyboard.problem = ""
 	}
-	if s.ShowTray != previous.ShowTray || s.TrayMark != previous.TrayMark ||
+	if s.ShowTray != previous.ShowTray || s.TrayMark != previous.TrayMark || s.ShowNotch != previous.ShowNotch ||
 		s.DiscordPresence != previous.DiscordPresence ||
 		s.Volume != previous.Volume || s.NormalizeLoudness != previous.NormalizeLoudness ||
 		s.LogVolume != previous.LogVolume {

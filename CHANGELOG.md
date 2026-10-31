@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **The macOS menu bar player returns when the notch is off or unavailable.** Turn off Notch player in Settings > Desktop to use the menu bar icon and mini player. When no display with a notch is available, Meiro switches to the menu bar automatically and returns to the notch when that display comes back. Playback continues, your notch preference is kept, and track notifications stay off.
+
 ## [0.5.0] - 2026-10-30
 
 ### Added

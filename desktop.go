@@ -241,7 +241,7 @@ type trayState struct {
 }
 
 // setTray shows the tray icon with state while on is set, and removes it
-// otherwise. macOS uses the notch and Dock; Windows opens the mini player. Linux uses a
+// otherwise. macOS and Windows open the mini player. Linux uses a
 // minimal menu to open the main window or quit: AppIndicator does not report
 // icon clicks or position, so MyGo centers tray flyouts in the primary
 // display's work area instead of anchoring them to the icon. It changes the
@@ -249,9 +249,6 @@ type trayState struct {
 func (d *desktop) setTray(on bool, mark settings.TrayMark, state trayState, mini func(*ui.Context), shown func(bool)) {
 	if d == nil {
 		return
-	}
-	if runtime.GOOS == "darwin" {
-		on = false
 	}
 	if !on {
 		if d.tray != nil {
@@ -375,7 +372,7 @@ func (a *app) closeToBackgroundChoice() *bool {
 	if a.settings.CloseToTray != nil {
 		return a.settings.CloseToTray
 	}
-	if runtime.GOOS == "darwin" && a.settings.ShowNotch && a.notch.cutout.Width > 0 {
+	if runtime.GOOS == "darwin" && a.notchEnabled() {
 		keep := true
 		return &keep
 	}
@@ -396,7 +393,7 @@ func (d *desktop) onClose(e *mygo.CloseEvent) {
 	} else {
 		message, keep := "Keep Meiro running in the tray, or quit it?", "Minimize to tray"
 		if runtime.GOOS == "darwin" {
-			message, keep = "Keep Meiro running in the background, or quit it? Reopen the window from the Dock or notch.", "Keep running"
+			message, keep = "Keep Meiro running in the background, or quit it? Reopen the window from the Dock, notch or menu bar.", "Keep running"
 		}
 		res, err := mygo.Dialog.Message(mygo.MessageOptions{
 			Parent:        d.win,
@@ -548,9 +545,18 @@ func (a *app) setupDesktop() {
 // path that changes playback reaches it through syncSystemMedia.
 func (a *app) syncDesktop() {
 	a.desktop.keepAwake(a.loading() || (a.player.Active() && !a.player.Paused() && !a.player.Ended()))
-	a.desktop.setTray(a.settings.ShowTray, a.settings.TrayMark, trayState{tip: a.trayTip()}, a.miniPlayer, a.setMiniShown)
+	a.desktop.setTray(a.trayEnabled(), a.settings.TrayMark, trayState{tip: a.trayTip()}, a.miniPlayer, a.setMiniShown)
 	a.desktop.setTitle(a.windowTitle())
 	a.syncNotch()
+}
+
+// trayEnabled gives macOS one playback surface: the notch when supported and
+// chosen, otherwise the menu bar. Other platforms keep their tray preference.
+func (a *app) trayEnabled() bool {
+	if runtime.GOOS == "darwin" {
+		return !a.notchEnabled()
+	}
+	return a.settings.ShowTray
 }
 
 // windowTitle names the track while it plays, as "Artist - Title" the way

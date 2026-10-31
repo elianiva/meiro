@@ -629,7 +629,7 @@ func (a *app) desktopCard(c *ui.Context) {
 			if runtime.GOOS == "darwin" {
 				a.notchSetting(c)
 				ui.Row(c.Key("keep-running")).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
-					settingLabel(c, "Keep running when closed", "Hide the window and keep Meiro running. Reopen it from the Dock or notch.").Grow(1)
+					settingLabel(c, "Keep running when closed", "Hide the window and keep Meiro running. Reopen it from the Dock, notch or menu bar.").Grow(1)
 					choice := a.closeToBackgroundChoice()
 					on := choice != nil && *choice
 					if m3.Switch(c, &on, "Keep running in background").Changed() {

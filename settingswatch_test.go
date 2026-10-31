@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -184,6 +185,38 @@ func TestSettingsFileChangesWaitForAWholeFile(t *testing.T) {
 	a.checkSettings()
 	if a.settings.Seed != "#d81b78" {
 		t.Fatalf("the whole file did not apply: %+v", a.settings)
+	}
+}
+
+func TestSettingsFileChangesSwitchTheMacDesktopPlayer(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS desktop player selection")
+	}
+	a := notchTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	writeSettingsFile(t, a.saver.Path, a.settings)
+	a.settingsSeen, _ = os.ReadFile(a.saver.Path)
+	panel := ui.NewTester(a.notchView, 284, 38)
+	if err := panel.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	next := a.settings
+	next.ShowNotch = false
+	writeSettingsFile(t, a.saver.Path, next)
+	a.checkSettings()
+	panel.Frame()
+	if !a.trayEnabled() || a.notch.expanded || a.notch.transitioning || panel.HasText("Notch panel") {
+		t.Fatal("editing showNotch did not immediately replace the expanded notch")
+	}
+	next.ShowNotch = true
+	writeSettingsFile(t, a.saver.Path, next)
+	a.checkSettings()
+	panel.Frame()
+	if a.trayEnabled() || !panel.HasText("Open notch lyrics") || a.notch.expanded {
+		t.Fatal("editing showNotch did not restore the compact notch")
+	}
+	if a.current.VideoID != "a" || a.player.Playing() || a.settings.NotifyTrack || a.saver.Pending() {
+		t.Fatal("reloading the desktop choice changed playback, banners or wrote the file")
 	}
 }
 
