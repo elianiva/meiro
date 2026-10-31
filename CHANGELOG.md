@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Playback speed lives in a menu now.** The player bar and Now Playing have a gear in place of the plain speed button; it opens a menu that picks the speed and marks the one in effect. The mini player has no speed control, and its volume slider fills the row.
+
 ## [0.5.1] - 2026-10-31
 
 ### Added
