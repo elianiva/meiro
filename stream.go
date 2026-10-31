@@ -121,6 +121,7 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 // cache is the audio cache the track was looked for in.
 func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position time.Duration, changed bool, cache *audio.Cache) {
 	a.skipped = 0
+	a.aiRefills = 0
 	if changed {
 		a.recordHistory(item)
 	}
@@ -166,6 +167,11 @@ func (a *app) following() (int, youtube.MusicItem, bool) {
 // every poll and after anything that can change what follows.
 func (a *app) syncPreload() {
 	_, next, ok := a.following()
+	if ok && a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone {
+		// Nothing is eligible to preload yet. Still run the cleanup below:
+		// the held audio may belong to a track the filter just removed.
+		ok = false
+	}
 	if held := a.player.Preloaded(); held != "" && (!ok || held != next.VideoID) {
 		a.player.CancelPreload()
 		a.preloaded = preloadedAudio{}
@@ -175,7 +181,7 @@ func (a *app) syncPreload() {
 	}
 	// A track that plays at another speed starts on its own: the player
 	// follows on at the speed of the track before.
-	if !ok || a.stream.busy() || a.preload.busy() || a.preloadFailed == next.VideoID || a.speedFor(next) != a.speedFor(a.current) ||
+	if !ok || a.starting() || a.preload.busy() || a.preloadFailed == next.VideoID || a.speedFor(next) != a.speedFor(a.current) ||
 		a.player.Preloaded() == next.VideoID || a.total <= 0 || !a.player.Playing() ||
 		a.total-a.player.Position() > preloadLead {
 		return
@@ -371,6 +377,9 @@ func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem,
 func (a *app) warmNext() {
 	_, next, ok := a.following()
 	if !ok {
+		return
+	}
+	if a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone {
 		return
 	}
 	// In repeat-track mode following is the current track, whose audio is

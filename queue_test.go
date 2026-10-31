@@ -315,6 +315,40 @@ func TestAppendGeneratedKeepsChosenVideoWhenAudioVersionIsRecommended(t *testing
 	}
 }
 
+func TestDroppingMarkedAITracksKeepsTheQueueConsistent(t *testing.T) {
+	chosen := []youtube.MusicItem{
+		{VideoID: "a", Title: "A"},
+		{VideoID: "b", Title: "B"},
+		{VideoID: "chosen-ai", Title: "Chosen AI", AIDisclosure: youtube.AIAlteredOrGenerated},
+	}
+	q := newQueue()
+	q.replace(chosen[1], chosen, 1, "Mix")
+	q.appendGenerated([]youtube.MusicItem{
+		{VideoID: "generated-ai", Title: "Generated AI", AIDisclosure: youtube.AIAlteredOrGenerated},
+		{VideoID: "r2", Title: "Human recommendation"},
+	})
+	q.playNext = "chosen-ai"
+
+	removed := q.dropMarkedAI(func(item youtube.MusicItem) bool {
+		return item.AIDisclosure == youtube.AIAlteredOrGenerated
+	})
+	if !removed {
+		t.Fatal("no marked track was removed")
+	}
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "r2"}) {
+		t.Fatalf("queue = %v, want the current track and the unmarked recommendation", got)
+	}
+	if q.current().VideoID != "b" || q.recStart != 2 {
+		t.Errorf("current %q, recStart %d; want b at 2", q.current().VideoID, q.recStart)
+	}
+	if _, ok := q.generated["r2"]; !ok {
+		t.Error("the remaining generated track lost its marker")
+	}
+	if q.playNext != "" {
+		t.Errorf("play-next remained %q", q.playNext)
+	}
+}
+
 // The queue can hold the same song twice, and only the copy at the queue's
 // place is picked out as playing. Every other list picks the song playing out
 // by its own ID.

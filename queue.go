@@ -218,6 +218,19 @@ func (q *queue) remove(index int) bool {
 	return true
 }
 
+// dropMarkedAI removes future tracks exclude rejects, leaving the track that
+// plays in place. The queue's boundary and generated-track bookkeeping follow
+// through remove.
+func (q *queue) dropMarkedAI(exclude func(youtube.MusicItem) bool) bool {
+	removed := false
+	for index := len(q.items) - 1; index > q.index; index-- {
+		if exclude != nil && exclude(q.items[index]) {
+			removed = q.remove(index) || removed
+		}
+	}
+	return removed
+}
+
 // clearUpcoming drops every track that follows the current one, the
 // generated tracks included, and reports whether there were any.
 func (q *queue) clearUpcoming() bool {

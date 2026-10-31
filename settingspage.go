@@ -63,6 +63,7 @@ var settingsRows = []settingsRow{
 	{key: "h-playback", heading: "Playback"},
 	{key: "playback", search: "auto skip disliked songs thumbs down", card: (*app).playbackCard},
 	{key: "crossfade", search: "crossfade fade transition gap between tracks songs seconds", card: (*app).crossfadeCard},
+	{key: "ai", search: "ai artificial intelligence generated exclude skip filter songs", card: (*app).aiFilterCard},
 
 	{key: "h-system", heading: "System"},
 	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle notch macbook lyrics", card: (*app).desktopCard},
@@ -462,6 +463,22 @@ func (a *app) crossfadeCard(c *ui.Context) {
 			}
 			m3.EmphasizedText(c, m3.TitleMedium, strconv.Itoa(settings.ClampCrossfade(a.settings.CrossfadeSeconds))+" s").
 				Width(48).Shrink(0).TextAlign(ui.End).TextColor(sc.OnSurface)
+		})
+	})
+}
+
+// aiFilterCard controls whether Meiro skips tracks YouTube marks as altered
+// or generated with AI. The label is checked before a track starts because
+// YouTube's list responses do not carry it.
+func (a *app) aiFilterCard(c *ui.Context) {
+	a.settingsCard(c, "AI-generated songs", m3.IconMusicNote, func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Skip AI-generated songs",
+				"Skip songs YouTube marks as made with AI. Meiro checks before each song plays; unlabelled AI music may still play.").Grow(1)
+			on := a.settings.ExcludeAIGenerated
+			if m3.Switch(c, &on, "Exclude AI-generated songs").Changed() {
+				a.setExcludeAIGenerated(on)
+			}
 		})
 	})
 }

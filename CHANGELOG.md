@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Meiro can skip AI-generated songs.** Turn on Exclude AI-generated songs under Settings → Playback. Meiro checks YouTube's AI label before a track starts and skips labelled songs in queues and auto-play. Unlabelled AI music may still play.
+
 ## [0.5.1] - 2026-10-31
 
 ### Added

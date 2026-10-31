@@ -50,6 +50,9 @@ type Settings struct {
 	AutoPlay bool `json:"autoPlay"`
 	// AutoSkipDisliked skips tracks known to have a thumbs-down.
 	AutoSkipDisliked bool `json:"autoSkipDisliked,omitempty"`
+	// ExcludeAIGenerated skips songs YouTube marks as altered or generated
+	// with AI. Unlabelled AI music still plays.
+	ExcludeAIGenerated bool `json:"excludeAIGenerated,omitempty"`
 	// NormalizeLoudness applies YouTube's per-track loudness correction when signed in.
 	NormalizeLoudness bool `json:"normalizeLoudness"`
 	// CacheSongs is how many recently played audio files to keep on disk.

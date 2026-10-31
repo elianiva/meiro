@@ -104,7 +104,7 @@ func (a *app) ensureUpNext() {
 			u.token = ""
 		}
 		a.clearQueueSelection()
-		a.queue.appendGenerated(result.Items)
+		a.queue.appendGenerated(a.visibleItems(result.Items))
 		// A recommended track can be the one that plays next, so warm it too.
 		a.warmNext()
 		if !u.waiting {

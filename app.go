@@ -134,6 +134,7 @@ type app struct {
 	knownPlaylists knownPlaylists
 
 	playback
+	aiFilter   aiFilterState
 	nowPlaying nowPlayingState
 	notch      notchState
 
@@ -214,6 +215,7 @@ func newApp() *app {
 	}
 	a.scrobble = newScrobbler()
 	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}))), a.settings.Volume)
+	a.aiFilter = newAIFilter()
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.run = func(work func()) {
 		go func() {

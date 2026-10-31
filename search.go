@@ -176,7 +176,7 @@ func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
 	if len(queries) > suggestQueries {
 		queries = queries[:suggestQueries]
 	}
-	items := s.suggestions.Items
+	items := a.visibleItems(s.suggestions.Items)
 	if len(items) > suggestItems {
 		items = items[:suggestItems]
 	}
