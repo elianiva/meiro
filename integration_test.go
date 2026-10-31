@@ -167,7 +167,6 @@ func TestEveryPageLoadsAndDraws(t *testing.T) {
 		{"/playlist/VLPL_video", []string{"Playlist video"}},
 		{"/artist/UCartist", []string{"Aurora Vale", "Artist Track"}},
 		{"/podcast/MPSPPLshow", []string{"PODCAST", "Slow Talk", "Two people, talking slowly.", "Episode One"}},
-		{"/recap", []string{"Your recap lives here"}},
 		{"/nowhere", []string{"That page does not exist."}},
 	}
 	for _, page := range pages {

@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Windows track notifications show the song's cover.** They showed Meiro's tray icon instead of the song's artwork.
 
+### Removed
+
+- **The Recap page is gone.** The navigation rail no longer shows Recap, and `/recap` opens the page-not-found message.
+
 ## [0.5.0] - 2026-10-30
 
 ### Added

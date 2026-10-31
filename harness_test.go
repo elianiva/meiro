@@ -129,8 +129,6 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = paginatedPlaylistResponse(100, 146, "", "")
 	case strings.Contains(asked, `"continuation":"playlist-more"`):
 		reply = playlistSuggestionsResponse
-	case strings.Contains(asked, "FEmusic_listening_review"):
-		reply = recapResponse
 	case strings.Contains(asked, "VLPL_video"):
 		reply = playlistPage()
 	case strings.Contains(asked, "VLPL_songs"):
@@ -746,17 +744,6 @@ const suggestionsResponse = `{"contents":[
 			]}}
 	]}}
 ]}`
-
-const recapResponse = `{"contents":{"musicCarouselShelfRenderer":{
-	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Your recap"}]}}},
-	"contents":[
-		{"musicTwoRowItemRenderer":{
-			"title":{"runs":[{"text":"Top song of the year"}]},
-			"subtitle":{"runs":[{"text":"Someone"}]},
-			"navigationEndpoint":{"watchEndpoint":{"videoId":"vid-9"}}
-		}}
-	]
-}}}`
 
 const accountsResponse = `{"accountSectionListRenderer":{"contents":[{"accountItemSectionRenderer":{"contents":[
 	{"accountItemRenderer":{"accountName":{"simpleText":"Main channel"},"isSelected":true,"hasChannel":true}},
