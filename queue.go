@@ -116,6 +116,38 @@ func (q *queue) next(autoPlay bool, repeat repeatMode) (int, bool) {
 	return 0, false
 }
 
+// nextEligible chooses the same order as next, passing over known dislikes.
+// Each position is considered at most once, including when the queue repeats.
+func (q *queue) nextEligible(autoPlay bool, repeat repeatMode, skipDisliked bool) (int, bool) {
+	if !skipDisliked {
+		return q.next(autoPlay, repeat)
+	}
+	if q.playNext != "" {
+		for i := max(q.index+1, 0); i < len(q.items); i++ {
+			if q.items[i].VideoID == q.playNext && q.items[i].Like != youtube.Disliked {
+				return i, true
+			}
+		}
+	}
+	limit := q.limit(autoPlay)
+	if limit == 0 || q.index >= limit {
+		return 0, false
+	}
+	for i := max(q.index+1, 0); i < limit; i++ {
+		if q.items[i].Like != youtube.Disliked {
+			return i, true
+		}
+	}
+	if repeat == repeatQueue {
+		for i := 0; i <= q.index && i < limit; i++ {
+			if q.items[i].Like != youtube.Disliked {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // moveTo makes the track at index the current one.
 func (q *queue) moveTo(index int) youtube.MusicItem {
 	q.index = index

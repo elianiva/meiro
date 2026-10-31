@@ -52,6 +52,10 @@ type Config struct {
 	// theme once it is registered with ui.RegisterFont; empty is the
 	// system's font.
 	Font string
+	// Colors, when set, replace the roles the seed would give, so the theme
+	// matches a palette made elsewhere. The pointer is compared, not the
+	// colours: load a new set to change it.
+	Colors *Colors
 }
 
 // DefaultSeed is Material's baseline purple.
@@ -79,7 +83,11 @@ func New(cfg Config, systemDark bool) *Theme {
 		dark = true
 	}
 	p := NewPalettes(cfg.Seed, cfg.Style)
-	return &Theme{Config: cfg, Dark: dark, Palettes: p, Scheme: NewScheme(p, dark)}
+	scheme := NewScheme(p, dark)
+	if cfg.Colors != nil {
+		cfg.Colors.apply(&scheme)
+	}
+	return &Theme{Config: cfg, Dark: dark, Palettes: p, Scheme: scheme}
 }
 
 var (

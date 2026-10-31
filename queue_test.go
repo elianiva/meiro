@@ -336,3 +336,42 @@ func TestTheSameSongTwiceInTheQueuePlaysFromOneRow(t *testing.T) {
 		t.Error("a list that holds the song once no longer picks it out")
 	}
 }
+
+func TestQueueNextEligible(t *testing.T) {
+	tests := []struct {
+		name     string
+		likes    []youtube.LikeStatus
+		index    int
+		playNext string
+		recStart int
+		autoPlay bool
+		repeat   repeatMode
+		skip     bool
+		want     int
+		ok       bool
+	}{
+		{name: "disabled", likes: []youtube.LikeStatus{youtube.Liked, youtube.Disliked}, recStart: -1, want: 1, ok: true},
+		{name: "skip dislike", likes: []youtube.LikeStatus{youtube.Liked, youtube.Disliked, youtube.LikeUnknown}, recStart: -1, skip: true, want: 2, ok: true},
+		{name: "play next priority", likes: []youtube.LikeStatus{youtube.Liked, youtube.Liked, youtube.Indifferent}, playNext: "c", recStart: -1, skip: true, want: 2, ok: true},
+		{name: "disliked play next", likes: []youtube.LikeStatus{youtube.Liked, youtube.Liked, youtube.Disliked}, playNext: "c", recStart: -1, skip: true, want: 1, ok: true},
+		{name: "repeat wraps", likes: []youtube.LikeStatus{youtube.Liked, youtube.Disliked, youtube.Disliked}, index: 1, recStart: -1, repeat: repeatQueue, skip: true, want: 0, ok: true},
+		{name: "all disliked", likes: []youtube.LikeStatus{youtube.Disliked, youtube.Disliked}, recStart: -1, repeat: repeatQueue, skip: true},
+		{name: "all disliked recommendations", likes: []youtube.LikeStatus{youtube.Liked, youtube.Disliked, youtube.Disliked}, recStart: 1, autoPlay: true, skip: true},
+		{name: "autoplay boundary", likes: []youtube.LikeStatus{youtube.Liked, youtube.Disliked, youtube.Liked}, recStart: 2, skip: true},
+		{name: "autoplay enabled", likes: []youtube.LikeStatus{youtube.Liked, youtube.Disliked, youtube.Liked}, recStart: 2, autoPlay: true, skip: true, want: 2, ok: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			q := newQueue()
+			q.items = tracks("a", "b", "c")[:len(tt.likes)]
+			for i, like := range tt.likes {
+				q.items[i].Like = like
+			}
+			q.index, q.recStart, q.playNext = tt.index, tt.recStart, tt.playNext
+			got, ok := q.nextEligible(tt.autoPlay, tt.repeat, tt.skip)
+			if got != tt.want || ok != tt.ok {
+				t.Errorf("nextEligible = %d, %v; want %d, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}

@@ -87,6 +87,7 @@ scrobble your listening to Last.fm.
   preset. Turn on volume levelling so songs play at a similar loudness.
 - **Colours and themes.** Light, dark, or follow your computer. Pick a colour,
   or let the app take its colours from the album art of the song playing.
+  Take the colours from matugen to [match the rest of the desktop exactly](#match-your-desktop-with-matugen).
 - **Zoom.** Make everything on screen larger or smaller, from 80% to 200%, in
   Settings → Appearance or with `Cmd`/`Ctrl` and `=` or `-`.
 
@@ -285,6 +286,35 @@ the file is not encrypted. A locked or failing credential store does not make
 Meiro write the session unencrypted. Choose **Sign out** to remove Meiro's saved session.
 
 Public browsing and playback do not need an account.
+
+## Match your desktop with matugen
+
+Meiro can use the full set of colours matugen makes, so it matches your other
+apps. Matugen writes them to their own file, `colors.json`, so your settings
+are never touched.
+
+1. Copy [`meiro-colors.json`](docs/matugen/meiro-colors.json) to
+   `~/.config/matugen/templates/`.
+2. Add it to `~/.config/matugen/config.toml`. The output goes in Meiro's data
+   folder, next to `settings.json` (`~/.config/Meiro` on Linux,
+   `~/Library/Application Support/Meiro` on macOS, `%AppData%\Meiro` on
+   Windows):
+
+   ```toml
+   [templates.meiro]
+   input_path = "~/.config/matugen/templates/meiro-colors.json"
+   output_path = "~/.config/Meiro/colors.json"
+   ```
+
+3. Run matugen as usual, for example `matugen image wallpaper.png`.
+4. In Settings → Appearance, set **Colour source** to **Matugen**.
+
+Meiro recolours as soon as the file changes, and goes back to your seed if you
+delete it. The file holds a light and a dark set, so Settings → Appearance →
+Theme still chooses between them. While the source is Matugen, the colour and
+palette pickers are hidden; **Fixed** brings both back and **Artwork** brings
+back the palette, and the file is ignored. A role the file leaves out keeps the
+colour Meiro makes from your seed.
 
 ## Troubleshooting
 

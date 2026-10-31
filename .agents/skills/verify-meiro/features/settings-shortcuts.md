@@ -7,6 +7,7 @@ A user changes the theme and equaliser, rebinds shortcuts, clears history, opens
 - `settings-theme` switches `Dark` and a seed colour such as `Rose`.
 - `settings-hot-reload` writes `settings.json` while the app runs and sees the new theme and playback settings apply without a restart.
 - `settings-persist` writes `settings.json` and reads it back.
+- `settings-skip-disliked` toggles auto-skip under Playback; it is off by default and only skips known dislikes.
 - `settings-eq` toggles `Equaliser on`, picks a preset, and changes slider gains live without restarting the current stream.
 - `settings-shortcuts` shows, records, conflicts and resets shortcuts, and runs the defaults.
 - `keyboard-navigation` covers Tab and Shift+Tab through row and card actions, menu arrows/Home/End/Escape, Shift+F10 context menus, player tabs, queue selection/activation, and keyboard sliders.

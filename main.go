@@ -192,6 +192,8 @@ func (a *app) setup() {
 	if directory, err := mygo.App.Path(mygo.PathUserData); err == nil {
 		a.saver.Path = filepath.Join(directory, "settings.json")
 		a.settings = settings.Load(a.saver.Path)
+		a.colorsPath = filepath.Join(directory, "colors.json")
+		a.colors = a.readColors()
 		a.account.creds.store = &secretfile.File{Path: filepath.Join(directory, "cookie.txt"), Keychain: mygo.Secrets, Name: credentialsKey}
 		a.historyPath = filepath.Join(directory, "history.json")
 		a.restorePlayback(filepath.Join(directory, "playback.json"))

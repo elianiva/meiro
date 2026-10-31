@@ -246,6 +246,7 @@ func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			a.trackLine(c, m3.HeadlineSmall, m3.TitleMedium, true).Grow(1)
 			a.likeButton(c)
+			a.dislikeButton(c)
 		})
 		a.scrubber(c)
 		ui.Row(c).Justify(ui.Center).Children(func() {

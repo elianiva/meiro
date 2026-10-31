@@ -20,8 +20,7 @@ const (
 	Liked
 	// Indifferent is a track the account has rated neither way.
 	Indifferent
-	// Disliked is a track the account has given a thumbs-down. Meiro reads it
-	// but does not write it.
+	// Disliked is a track the account has given a thumbs-down.
 	Disliked
 )
 
@@ -38,10 +37,8 @@ func parseLikeStatus(name string) LikeStatus {
 	return LikeUnknown
 }
 
-// RateTrack likes a track or takes the like back, for the account the client
-// speaks for. It is the call behind the thumb of YouTube Music's player:
-// like/like with the video as the target, and like/removelike to undo it.
-func (c *Client) RateTrack(ctx context.Context, videoID string, like bool) error {
+// RateTrack sets or removes the signed-in account's rating for a track.
+func (c *Client) RateTrack(ctx context.Context, videoID string, status LikeStatus) error {
 	if c.cookieAuth == nil {
 		return errors.New("youtube: RateTrack requires cookie authentication")
 	}
@@ -49,7 +46,20 @@ func (c *Client) RateTrack(ctx context.Context, videoID string, like bool) error
 	if videoID == "" {
 		return errors.New("youtube: RateTrack needs a video")
 	}
-	return c.rate(ctx, map[string]any{"videoId": videoID}, like)
+	var endpoint string
+	switch status {
+	case Liked:
+		endpoint = "like/like"
+	case Disliked:
+		endpoint = "like/dislike"
+	case Indifferent:
+		endpoint = "like/removelike"
+	case LikeUnknown:
+	}
+	if endpoint == "" {
+		return errors.New("youtube: RateTrack needs a known rating")
+	}
+	return c.rateEndpoint(ctx, map[string]any{"videoId": videoID}, endpoint)
 }
 
 // rate likes or un-likes whatever target names: a video, or a playlist or an
@@ -59,6 +69,11 @@ func (c *Client) rate(ctx context.Context, target map[string]any, like bool) err
 	if like {
 		endpoint = "like/like"
 	}
+	return c.rateEndpoint(ctx, target, endpoint)
+}
+
+// rateEndpoint sends a like write and reports refusals from YouTube's body.
+func (c *Client) rateEndpoint(ctx context.Context, target map[string]any, endpoint string) error {
 	raw, err := c.execute(ctx, endpoint, map[string]any{"target": target})
 	if err != nil {
 		return err

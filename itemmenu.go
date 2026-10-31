@@ -138,8 +138,11 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 	}
 	m3.Menu(c, anchor, &a.menu.open, 232, func() {
 		close := func() { a.menu.close() }
+		entry := func(label string, icon *ui.SVG) ui.Element {
+			return m3.MenuItem(c, label, icon).Height(40)
+		}
 		if artistID := item.ArtistID(); artistID != "" {
-			if m3.MenuItem(c, "Go to artist", m3.IconPerson).Clicked() {
+			if entry("Go to artist", m3.IconPerson).Clicked() {
 				a.openTarget(youtube.Target{Kind: youtube.TargetArtist, ID: artistID}, detail{})
 				close()
 			}
@@ -147,46 +150,54 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 		if o.list == "queue" {
 			a.queueMenuItems(c, o.position, close)
 		} else {
-			if m3.MenuItem(c, "Play next", m3.IconNext).Clicked() {
+			if entry("Play next", m3.IconNext).Clicked() {
 				a.enqueue(item, true)
 				close()
 			}
-			if m3.MenuItem(c, "Add to queue", m3.IconQueue).Clicked() {
+			if entry("Add to queue", m3.IconQueue).Clicked() {
 				a.enqueue(item, false)
 				close()
 			}
 		}
 		if a.canLike(item) {
 			label, icon := likeLabel(item)
-			if m3.MenuItem(c, label, icon).Clicked() {
+			if entry(label, icon).Clicked() {
 				a.toggleLike(item)
 				close()
 			}
+			label = "Dislike"
+			if item.Like == youtube.Disliked {
+				label = "Remove dislike"
+			}
+			if entry(label, m3.IconThumbDown).Clicked() {
+				a.toggleRating(item, youtube.Disliked)
+				close()
+			}
 		}
-		if m3.MenuItem(c, "Start radio", m3.IconShuffle).Clicked() {
+		if entry("Start radio", m3.IconShuffle).Clicked() {
 			a.startRadio(item, key)
 			close()
 		}
-		if item.VideoID != "" && m3.MenuItem(c, "Add to playlist", m3.IconLibrary).Clicked() {
+		if item.VideoID != "" && entry("Add to playlist", m3.IconLibrary).Clicked() {
 			a.openAddToPlaylist(item)
 			close()
 		}
 		if a.canDownload(item) {
 			if a.isDownloaded(item.VideoID) || a.downloading(item.VideoID) {
-				if m3.MenuItem(c, "Remove download", m3.IconDelete).Clicked() {
+				if entry("Remove download", m3.IconDelete).Clicked() {
 					a.removeDownload(item.VideoID)
 					close()
 				}
-			} else if m3.MenuItem(c, "Download", m3.IconDownload).Clicked() {
+			} else if entry("Download", m3.IconDownload).Clicked() {
 				a.downloadSong(item)
 				close()
 			}
 		}
-		if r, playlistID := a.route(); item.VideoID != "" && item.PlaylistSetID != "" && r.id == routePlaylist && m3.MenuItem(c, "Remove from playlist", m3.IconClose).Clicked() {
+		if r, playlistID := a.route(); item.VideoID != "" && item.PlaylistSetID != "" && r.id == routePlaylist && entry("Remove from playlist", m3.IconClose).Clicked() {
 			a.removeFromPlaylist(playlistID, item)
 			close()
 		}
-		if m3.MenuItem(c, "Copy link", m3.IconCopy).Clicked() {
+		if entry("Copy link", m3.IconCopy).Clicked() {
 			c.WriteClipboard(youtube.WatchURL(item.VideoID))
 			c.Toast("Link copied")
 			close()

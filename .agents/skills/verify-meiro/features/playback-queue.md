@@ -10,6 +10,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - `play-seek` seeks, and hands over at the end of a track.
 - `play-fail` shows a readable reason, skips up to `maxSkips`, and retries on Play.
 - `play-autoplay` queues recommendations when the queue runs out.
+- `play-skip-disliked` optionally skips tracks known to be disliked when advancing; explicit selections still play and unknown ratings are not skipped.
 - `play-resume` restores the queue paused after a restart.
 - `play-volume` keeps the mute button visible in narrow windows and reveals
   the vertical volume slider on hover.

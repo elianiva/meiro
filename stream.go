@@ -154,7 +154,7 @@ func (a *app) following() (int, youtube.MusicItem, bool) {
 	if a.repeat == repeatTrack {
 		return -1, a.current, a.current.VideoID != ""
 	}
-	i, ok := a.queue.next(a.settings.AutoPlay, a.repeat)
+	i, ok := a.queue.nextEligible(a.settings.AutoPlay, a.repeat, a.settings.AutoSkipDisliked)
 	if !ok {
 		return 0, youtube.MusicItem{}, false
 	}
@@ -369,10 +369,12 @@ func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem,
 // cache is big enough for a warmed track to survive until it plays, the
 // track is also downloaded from that URL.
 func (a *app) warmNext() {
-	if a.queue.remaining() < 1 {
+	_, next, ok := a.following()
+	if !ok {
 		return
 	}
-	next := a.queue.at(a.queue.index + 1)
+	// In repeat-track mode following is the current track, whose audio is
+	// already playing; do not resolve it again.
 	if next.VideoID == "" || next.VideoID == a.current.VideoID || a.isDownloaded(next.VideoID) {
 		return
 	}

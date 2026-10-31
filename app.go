@@ -63,6 +63,11 @@ type app struct {
 	// notices only a change it has not handled. watchSettings starts it, and
 	// then only the watcher's goroutine touches it.
 	settingsSeen []byte
+	// colors are the theme colours another program wrote to colors.json, or
+	// nil. colorsSeen is the content they came from, kept like settingsSeen.
+	colors     *m3.Colors
+	colorsPath string
+	colorsSeen []byte
 	// playSave keeps the queue and position for the next run.
 	playSave playbackSave
 

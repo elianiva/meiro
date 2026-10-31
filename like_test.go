@@ -80,6 +80,80 @@ func TestLikingATrackFromItsMenu(t *testing.T) {
 	}
 }
 
+func TestDislikeFromTrackMenu(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a := signedInApp(t)
+	a.router.Push("/album/MPREb_test")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Dislike"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if endpoint, id := likeWrite(); endpoint != "/like/dislike" || id != "vid-3" || a.page.feed.sections[0].Items[0].Like != youtube.Disliked {
+		t.Fatalf("dislike wrote %s for %s; status %v", endpoint, id, a.page.feed.sections[0].Items[0].Like)
+	}
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Like"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if endpoint, _ := likeWrite(); endpoint != "/like/like" || a.page.feed.sections[0].Items[0].Like != youtube.Liked {
+		t.Fatalf("like did not replace dislike: %s", endpoint)
+	}
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Dislike"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Remove dislike"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if endpoint, _ := likeWrite(); endpoint != "/like/removelike" || a.page.feed.sections[0].Items[0].Like != youtube.Indifferent {
+		t.Fatalf("remove dislike failed: %s", endpoint)
+	}
+	refuseWrites.Store(true)
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Dislike"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.page.feed.sections[0].Items[0].Like != youtube.Indifferent || !tt.HasText("Could not dislike “Album Track One”") {
+		t.Fatalf("rejected dislike was not reverted: %q", tt.Texts())
+	}
+}
+
+func TestAutoSkipDislikedFromPlaylist(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a, _ := playbackApp(t)
+	a.account.session = signedInApp(t).account.session
+	a.settings.AutoSkipDisliked = true
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	openTrackMenu(t, tt, "Meteorite")
+	if err := tt.Click("Dislike"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Ameiro"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Next"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.current.VideoID != "song-three" {
+		t.Fatalf("next played %q instead of skipping the disliked song", a.current.VideoID)
+	}
+}
+
 func TestSignedOutHasNoLike(t *testing.T) {
 	resetFakes()
 	a, _ := playbackApp(t)

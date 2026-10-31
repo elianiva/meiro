@@ -621,6 +621,50 @@ func TestAutoPlayRetriesRecommendationsWhenChosenQueueRunsOut(t *testing.T) {
 	}
 }
 
+func TestAutoPlayStopsWhenEveryRecommendationIsDisliked(t *testing.T) {
+	var requests atomic.Int32
+	client := youtube.NewClient(youtube.Options{
+		HTTPClient: &http.Client{Transport: playbackRoundTrip(func(request *http.Request) (*http.Response, error) {
+			count := requests.Add(1)
+			body := `{"contents":{"playlistPanelRenderer":{"contents":[],"continuations":[{"nextContinuationData":{"continuation":"disliked-1"}}]}}}`
+			switch count {
+			case 2:
+				body = `{"contents":{"playlistPanelContinuation":{"contents":[{"playlistPanelVideoRenderer":{"videoId":"disliked-1","title":{"runs":[{"text":"Disliked one"}]},"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"likeStatus":"DISLIKE"}}]}}}}],"continuations":[{"nextContinuationData":{"continuation":"disliked-2"}}]}}}`
+			case 3:
+				body = `{"contents":{"playlistPanelContinuation":{"contents":[{"playlistPanelVideoRenderer":{"videoId":"disliked-2","title":{"runs":[{"text":"Disliked two"}]},"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"likeStatus":"DISLIKE"}}]}}}}]}}}`
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    request,
+			}, nil
+		})},
+	})
+	a, _ := playbackApp(t)
+	a.account.public = client
+	a.settings.AutoPlay, a.settings.AutoSkipDisliked = true, true
+	q := tracks("chosen")
+	a.play(q[0], q)
+	if requests.Load() != 1 || a.upNext.token != "disliked-1" {
+		t.Fatalf("initial recommendations: requests=%d token=%q", requests.Load(), a.upNext.token)
+	}
+
+	a.trackEnded()
+	if requests.Load() != 3 {
+		t.Fatalf("recommendation pages requested = %d, want the initial page and both continuations", requests.Load())
+	}
+	if a.upNext.waiting || a.upNext.load.busy() {
+		t.Fatalf("playback kept waiting after the disliked recommendations arrived: waiting=%t busy=%t", a.upNext.waiting, a.upNext.load.busy())
+	}
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"chosen", "disliked-1", "disliked-2"}) {
+		t.Fatalf("queue = %v, want both disliked recommendations", got)
+	}
+	if a.player.Playing() || a.notice != "Playback stopped because every remaining track is disliked" {
+		t.Fatalf("playback stop: playing=%t notice=%q", a.player.Playing(), a.notice)
+	}
+}
+
 func TestQueueDoesNotMoveWhileRecommendationsLoad(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.current = tracks("a")[0]

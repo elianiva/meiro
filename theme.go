@@ -42,8 +42,11 @@ const themeGlide = 420 * time.Millisecond
 func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 	t := &a.theme
 	cfg := a.settings.Theme(uiFont)
-	if a.settings.Dynamic && t.dynamicOK {
+	if a.settings.Dynamic && !a.settings.Matugen && t.dynamicOK {
 		cfg.Seed = t.dynamic
+	}
+	if a.settings.Matugen {
+		cfg.Colors = a.colors
 	}
 	dark := c.Theme().Dark
 	if t.cached == nil || t.cachedCfg != cfg || t.cachedDark != dark {
@@ -78,7 +81,7 @@ func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 func (a *app) followArtwork() {
 	t := &a.theme
 	art := a.current.Thumbnail
-	if !a.settings.Dynamic || art == "" || t.dynamicFor == art {
+	if !a.settings.Dynamic || a.settings.Matugen || art == "" || t.dynamicFor == art {
 		return
 	}
 	colour, has, ready := a.thumbs.Colour(art, playerArt)

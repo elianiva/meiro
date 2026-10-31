@@ -8,11 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Dislike songs.** Use the player or a song's menu to dislike it, and optionally skip songs known to be disliked in Settings → Playback.
+- **Meiro can use matugen's full colour set.** Matugen writes light and dark colours to `colors.json` in Meiro's data folder, and Meiro matches the rest of your desktop exactly without touching `settings.json`. Choose Matugen as the colour source in Settings → Appearance; the README has the template and setup. ([#249](https://github.com/elianiva/meiro/issues/249))
 - **Media keys on Windows.** Play, pause, next track, previous track and stop keys control playback from the keyboard, even when Meiro is in the background.
+
+### Changed
+
+- **Colour source is one choice.** Settings → Appearance offers Fixed, Artwork and Matugen in place of the Colour from artwork switch. The colour and palette pickers show only when they apply.
 
 ### Fixed
 
 - **The macOS menu bar player returns when the notch is off or unavailable.** Turn off Notch player in Settings > Desktop to use the menu bar icon and mini player. When no display with a notch is available, Meiro switches to the menu bar automatically and returns to the notch when that display comes back. Playback continues, your notch preference is kept, and track notifications stay off.
+- **Playback explains when auto-skip reaches only disliked songs.** The player now tells you why it stopped instead of ending silently.
 - **Windows track notifications show the song's cover.** They showed Meiro's tray icon instead of the song's artwork.
 
 ### Removed

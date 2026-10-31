@@ -88,7 +88,7 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	reply := homeResponse
 	status := http.StatusOK
 	switch {
-	case strings.HasSuffix(request.URL.Path, "/like/like"), strings.HasSuffix(request.URL.Path, "/like/removelike"):
+	case strings.HasSuffix(request.URL.Path, "/like/like"), strings.HasSuffix(request.URL.Path, "/like/dislike"), strings.HasSuffix(request.URL.Path, "/like/removelike"):
 		likeWrites.Add(1)
 		recordWrite(request.URL.Path, asked)
 		reply = likeResponse

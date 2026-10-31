@@ -55,7 +55,7 @@ func (a *app) ensureUpNext() {
 			}
 			u.seen = map[string]struct{}{}
 			u.options.VideoID = a.current.VideoID
-		case a.queue.remaining() > 1:
+		case a.queue.remaining() > 1 && !u.waiting:
 			return
 		default:
 			continuation = u.token
@@ -64,6 +64,10 @@ func (a *app) ensureUpNext() {
 			}
 			if _, seen := u.seen[continuation]; seen {
 				u.token = ""
+				if u.waiting {
+					u.waiting = false
+					a.stopAtQueueEnd()
+				}
 				return
 			}
 			u.seen[continuation] = struct{}{}
@@ -106,12 +110,18 @@ func (a *app) ensureUpNext() {
 		if !u.waiting {
 			return
 		}
+		_, eligible := a.queue.nextEligible(a.settings.AutoPlay, a.repeat, a.settings.AutoSkipDisliked)
 		switch {
-		case a.queue.remaining() > 0:
+		case a.queue.remaining() > 0 && eligible:
 			u.waiting = false
 			a.advance()
-		case continuation != "":
+		case a.settings.AutoSkipDisliked && u.token != "":
+			a.ensureUpNext()
+		case !a.settings.AutoSkipDisliked && continuation != "":
 			a.ensureUpNext() // the list had more to pull
+		case a.settings.AutoSkipDisliked && a.queue.remaining() > 0:
+			u.waiting = false
+			a.advance() // all remaining tracks are disliked
 		default:
 			// A fresh request found nothing to follow the queue with.
 			u.waiting = false

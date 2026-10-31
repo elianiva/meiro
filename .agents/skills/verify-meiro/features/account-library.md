@@ -9,6 +9,7 @@ A user signs in, sees their library, likes tracks, subscribes to artists, saves 
 - `account-rejected` asks to sign in again when YouTube refuses the session.
 - `library-save` saves and removes an album or playlist, from the page and from its card.
 - `library-like` likes and unlikes from the track menu and the player heart.
+- `library-dislike` dislikes and removes a dislike from the track menu and player; a refused write restores the previous rating.
 - `library-subscribe` subscribes and unsubscribes on an artist page.
 - `library-playlist` creates a playlist, adds a song, sorts or searches a playlist page, and deletes one.
 - `library-refused` undoes the visible change when the write returns 400.

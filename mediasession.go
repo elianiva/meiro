@@ -84,7 +84,7 @@ func (a *app) syncSystemMedia() {
 	hasTrack := a.current.VideoID != ""
 	canNext := false
 	if hasTrack {
-		_, canNext = a.queue.next(a.settings.AutoPlay, a.repeat)
+		_, canNext = a.queue.nextEligible(a.settings.AutoPlay, a.repeat, a.settings.AutoSkipDisliked)
 		if !canNext && a.settings.AutoPlay {
 			canNext = a.upNext.load.busy() || !a.upNext.fetched || a.upNext.token != ""
 		}

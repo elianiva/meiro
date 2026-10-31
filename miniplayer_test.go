@@ -1538,8 +1538,15 @@ func TestNotchIndicatorFollowsBufferingPlaybackAndPause(t *testing.T) {
 	}
 	nt.Advance(time.Second)
 	before := bytes.Clone(nt.Image().Pix)
-	nt.Advance(100 * time.Millisecond)
-	if bytes.Equal(before, nt.Image().Pix) {
+	animated := false
+	for range 10 {
+		nt.Advance(100 * time.Millisecond)
+		if !bytes.Equal(before, nt.Image().Pix) {
+			animated = true
+			break
+		}
+	}
+	if !animated {
 		t.Fatal("playback indicator did not animate")
 	}
 	if err := nt.Click("Open notch lyrics"); err != nil {

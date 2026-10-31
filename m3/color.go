@@ -362,3 +362,97 @@ func (s Scheme) Mix(o Scheme, t float32) Scheme {
 	}
 	return out
 }
+
+// Colors are role colours chosen from outside, such as the set a wallpaper
+// tool generates, for the light and the dark appearance. A role left out keeps
+// the colour the seed gives it.
+type Colors struct {
+	Light, Dark map[string]ui.Color
+}
+
+// Role returns the colour of the role a snake_case name stands for, such as
+// "on_primary_container", or nil for a name that is not a role.
+func (s *Scheme) Role(name string) *ui.Color {
+	switch name {
+	case "primary":
+		return &s.Primary
+	case "on_primary":
+		return &s.OnPrimary
+	case "primary_container":
+		return &s.PrimaryContainer
+	case "on_primary_container":
+		return &s.OnPrimaryContainer
+	case "secondary":
+		return &s.Secondary
+	case "on_secondary":
+		return &s.OnSecondary
+	case "secondary_container":
+		return &s.SecondaryContainer
+	case "on_secondary_container":
+		return &s.OnSecondaryContainer
+	case "tertiary":
+		return &s.Tertiary
+	case "on_tertiary":
+		return &s.OnTertiary
+	case "tertiary_container":
+		return &s.TertiaryContainer
+	case "on_tertiary_container":
+		return &s.OnTertiaryContainer
+	case "error":
+		return &s.Error
+	case "on_error":
+		return &s.OnError
+	case "error_container":
+		return &s.ErrorContainer
+	case "on_error_container":
+		return &s.OnErrorContainer
+	case "surface":
+		return &s.Surface
+	case "on_surface":
+		return &s.OnSurface
+	case "on_surface_variant":
+		return &s.OnSurfaceVariant
+	case "surface_dim":
+		return &s.SurfaceDim
+	case "surface_bright":
+		return &s.SurfaceBright
+	case "surface_container_lowest":
+		return &s.SurfaceContainerLowest
+	case "surface_container_low":
+		return &s.SurfaceContainerLow
+	case "surface_container":
+		return &s.SurfaceContainer
+	case "surface_container_high":
+		return &s.SurfaceContainerHigh
+	case "surface_container_highest":
+		return &s.SurfaceContainerHighest
+	case "outline":
+		return &s.Outline
+	case "outline_variant":
+		return &s.OutlineVariant
+	case "inverse_surface":
+		return &s.InverseSurface
+	case "inverse_on_surface":
+		return &s.InverseOnSurface
+	case "inverse_primary":
+		return &s.InversePrimary
+	case "scrim":
+		return &s.Scrim
+	case "shadow":
+		return &s.Shadow
+	}
+	return nil
+}
+
+// apply puts the colours of one appearance over a scheme.
+func (c *Colors) apply(s *Scheme) {
+	roles := c.Light
+	if s.Dark {
+		roles = c.Dark
+	}
+	for name, colour := range roles {
+		if role := s.Role(name); role != nil {
+			*role = colour
+		}
+	}
+}

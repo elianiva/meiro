@@ -89,6 +89,35 @@ func TestSettingsWatcherIgnoresOtherFiles(t *testing.T) {
 	}
 }
 
+func TestSettingsWatcherNoticesTheColoursFileBeingRemoved(t *testing.T) {
+	dir := t.TempDir()
+	colors := filepath.Join(dir, "colors.json")
+	if err := os.WriteFile(colors, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed := make(chan struct{}, 10)
+	watcher, err := newSettingsWatcher(dir, "settings.json", 20*time.Millisecond, func() { changed <- struct{}{} }, "colors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() { done <- watcher.run(stop) }()
+
+	if err := os.Remove(colors); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the watcher did not notice colors.json go")
+	}
+	close(stop)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSettingsFileChangesApplyWithoutARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp(t)
@@ -243,6 +272,28 @@ func TestSettingsFileChangesLeaveAPendingAppWriteAlone(t *testing.T) {
 	a.saver.Wait()
 }
 
+func TestAutoSkipDislikedSettingPersists(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 700)
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("auto skip disliked")
+	tt.Frame()
+	if a.settings.AutoSkipDisliked {
+		t.Fatal("auto-skip should be off by default")
+	}
+	if err := tt.Click("Skip disliked songs"); err != nil {
+		t.Fatal(err)
+	}
+	a.saver.Wait()
+	if !settings.Load(a.saver.Path).AutoSkipDisliked {
+		t.Fatal("auto-skip was not saved")
+	}
+}
+
 func writeSettingsFile(t *testing.T, path string, s settings.Settings) {
 	t.Helper()
 	data, err := json.MarshalIndent(s, "", "  ")
@@ -251,5 +302,97 @@ func writeSettingsFile(t *testing.T, path string, s settings.Settings) {
 	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestColorsFileThemesTheWindow(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(dir, "settings.json")
+	a.colorsPath = filepath.Join(dir, "colors.json")
+	a.settings = settings.Defaults()
+	a.settings.Seed, a.settings.Mode = "#6750a4", "dark"
+	writeSettingsFile(t, a.saver.Path, a.settings)
+	a.settingsSeen, _ = os.ReadFile(a.saver.Path)
+	derived := m3.New(a.settings.Theme(uiFont), true).Scheme
+
+	// The light set is left out: a mode with no colours keeps the seed's own.
+	file := `{"dark": {"primary": "#00e63a", "on_primary": "#003910", "surface": "#101510"}}`
+	if err := os.WriteFile(a.colorsPath, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.checkColors()
+	shown := func(mode string) m3.Scheme {
+		a.settings.Mode = mode
+		var s m3.Scheme
+		tt := ui.NewTester(func(c *ui.Context) { s = a.resolveTheme(c).Scheme; ui.Box(c).Size(10, 10) }, 100, 100)
+		tt.Frame()
+		tt.Advance(themeGlide + 20*time.Millisecond)
+		return s
+	}
+	// Until matugen is the colour source, the file is read and ignored.
+	if got := shown("dark"); got.Primary != derived.Primary {
+		t.Errorf("primary = %v with the source not matugen, want the seed's %v", got.Primary, derived.Primary)
+	}
+	a.settings.Matugen = true
+	got := shown("dark")
+	if got.Primary != ui.Hex("#00e63a") || got.Surface != ui.Hex("#101510") {
+		t.Errorf("colours did not apply: primary %v, surface %v", got.Primary, got.Surface)
+	}
+	if got.Secondary != derived.Secondary {
+		t.Errorf("a role the file leaves out changed: %v, want %v", got.Secondary, derived.Secondary)
+	}
+
+	if got, want := shown("light").Primary, m3.New(a.settings.Theme(uiFont), false).Scheme.Primary; got != want {
+		t.Errorf("light primary = %v, want the seed's %v", got, want)
+	}
+	if err := os.WriteFile(a.colorsPath, []byte(`{"dark": {"primary": "#00e`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.checkColors()
+	if got := shown("dark"); got.Primary != ui.Hex("#00e63a") {
+		t.Errorf("a half-written file changed the colours: %v", got.Primary)
+	}
+
+	if err := os.Remove(a.colorsPath); err != nil {
+		t.Fatal(err)
+	}
+	a.checkColors()
+	if got := shown("dark"); got.Primary != derived.Primary {
+		t.Errorf("primary = %v after the file went, want the seed's %v", got.Primary, derived.Primary)
+	}
+}
+
+func TestColourSourceSwitchesBetweenFixedArtworkAndMatugen(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if !tt.HasText("Violet") || !tt.HasText("Palette") {
+		t.Fatal("the fixed source did not show the colour and palette pickers")
+	}
+
+	for _, tc := range []struct {
+		click            string
+		dynamic, matugen bool
+	}{
+		{"Matugen", false, true},
+		{"Artwork", true, false},
+		{"Matugen", false, true},
+		{"Fixed", false, false},
+	} {
+		if err := tt.Click(tc.click); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if a.settings.Dynamic != tc.dynamic || a.settings.Matugen != tc.matugen {
+			t.Fatalf("after %q: dynamic=%v matugen=%v", tc.click, a.settings.Dynamic, a.settings.Matugen)
+		}
+		if got := tt.HasText("Palette"); got == tc.matugen {
+			t.Errorf("after %q: palette picker shown = %v", tc.click, got)
+		}
+		if got := tt.HasText("Violet"); got == (tc.dynamic || tc.matugen) {
+			t.Errorf("after %q: colour swatches shown = %v", tc.click, got)
+		}
 	}
 }

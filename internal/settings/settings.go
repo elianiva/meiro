@@ -33,6 +33,9 @@ type Settings struct {
 	Style int `json:"style"`
 	// Dynamic takes the seed from the artwork of the track playing.
 	Dynamic bool `json:"dynamic"`
+	// Matugen takes the colours from colors.json, which matugen writes, in
+	// place of the seed. Dynamic and Matugen are never both on.
+	Matugen bool `json:"matugen,omitempty"`
 	// RailExpanded keeps the navigation rail open, with labels beside icons.
 	RailExpanded bool `json:"railExpanded"`
 	// Zoom is how large the interface is, as a percentage: 100 shows it at
@@ -45,6 +48,8 @@ type Settings struct {
 	LogVolume bool `json:"logVolume,omitempty"`
 	// AutoPlay adds YouTube Music's generated queue after the selected tracks.
 	AutoPlay bool `json:"autoPlay"`
+	// AutoSkipDisliked skips tracks known to have a thumbs-down.
+	AutoSkipDisliked bool `json:"autoSkipDisliked,omitempty"`
 	// NormalizeLoudness applies YouTube's per-track loudness correction when signed in.
 	NormalizeLoudness bool `json:"normalizeLoudness"`
 	// CacheSongs is how many recently played audio files to keep on disk.
@@ -395,4 +400,44 @@ func (w *Writer) Wait() {
 	}
 	w.mu.Unlock()
 	<-done
+}
+
+// ParseColors reads the colours file: an object with "light" and "dark"
+// objects that map role names, such as "primary" or "surface_container_high",
+// to "#rrggbb". It says no to a file that is not that, or that names a colour
+// it cannot read or a role that does not exist, or one with no colours at all, so a typo is not lost quietly.
+func ParseColors(data []byte) (*m3.Colors, error) {
+	var file struct {
+		Light, Dark map[string]string
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		return nil, err
+	}
+	if len(file.Light) == 0 && len(file.Dark) == 0 {
+		return nil, errors.New("no colours: expected \"light\" or \"dark\" objects")
+	}
+	read := func(appearance string, in map[string]string) (map[string]ui.Color, error) {
+		out := make(map[string]ui.Color, len(in))
+		var scratch m3.Scheme
+		for role, text := range in {
+			if scratch.Role(role) == nil {
+				return nil, fmt.Errorf("%s: %q is not a colour role", appearance, role)
+			}
+			colour, ok := ParseSeed(text)
+			if !ok {
+				return nil, fmt.Errorf("%s.%s: %q is not #rrggbb", appearance, role, text)
+			}
+			out[role] = colour
+		}
+		return out, nil
+	}
+	light, err := read("light", file.Light)
+	if err != nil {
+		return nil, err
+	}
+	dark, err := read("dark", file.Dark)
+	if err != nil {
+		return nil, err
+	}
+	return &m3.Colors{Light: light, Dark: dark}, nil
 }

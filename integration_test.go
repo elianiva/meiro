@@ -558,7 +558,8 @@ func TestSettingsSearchFiltersSettingsInPlace(t *testing.T) {
 		{query: "color", want: "Colour"},
 		{query: "palette", want: "Palette"},
 		{query: "hue", want: "Hue"},
-		{query: "artwork", want: "Colour from artwork"},
+		{query: "artwork", want: "Colour source"},
+		{query: "matugen", want: "Colour source"},
 	} {
 		if err := tt.Click("Clear search"); err != nil {
 			t.Fatal(err)
@@ -1581,7 +1582,12 @@ func TestClearHistoryFromSettings(t *testing.T) {
 		t.Fatalf("saved %d plays, want 2", len(got))
 	}
 	a.router.Push("/settings")
-	tt := ui.NewTester(a.view, 1000, 4600)
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("history")
 	tt.Frame()
 	if !tt.HasText("2 plays are kept on this device") {
 		t.Fatalf("settings do not count the plays: %q", tt.Texts())
@@ -1950,6 +1956,36 @@ func TestGoingBackRestoresWhereAPageWasScrolled(t *testing.T) {
 	tt.Frame()
 	if first, _ := a.list.Visible(); a.router.Path() != "/settings" || first == 0 {
 		t.Fatalf("settings did not come back where it was left: first row %d at %q", first, a.router.Path())
+	}
+}
+
+func TestPlaybackSettingIsReachableByScrollingOnASmallWindow(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 800, 450)
+	tt.Frame()
+	if tt.HasText("Skip disliked songs") {
+		t.Fatal("the Playback setting started in view; this does not prove small-window scrolling")
+	}
+
+	first, last := a.list.Visible()
+	for range 12 {
+		if last >= 7 {
+			break
+		}
+		tt.Scroll(500, 300, 0, 180)
+		tt.Frame()
+		first, last = a.list.Visible()
+	}
+	switchControl, ok := tt.Find("Skip disliked songs")
+	if !ok || last < 7 || switchControl.Y < 0 || switchControl.Y+switchControl.H > 450 {
+		t.Fatalf("Playback setting did not scroll into the small window: visible=%d..%d found=%t bounds=%+v texts=%q", first, last, ok, switchControl, tt.Texts())
+	}
+	if err := tt.Click("Skip disliked songs"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.settings.AutoSkipDisliked {
+		t.Fatal("the Playback setting could not be changed after scrolling to it")
 	}
 }
 
