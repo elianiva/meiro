@@ -20,6 +20,8 @@ import (
 
 // Windows puts Previous, Play or Pause, and Next under the thumbnail that
 // shows when the pointer rests on the taskbar button, the way Spotify does.
+// Keyboard media keys (Play/Pause, Next, Previous, Stop) are handled both
+// globally via RegisterHotKey and through WM_APPCOMMAND when focused.
 //
 // Explorer makes the taskbar button when the window first shows, and again
 // when the window shows after hiding or when Explorer restarts, and each
@@ -39,6 +41,8 @@ var (
 	procGetSystemMetrics            = user32.NewProc("GetSystemMetrics")
 	procIsWindow                    = user32.NewProc("IsWindow")
 	procChangeWindowMessageFilterEx = user32.NewProc("ChangeWindowMessageFilterEx")
+	procRegisterHotKey              = user32.NewProc("RegisterHotKey")
+	procUnregisterHotKey            = user32.NewProc("UnregisterHotKey")
 	procCoCreateInstance            = ole32.NewProc("CoCreateInstance")
 	procSetWindowSubclass           = comctl32.NewProc("SetWindowSubclass")
 	procRemoveWindowSubclass        = comctl32.NewProc("RemoveWindowSubclass")
@@ -56,11 +60,32 @@ const (
 	wmCommand       = 0x0111
 	wmSettingChange = 0x001A
 	wmNCDestroy     = 0x0082
+	wmHotkey        = 0x0312
+	wmAppCommand    = 0x0319
 	thbnClicked     = 0x1800
 	clsctxInproc    = 0x1
 	smCxSmIcon      = 49
 	subclassID      = 0x4d45_4952 // "MEIR"
 	msgfltAllow     = 1
+
+	modNoRepeat = 0x4000
+
+	vkMediaNextTrack = 0xB0
+	vkMediaPrevTrack = 0xB1
+	vkMediaStop      = 0xB2
+	vkMediaPlayPause = 0xB3
+
+	appCommandMediaNextTrack = 11
+	appCommandMediaPrevTrack = 12
+	appCommandMediaStop      = 13
+	appCommandMediaPlayPause = 14
+	appCommandMediaPlay      = 46
+	appCommandMediaPause     = 47
+
+	hotkeyPlayPause = 0x4d01
+	hotkeyNextTrack = 0x4d02
+	hotkeyPrevTrack = 0x4d03
+	hotkeyStop      = 0x4d04
 
 	thbIcon    = 0x2
 	thbTooltip = 0x4
@@ -157,6 +182,8 @@ type windowsSession struct {
 	icons [2][glyphCount]uintptr
 	// shown is what the toolbar last showed, to skip identical updates.
 	shown [buttonCount]thumbButton
+	// hotkeys are the IDs successfully registered with RegisterHotKey.
+	hotkeys []int
 }
 
 var (
@@ -199,8 +226,9 @@ func New(controls Controls) (Session, error) {
 		return nil, errors.New("cannot subclass the window for its taskbar buttons")
 	}
 	sessions[s.hwnd] = s
+	s.registerHotKeys()
 	// An elevated Meiro would not hear Explorer, which runs unelevated.
-	for _, msg := range []uint32{taskbarButtonCreated, wmCommand} {
+	for _, msg := range []uint32{taskbarButtonCreated, wmCommand, wmHotkey, wmAppCommand} {
 		_, _, _ = procChangeWindowMessageFilterEx.Call(s.hwnd, uintptr(msg), msgfltAllow, 0)
 	}
 	// The button may already be there, with its TaskbarButtonCreated gone
@@ -226,10 +254,14 @@ func (s *windowsSession) Close() error {
 	return nil
 }
 
-// release lets go of the taskbar and the icons once the window is gone or
-// the session closes.
+// release lets go of the taskbar, registered hotkeys and icons once the window
+// is gone or the session closes.
 func (s *windowsSession) release() {
 	delete(sessions, s.hwnd)
+	for _, id := range s.hotkeys {
+		_, _, _ = procUnregisterHotKey.Call(s.hwnd, uintptr(id))
+	}
+	s.hotkeys = nil
 	s.hwnd = 0
 	if s.taskbar != nil {
 		s.taskbar.Release()
@@ -241,6 +273,27 @@ func (s *windowsSession) release() {
 				_, _, _ = procDestroyIcon.Call(icon)
 				s.icons[theme][i] = 0
 			}
+		}
+	}
+}
+
+func (s *windowsSession) registerHotKeys() {
+	keys := []struct {
+		id int
+		vk uintptr
+	}{
+		{hotkeyPlayPause, vkMediaPlayPause},
+		{hotkeyNextTrack, vkMediaNextTrack},
+		{hotkeyPrevTrack, vkMediaPrevTrack},
+		{hotkeyStop, vkMediaStop},
+	}
+	for _, k := range keys {
+		ok, _, _ := procRegisterHotKey.Call(s.hwnd, uintptr(k.id), modNoRepeat, k.vk)
+		if ok == 0 {
+			ok, _, _ = procRegisterHotKey.Call(s.hwnd, uintptr(k.id), 0, k.vk)
+		}
+		if ok != 0 {
+			s.hotkeys = append(s.hotkeys, k.id)
 		}
 	}
 }
@@ -257,6 +310,13 @@ func subclassProc(hwnd, msg, wParam, lParam, _, _ uintptr) uintptr {
 		case msg == wmCommand && wParam>>16&0xffff == thbnClicked:
 			s.click(int(wParam & 0xffff))
 			return 0
+		case msg == wmHotkey:
+			s.hotkey(int(wParam))
+			return 0
+		case msg == wmAppCommand:
+			if s.appCommand(int((lParam >> 16) & 0x0fff)) {
+				return 1
+			}
 		case msg == wmSettingChange && lParam != 0 &&
 			windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam))) == "ImmersiveColorSet": //nolint:govet // the system's string, not Go memory
 			if light := lightTaskbar(); light != s.light {
@@ -270,6 +330,52 @@ func subclassProc(hwnd, msg, wParam, lParam, _, _ uintptr) uintptr {
 	}
 	r, _, _ := procDefSubclassProc.Call(hwnd, msg, wParam, lParam)
 	return r
+}
+
+func (s *windowsSession) hotkey(id int) {
+	var fn func()
+	switch id {
+	case hotkeyPlayPause:
+		fn = s.controls.Toggle
+	case hotkeyNextTrack:
+		fn = s.controls.Next
+	case hotkeyPrevTrack:
+		fn = s.controls.Previous
+	case hotkeyStop:
+		fn = s.controls.Stop
+	}
+	if fn != nil {
+		fn()
+	}
+}
+
+func (s *windowsSession) appCommand(cmd int) bool {
+	var fn func()
+	switch cmd {
+	case appCommandMediaPlayPause:
+		fn = s.controls.Toggle
+	case appCommandMediaPlay:
+		fn = s.controls.Play
+		if fn == nil {
+			fn = s.controls.Toggle
+		}
+	case appCommandMediaPause:
+		fn = s.controls.Pause
+		if fn == nil {
+			fn = s.controls.Toggle
+		}
+	case appCommandMediaNextTrack:
+		fn = s.controls.Next
+	case appCommandMediaPrevTrack:
+		fn = s.controls.Previous
+	case appCommandMediaStop:
+		fn = s.controls.Stop
+	}
+	if fn != nil {
+		fn()
+		return true
+	}
+	return false
 }
 
 func (s *windowsSession) click(id int) {

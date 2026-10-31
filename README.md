@@ -5,10 +5,23 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="CONTRIBUTING.md">Contribute</a>
+</p>
+
 A lightweight desktop music player for YouTube Music. Meiro has a native
 interface rather than a browser-based one, and typically uses about 100 MB of
 memory. It plays music without loading the YouTube Music web page, and can
 scrobble your listening to Last.fm.
+
+<p align="center">
+  <a href="docs/screenshots/lyrics.png"><img src="docs/screenshots/lyrics.png" alt="Full player with synced lyrics, the sung line lit in the middle" width="720"></a>
+</p>
 
 > **Beta and unofficial.** Meiro is an independent project. It is not made,
 > endorsed or supported by YouTube or Google, and it uses YouTube's private web
@@ -16,31 +29,6 @@ scrobble your listening to Last.fm.
 > Meiro (browsing, search, playback, sign-in) may stop working until it is
 > updated. See [Known issues](#known-issues) and
 > [Troubleshooting](#troubleshooting).
-
-## Why I made it
-
-I use YouTube Music exclusively. It doesn't have a desktop app, and the web app
-is such a resource hog: it takes around 600-800 MB of RAM on day-to-day use. So
-I decided what someone with a lot of tokens to spare would do: make it myself.
-
-The app is built using [MyGO!!!!!](https://github.com/egoist/mygo), a framework
-for building native desktop apps with a low footprint using Go. It's relatively new, and
-I just wanted to try it out myself :p It's built using the Material 3 Expressive
-design language, because, duh?
-
-Basically what I'd expect from the official YouTube Music, since we're supposed
-to be using Material 3 Expressive at this point. Google hasn't done it (yet?),
-so I made it myself.
-
-## Where the name comes from
-
-Meiro is built with the [MyGO](https://github.com/egoist/mygo) framework, and
-its name comes from one of MyGO!!!!!'s songs,
-[迷路日々](https://www.youtube.com/watch?v=STgVa-reZkM). The title is written
-with the characters for *meiro* (迷路, "maze") and *hibi* (日々, "days"), so it
-reads as "maze days" or "meiro days". But the song is pronounced "Melody"
-(メロディ), a pun on the English word. The app is named Meiro after the first
-half of the title.
 
 ## Features
 
@@ -118,34 +106,9 @@ half of the title.
 - **Updates itself.** Meiro checks for new versions once a day. You can turn
   this off.
 
-## Non-goals
-
-Meiro stays small on purpose. These things stay out of scope and will not be
-implemented. If you open a pull request that adds one of them, I will not
-accept it. Feel free to maintain a fork of your own if you want to add these
-features.
-
-- **Video.** Music videos play as audio, with a badge on the artwork. Meiro
-  shows no picture.
-- **Local files.** Meiro plays what YouTube Music has. It does not import your
-  own audio files.
-- **Uploads.** Meiro does not upload music to YouTube Music or manage an
-  upload library.
-- **Casting.** Meiro plays on the computer it runs on. It does not send the
-  music to a TV, a speaker or another device.
-- **Other services.** Meiro plays YouTube Music only. It does not play from
-  Spotify, Apple Music or another service.
-- **Social features.** Meiro changes only your own library: likes, saved
-  albums, follows and your own playlists. It does not comment, share a library
-  or collaborate on a playlist.
-
-<p align="center">
-  <a href="docs/screenshots/lyrics.png"><img src="docs/screenshots/lyrics.png" alt="Full player with synced lyrics, the sung line lit in the middle" width="720"></a>
-</p>
-
 ## Screenshots
 
-These screenshots show Meiro using a signed-in YouTube Music account. Click an
+Screenshots show Meiro using a signed-in YouTube Music account. Click an
 image to see it full size.
 
 <table>
@@ -434,6 +397,32 @@ Meiro reads cookies only when you choose to sign in, and only to take the
 YouTube Music session. With the browser window, it reads them from the window
 that it opened. With an import, it reads them from the browser that you pick.
 
+## Non-goals
+
+Meiro stays small on purpose. These things stay out of scope and will not be
+implemented. If you open a pull request that adds one of them, I will not
+accept it. Feel free to maintain a fork of your own if you want to add these
+features.
+[GroophyLifefor/meiro](https://github.com/GroophyLifefor/meiro) is a great
+example. They built SoundCloud, a sync server, MusicBrainz linking,
+recommendations and a listening history page, among many other things, on top
+of Meiro. It is not part of Meiro, but feel free to check it out if you want to
+see how these features can work.
+
+- **Video.** Music videos play as audio, with a badge on the artwork. Meiro
+  shows no picture.
+- **Local files.** Meiro plays what YouTube Music has. It does not import your
+  own audio files.
+- **Uploads.** Meiro does not upload music to YouTube Music or manage an
+  upload library.
+- **Casting.** Meiro plays on the computer it runs on. It does not send the
+  music to a TV, a speaker or another device.
+- **Other services.** Meiro plays YouTube Music only. It does not play from
+  Spotify, Apple Music or another service.
+- **Social features.** Meiro changes only your own library: likes, saved
+  albums, follows and your own playlists. It does not comment, share a library
+  or collaborate on a playlist.
+
 ## Build from source
 
 You need [Bazel](https://bazel.build/), installed through
@@ -458,6 +447,37 @@ Releases include full and minimal builds: a universal DMG for macOS, a Windows
 `amd64` and `arm64` `.deb`, `.rpm`, `.flatpak` (full build only), `.AppImage`, and `.tar.gz` downloads.
 Minimal downloads include `-minimal` in the filename. Find them on the
 [releases page](https://github.com/elianiva/meiro/releases).
+
+## Contributing
+
+Bug reports, fixes and docs are welcome. Read
+[CONTRIBUTING.md](CONTRIBUTING.md) first, and check the
+[non-goals](#non-goals) before you propose a feature.
+
+## About
+
+I use YouTube Music exclusively. It doesn't have a desktop app, and the web app
+is such a resource hog: it takes around 600-800 MB of RAM on day-to-day use. So
+I decided what someone with a lot of tokens to spare would do: make it myself.
+
+The app is built using [MyGO!!!!!](https://github.com/egoist/mygo), a framework
+for building native desktop apps with a low footprint using Go. It's relatively new, and
+I just wanted to try it out myself :p It's built using the Material 3 Expressive
+design language, because, duh?
+
+Basically what I'd expect from the official YouTube Music, since we're supposed
+to be using Material 3 Expressive at this point. Google hasn't done it (yet?),
+so I made it myself.
+
+### Where the name comes from
+
+Meiro is built with the [MyGO](https://github.com/egoist/mygo) framework, and
+its name comes from one of MyGO!!!!!'s songs,
+[迷路日々](https://www.youtube.com/watch?v=STgVa-reZkM). The title is written
+with the characters for *meiro* (迷路, "maze") and *hibi* (日々, "days"), so it
+reads as "maze days" or "meiro days". But the song is pronounced "Melody"
+(メロディ), a pun on the English word. The app is named Meiro after the first
+half of the title.
 
 ## Credits
 

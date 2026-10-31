@@ -20,6 +20,7 @@ var (
 
 	procCreateNotificationIcon  = notificationUser32.NewProc("CreateIconFromResourceEx")
 	procDestroyNotificationIcon = notificationUser32.NewProc("DestroyIcon")
+	procFindNotificationWindow  = notificationUser32.NewProc("FindWindowExW")
 	procShellNotifyIcon         = notificationShell.NewProc("Shell_NotifyIconW")
 )
 
@@ -27,7 +28,10 @@ const (
 	nimModifyNotification = 1
 	nifInfoNotification   = 0x10
 	niifUserNotification  = 0x4
-	notificationIconSide  = 48
+	// niifLargeIconNotification lets the balloon icon be larger than a
+	// small icon; without it Windows rejects the 48 px cover.
+	niifLargeIconNotification = 0x20
+	notificationIconSide      = 48
 )
 
 type notificationIconData struct {
@@ -120,11 +124,16 @@ func setWindowsBalloonIcon(d *desktop, title, body string, png []byte) error {
 	if icon == 0 {
 		return errors.New("Windows could not create an icon from the cover")
 	}
+	owner := notificationTrayWindow()
+	if owner == 0 {
+		procDestroyNotificationIcon.Call(icon)
+		return errors.New("MyGo's tray window was not found")
+	}
 	data := notificationIconData{
-		Wnd:         d.win.NativeHandle(),
+		Wnd:         owner,
 		ID:          notificationTrayNumber(meiroTrayID),
 		Flags:       nifInfoNotification,
-		InfoFlags:   niifUserNotification,
+		InfoFlags:   niifUserNotification | niifLargeIconNotification,
 		BalloonIcon: icon,
 	}
 	data.Size = uint32(unsafe.Sizeof(data))
@@ -147,6 +156,25 @@ func copyNotificationText(dst []uint16, value string) {
 	encoded, _ := windows.UTF16FromString(strings.ReplaceAll(value, "\x00", ""))
 	n := copy(dst[:len(dst)-1], encoded)
 	dst[n] = 0
+}
+
+// notificationTrayWindow finds this process's hidden MyGo application
+// window. MyGo adds tray icons for it rather than for the main window, and
+// Windows finds an icon by that window and the icon's number.
+func notificationTrayWindow() uintptr {
+	class, _ := windows.UTF16PtrFromString("MyGoApp")
+	pid := windows.GetCurrentProcessId()
+	var hwnd uintptr
+	for {
+		hwnd, _, _ = procFindNotificationWindow.Call(0, hwnd, uintptr(unsafe.Pointer(class)), 0)
+		if hwnd == 0 {
+			return 0
+		}
+		var owner uint32
+		if _, err := windows.GetWindowThreadProcessId(windows.HWND(hwnd), &owner); err == nil && owner == pid {
+			return hwnd
+		}
+	}
 }
 
 // notificationTrayNumber mirrors MyGo's stable tray ID so the cover updates

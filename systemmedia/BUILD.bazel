@@ -47,7 +47,10 @@ go_library(
 
 go_test(
     name = "systemmedia_test",
-    srcs = ["session_linux_test.go"],
+    srcs = [
+        "session_linux_test.go",
+        "session_windows_test.go",
+    ],
     embed = [":systemmedia"],
     deps = select({
         "@rules_go//go/platform:android": [

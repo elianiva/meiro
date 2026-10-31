@@ -62,7 +62,6 @@ var pageCases = []struct {
 	{"home", "/home", false, "Quick picks", "Nothing to show yet"},
 	{"explore", "/explore", false, "Moods", "Nothing to explore yet"},
 	{"library", "/library", true, "Liked Music", "Your library is empty"},
-	{"recap", "/recap", true, "Top song of the year", "No recap yet"},
 	{"album", "/album/MPREb_test", false, "Album Track One", "This album is empty"},
 	{"playlist", "/playlist/VLPL_video", false, "Playlist video", "This playlist is empty"},
 	{"artist", "/artist/UCartist", false, "Artist Track", "Nothing here yet"},

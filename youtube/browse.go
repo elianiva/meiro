@@ -304,11 +304,6 @@ func episodePage(result *BrowseResult) *BrowseResult {
 	return result
 }
 
-// GetRecap loads the listening-review page for the signed-in account.
-func (c *Client) GetRecap(ctx context.Context) (*BrowseResult, error) {
-	return c.browse(ctx, "FEmusic_listening_review")
-}
-
 // newBrowseResult reads a browse response. The response is parsed once, and
 // everything taken from it is read off that one tree.
 func (c *Client) newBrowseResult(raw json.RawMessage) *BrowseResult {

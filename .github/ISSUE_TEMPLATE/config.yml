@@ -1,6 +1,6 @@
-# The chooser issues open through. Blank issues are off so every report
-# arrives with the fields a maintainer needs to act on it.
-blank_issues_enabled: false
+# The chooser issues open through. Blank issues are on for reports and
+# notes that fit none of the templates.
+blank_issues_enabled: true
 contact_links:
   - name: Contributing to Meiro
     url: https://github.com/elianiva/meiro/blob/master/CONTRIBUTING.md

@@ -6,9 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Media keys on Windows.** Play, pause, next track, previous track and stop keys control playback from the keyboard, even when Meiro is in the background.
+
 ### Fixed
 
 - **The macOS menu bar player returns when the notch is off or unavailable.** Turn off Notch player in Settings > Desktop to use the menu bar icon and mini player. When no display with a notch is available, Meiro switches to the menu bar automatically and returns to the notch when that display comes back. Playback continues, your notch preference is kept, and track notifications stay off.
+- **Windows track notifications show the song's cover.** They showed Meiro's tray icon instead of the song's artwork.
+
+### Removed
+
+- **The Recap page is gone.** The navigation rail no longer shows Recap, and `/recap` opens the page-not-found message.
 
 ## [0.5.0] - 2026-10-30
 
