@@ -410,9 +410,10 @@ func TestMacDesktopOffersNotchAndBackgroundPlayback(t *testing.T) {
 		if !tt.HasText("Track notifications") || !tt.HasText("Menu bar icon") || tt.HasText("Keep running when closed") {
 			t.Fatal("non-Mac desktop controls changed")
 		}
-		if err := tt.Click("Menu bar icon"); err != nil {
-			t.Fatal(err)
-		}
+		// Click finds the row title first and Space plays or pauses, so
+		// toggle the switch from the keyboard with Enter.
+		tabTo(t, tt, "Menu bar icon")
+		tt.Key(0, ui.KeyEnter)
 		a.saver.Wait()
 		if a.trayEnabled() || settings.Load(a.saver.Path).ShowTray {
 			t.Fatal("the macOS fallback overrode another platform's hidden tray preference")
