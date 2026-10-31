@@ -297,7 +297,9 @@ are never touched.
 1. Copy [`meiro-colors.json`](docs/matugen/meiro-colors.json) to
    `~/.config/matugen/templates/`.
 2. Add it to `~/.config/matugen/config.toml`. The output goes in Meiro's data
-   folder, next to `settings.json` (on Linux, `~/.config/Meiro`):
+   folder, next to `settings.json` (`~/.config/Meiro` on Linux,
+   `~/Library/Application Support/Meiro` on macOS, `%AppData%\Meiro` on
+   Windows):
 
    ```toml
    [templates.meiro]
