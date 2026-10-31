@@ -191,12 +191,13 @@ func speedLabel(speed float64) string {
 	return strconv.FormatFloat(speed, 'f', -1, 64) + "×"
 }
 
-// speedControl is the button that shows how fast the current track plays and
-// opens the menu that chooses it; key tells the player's buttons apart.
+// speedControl is the gear button that opens the menu choosing how fast the
+// current track plays; key tells the player's buttons apart. Its label names
+// the speed in effect.
 func (a *app) speedControl(c *ui.Context, key string) {
 	sc := m3.Of(c).Scheme
 	speed := a.speedFor(a.current)
-	anchor := m3.Button(c, m3.ButtonSpec{Label: speedLabel(speed), Kind: m3.TextOnly, Size: m3.Small40, Key: key})
+	anchor := m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconSettings, Label: "Playback speed: " + speedLabel(speed), Key: key})
 	// A menu ignores the press that lands on the button that opened it, so
 	// the button closes it, as the account menu's button does.
 	if anchor.Clicked() {
