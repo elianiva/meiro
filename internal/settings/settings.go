@@ -400,13 +400,16 @@ func (w *Writer) Wait() {
 // ParseColors reads the colours file: an object with "light" and "dark"
 // objects that map role names, such as "primary" or "surface_container_high",
 // to "#rrggbb". It says no to a file that is not that, or that names a colour
-// it cannot read or a role that does not exist, so a typo is not lost quietly.
+// it cannot read or a role that does not exist, or one with no colours at all, so a typo is not lost quietly.
 func ParseColors(data []byte) (*m3.Colors, error) {
 	var file struct {
 		Light, Dark map[string]string
 	}
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, err
+	}
+	if len(file.Light) == 0 && len(file.Dark) == 0 {
+		return nil, errors.New("no colours: expected \"light\" or \"dark\" objects")
 	}
 	read := func(appearance string, in map[string]string) (map[string]ui.Color, error) {
 		out := make(map[string]ui.Color, len(in))

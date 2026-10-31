@@ -131,6 +131,7 @@ func TestParseColorsReadsMatugenOutputAndRefusesTypos(t *testing.T) {
 		"unknown role": `{"dark": {"primry": "#006a60"}}`,
 		"bad colour":   `{"light": {"primary": "teal"}}`,
 		"cut off":      `{"light": {"primary": "#00`,
+		"no colours":   `{"light": {}, "dusk": {"primary": "#006a60"}}`,
 	} {
 		if _, err := ParseColors([]byte(file)); err == nil {
 			t.Errorf("%s: accepted", name)

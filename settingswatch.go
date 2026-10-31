@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"log"
 	"maps"
 	"os"
@@ -56,9 +57,10 @@ func (a *app) watchSettings() {
 	})
 }
 
-// settingsWatcher watches the directory settings.json and colors.json are in. A tool that
-// writes a temporary file and renames it over settings.json breaks a watch on
-// the file itself; watching the directory sees the new name.
+// settingsWatcher watches the directory settings.json and colors.json are in.
+// A tool that writes a temporary file and renames it over settings.json breaks
+// a watch on the file itself; watching the directory sees the new name. It
+// also sees colors.json go, which gives the theme back to the seed.
 type settingsWatcher struct {
 	events   *fsnotify.Watcher
 	names    []string
@@ -97,7 +99,7 @@ func (s *settingsWatcher) run(stop <-chan struct{}) error {
 			if !slices.Contains(s.names, filepath.Base(event.Name)) {
 				continue
 			}
-			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename|fsnotify.Remove) == 0 {
 				continue
 			}
 			wait = time.After(s.debounce)
@@ -147,8 +149,10 @@ func (a *app) readColors() *m3.Colors {
 // gone gives the theme back to the seed. It runs off the main thread.
 func (a *app) checkColors() {
 	data, err := os.ReadFile(a.colorsPath)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		data = nil
+	} else if err != nil {
+		return // unreadable for now; the next change reads it again
 	}
 	if bytes.Equal(data, a.colorsSeen) {
 		return

@@ -88,6 +88,35 @@ func TestSettingsWatcherIgnoresOtherFiles(t *testing.T) {
 	}
 }
 
+func TestSettingsWatcherNoticesTheColoursFileBeingRemoved(t *testing.T) {
+	dir := t.TempDir()
+	colors := filepath.Join(dir, "colors.json")
+	if err := os.WriteFile(colors, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed := make(chan struct{}, 10)
+	watcher, err := newSettingsWatcher(dir, "settings.json", 20*time.Millisecond, func() { changed <- struct{}{} }, "colors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() { done <- watcher.run(stop) }()
+
+	if err := os.Remove(colors); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the watcher did not notice colors.json go")
+	}
+	close(stop)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSettingsFileChangesApplyWithoutARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp(t)

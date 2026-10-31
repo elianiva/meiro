@@ -287,7 +287,6 @@ Meiro write the session unencrypted. Choose **Sign out** to remove Meiro's saved
 
 Public browsing and playback do not need an account.
 
-
 ## Match your desktop with matugen
 
 Meiro can use the full set of colours matugen makes, so it matches your other
@@ -310,10 +309,11 @@ are never touched.
 3. Run matugen as usual, for example `matugen image wallpaper.png`.
 4. In Settings → Appearance, set **Colour source** to **Matugen**.
 
-Meiro recolours as soon as the file changes. The file holds a light and a dark
-set, so Settings → Theme still chooses between them. While the source is
-Matugen, the colour and palette pickers are hidden; **Fixed** and **Artwork**
-bring them back, and the file is ignored. A role the file leaves out keeps the
+Meiro recolours as soon as the file changes, and goes back to your seed if you
+delete it. The file holds a light and a dark set, so Settings → Appearance →
+Theme still chooses between them. While the source is Matugen, the colour and
+palette pickers are hidden; **Fixed** brings both back and **Artwork** brings
+back the palette, and the file is ignored. A role the file leaves out keeps the
 colour Meiro makes from your seed.
 
 ## Troubleshooting
