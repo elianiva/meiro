@@ -246,6 +246,11 @@ func TestColorsFileThemesTheWindow(t *testing.T) {
 		tt.Advance(themeGlide + 20*time.Millisecond)
 		return s
 	}
+	// Until matugen is the colour source, the file is read and ignored.
+	if got := shown("dark"); got.Primary != derived.Primary {
+		t.Errorf("primary = %v with the source not matugen, want the seed's %v", got.Primary, derived.Primary)
+	}
+	a.settings.Matugen = true
 	got := shown("dark")
 	if got.Primary != ui.Hex("#00e63a") || got.Surface != ui.Hex("#101510") {
 		t.Errorf("colours did not apply: primary %v, surface %v", got.Primary, got.Surface)
@@ -271,5 +276,39 @@ func TestColorsFileThemesTheWindow(t *testing.T) {
 	a.checkColors()
 	if got := shown("dark"); got.Primary != derived.Primary {
 		t.Errorf("primary = %v after the file went, want the seed's %v", got.Primary, derived.Primary)
+	}
+}
+
+func TestColourSourceSwitchesBetweenFixedArtworkAndMatugen(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if !tt.HasText("Violet") || !tt.HasText("Palette") {
+		t.Fatal("the fixed source did not show the colour and palette pickers")
+	}
+
+	for _, tc := range []struct {
+		click            string
+		dynamic, matugen bool
+	}{
+		{"Matugen", false, true},
+		{"Artwork", true, false},
+		{"Matugen", false, true},
+		{"Fixed", false, false},
+	} {
+		if err := tt.Click(tc.click); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if a.settings.Dynamic != tc.dynamic || a.settings.Matugen != tc.matugen {
+			t.Fatalf("after %q: dynamic=%v matugen=%v", tc.click, a.settings.Dynamic, a.settings.Matugen)
+		}
+		if got := tt.HasText("Palette"); got == tc.matugen {
+			t.Errorf("after %q: palette picker shown = %v", tc.click, got)
+		}
+		if got := tt.HasText("Violet"); got == (tc.dynamic || tc.matugen) {
+			t.Errorf("after %q: colour swatches shown = %v", tc.click, got)
+		}
 	}
 }

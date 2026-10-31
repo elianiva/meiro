@@ -33,6 +33,9 @@ type Settings struct {
 	Style int `json:"style"`
 	// Dynamic takes the seed from the artwork of the track playing.
 	Dynamic bool `json:"dynamic"`
+	// Matugen takes the colours from colors.json, which matugen writes, in
+	// place of the seed. Dynamic and Matugen are never both on.
+	Matugen bool `json:"matugen,omitempty"`
 	// RailExpanded keeps the navigation rail open, with labels beside icons.
 	RailExpanded bool `json:"railExpanded"`
 	// Zoom is how large the interface is, as a percentage: 100 shows it at

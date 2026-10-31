@@ -57,7 +57,7 @@ var settingsRows = []settingsRow{
 	{key: "lastfm", search: "last.fm scrobbling music service", card: (*app).lastFMCard},
 
 	{key: "h-look", heading: "Appearance and sound"},
-	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic", card: (*app).appearanceCard},
+	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic matugen source", card: (*app).appearanceCard},
 	{key: "sound", search: "sound audio normalize loudness logarithmic equaliser volume", card: (*app).soundCard},
 
 	{key: "h-playback", heading: "Playback"},
@@ -226,50 +226,64 @@ func (a *app) appearanceCard(c *ui.Context) {
 			}
 		})
 
-		// The seed: twelve colours, and any hue between.
-		ui.Column(c).Gap(14).Children(func() {
-			settingLabel(c, "Colour", "Every colour in the app grows from this one.")
-			ui.Row(c).Gap(8).Wrap().Children(func() {
-				for _, swatch := range swatches {
-					if a.swatch(c, swatch.name, swatch.hex) {
-						a.settings.Seed, a.settings.Dynamic = swatch.hex, false
-						a.saveSettings()
-					}
-				}
-			})
-			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				m3.Text(c, m3.LabelLarge, "Hue").TextColor(sc.OnSurfaceVariant).Width(36).Shrink(0)
-				hue, _ := m3.HueOf(th.Seed)
-				value := hue
-				slider := m3.Slider(c, &value, 0, 360, m3.SliderSpec{Label: "Hue", Thickness: 16, Hue: true, Key: "hue"})
-				if slider.Changed() {
-					a.settings.Seed, a.settings.Dynamic = settings.SeedHex(m3.FromHue(value)), false
-					a.saveSettings()
-				}
-			})
-		})
-
-		// How the seed is spent.
-		ui.Column(c).Gap(14).Children(func() {
-			settingLabel(c, "Palette", "How boldly the colour is used.")
-			ui.Row(c).Gap(12).Wrap().Children(func() {
-				for _, style := range m3.Styles() {
-					if a.styleTile(c, style) {
-						a.settings.Style = int(style)
-						a.saveSettings()
-					}
-				}
-			})
-		})
-
-		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			settingLabel(c, "Colour from artwork", "Take the colour from the cover of the song that is playing.").Grow(1)
-			on := a.settings.Dynamic
-			if m3.Switch(c, &on, "Colour from artwork").Changed() {
-				a.settings.Dynamic = on
+		// Where the colours come from: one chosen here, the cover of the song
+		// playing, or the set matugen writes.
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Wrap().Children(func() {
+			settingLabel(c, "Colour source", "").Grow(1)
+			source := 0
+			if a.settings.Matugen {
+				source = 2
+			} else if a.settings.Dynamic {
+				source = 1
+			}
+			if m3.ButtonGroup(c, "colour-source", &source, []string{"Fixed", "Artwork", "Matugen"}, nil) {
+				a.settings.Dynamic, a.settings.Matugen = source == 1, source == 2
 				a.saveSettings()
 			}
 		})
+		if a.settings.Matugen && a.colors == nil {
+			m3.Text(c, m3.BodyMedium, "Waiting for colors.json from matugen.").TextColor(sc.OnSurfaceVariant)
+		}
+
+		// The seed: twelve colours, and any hue between.
+		if !a.settings.Dynamic && !a.settings.Matugen {
+			ui.Column(c).Gap(14).Children(func() {
+				settingLabel(c, "Colour", "Every colour in the app grows from this one.")
+				ui.Row(c).Gap(8).Wrap().Children(func() {
+					for _, swatch := range swatches {
+						if a.swatch(c, swatch.name, swatch.hex) {
+							a.settings.Seed, a.settings.Dynamic, a.settings.Matugen = swatch.hex, false, false
+							a.saveSettings()
+						}
+					}
+				})
+				ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+					m3.Text(c, m3.LabelLarge, "Hue").TextColor(sc.OnSurfaceVariant).Width(36).Shrink(0)
+					hue, _ := m3.HueOf(th.Seed)
+					value := hue
+					slider := m3.Slider(c, &value, 0, 360, m3.SliderSpec{Label: "Hue", Thickness: 16, Hue: true, Key: "hue"})
+					if slider.Changed() {
+						a.settings.Seed, a.settings.Dynamic, a.settings.Matugen = settings.SeedHex(m3.FromHue(value)), false, false
+						a.saveSettings()
+					}
+				})
+			})
+		}
+
+		// How the seed is spent.
+		if !a.settings.Matugen {
+			ui.Column(c).Gap(14).Children(func() {
+				settingLabel(c, "Palette", "How boldly the colour is used.")
+				ui.Row(c).Gap(12).Wrap().Children(func() {
+					for _, style := range m3.Styles() {
+						if a.styleTile(c, style) {
+							a.settings.Style = int(style)
+							a.saveSettings()
+						}
+					}
+				})
+			})
+		}
 
 		// How large the interface is, at a readable size in the interface
 		// that grows with it.
@@ -448,7 +462,7 @@ func (a *app) swatch(c *ui.Context, name, hex string) bool {
 	if m3.Contrast(fill, on) < 3 {
 		on = ui.RGB(24, 24, 27)
 	}
-	selected := !a.settings.Dynamic && hex == a.settings.Seed
+	selected := !a.settings.Dynamic && !a.settings.Matugen && hex == a.settings.Seed
 	b := ui.ButtonBase(c.Key("swatch-" + hex))
 	rest := float32(28)
 	if selected {

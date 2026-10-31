@@ -8,8 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **Meiro can use matugen's full colour set.** Matugen writes light and dark colours to `colors.json` in Meiro's data folder, and Meiro matches the rest of your desktop exactly without touching `settings.json`. The README has the template and setup. ([#249](https://github.com/elianiva/meiro/issues/249))
+- **Meiro can use matugen's full colour set.** Matugen writes light and dark colours to `colors.json` in Meiro's data folder, and Meiro matches the rest of your desktop exactly without touching `settings.json`. Choose Matugen as the colour source in Settings → Appearance; the README has the template and setup. ([#249](https://github.com/elianiva/meiro/issues/249))
 - **Media keys on Windows.** Play, pause, next track, previous track and stop keys control playback from the keyboard, even when Meiro is in the background.
+
+### Changed
+
+- **Colour source is one choice.** Settings → Appearance offers Fixed, Artwork and Matugen in place of the Colour from artwork switch. The colour and palette pickers show only when they apply.
 
 ### Fixed
 

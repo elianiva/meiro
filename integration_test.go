@@ -558,7 +558,8 @@ func TestSettingsSearchFiltersSettingsInPlace(t *testing.T) {
 		{query: "color", want: "Colour"},
 		{query: "palette", want: "Palette"},
 		{query: "hue", want: "Hue"},
-		{query: "artwork", want: "Colour from artwork"},
+		{query: "artwork", want: "Colour source"},
+		{query: "matugen", want: "Colour source"},
 	} {
 		if err := tt.Click("Clear search"); err != nil {
 			t.Fatal(err)
