@@ -1968,17 +1968,18 @@ func TestPlaybackSettingIsReachableByScrollingOnASmallWindow(t *testing.T) {
 		t.Fatal("the Playback setting started in view; this does not prove small-window scrolling")
 	}
 
-	first, last := a.list.Visible()
-	for range 12 {
-		if last >= 7 {
-			break
-		}
+	inView := func() (ui.Rect, bool) {
+		r, ok := tt.Find("Skip disliked songs")
+		return r, ok && r.Y >= 0 && r.Y+r.H <= 450
+	}
+	switchControl, ok := inView()
+	for i := 0; i < 12 && !ok; i++ {
 		tt.Scroll(500, 300, 0, 180)
 		tt.Frame()
-		first, last = a.list.Visible()
+		switchControl, ok = inView()
 	}
-	switchControl, ok := tt.Find("Skip disliked songs")
-	if !ok || last < 7 || switchControl.Y < 0 || switchControl.Y+switchControl.H > 450 {
+	first, last := a.list.Visible()
+	if !ok || last < 7 {
 		t.Fatalf("Playback setting did not scroll into the small window: visible=%d..%d found=%t bounds=%+v texts=%q", first, last, ok, switchControl, tt.Texts())
 	}
 	if err := tt.Click("Skip disliked songs"); err != nil {
