@@ -395,13 +395,17 @@ func (d *desktop) onClose(e *mygo.CloseEvent) {
 		if runtime.GOOS == "darwin" {
 			message, keep = "Keep Meiro running in the background, or quit it? Reopen the window from the Dock, notch or menu bar.", "Keep running"
 		}
+		// Escape keeps Meiro running rather than dismissing the prompt on
+		// nothing, as it did on macOS before, and macOS and Linux draw the
+		// button that quits in the colour of a destructive action.
 		res, err := mygo.Dialog.Message(mygo.MessageOptions{
-			Parent:        d.win,
-			Title:         "Close Meiro?",
-			Message:       message,
-			Buttons:       []string{keep, "Close Meiro"},
-			CancelButton:  -1,
-			CheckboxLabel: "Remember my choice",
+			Parent:             d.win,
+			Title:              "Close Meiro?",
+			Message:            message,
+			Buttons:            []string{keep, "Close Meiro"},
+			DestructiveButtons: []int{1},
+			CancelButton:       0,
+			CheckboxLabel:      "Remember my choice",
 		})
 		if err != nil {
 			return // the dialog failed; the close goes on
