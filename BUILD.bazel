@@ -271,6 +271,11 @@ go_test(
         "zoom_test.go",
     ],
     embed = [":meiro_lib"],
+    # The app's tests share the fake YouTube's state, so they cannot run in
+    # parallel in one process, and one after another they take about five
+    # minutes under the race detector. Each shard runs its share of them in
+    # a process of its own, at the same time as the others.
+    shard_count = 8,
     deps = [
         "//internal/artwork",
         "//internal/audio",

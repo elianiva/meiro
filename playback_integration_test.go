@@ -1772,6 +1772,12 @@ func TestPlayerMetadataLinksStayInMainAppAndDisappearWithTheTrack(t *testing.T) 
 	if a.current.VideoID != "unlinked-track" || tt.HasText("Go to album: Deep Focus") || tt.HasText("Go to artist: Aurora Vale") || !tt.HasText("Unknown artist • Unknown album") {
 		t.Fatal("unlinked track inherited old destinations or lost its plain metadata")
 	}
+	// Previous restarts a track that has played past 3s, and a loaded machine
+	// gets there before the click; hold this one at its start so Previous goes
+	// back a track.
+	a.player.Pause()
+	a.seek(0)
+	pollUntil(t, a, "the seek to the start", func() bool { return !a.seeking.busy() })
 	if err := tt.Click("Previous"); err != nil {
 		t.Fatal(err)
 	}
