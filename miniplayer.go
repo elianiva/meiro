@@ -63,10 +63,10 @@ func (a *app) miniPlayer(c *ui.Context) {
 			a.transport(c, 48, 4)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
 				// The slider fills the width: miniWidth (344) less the padding
-				// (24), the mute button (40) and its gap (8), and the speed
-				// button (56) and its gap (8).
-				a.volumeControl(c, 208)
-				a.speedControl(c, "mini-speed")
+				// (24), the mute button (40) and its gap (8), and the overflow
+				// button (40) and its gap (8).
+				a.volumeControl(c, 224)
+				a.speedButton(c, "mini-speed")
 			})
 			a.sidePanel(c, false, true)
 		})

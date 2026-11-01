@@ -118,6 +118,40 @@ func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	}
 }
 
+// The mini player keeps the speed in its overflow menu, so no speed button
+// takes a place beside the volume slider.
+func TestMiniPlayerPicksThePlaybackSpeedFromItsOverflowMenu(t *testing.T) {
+	a := newTestApp(t)
+	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	tt.Frame()
+	if _, shown := tt.Find("1×"); shown {
+		t.Fatalf("the mini player shows the speed directly: %q", tt.Texts())
+	}
+	if err := tt.Click("Playback speed: 1×"); err != nil {
+		t.Fatalf("no playback speed menu in the mini player: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if err := tt.Click("Playback speed"); err != nil {
+		t.Fatalf("no row leading to the speeds: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !tt.HasText("Normal") || !tt.HasText("2×") {
+		t.Fatalf("the speed menu lacks its choices: %q", tt.Texts())
+	}
+	if err := tt.Click("1.5×"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.settings.MusicSpeed != 1.5 {
+		t.Errorf("music speed = %v, want 1.5", a.settings.MusicSpeed)
+	}
+	if !tt.HasText("Playback speed: 1.5×") {
+		t.Errorf("the overflow button does not name the new speed: %q", tt.Texts())
+	}
+}
+
 func TestGoToArtistFromMiniPlayerOpensTheArtistPage(t *testing.T) {
 	a := newTestApp(t)
 	track := youtube.MusicItem{

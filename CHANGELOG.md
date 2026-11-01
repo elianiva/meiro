@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Choose your YouTube account when importing from a browser.** Meiro shows the Google accounts and channels in your browser session instead of signing in with the first account. Your choice is remembered across restarts and session refreshes, even when YouTube Music omits your email from its account details. Import errors distinguish rejected sessions, missing account details, and an account that does not match your selection.
 - **Meiro can skip AI-generated songs.** Turn on Exclude AI-generated songs under Settings → Playback. Meiro checks YouTube's AI label before a track starts and skips labelled songs in queues and auto-play. Unlabelled AI music may still play.
 
+### Changed
+
+- **Playback speed sits in the player's overflow menu.** The speed is no longer a button of its own in the player bar, Now Playing or the tray mini player. The overflow (⋮) button opens a menu that shows the speed in force, and its Playback speed row opens the speeds from 0.5× to 3×. The bar has more room and the mini player's volume slider is longer.
+
 ### Fixed
 
 - **Songs added to a playlist appear without restarting Meiro.** Adding a song refreshes an open destination playlist and clears stale cached pages before you revisit it.

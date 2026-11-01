@@ -191,12 +191,13 @@ func speedLabel(speed float64) string {
 	return strconv.FormatFloat(speed, 'f', -1, 64) + "×"
 }
 
-// speedControl is the button that shows how fast the current track plays and
-// opens the menu that chooses it; key tells the player's buttons apart.
-func (a *app) speedControl(c *ui.Context, key string) {
-	sc := m3.Of(c).Scheme
+// speedButton is the player's overflow menu: a kebab whose menu leads to how
+// fast the current track plays. The speed is not a button of its own, so it
+// does not take a place in the bar, and the kebab's tooltip names the one in
+// force. key tells the players' buttons apart.
+func (a *app) speedButton(c *ui.Context, key string) {
 	speed := a.speedFor(a.current)
-	anchor := m3.Button(c, m3.ButtonSpec{Label: speedLabel(speed), Kind: m3.TextOnly, Size: m3.Small40, Key: key})
+	anchor := m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconMore, Label: "Playback speed: " + speedLabel(speed), Key: key})
 	// A menu ignores the press that lands on the button that opened it, so
 	// the button closes it, as the account menu's button does.
 	if anchor.Clicked() {
@@ -205,38 +206,76 @@ func (a *app) speedControl(c *ui.Context, key string) {
 		} else {
 			a.nowPlaying.speedMenu = key
 		}
+		// The menu always opens on the row that leads to the speeds.
+		a.nowPlaying.speedChoices = false
 	}
 	open := a.nowPlaying.speedMenu == key
 	if !open {
 		return
 	}
-	m3.Menu(c, anchor, &open, 200, func() {
-		m3.Text(c, m3.LabelMedium, "Playback speed").Padding(12, 12, 4).TextColor(sc.OnSurfaceVariant)
-		for _, choice := range playbackSpeeds {
-			label := speedLabel(choice)
-			if choice == 1 {
-				label = "Normal"
-			}
-			row := ui.ButtonBase(c.Key("speed-" + label))
-			row.Height(36).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).Label(label).
-				Role(ui.RoleMenuItemRadio).Checked(choice == speed).
-				Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
-			row.Children(func() {
-				if choice == speed {
-					ui.Icon(c, m3.IconCheck).FontSize(22).TextColor(sc.Primary)
-				} else {
-					ui.Box(c).Size(22, 22)
-				}
-				m3.Text(c, m3.BodyLarge, label).Grow(1).SingleLine().TextColor(sc.OnSurface)
-			})
-			if row.Clicked() {
-				open = false
-				a.setSpeed(choice)
-			}
+	m3.Menu(c, anchor, &open, 232, func() {
+		if a.nowPlaying.speedChoices {
+			a.speedChoices(c, key, speed, &open)
+			return
 		}
+		a.speedMenuRow(c, key, speed)
 	})
 	if !open {
-		a.nowPlaying.speedMenu = ""
+		a.nowPlaying.speedMenu, a.nowPlaying.speedChoices = "", false
+	}
+}
+
+// speedMenuRow is the menu's first page: one row that leads to the speeds,
+// with the one in force beside it, so the menu stays short.
+func (a *app) speedMenuRow(c *ui.Context, key string, speed float64) {
+	sc := m3.Of(c).Scheme
+	row := ui.ButtonBase(c.Key(key + "-choices"))
+	row.Height(48).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).
+		Label("Playback speed").Role(ui.RoleMenuItem).
+		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+	row.Children(func() {
+		m3.LabelLarge.Style(ui.Text(c, "Playback speed"), false).Grow(1).SingleLine().TextColor(sc.OnSurface)
+		m3.Text(c, m3.LabelMedium, speedLabel(speed)).TextColor(sc.OnSurfaceVariant)
+		ui.Icon(c, m3.IconChevronRight).FontSize(20).TextColor(sc.OnSurfaceVariant)
+	})
+	if row.Clicked() {
+		a.nowPlaying.speedChoices = true
+	}
+}
+
+// speedChoices is the menu's second page: every speed, under a header that
+// goes back to the row that led here.
+func (a *app) speedChoices(c *ui.Context, key string, speed float64, open *bool) {
+	sc := m3.Of(c).Scheme
+	ui.Row(c).Height(48).Gap(4).AlignItems(ui.Center).Children(func() {
+		if m3.IconButton(c, m3.IconButtonSpec{
+			Icon: m3.IconChevronLeft, Label: "Back to the player menu", Size: m3.Small40, Key: key + "-back",
+		}).Clicked() {
+			a.nowPlaying.speedChoices = false
+		}
+		m3.EmphasizedText(c, m3.LabelLarge, "Playback speed").TextColor(sc.OnSurface)
+	})
+	for _, choice := range playbackSpeeds {
+		label := speedLabel(choice)
+		if choice == 1 {
+			label = "Normal"
+		}
+		row := ui.ButtonBase(c.Key("speed-" + label))
+		row.Height(36).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).Label(label).
+			Role(ui.RoleMenuItemRadio).Checked(choice == speed).
+			Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+		row.Children(func() {
+			if choice == speed {
+				ui.Icon(c, m3.IconCheck).FontSize(22).TextColor(sc.Primary)
+			} else {
+				ui.Box(c).Size(22, 22)
+			}
+			m3.Text(c, m3.BodyLarge, label).Grow(1).SingleLine().TextColor(sc.OnSurface)
+		})
+		if row.Clicked() {
+			*open = false
+			a.setSpeed(choice)
+		}
 	}
 }
 
@@ -345,7 +384,7 @@ func (a *app) playerBar(c *ui.Context) {
 			} else {
 				a.compactVolumeControl(c)
 			}
-			a.speedControl(c, "bar-speed")
+			a.speedButton(c, "bar-speed")
 			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconQueue, Label: "Up next", Key: "bar-queue"}).Clicked() {
 				a.openPlayer(tabQueue, true)
 			}

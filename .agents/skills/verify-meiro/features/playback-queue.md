@@ -14,6 +14,10 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - `play-resume` restores the queue paused after a restart.
 - `play-volume` keeps the mute button visible in narrow windows and reveals
   the vertical volume slider on hover.
+- `play-speed` picks the speed from the player's overflow menu, in the bar, Now
+  Playing and the tray mini player. The menu's `Playback speed` row opens the
+  speeds; the row and the kebab's tooltip name the speed in force, each kind of
+  track keeps its own, and Settings has no card for it.
 - `play-mini` shows and controls the mini player.
 - `play-mini-navigation` opens an artist page from the mini player's track menu and returns to the main window.
 - `play-metadata-links` opens individually linked artists and albums from the main player bar and Now Playing. Hover underlines names; Tab/Enter activates them. Now Playing closes with its usual animation before navigating. Audio, queue and position continue unchanged. Unknown destinations remain plain text; the notch and tray mini player retain their existing metadata presentation.
@@ -26,6 +30,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - In a narrow window, hover `Mute` to reveal the vertical `Volume` slider;
   move onto the slider and drag it to adjust playback without losing the panel.
 - Click `Up next` in the player bar, or `Open the player`, to open the player panel with `Up next`, `Lyrics` and `Related`.
+- Click `Playback speed: 1×` in the player bar, in Now Playing or in the tray mini player, click the `Playback speed` row of the menu, and choose a speed from 0.5× to 3×.
 - Open the tray mini player from the tray icon on macOS and Windows. On Linux, choose `Open Meiro` from the tray menu to restore the main window; Linux does not offer the tray mini player.
 - In the mini player's queue, right-click a track and choose `Go to artist`. The flyout closes and the main window shows that artist's page.
 - Right click a track for `Play next` and `Add to queue`.
@@ -59,11 +64,13 @@ Preconditions:
 - **Lyrics.** In the player panel, `Lyrics` loads YouTube Music's timed lines, then LRCLIB's (`a.lyricsSource`, stubbed to nothing in `newTestApp`; set it to return `lrclib.Lyrics`). A track with timed lines shows `Synced` and `Static` chips; `Static` saves `StaticLyrics`. The lit line follows `a.playbackPosition()`, so set `a.total` as well as `a.scrub`, or the position slider clamps it back to 0. Use a window wider than 1180 to see the panel beside the player.
 - **The same song twice.** Right-click a track and `Add to queue`, then play it and open `Up next`: the queue holds the song twice, and only one row is drawn as playing, with the tonal row and the dancing bars. The copy that does not play carries its `Remove … from the queue` button. `a.playingRow(item, songOptions{list: "queue", position: i})` is the rule: a queue row is picked out by its place, every other list by the song's ID.
 - **Mini player.** `ui.NewTester(a.miniPlayer, miniWidth, miniHeight)`. `Nothing playing` shows when idle. The artwork, track details, scrubber and transport sit above a compact queue with its source; with a long queue, verify at least `Track e` is visible. Call `a.setMiniShown(true)` to load the panel, as opening the tray player does on macOS and Windows. Check the `Track a` and `Lyrics` bounds to confirm the vertical layout.
+- **Speed.** `newTestApp(t)`, `a.queue.restore(...)` and `a.current = a.queue.current()`. The bar, Now Playing and the mini player show the overflow button `Playback speed: 1×` and no `1×` button of their own. Click it, click the `Playback speed` row, click `2×`, then check `a.settings.MusicSpeed` and the label `Playback speed: 2×`. The speeds appear only on that second page. The mini player's `Volume` slider is 224 wide. Settings has no card for the speed: searching `speed` on a fresh app leaves `No settings found`.
 - **Open an artist from the mini player.** Call `a.setMiniShown(true)`, build both `a.view` and `a.miniPlayer` testers, then right-click a track in the mini player's queue and click `Go to artist`. The main tester shows the artist page and `a.nowPlaying.miniOpen` is false. The headless tester cannot confirm OS-level window focus.
 - **Linux tray.** The minimal AppIndicator menu offers `Open Meiro` and `Quit`. `Open Meiro` restores the main window rather than creating a separate mini-player flyout. The tray also needs the AppIndicator runtime and a StatusNotifier-capable panel; see [Linux troubleshooting](../../../../README.md#troubleshooting).
 
 ## Gotchas
 
+- A page keeps its scroll across testers: a scenario that renders the settings page after another window shows no rows. Give a settings scenario a fresh `newTestApp(t)`.
 - **Metadata links.** Use `/playlist/VLPL_metadata` in the fake for a song with two artist endpoints and an album in a separate column. Play `Linked Track` with `tonesApp(t, 30)`, then follow `Go to artist: Aurora Vale`, `Go to artist: Guest Artist` and `Go to album: Deep Focus` from both the bar and Now Playing (Tab/Enter too). Assert the route and destination contents, an advancing real player position, unchanged queue/seek version and no new stream resolution. Back must return to the playlist. Next to `Unlinked Track` removes links; Previous restores them, and playback errors still replace metadata. Render the notch and tray player to check neither acquired these links. Persist and reload the queue to verify destinations survive restart. The proof uses the preceding commit and the same canned renderer on both sides, so before fails because the links are absent.
 - Player metadata preserves original runs and their IDs. Do not infer destinations from names, put an album ID in a track's `BrowseID` (which changes its primary target), or mutate shared byline parts. Non-credit runs, such as kind and play count, stay plain text.
 - The null output consumes audio faster than real time. Keyboard traversal with the race detector can finish a 30 second tone before navigation completes; the metadata regression uses a 600 second tone so natural completion is not mistaken for a navigation interruption.
