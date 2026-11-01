@@ -314,11 +314,16 @@ func (s *CarouselState) VisibleRange(count int, itemWidth, gap, padding float32,
 	return first, last
 }
 
-// carouselScrollbarGap clears the horizontal scrollbar from shelf text.
-const carouselScrollbarGap = 16
+// carouselFoot is the room a shelf leaves under its cards, between them and
+// whatever follows.
+const carouselFoot float32 = 8
 
 // Carousel lays items out in one row that scrolls sideways, as a shelf of
 // cards does.
+//
+// A carousel shows where it is with the arrows of its own heading, so it
+// draws no scroll bar of MyGo's: the wheel, the touchpad and the arrows still
+// move it, and the bar only took room under the cards.
 func Carousel(c *ui.Context, s *CarouselState, key any, gap, padX float32, items func()) ui.Element {
 	if s.gliding {
 		delta := s.target - s.X
@@ -330,7 +335,7 @@ func Carousel(c *ui.Context, s *CarouselState, key any, gap, padX float32, items
 		}
 	}
 	row := ui.ScrollHorizontal(c.Key(key)).TrackScroll(&s.ScrollState).Gap(gap).AlignItems(ui.Start).
-		Padding(0, padX, carouselScrollbarGap, padX).ScrollbarInsets(0, padX, 0, padX).Margin(0, 0, 12)
+		Padding(0, padX, carouselFoot, padX).Scrollbars(false).Margin(0, 0, 12)
 	row.Children(items)
 	s.view = row.Bounds().W
 	return row

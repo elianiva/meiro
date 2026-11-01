@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Shelves no longer draw a scroll bar.** The arrows beside a shelf's title page it, and the wheel and the touchpad still move it sideways. The row of cards ends closer to the section below.
+
 ### Fixed
 
 - **The theme follows the album art again.** Meiro takes the colour from the cover the player shows, so the theme changes with each song at any display scaling instead of keeping the last colour.
