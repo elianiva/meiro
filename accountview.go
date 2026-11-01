@@ -74,10 +74,7 @@ func (a *app) channelItems(c *ui.Context, current *session) {
 	sc := m3.Of(c).Scheme
 	m3.Text(c, m3.LabelMedium, "Account / channel").Padding(12, 12, 4).TextColor(sc.OnSurfaceVariant)
 	for i, channel := range current.channels {
-		name := channel.Name
-		if name == "" {
-			name = channel.Handle
-		}
+		name := channelName(channel)
 		row := ui.ButtonBase(c.Key("channel-" + channel.ChannelID + "-" + strconv.Itoa(i)))
 		row.Height(48).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).Label(name).Disabled(channel.Disabled).
 			Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
@@ -92,10 +89,21 @@ func (a *app) channelItems(c *ui.Context, current *session) {
 		})
 		if row.Clicked() && !selected {
 			a.menuOpen = false
-			a.switchChannel(channel.ChannelID, channel.AccountIndex)
+			a.switchChannel(channel, hasSelectedChannel)
 		}
 	}
 	ui.Divider(c)
+}
+
+// channelName is what a channel row is called.
+func channelName(channel youtube.AccountChannel) string {
+	if channel.Name != "" {
+		return channel.Name
+	}
+	if channel.Handle != "" {
+		return channel.Handle
+	}
+	return "that channel"
 }
 
 // accountChannelSelected uses YouTube's selected bit when it gives one. An

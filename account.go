@@ -435,15 +435,25 @@ func (a *app) checkSession() {
 }
 
 // switchChannel makes the session act as another of the account's channels
-// and reloads the page, so it shows that channel's account.
-func (a *app) switchChannel(channel string, accountIndex int) {
+// and reloads the page, so it shows that channel's account. marked says
+// YouTube named the channel in use among the rows it lists.
+func (a *app) switchChannel(channel youtube.AccountChannel, marked bool) {
 	current := a.account.session
-	if current == nil || channel == current.channel && accountIndex == current.accountIndex {
+	if current == nil {
 		return
 	}
-	from := sessionSource{channel: channel, browser: a.settings.SignInSource, accountIndex: accountIndex}
+	if channel.ChannelID == current.channel && channel.AccountIndex == current.accountIndex {
+		// A listed channel YouTube marks as another one, without the page ID
+		// that switching needs, has no session to open: say so rather than
+		// leave the click unanswered.
+		if marked {
+			a.notice = "Could not switch to “" + channelName(channel) + "”: YouTube did not name that channel."
+		}
+		return
+	}
+	from := sessionSource{channel: channel.ChannelID, browser: a.settings.SignInSource, accountIndex: channel.AccountIndex}
 	startTask(a, &a.account.switching, accountTimeout, func(ctx context.Context) (*session, error) {
-		auth, err := youtube.NewCookieAuth(current.cookie, youtube.CookieOptions{AccountIndex: accountIndex, OnBehalfOfUser: channel})
+		auth, err := youtube.NewCookieAuth(current.cookie, youtube.CookieOptions{AccountIndex: channel.AccountIndex, OnBehalfOfUser: channel.ChannelID})
 		if err != nil {
 			return nil, err
 		}
@@ -455,7 +465,7 @@ func (a *app) switchChannel(channel string, accountIndex int) {
 		if err != nil {
 			return nil, err
 		}
-		return &session{client: client, cookie: current.cookie, details: *details, channel: channel, accountIndex: accountIndex}, nil
+		return &session{client: client, cookie: current.cookie, details: *details, channel: channel.ChannelID, accountIndex: channel.AccountIndex}, nil
 	}, func(s *session, err error) {
 		if err != nil {
 			a.notice = "Could not switch channel: " + err.Error()

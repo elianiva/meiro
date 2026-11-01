@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **A channel the account menu cannot switch to says why.** A row YouTube lists without the channel it stands for used to close the menu and leave you where you were. It now says that YouTube did not name the channel.
 - **The theme follows the album art again.** Meiro takes the colour from the cover the player shows, so the theme changes with each song at any display scaling instead of keeping the last colour.
 
 ## [0.5.2] - 2026-11-01
