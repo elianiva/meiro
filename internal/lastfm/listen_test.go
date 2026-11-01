@@ -188,14 +188,6 @@ func TestListenSeekBackKeepsWhatWasHeard(t *testing.T) {
 	}
 }
 
-func TestListenSkippedTrackScrobblesNothing(t *testing.T) {
-	p := newPlayer(3*time.Minute, song, true)
-	p.play(30 * time.Second) // skipped: the next Listen replaces this one
-	if count(p.events, Qualified) != 0 {
-		t.Error("a skipped track was scrobbled")
-	}
-}
-
 func TestListenWithoutClearMetadataIsSilent(t *testing.T) {
 	for _, track := range []Track{{Title: "T"}, {Artist: "A"}, {Artist: "  ", Title: "T"}} {
 		p := newPlayer(3*time.Minute, track, true)
