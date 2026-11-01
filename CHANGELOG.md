@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Choose your YouTube account when importing from a browser.** Meiro shows the Google accounts and channels in your browser session instead of signing in with the first account. Your choice is remembered across restarts and session refreshes, even when YouTube Music omits your email from its account details. Import errors distinguish rejected sessions, missing account details, and an account that does not match your selection.
+- **Meiro can skip AI-generated songs.** Turn on Exclude AI-generated songs under Settings → Playback. Meiro checks YouTube's AI label before a track starts and skips labelled songs in queues and auto-play. Unlabelled AI music may still play.
 
 ### Fixed
 

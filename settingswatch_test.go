@@ -14,6 +14,7 @@ import (
 
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
+	"github.com/elianiva/meiro/youtube"
 )
 
 func TestSettingsWatcherNoticesAnAtomicWrite(t *testing.T) {
@@ -291,6 +292,36 @@ func TestAutoSkipDislikedSettingPersists(t *testing.T) {
 	a.saver.Wait()
 	if !settings.Load(a.saver.Path).AutoSkipDisliked {
 		t.Fatal("auto-skip was not saved")
+	}
+}
+
+func TestSettingsFileChangesApplyTheAIFilterToTheQueue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := newTestApp(t)
+	a.saver.Path = path
+	a.settings = settings.Defaults()
+	a.settings.AutoPlay = false
+	writeSettingsFile(t, path, a.settings)
+	a.settingsSeen, _ = os.ReadFile(path)
+
+	current := youtube.MusicItem{VideoID: "current", Title: "Current"}
+	ai := youtube.MusicItem{VideoID: "ai", Title: "AI", AIDisclosure: youtube.AIAlteredOrGenerated}
+	a.queue.replace(current, []youtube.MusicItem{current, ai}, 0, "Album")
+	a.current = current
+
+	next := a.settings
+	next.ExcludeAIGenerated = true
+	writeSettingsFile(t, path, next)
+	a.checkSettings()
+
+	if !a.settings.ExcludeAIGenerated {
+		t.Fatal("the AI filter did not reload")
+	}
+	if a.queue.find("ai") >= 0 {
+		t.Error("the marked future track survived the filter change")
+	}
+	if a.current.VideoID != "current" {
+		t.Errorf("the track playing changed to %q", a.current.VideoID)
 	}
 }
 

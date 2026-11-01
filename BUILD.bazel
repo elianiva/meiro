@@ -131,6 +131,7 @@ go_library(
         "account.go",
         "accountview.go",
         "accountwrites.go",
+        "ai_filter.go",
         "app.go",
         "browse.go",
         "collections.go",
@@ -245,6 +246,7 @@ go_test(
     name = "meiro_test",
     srcs = [
         "accountview_test.go",
+        "ai_filter_test.go",
         "crash_test.go",
         "downloads_test.go",
         "eq_test.go",

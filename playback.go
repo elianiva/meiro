@@ -46,14 +46,17 @@ type playback struct {
 	// would not play; a track that plays, or one the listener chooses, ends
 	// the run.
 	skipped int
+	// aiRefills counts recommendation batches requested without an allowed
+	// track starting. Exclusions do not use the playback failure limit.
+	aiRefills int
 	// recoveries counts the times in a row the current track's stream broke
 	// off and was found again; the count ends when the track plays on.
 	recoveries    int
 	recoveredFrom time.Duration
 
-	// stream finds the current track's audio; it is busy from the moment a
-	// track is chosen until its audio is found.
-	stream task
+	// aiCheck checks the chosen track before stream finds its audio.
+	stream  task
+	aiCheck task
 	// notificationArtwork loads the current cover before showing its track
 	// notification on Windows.
 	notificationArtwork task
@@ -111,6 +114,9 @@ func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index
 	}
 	a.clearQueueSelection()
 	a.queue.replace(item, tracks, index, source)
+	if a.settings.ExcludeAIGenerated {
+		a.queue.dropMarkedAI(a.excludesItem)
+	}
 	clear(a.scrobble.queued) // the queue they were added to is gone
 	a.learnCredits(tracks...)
 	a.learnCredits(item)
@@ -134,6 +140,7 @@ const maxSkips = 3
 // start makes item the current track and finds its audio.
 func (a *app) start(item youtube.MusicItem) {
 	a.skipped = 0
+	a.aiRefills = 0
 	a.startTrack(item, false)
 }
 
@@ -164,7 +171,18 @@ func (a *app) skipUnplayable(item youtube.MusicItem) {
 // startTrack is start without ending a run of skipped tracks. automatic says
 // the queue chose item, rather than the listener.
 func (a *app) startTrack(item youtube.MusicItem, automatic bool) {
+	a.aiCheck.stop()
+	a.stream.stop()
 	startAt, changed := a.enterTrack(item, automatic)
+	if a.checkAIBeforePlay(item, startAt, changed) {
+		return
+	}
+	a.startTrackNow(item, startAt, changed)
+}
+
+// startTrackNow finds the chosen track's audio after the AI check lets it
+// through, retaining its original start position and history transition.
+func (a *app) startTrackNow(item youtube.MusicItem, startAt time.Duration, changed bool) {
 	// The old stream is stopped by the work that finds the new one: stopping
 	// kills ffmpeg and waits for the audio device, which is not for the main
 	// thread to do.
@@ -251,14 +269,20 @@ func (a *app) notifyTrack(item youtube.MusicItem) {
 	})
 }
 
-// loading reports whether the track chosen is not making sound yet: its audio
-// is being found, or ffmpeg is still opening it.
-func (a *app) loading() bool { return a.stream.busy() || a.player.Buffering() }
+// starting reports whether a chosen track is being checked or resolved.
+func (a *app) starting() bool { return a.aiCheck.busy() || a.stream.busy() }
+
+// loading includes ffmpeg opening the audio after the checks and resolution.
+func (a *app) loading() bool { return a.starting() || a.player.Buffering() }
 
 // enqueue adds a track to the chosen queue without changing the current
 // track. Chosen tracks stay ahead of auto-play recommendations.
 func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 	if item.VideoID == "" {
+		return
+	}
+	if a.excludesItem(item) {
+		a.notice = "Skipped " + item.Title + ": YouTube marks it as made with AI"
 		return
 	}
 	if a.current.VideoID == "" || a.queue.len() == 0 {
@@ -404,7 +428,7 @@ func (a *app) startTicker() {
 // track when one ends, and the system's media controls. It runs on the main
 // thread, from the ticker.
 func (a *app) poll() {
-	if !a.player.Active() {
+	if a.aiCheck.busy() || !a.player.Active() {
 		return
 	}
 	if tag, ok := a.player.Advanced(); ok {
@@ -506,6 +530,7 @@ func (a *app) advance() {
 
 // stopAtQueueEnd stops playback, and drops a track still being found.
 func (a *app) stopAtQueueEnd() {
+	a.aiCheck.stop()
 	a.stream.stop()
 	a.finishEpisodeProgress(false)
 	a.player.Stop()
@@ -560,7 +585,7 @@ func (a *app) applySeek() {
 // togglePlay pauses a playing track, resumes a paused one, and starts the
 // current track again after it failed or ended.
 func (a *app) togglePlay() {
-	if a.stream.busy() {
+	if a.starting() {
 		return // the track is already on its way
 	}
 	if a.playErr != "" || !a.player.Active() {
@@ -579,7 +604,7 @@ func (a *app) togglePlay() {
 // resume plays a paused track, or starts the current one again when it has
 // ended or failed. It does nothing while a track plays or is on its way.
 func (a *app) resume() {
-	if a.stream.busy() || a.player.Playing() {
+	if a.starting() || a.player.Playing() {
 		return
 	}
 	if a.playErr != "" || !a.player.Active() || a.player.Ended() {
@@ -671,7 +696,7 @@ func (a *app) setSpeed(speed float64) {
 // do. While the track's audio is on its way this is left to the work that
 // finds it, which applies the speed once it plays.
 func (a *app) applySpeed() {
-	if a.stream.busy() {
+	if a.starting() {
 		return
 	}
 	speed := a.speedFor(a.current)

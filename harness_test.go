@@ -51,11 +51,15 @@ var (
 	// subscribeWrites counts the subscription writes, refused the same way.
 	subscribeWrites atomic.Int32
 	refuseWrites    atomic.Bool
+	// aiChecks counts the player-page lookups for AI labels.
+	aiChecks atomic.Int32
 	// duplicateWrites makes the fake answer an add to a playlist the way
 	// YouTube answers one for a song the playlist holds already.
 	duplicateWrites atomic.Bool
 	hypeSongAdded   atomic.Bool
 	fakeLikeState   atomic.Value // what /next says of vid-3, as a string; "" says nothing
+	// fakeAI holds the video IDs the fake's player page labels as made with AI.
+	fakeAI sync.Map
 	// lastWrite is the last playlist write the fake YouTube was asked for:
 	// which endpoint, and the fields of its body.
 	lastWrite atomic.Value
@@ -88,7 +92,11 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	}
 	reply := homeResponse
 	status := http.StatusOK
+	webNext := request.Header.Get("X-YouTube-Client-Name") == "1" && strings.HasSuffix(request.URL.Path, "/next")
 	switch {
+	case webNext:
+		aiChecks.Add(1)
+		reply = webNextResponse(nextVideoID(asked))
 	case strings.HasSuffix(request.URL.Path, "/like/like"), strings.HasSuffix(request.URL.Path, "/like/dislike"), strings.HasSuffix(request.URL.Path, "/like/removelike"):
 		likeWrites.Add(1)
 		recordWrite(request.URL.Path, asked)
@@ -151,6 +159,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = songRelatedNextResponse
 	case strings.Contains(asked, "MPTRsong-related"):
 		reply = songRelatedResponse
+	case strings.Contains(asked, "MPREb_ai_run"):
+		reply = aiRunAlbumPage()
+	case strings.Contains(asked, "MPREb_ai"):
+		reply = aiAlbumPage
 	case strings.Contains(asked, "MPREb_test"):
 		reply = albumPage()
 	case strings.Contains(asked, "MPSPPLshow"):
@@ -240,6 +252,39 @@ func nextResponse(like string) string {
 		{"playlistPanelVideoRenderer":{"videoId":"vid-3","title":{"runs":[{"text":"Album Track One"}]},
 			"menu":{"menuRenderer":{"topLevelButtons":[{"likeButtonRenderer":{"target":{"videoId":"vid-3"},"likeStatus":"` + like + `"}}]}}}}
 	]}}}}}}]}}}}}`
+}
+
+// nextVideoID reads the video a WEB watch-page request is about.
+func nextVideoID(asked string) string {
+	var body struct {
+		VideoID string `json:"videoId"`
+	}
+	_ = json.Unmarshal([]byte(asked), &body)
+	return body.VideoID
+}
+
+// markFakeAI makes the fake's WEB watch page label videoID as made with AI.
+func markFakeAI(videoID string) {
+	fakeAI.Store(videoID, true)
+}
+
+func fakeMarksAI(videoID string) bool {
+	marked, _ := fakeAI.Load(videoID)
+	return marked == true
+}
+
+// webNextResponse is the regular YouTube watch page. It always carries an AI
+// badge on an unrelated related video, which the parser must ignore.
+func webNextResponse(videoID string) string {
+	badges := `"badges":[]`
+	if fakeMarksAI(videoID) {
+		badges = `"badges":[{"metadataBadgeRenderer":{"icon":{"iconType":"INFO"},"style":"BADGE_STYLE_TYPE_SIMPLE","label":"AI","accessibilityData":{"label":"AI: Content was made with AI"}}}]`
+	}
+	return fmt.Sprintf(`{"contents":{"twoColumnWatchNextResults":{"results":{"results":{"contents":[
+		{"videoPrimaryInfoRenderer":{"title":{"runs":[{"text":"Fake track"}]},%s}}
+	]}}}},"related":{"videoRenderer":{"title":{"runs":[{"text":"Related AI"}]},"badges":[
+		{"metadataBadgeRenderer":{"icon":{"iconType":"INFO"},"style":"BADGE_STYLE_TYPE_SIMPLE","label":"AI","accessibilityData":{"label":"AI: Content was made with AI"}}}
+	]}}}`, badges)
 }
 
 // episodeNextResponse is what YouTube answers for the episode ep-1 in the
@@ -400,6 +445,63 @@ func albumPage() string {
 ]}}}`
 }
 
+// aiAlbumPage is an album for checking the AI filter: one labelled song before
+// one that must play.
+const aiAlbumPage = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Generated and Human"}]}}},
+"contents":{"musicShelfRenderer":{"contents":[
+	{"musicResponsiveListItemRenderer":{
+		"playlistItemData":{"videoId":"ai-track"},
+		"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"AI Track"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Generated Artist"},{"text":" • "},{"text":"3:00"}]}}}
+		]
+	}},
+	{"musicResponsiveListItemRenderer":{
+		"playlistItemData":{"videoId":"human-track"},
+		"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Human Track"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Human Artist"},{"text":" • "},{"text":"3:00"}]}}}
+		]
+	}}
+]}}}`
+
+// aiRunAlbumPage has more labelled songs than the playback failure limit,
+// followed by one song that must still play.
+func aiRunAlbumPage() string {
+	var items []string
+	for _, id := range []string{"ai-one", "ai-two", "ai-three", "ai-four", "human"} {
+		items = append(items, fmt.Sprintf(`{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":%q},"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":%q}]}}}]}}`, id, id))
+	}
+	return `{"contents":{"musicShelfRenderer":{"contents":[` + strings.Join(items, ",") + `]}}}`
+}
+
+// aiQueueMusic supplies batches of fresh AI recommendations, with an optional
+// allowed song at the end of one batch. An empty fourth batch keeps a broken
+// exclusion loop from hanging the test.
+type aiQueueMusic struct {
+	batches    int
+	humanBatch int
+}
+
+func (s *aiQueueMusic) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.Header.Get("X-YouTube-Client-Name") != "67" || !strings.HasSuffix(request.URL.Path, "/next") {
+		return fakeMusic{}.RoundTrip(request)
+	}
+	s.batches++
+	var items []string
+	if s.batches < 4 {
+		for i := 1; i <= 4; i++ {
+			id := fmt.Sprintf("rec-%d-%d", s.batches, i)
+			if s.batches != s.humanBatch || i != 4 {
+				markFakeAI(id)
+			}
+			items = append(items, fmt.Sprintf(`{"playlistPanelVideoRenderer":{"videoId":%q,"title":{"runs":[{"text":%q}]}}}`, id, id))
+		}
+	}
+	response := `{"contents":{"playlistPanelRenderer":{"contents":[` + strings.Join(items, ",") + `]}}}`
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(response)), Request: request}, nil
+}
+
 // nestedAlbumResponse follows the current album layout: the page header is in
 // the primary tab, with a separate artist portrait; tracks are in the second column.
 const nestedAlbumResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
@@ -518,10 +620,12 @@ func resetFakes() {
 	playlistDeletes.Store(0)
 	subscribeWrites.Store(0)
 	homeMoreRequests.Store(0)
+	aiChecks.Store(0)
 	refuseWrites.Store(false)
 	duplicateWrites.Store(false)
 	hypeSongAdded.Store(false)
 	fakeLikeState.Store("")
+	fakeAI.Clear()
 	fakeLibrary.Clear()
 	fakeLibrary.Store("PLhype", true)
 	fakeLibrary.Store("PLcar", true)

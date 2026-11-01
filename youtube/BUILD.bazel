@@ -4,6 +4,7 @@ go_library(
     name = "youtube",
     srcs = [
         "accounts.go",
+        "ai.go",
         "browse.go",
         "client.go",
         "cookie.go",
@@ -28,6 +29,7 @@ go_test(
     name = "youtube_test",
     srcs = [
         "accounts_test.go",
+        "ai_test.go",
         "cookie_test.go",
         "credits_test.go",
         "integration_test.go",

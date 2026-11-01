@@ -85,6 +85,9 @@ func (a *app) restorePlayback(path string) {
 		return
 	}
 	a.queue.restore(s)
+	if a.settings.ExcludeAIGenerated {
+		a.queue.dropMarkedAI(a.excludesItem)
+	}
 	item := a.queue.current()
 	a.current = item
 	a.total = parseDuration(item.Duration)

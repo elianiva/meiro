@@ -20,6 +20,20 @@ const (
 	KindEpisode ItemKind = "episode"
 )
 
+// AIDisclosure is what YouTube says about generative AI in a track's creation.
+// AIUnknown means YouTube supplied no determination; it does not mean the
+// track is human-made.
+type AIDisclosure uint8
+
+const (
+	AIUnknown AIDisclosure = iota
+	// AINone is a player response that supplied a track without an AI badge.
+	AINone
+	// AIAlteredOrGenerated is YouTube's "Made with AI" label: sounds or
+	// visuals were altered or fully generated.
+	AIAlteredOrGenerated
+)
+
 // TargetKind is what an item opens when it is chosen.
 type TargetKind uint8
 
@@ -144,8 +158,11 @@ type MusicItem struct {
 	Title         string   `json:"title,omitempty"`
 	Subtitle      string   `json:"subtitle,omitempty"`
 	Kind          ItemKind `json:"kind,omitempty"`
-	Duration      string   `json:"duration,omitempty"`
-	Thumbnail     string   `json:"thumbnail,omitempty"`
+	// AIDisclosure is the player's structured AI label, when Meiro has looked
+	// it up. It is saved with the queue so a restored queue keeps the filter.
+	AIDisclosure AIDisclosure `json:"aiDisclosure,omitempty"`
+	Duration     string       `json:"duration,omitempty"`
+	Thumbnail    string       `json:"thumbnail,omitempty"`
 	// Description is what a show's page says of an episode, on one line. It
 	// is not saved with the item: it runs long, and only the show's page
 	// shows it.

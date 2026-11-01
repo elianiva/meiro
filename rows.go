@@ -103,6 +103,12 @@ type rowsKey struct {
 	// those results lead with.
 	submitted string
 	top       youtube.MusicItem
+	// aiVersion changes when a track's AI label is learned, so a filter
+	// inside the rows' build function gets a fresh build.
+	aiVersion uint64
+	// excludeAI is part of the key so cached pages rebuild when the user
+	// changes the setting.
+	excludeAI bool
 	// filter is the playlist search the rows show the matches of.
 	filter string
 	sort   playlistSort
@@ -124,7 +130,7 @@ func (a *app) syncRows() {
 		loading: s.loading, partial: s.partial, err: s.err, offline: s.offline, more: s.more, moreErr: s.moreErr,
 		moreBusy: a.pageMore.busy(), similar: len(s.similar), similarShown: s.similarShown,
 		shelves: shelfShape(s.sections), loose: len(s.items),
-		columns: a.gridColumns(r),
+		columns: a.gridColumns(r), aiVersion: a.aiFilter.generation(), excludeAI: a.settings.ExcludeAIGenerated,
 	}
 	if r.id == routeSearch {
 		key.submitted, key.top = a.search.submitted, a.search.top
@@ -137,7 +143,7 @@ func (a *app) syncRows() {
 	if a.page.rows == nil || a.page.rowsDirty || key != a.page.rowsKey {
 		a.page.rowsKey, a.page.rowsDirty = key, false
 		// Each page owns its rows alone, so the new ones reuse their memory.
-		a.page.rows, a.page.playable = buildRows(a.page.rows[:0], a.page.playable[:0], r, s, a.page.detail, key.top, key)
+		a.page.rows, a.page.playable = buildRows(a.page.rows[:0], a.page.playable[:0], r, s, a.page.detail, key.top, key, a.excludesItem)
 	}
 }
 
@@ -159,7 +165,7 @@ func shelfShape(sections []youtube.MusicSection) uint64 {
 // rows, and collects the songs that playing the page would queue, appended
 // to playable. It reads nothing but its arguments, which key summarises. top
 // is the card a search's results lead with, which no other page has.
-func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState, heading detail, top youtube.MusicItem, key rowsKey) ([]row, []youtube.MusicItem) {
+func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState, heading detail, top youtube.MusicItem, key rowsKey, exclude func(youtube.MusicItem) bool) ([]row, []youtube.MusicItem) {
 	if r.isDetail() {
 		rows = append(rows, row{kind: rowHero, title: heading.title, track: -1})
 	}
@@ -169,7 +175,15 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	case s.err != "":
 		return append(rows, row{kind: rowError, title: s.err, offline: s.offline, track: -1}), playable
 	}
-	if top.Title != "" {
+	hiddenAI := false
+	keep := func(item youtube.MusicItem) bool {
+		if exclude != nil && exclude(item) {
+			hiddenAI = true
+			return false
+		}
+		return true
+	}
+	if top.Title != "" && keep(top) {
 		rows = append(rows, row{kind: rowTopResult, item: top, track: -1})
 	}
 
@@ -183,6 +197,22 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	sections := s.sections
 	if len(sections) == 0 && len(s.items) > 0 {
 		sections = []youtube.MusicSection{{Items: s.items}}
+	}
+	if exclude != nil {
+		visible := make([]youtube.MusicSection, 0, len(sections))
+		for _, section := range sections {
+			items := make([]youtube.MusicItem, 0, len(section.Items))
+			for _, item := range section.Items {
+				if keep(item) {
+					items = append(items, item)
+				}
+			}
+			if len(items) > 0 {
+				section.Items = items
+				visible = append(visible, section)
+			}
+		}
+		sections = visible
 	}
 	if r.id == routePlaylist && key.sort.ordered() {
 		sections = sortPlaylistSections(sections, key.sort)
@@ -301,12 +331,21 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	}
 	// A playlist page shows what YouTube suggests under it after its own
 	// songs, a few at a time, under a heading of its own.
-	if r.id == routePlaylist && len(s.similar) > 0 && key.filter == "" {
-		rows = append(rows, row{kind: rowSimilar, title: "Similar songs", track: -1})
-		for i, item := range s.similar[:min(s.similarShown, len(s.similar))] {
-			rows = append(rows, row{kind: rowTrack, item: item, queue: s.similar, track: i})
+	similar := s.similar
+	if exclude != nil {
+		similar = make([]youtube.MusicItem, 0, len(s.similar))
+		for _, item := range s.similar {
+			if keep(item) {
+				similar = append(similar, item)
+			}
 		}
-		if s.similarShown < len(s.similar) || s.similarMore != "" {
+	}
+	if r.id == routePlaylist && len(similar) > 0 && key.filter == "" {
+		rows = append(rows, row{kind: rowSimilar, title: "Similar songs", track: -1})
+		for i, item := range similar[:min(s.similarShown, len(similar))] {
+			rows = append(rows, row{kind: rowTrack, item: item, queue: similar, track: i})
+		}
+		if s.similarShown < len(similar) || s.similarMore != "" {
 			rows = append(rows, row{kind: rowMore, title: "Show more", shelf: "similar", track: -1})
 		}
 	}
@@ -325,6 +364,8 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		(searching && len(rows) == 2 && rows[0].kind == rowHero && rows[1].shelf == "playlist-sort-header") {
 		title, body := r.empty.title, r.empty.body
 		switch {
+		case hiddenAI:
+			title, body = "No non-AI tracks found", "YouTube marked every song here as made with AI, or the page has nothing else to show."
 		case r.id == routeSearch:
 			title, body = "No results for “"+key.submitted+"”", "Check the spelling, or try a different search."
 		case searching:

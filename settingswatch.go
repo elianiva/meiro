@@ -246,4 +246,7 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 			a.run(func() { cache.SetLimit(s.CacheSongs) })
 		}
 	}
+	if s.ExcludeAIGenerated != previous.ExcludeAIGenerated {
+		a.applyAIFilterChange()
+	}
 }

@@ -138,3 +138,19 @@ func TestParseColorsReadsMatugenOutputAndRefusesTypos(t *testing.T) {
 		}
 	}
 }
+
+func TestExcludeAIGeneratedDefaultsOffAndLoads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"volume":42}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if Load(path).ExcludeAIGenerated {
+		t.Error("an older settings file enabled the AI filter")
+	}
+	if err := os.WriteFile(path, []byte(`{"excludeAIGenerated":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !Load(path).ExcludeAIGenerated {
+		t.Error("the saved AI filter did not load")
+	}
+}
