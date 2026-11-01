@@ -36,4 +36,5 @@ Preconditions:
 - `/library` and `/recap` need `signedInApp(t)`. Signed out they show a sign-in prompt, which is also worth a screenshot.
 - Compare the heading, not the path. A route that failed to match draws the `Not found` page at a valid-looking path.
 - `a.router.Push` is the test's shortcut for navigation. Also click one real entry point per proof.
+- A page opened by a click rises in. Capture it after `tt.Advance(2*time.Second)`, not on the click's own frame: there the screenshot shows the new top bar over an empty body, while `p.shows` already passes because the page's texts are in the tree.
 - Current album responses put `musicResponsiveHeaderRenderer` in the primary tab's section list. Its `thumbnail` is the album cover; `straplineThumbnail` is an artist portrait. Never fill missing page art from tracks or related albums.
