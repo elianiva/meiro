@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Songs added to a playlist appear without restarting Meiro.** Adding a song refreshes an open destination playlist and clears stale cached pages before you revisit it.
+
 ## [0.5.1] - 2026-10-31
 
 ### Added

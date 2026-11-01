@@ -54,6 +54,7 @@ var (
 	// duplicateWrites makes the fake answer an add to a playlist the way
 	// YouTube answers one for a song the playlist holds already.
 	duplicateWrites atomic.Bool
+	hypeSongAdded   atomic.Bool
 	fakeLikeState   atomic.Value // what /next says of vid-3, as a string; "" says nothing
 	// lastWrite is the last playlist write the fake YouTube was asked for:
 	// which endpoint, and the fields of its body.
@@ -141,6 +142,11 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = nestedAlbumResponse
 	case strings.Contains(asked, "UCguest"):
 		reply = strings.ReplaceAll(strings.ReplaceAll(artistPage(), fakeArtist, "UCguest"), "Aurora Vale", "Guest Artist")
+	case strings.Contains(asked, "VLPLhype"):
+		reply = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Hype"}]}}},"contents":{"playlistVideoListRenderer":{"contents":[]}},"continuations":[{"nextContinuationData":{"continuation":"playlist-more"}}]}`
+		if hypeSongAdded.Load() {
+			reply = strings.Replace(reply, `"contents":[]`, `"contents":[{"playlistVideoRenderer":{"videoId":"suggestion-one","title":{"simpleText":"Suggestion One"}}}]`, 1)
+		}
 	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"song-related"`):
 		reply = songRelatedNextResponse
 	case strings.Contains(asked, "MPTRsong-related"):
@@ -176,8 +182,13 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.HasSuffix(request.URL.Path, "/browse/edit_playlist"):
 		recordWrite(request.URL.Path, asked)
 		reply = editPlaylistResponse
-		if duplicateWrites.Load() && strings.Contains(asked, "ACTION_ADD_VIDEO") {
+		switch {
+		case refuseWrites.Load():
+			reply, status = rejectedResponse, http.StatusBadRequest
+		case duplicateWrites.Load() && strings.Contains(asked, "ACTION_ADD_VIDEO"):
 			reply = duplicatePlaylistResponse(asked)
+		case strings.Contains(asked, "PLhype") && strings.Contains(asked, "suggestion-one") && strings.Contains(asked, "ACTION_ADD_VIDEO"):
+			hypeSongAdded.Store(true)
 		}
 	case strings.Contains(asked, "search-more"):
 		searchesMore.Add(1)
@@ -509,6 +520,7 @@ func resetFakes() {
 	homeMoreRequests.Store(0)
 	refuseWrites.Store(false)
 	duplicateWrites.Store(false)
+	hypeSongAdded.Store(false)
 	fakeLikeState.Store("")
 	fakeLibrary.Clear()
 	fakeLibrary.Store("PLhype", true)
