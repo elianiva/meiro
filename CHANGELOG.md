@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Choose your YouTube account when importing from a browser.** Meiro shows the Google accounts and channels in your browser session instead of signing in with the first account. Your choice is remembered across restarts and session refreshes, even when YouTube Music omits your email from its account details. Import errors distinguish rejected sessions, missing account details, and an account that does not match your selection.
 
+### Fixed
+
+- **Songs added to a playlist appear without restarting Meiro.** Adding a song refreshes an open destination playlist and clears stale cached pages before you revisit it.
+
 ## [0.5.1] - 2026-10-31
 
 ### Added

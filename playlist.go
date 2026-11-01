@@ -402,6 +402,9 @@ func (a *app) choosePlaylist(playlist youtube.MusicItem) {
 		return client.AddToPlaylist(ctx, target.ID, item.VideoID)
 	}, func(err error) {
 		d.busy = false
+		if a.client() != client {
+			return
+		}
 		open := a.addToPlaylist == d
 		switch {
 		case errors.Is(err, youtube.ErrAlreadyInPlaylist):
@@ -418,6 +421,12 @@ func (a *app) choosePlaylist(playlist youtube.MusicItem) {
 		default:
 			if open {
 				a.dismissAddToPlaylist()
+			}
+			// Revisit cached pages with fresh account data, and refresh the
+			// destination now if a suggestion was added from its own page.
+			a.pages.Clear()
+			if r, id := a.route(); r.id == routePlaylist && strings.TrimPrefix(id, "VL") == strings.TrimPrefix(target.ID, "VL") {
+				a.loadPage(r, id)
 			}
 			a.notice = "Added “" + item.Title + "” to “" + playlist.Title + "”"
 		}
