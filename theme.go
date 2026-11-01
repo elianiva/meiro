@@ -84,7 +84,7 @@ func (a *app) followArtwork() {
 	if !a.settings.Dynamic || a.settings.Matugen || art == "" || t.dynamicFor == art {
 		return
 	}
-	colour, has, ready := a.thumbs.Colour(art, playerArt)
+	colour, has, ready := a.thumbs.Colour(art)
 	if !ready {
 		return // the picture or its colour is still on the way; the cache wakes the view
 	}

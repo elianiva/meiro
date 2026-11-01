@@ -32,6 +32,7 @@ Preconditions:
 - `a := newTestApp(t)`, `a.saver.Path = filepath.Join(t.TempDir(), "settings.json")`, `a.router.Push("/settings")`, a window of 1000x900.
 
 - **Theme.** Verified. `p.click("Dark", "dark")`, `p.click("Rose", "rose")`. Then `a.saver.Save(&a.settings)`, `a.saver.Wait()` and read the file. Mirror `TestSettingsPersistAcrossRestarts`.
+- **Artwork.** Verified by `TestWindowTakesTheArtworkColourAtTheDisplayScale`. Set `a.displayScale = 1` so the views ask for the cover at the size they draw, play a track whose cover is a solid red, and the window's primary becomes the red one after `themeGlide`. The colour comes from any size of the cover at hand, not one the views never ask for.
 - **Hot reload.** Verified by `TestSettingsFileChangesApplyWithoutARestart`. Set `a.saver.Path`, write a `settings.json` with the seed, mode, volume and equaliser you want, set `a.settingsSeen` to the file's bytes, and call `a.checkSettings()`; the test main thread applies it inline. A tester that provides `a.resolveTheme(c)` shows the new primary colour after `tt.Advance(themeGlide)`.
 - **Restart.** Build a second `newTestApp(t)` and `settings.Load(path)`. The mode and seed came back.
 - **Shortcut.** Mirror `TestRecordingANewShortcut`. Press the key with `tt.Key(mods, key)`, never by calling the action.

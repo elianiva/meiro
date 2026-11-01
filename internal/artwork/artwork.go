@@ -109,7 +109,8 @@ type Cache struct {
 	failed map[string]thumbFailure
 	// sizes remembers which sizes of each picture are in bitmaps, by the
 	// picture's URL without its size, so a small copy can stand in while a
-	// larger one downloads.
+	// larger one downloads. colours are keyed the same way, since a picture's
+	// colour does not depend on the size it was asked for.
 	sizes   map[string][]string
 	colours map[string]thumbColour
 	// disk is where pictures are kept on disk, or nil.
@@ -790,36 +791,58 @@ func sizeless(url string) string {
 	return url
 }
 
-// Colour returns the colour that stands out in the artwork at url, asked for
-// at size pixels across, once the artwork has landed. The colour is taken
-// from the picture the first time something asks, so covers that never need
-// it never pay for it. It returns ready false while the artwork or its colour
-// is still on the way, and the cache wakes the view when it lands.
-func (t *Cache) Colour(url string, size int) (colour ui.Color, has, ready bool) {
+// Colour returns the colour that stands out in the artwork at url, once any
+// size of it has landed. A picture's colour does not depend on the size it was
+// asked for, and the views ask for the size they draw, so the colour comes
+// from whichever size is at hand. It is taken from the picture the first time
+// something asks, so covers that never need it never pay for it. It returns
+// ready false while the artwork or its colour is still on the way, and the
+// cache wakes the view when it lands.
+func (t *Cache) Colour(url string) (colour ui.Color, has, ready bool) {
 	if url == "" {
 		return ui.Color{}, false, true
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	fetch := t.keyLocked(url, size).fetch
-	if taken, ok := t.colours[fetch]; ok && taken.ready {
+	base := sizeless(url)
+	if taken, ok := t.colours[base]; ok && taken.ready {
 		return taken.colour, taken.has, true
 	}
-	data, ok := t.source(fetch)
-	if !ok && (t.disk == nil || !t.disk.Has(fetch)) {
+	fetch, ok := t.colourSourceLocked(base)
+	if !ok {
 		return ui.Color{}, false, false
 	}
-	if !t.colouring[fetch] {
+	if !t.colouring[base] {
 		// Decoding and quantizing is too much for a frame: do it on a
 		// worker and wake the view when it is done.
-		t.colouring[fetch] = true
-		go t.takeColour(fetch, data, t.disk)
+		t.colouring[base] = true
+		data, _ := t.source(fetch)
+		go t.takeColour(base, fetch, data, t.disk)
 	}
 	return ui.Color{}, false, false
 }
 
-// takeColour finds the colour of a picture off the main thread and files it.
-func (t *Cache) takeColour(fetch string, data []byte, store Store) {
+// colourSourceLocked picks a size of the picture at base whose bytes are at
+// hand, in memory or on disk. The caller holds the lock.
+func (t *Cache) colourSourceLocked(base string) (string, bool) {
+	for _, fetch := range t.sizes[base] {
+		if _, ok := t.sources[fetch]; ok {
+			return fetch, true
+		}
+	}
+	if t.disk != nil {
+		for _, fetch := range t.sizes[base] {
+			if t.disk.Has(fetch) {
+				return fetch, true
+			}
+		}
+	}
+	return "", false
+}
+
+// takeColour finds the colour of a picture off the main thread and files it
+// under the picture's URL without its size, so every size of it shares it.
+func (t *Cache) takeColour(base, fetch string, data []byte, store Store) {
 	var colour ui.Color
 	var has bool
 	if data == nil && store != nil {
@@ -829,11 +852,11 @@ func (t *Cache) takeColour(fetch string, data []byte, store Store) {
 		colour, has = dominantColour(img)
 	}
 	t.mu.Lock()
-	delete(t.colouring, fetch)
+	delete(t.colouring, base)
 	if len(t.colours) >= thumbColours {
 		t.colours = make(map[string]thumbColour)
 	}
-	t.colours[fetch] = thumbColour{colour: colour, has: has, ready: true}
+	t.colours[base] = thumbColour{colour: colour, has: has, ready: true}
 	t.mu.Unlock()
 	t.notify()
 }

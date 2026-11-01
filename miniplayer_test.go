@@ -26,6 +26,7 @@ import (
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -413,6 +414,46 @@ func TestMiniPlayerAloneTakesTheArtworkColour(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("the mini player never took a colour from the artwork")
+}
+
+// The window asks for a cover at the size it draws it, which a display at
+// scale 1 makes smaller than the player's own. The theme still has to follow
+// the cover the window shows.
+func TestWindowTakesTheArtworkColourAtTheDisplayScale(t *testing.T) {
+	a := newTestApp(t)
+	// A display at scale 1 asks for the player's 64-point cover at 64 pixels.
+	a.displayScale = 1
+	a.thumbs = artwork.New(&http.Client{Transport: redArt{}}, func() {})
+	a.settings.Dynamic = true
+	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.current.Thumbnail = "https://lh3.googleusercontent.com/cover=w544-h544"
+	var shown *m3.Theme
+	tt := ui.NewTester(func(c *ui.Context) {
+		a.view(c)
+		shown = m3.Of(c)
+	}, 1000, 700)
+	for range 200 {
+		tt.Frame()
+		if a.theme.dynamicOK {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// The frame that took the colour draws the glide from it, rather than
+	// leaving the next theme to a repaint nothing asked for.
+	colour := a.theme.dynamic
+	if !a.theme.dynamicOK || colour.R < 150 || colour.G > 40 || colour.B > 40 {
+		t.Fatalf("the player's red cover gave %v (taken = %v)", colour, a.theme.dynamicOK)
+	}
+	if shown.Seed != colour {
+		t.Fatalf("the frame that took the cover's colour resolved its theme from %v, want %v", shown.Seed, colour)
+	}
+	tt.Advance(themeGlide + 20*time.Millisecond)
+	tt.Frame()
+	if want := m3.New(m3.Config{Seed: colour}, false).Scheme.Primary; shown.Scheme.Primary != want {
+		t.Fatalf("primary = %v, want the cover's %v", shown.Scheme.Primary, want)
+	}
 }
 
 // A restored, paused queue lets the user seek through timed lyrics without a
