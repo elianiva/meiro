@@ -300,10 +300,14 @@ func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius fl
 	}
 }
 
+// panelSurface is the tone of the card the queue, lyrics and related songs
+// sit on. The lyrics dissolve into it where the card ends.
+func panelSurface(sc m3.Scheme) ui.Color { return sc.SurfaceContainerLow.Alpha(0.9) }
+
 // sidePanel holds the queue, lyrics and related songs under tabs, on a tonal card.
 func (a *app) sidePanel(c *ui.Context, wide, compactQueue bool) {
 	sc := m3.Of(c).Scheme
-	card := ui.Column(c.Key("np-side")).Radius(m3.ExtraLarge).Background(sc.SurfaceContainerLow.Alpha(0.9)).Clip().
+	card := ui.Column(c.Key("np-side")).Radius(m3.ExtraLarge).Background(panelSurface(sc)).Clip().
 		Gap(4)
 	if compactQueue {
 		card.Padding(4, 0, 0)
@@ -330,6 +334,7 @@ func (a *app) sidePanel(c *ui.Context, wide, compactQueue bool) {
 			a.queueView(c, compactQueue)
 		}
 	})
+	a.lyricsSourceDialog(c)
 }
 
 func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {

@@ -25,6 +25,6 @@ The native UI rules below apply where the app uses package `ui`; preserve a web 
 
 ## Verification
 
-- Reproduce UI failures with `ui.NewTester`. Exercise extra frames while elements disappear and return, plus relevant focus, typing, and shortcut behavior.
+- Reproduce UI failures with `ui.NewTester`. Exercise extra frames while elements disappear and return, plus relevant focus, typing, and shortcut behavior. `Advance` moves the tester's clock but builds a frame only when one is due, so a colour animated with `AnimateColor` stays where it started and a screenshot shows the old colour; verify such a change by its target value, or in the native window.
 - Run targeted regression tests, then `go test ./...`. Use race checks when changing shared state, and inspect rendered output or the native app when changing layout/platform behavior.
 - For upgrades, verify affected API/lifecycle assumptions against the new pinned source and rerun relevant UI tests. Report remaining platform-specific verification limits.

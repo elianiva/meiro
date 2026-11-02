@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -44,6 +45,10 @@ func TestBetterLyricsComesBeforeYouTubeMusicAndLRCLIB(t *testing.T) {
 	if asked != 0 {
 		t.Fatalf("LRCLIB was asked %d times with lyrics already found", asked)
 	}
+	if err := tt.Click("Where these lyrics come from"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if !tt.HasText("Better Lyrics") {
 		t.Fatalf("the source is not named: %q", tt.Texts())
 	}
@@ -103,6 +108,45 @@ func TestLyricsUseTheArtistKnownForTheTrack(t *testing.T) {
 	}
 }
 
+func TestTheSungLineSitsInTheMiddleOfTheLyrics(t *testing.T) {
+	a := newTestApp(t)
+	lines := make([]lyrics.Line, 10)
+	for i := range lines {
+		lines[i] = lyrics.Line{At: time.Duration(i) * 6 * time.Second, Text: fmt.Sprintf("line %d", i)}
+	}
+	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
+		return &lrclib.Lyrics{Synced: lines}, nil
+	}
+	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	// Twenty-four seconds into a four-minute song: the fifth of the ten lines.
+	a.total, a.resumeID, a.scrub = 4*time.Minute, a.current.VideoID, 24
+	a.nowPlaying.tab = tabLyrics
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	for range 4 {
+		tt.Frame()
+	}
+	sung, ok := tt.Find(lines[4].Text)
+	if !ok {
+		t.Fatalf("the line being sung is not shown: %q", tt.Texts())
+	}
+	// The lyrics fill the panel between the modes above them and the buttons
+	// below them, so their middle is where the sung line belongs.
+	modes, ok := tt.Find("Synced lyrics")
+	if !ok {
+		t.Fatalf("the lyrics have no switch: %q", tt.Texts())
+	}
+	footer, ok := tt.Find("Open Meiro")
+	if !ok {
+		t.Fatalf("the mini player has no buttons: %q", tt.Texts())
+	}
+	middle := (modes.Y + modes.H + footer.Y) / 2
+	if got := sung.Y + sung.H/2; got < middle-32 || got > middle+32 {
+		t.Fatalf("the sung line is at %.0f, not in the middle of the lyrics at %.0f", got, middle)
+	}
+}
+
 func TestLyricWordsLightAsTheyAreSung(t *testing.T) {
 	sc := m3.New(m3.Config{}, true).Scheme
 	line := lyrics.Line{At: 0, Text: "one two three", Words: []lyrics.Word{
@@ -110,7 +154,7 @@ func TestLyricWordsLightAsTheyAreSung(t *testing.T) {
 		{At: time.Second, Text: "two "},
 		{At: 2 * time.Second, Text: "three"},
 	}}
-	spans := lyricWords(line, time.Second, sc)
+	spans := lyricWords(line, time.Second, sc.OnSurface)
 	if len(spans) != 3 || spans[0].Text != "one " || spans[1].Text != "two " || spans[2].Text != "three" {
 		t.Fatalf("the words are %#v", spans)
 	}

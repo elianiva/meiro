@@ -36,6 +36,8 @@ type lyricsState struct {
 	followed      int
 	centerPending bool
 	settled       bool
+	// explain is whether the dialog about the source of the lyrics is open.
+	explain bool
 }
 
 // loadedLyrics is what the lyrics of a track come to, from Better Lyrics,
@@ -192,44 +194,89 @@ func (a *app) lyricsView(c *ui.Context) {
 		timed := len(l.synced) > 0
 		synced := timed && !a.settings.StaticLyrics
 		if timed {
-			a.lyricsModes(c, synced, l.footer)
+			a.lyricsModes(c, synced)
 		}
 		if synced {
 			a.syncedLyrics(c)
 			return
 		}
-		ui.Scroll(c).Grow(1).Padding(8, 24, 24).Children(func() {
-			m3.Text(c, m3.BodyLarge, l.text).LineHeight(1.6).TextColor(sc.OnSurface).Selectable()
-			if l.footer != "" && !timed {
-				m3.Text(c, m3.BodySmall, l.footer).TextColor(sc.OnSurfaceVariant).Margin(16, 0, 0)
-			}
+		// The plain words are a page to read, so they keep a measure of their
+		// own rather than the width of a panel that may be very wide.
+		ui.Scroll(c).Grow(1).Padding(16, 24, 40).Children(func() {
+			ui.Column(c).FillWidth().MaxWidth(lyricMeasure).AlignSelf(ui.Center).Children(func() {
+				m3.Text(c, m3.BodyLarge, l.text).LineHeight(1.7).TextColor(sc.OnSurface).Selectable()
+				if l.footer != "" && !timed {
+					m3.Text(c, m3.BodySmall, l.footer).TextColor(sc.OnSurfaceVariant).Margin(16, 0, 0)
+				}
+			})
 		})
 	}
 }
 
-// lyricsModes is the choice between the timed and the plain lyrics.
-func (a *app) lyricsModes(c *ui.Context, synced bool, source string) {
+// lyricsModes is the row above the lyrics: the switch between timed lines and
+// plain words, and the button that says where the words came from.
+func (a *app) lyricsModes(c *ui.Context, synced bool) {
 	sc := m3.Of(c).Scheme
-	ui.Row(c).Padding(0, 16, 4).Gap(8).AlignItems(ui.Center).Children(func() {
-		if m3.Chip(c, "Synced", synced, "lyrics-synced").Clicked() && !synced {
-			a.settings.StaticLyrics = false
-			a.nowPlaying.lyrics.followed = -1
-			a.nowPlaying.lyrics.settled = false
-			a.saveSettings()
-		}
-		if m3.Chip(c, "Static", !synced, "lyrics-static").Clicked() && synced {
-			a.settings.StaticLyrics = true
+	l := &a.nowPlaying.lyrics
+	ui.Row(c).Padding(0, 16, 0).Gap(18).AlignItems(ui.Center).Children(func() {
+		// The clock stands for the timing the switch turns on, so that the row
+		// needs no words of its own.
+		ui.Icon(c, m3.IconSchedule).FontSize(18).TextColor(sc.OnSurfaceVariant)
+		on := synced
+		if m3.CompactSwitch(c, &on, "Synced lyrics").Tooltip("Synced lyrics").Changed() {
+			a.settings.StaticLyrics = !on
+			if !a.settings.StaticLyrics {
+				// Back to the lines: the view finds the one being sung again
+				// from the top, as it does for a track it has not shown yet.
+				l.followed, l.settled = -1, false
+			}
 			a.saveSettings()
 		}
 		ui.Box(c).Grow(1)
-		if source != "" {
-			m3.Text(c, m3.LabelSmall, strings.TrimPrefix(source, "Source: ")).TextColor(sc.OnSurfaceVariant).SingleLine().Shrink(1).MinWidth(0)
+		if l.footer != "" {
+			if m3.IconButton(c, m3.IconButtonSpec{
+				Icon: m3.IconHelp, Label: "Where these lyrics come from", Key: "lyrics-source",
+			}).Clicked() {
+				l.explain = true
+			}
 		}
+	})
+}
+
+// lyricsSourceDialog says which service the lyrics of the track playing came
+// from, and the order Meiro asks them in.
+func (a *app) lyricsSourceDialog(c *ui.Context) {
+	l := &a.nowPlaying.lyrics
+	if !l.explain {
+		return
+	}
+	sc := m3.Of(c).Scheme
+	m3.Dialog(c, &l.explain, 460, func() {
+		m3.EmphasizedText(c, m3.HeadlineSmall, "Where these lyrics come from")
+		if source := strings.TrimPrefix(l.footer, "Source: "); source != "" {
+			m3.Text(c, m3.BodyLarge, source).TextColor(sc.OnSurface)
+		}
+		m3.Text(c, m3.BodyMedium, "Meiro shows the lyrics of the first source that has them: Better Lyrics first, then YouTube Music, then LRCLIB.").
+			TextColor(sc.OnSurfaceVariant)
+		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+			if m3.Button(c, m3.ButtonSpec{Label: "Close", Key: "close-lyrics-source"}).Clicked() {
+				l.explain = false
+			}
+		})
 	})
 }
 
 // lyricScroll is how a lyrics view glides to the line being sung.
 var lyricScroll = ui.Smooth
+
+// lyricMeasure is the width the timed lines are read at. A verse line fits on
+// one or two lines of it, where a panel as wide as the window would leave the
+// words trailing off to the edge.
+const lyricMeasure = 440
+
+// lyricFade is how far the timed lines dissolve into the card at the top and
+// the bottom of the list, instead of being cut by its edge.
+const lyricFade = 48
 
 // syncedLyrics lists the lines, lights the one being sung and glides it to
 // the middle as the song moves on. A line is dimmer and smaller the further it
@@ -244,33 +291,44 @@ func (a *app) syncedLyrics(c *ui.Context) {
 	if l.followed != now {
 		l.followed, l.centerPending = now, true
 	}
-	view := ui.Scroll(c.Key("lyrics")).TrackScroll(scroll).Grow(1)
-	viewport := view.LayoutBounds()
-	// Room above the first line and below the last, so that each can reach
-	// the middle.
-	pad := max(viewport.H/2-40, 40)
-	view.Padding(pad, 16, pad).Children(func() {
-		ui.Column(c).FillWidth().Children(func() {
-			for i, line := range l.synced {
-				a.lyricLine(c, line, at, i, now, scroll, viewport, sc)
-			}
+	viewport := ui.Rect{}
+	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
+		view := ui.Scroll(c.Key("lyrics")).TrackScroll(scroll).Grow(1)
+		viewport = view.LayoutBounds()
+		// Room above the first line and below the last, so that each can
+		// reach the middle.
+		pad := max(viewport.H/2-40, 40)
+		view.Padding(pad, 16, pad).Children(func() {
+			ui.Column(c).FillWidth().MaxWidth(lyricMeasure).AlignSelf(ui.Center).Children(func() {
+				for i, line := range l.synced {
+					a.lyricLine(c, line, at, i, now, scroll, viewport, sc)
+				}
+			})
 		})
+		if now < 0 && l.centerPending && viewport.H > 0 {
+			l.centerPending = false
+			scroll.ScrollTo(0, 0, lyricScroll)
+		}
+		// The lines fade into the card where it ends, so the list reads as
+		// continuing above and below rather than as text clipped by a box.
+		surface := panelSurface(sc)
+		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(lyricFade).PassThrough().
+			Gradient(surface, ui.Transparent, 180)
+		ui.Box(c).Absolute().Bottom(0).Left(0).Right(0).Height(lyricFade).PassThrough().
+			Gradient(ui.Transparent, surface, 180)
 	})
-	if now < 0 && l.centerPending && viewport.H > 0 {
-		l.centerPending = false
-		scroll.ScrollTo(0, 0, lyricScroll)
-	}
 }
 
 // lyricLook is a line's opacity and size, as a fraction of the sung line's,
 // by its distance from it: the sung line is full, its neighbours are dim and
-// smaller, and the rest fade quickly into the background.
+// smaller, and the rest fade quickly into the background while staying
+// legible enough to be found before they are sung.
 func lyricLook(distance int) (opacity, size float32) {
 	if distance == 0 {
 		return 1, 1
 	}
 	k := float32(distance - 1)
-	return max(0.4-0.12*k, 0.08), max(0.8-0.04*k, 0.6)
+	return max(0.4-0.12*k, 0.14), max(0.8-0.04*k, 0.6)
 }
 
 // unsungWord is how much of a word still to be sung shows, beside the ones
@@ -279,13 +337,13 @@ const unsungWord = 0.35
 
 // lyricWords is a line in the spans of its words, each lit once it starts, so
 // that a line fills in as it is sung.
-func lyricWords(line lyrics.Line, at time.Duration, sc m3.Scheme) []ui.Span {
+func lyricWords(line lyrics.Line, at time.Duration, lit ui.Color) []ui.Span {
 	sung := lyrics.IndexWordAt(line.Words, at)
 	spans := make([]ui.Span, len(line.Words))
 	for i, word := range line.Words {
-		color := sc.OnSurface.Alpha(unsungWord)
+		color := lit.Alpha(unsungWord)
 		if i <= sung {
-			color = sc.OnSurface
+			color = lit
 		}
 		spans[i] = ui.Span{Text: word.Text, Color: color}
 	}
@@ -305,28 +363,48 @@ func (a *app) lyricLine(c *ui.Context, line lyrics.Line, at time.Duration, i, no
 	if text == "" {
 		text = "♪"
 	}
-	row := ui.ButtonBase(c.Key(i)).FillWidth().Padding(8, 14).Radius(m3.Large).Justify(ui.Start).Cursor(ui.CursorPointer).Label(text)
+	// The line being sung takes the accent colour, so that the eye finds it
+	// without having to read its weight or its brightness.
+	lit := sc.OnSurface
+	if i == now {
+		lit = sc.Primary
+	}
+	row := ui.ButtonBase(c.Key(i)).FillWidth().Padding(8, 14).Radius(m3.Large).Justify(ui.Start).
+		Cursor(ui.CursorPointer).Label(text)
+	row.Background(m3.StateFill(ui.Transparent, lit, row.Hovered(), row.Pressed(), row.FocusVisible()))
 	opacity = m3.Animate(row, "opacity", opacity, m3.EffectsDefault)
 	size = m3.Animate(row, "size", size, m3.EffectsSlow)
 	row.Opacity(opacity).TransformOrigin(0, 0.5).Scale(size, size)
 	row.Children(func() {
 		if len(line.Words) > 0 {
-			m3.EmphasizedRichText(c, m3.HeadlineSmall, lyricWords(line, at, sc)...).FontWeight(800).LineHeight(1.25)
+			m3.EmphasizedRichText(c, m3.HeadlineSmall, lyricWords(line, at, lit)...).FontWeight(800).LineHeight(1.25)
 			return
 		}
-		m3.EmphasizedText(c, m3.HeadlineSmall, text).FontWeight(800).TextColor(sc.OnSurface).LineHeight(1.25)
+		m3.EmphasizedText(c, m3.HeadlineSmall, text).FontWeight(800).TextColor(lit).LineHeight(1.25)
 	})
 	if row.Clicked() {
 		a.seek(line.At)
 	}
 	if i == now && l.centerPending {
-		if bounds := row.LayoutBounds(); bounds.H > 0 && viewport.H > 0 {
-			l.centerPending = false
-			target := scroll.Y + (bounds.Y + bounds.H/2) - (viewport.Y + viewport.H/2)
-			if l.settled {
-				scroll.ScrollTo(0, target, lyricScroll)
-			} else {
-				l.settled, scroll.Y = true, target
+		bounds := row.LayoutBounds()
+		if bounds.H > 0 && viewport.H > 0 {
+			// Both boxes are in window coordinates, so how far the middle of
+			// the line is from the middle of the list is how far the list
+			// still has to move.
+			off := (bounds.Y + bounds.H/2) - (viewport.Y + viewport.H/2)
+			switch {
+			case !l.settled:
+				// The card is still opening and its middle moves with it:
+				// place the line sharply, and again on the next frame, until
+				// it is where the middle is. Every move after that glides.
+				if max(off, -off) > 0.5 {
+					scroll.Y += off
+				} else {
+					l.settled, l.centerPending = true, false
+				}
+			default:
+				l.centerPending = false
+				scroll.ScrollTo(0, scroll.Y+off, lyricScroll)
 			}
 		}
 	}

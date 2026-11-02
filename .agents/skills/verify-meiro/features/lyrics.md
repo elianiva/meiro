@@ -11,8 +11,9 @@ player and the macOS notch show the same lyrics in their own layouts.
 - `lyrics-credits`: the lookup names the track's artist, album and length, which Better Lyrics keys its cache on. An artist a list left out is filled in from what another list named, and a lookup made before the track's length was known is made again once it is.
 - `lyrics-word-sync`: Better Lyrics times each word, or syllable for a song in Japanese or Korean, so a line fills in as the singer reaches each word. Words still to come are dim.
 - `lyrics-line-sync`: YouTube Music and LRCLIB time whole lines, which stay lit for as long as they are sung and fade with their distance from it.
-- `lyrics-source`: the Lyrics tab names where the lyrics came from: Better Lyrics, YouTube Music, or LRCLIB.
-- `lyrics-modes`: Synced and Static choose between the timed lines and the plain text, remembered in Settings. Static shows the words of the timed lines joined, when the source has no plain text.
+- `lyrics-source`: the question mark at the end of the row opens a dialog that names where the lyrics came from (Better Lyrics, YouTube Music or LRCLIB) and the order Meiro asks them in. The button is absent when a source named none.
+- `lyrics-modes`: a switch under the tabs turns the timed lines on and off, remembered in Settings; off shows the plain text. The clock beside it is what the switch turns on, and the label "Synced lyrics" is the switch's own. Static shows the words of the timed lines joined, when the source has no plain text.
+- `lyrics-follow`: the line being sung sits in the middle of the list, in the theme's accent colour, and every other line is dimmer and smaller the further it is from it. The list dissolves into the card at its top and bottom instead of being cut by them, and reads at a fixed measure rather than the width of the tab. Opening the tab during a song places the current line in the middle at once.
 - `lyrics-seek`: clicking a line seeks to it.
 - `lyrics-fallback`: no lyrics and a failed lookup are different states; a failure is tried again the next time the tab opens.
 - `lyrics-cache`: lyrics are kept per track while it plays; changing songs supersedes the lookup.
@@ -40,17 +41,22 @@ the player finishes rising.
 
 ## Gotchas
 
-- `m3.Chip` labels repeat ("Synced", "Static") on both the panel and the mini
-  player; a tester can only click what its own window shows.
+- The "Synced lyrics" label of the mode switch and the "Where these lyrics come
+  from" label of the source button repeat on both the panel and the mini player;
+  a tester can only click what its own window shows.
 - A line with no words still renders through `m3.EmphasizedText`; only lines
   with `Words` use `ui.RichText`, so a lyric-only line keeps its old look.
-- The footer text drops its `Source: ` prefix before showing, so assert on
-  `Better Lyrics`, not `Source: Better Lyrics`.
+- The source dialog drops the `Source: ` prefix of the footer before showing it,
+  so assert on `Better Lyrics`, not `Source: Better Lyrics`.
 - Better Lyrics serves cached songs without a key and wants one for the rest,
   so a live run can show YouTube Music or LRCLIB lyrics for a song it has not
   cached. That is the fallback working, not a failure.
 - Better Lyrics finds a cached song by artist and length, so `a.total` matters
   in tests too: a source stub can assert the duration it was asked for.
+- The timed view places itself from the boxes it measures, so a proof that
+  opens the tab mid-song must draw a few frames before it reads positions: the
+  first frame places the line, the next one corrects it for the card still
+  rising. `TestTheSungLineSitsInTheMiddleOfTheLyrics` is the committed check.
 - Album rows from YouTube Music carry no artist, so album playback asks Better
   Lyrics with none and falls through unless another list named the artist. A
   playlist row carries both, and is the way to see Better Lyrics live.

@@ -261,17 +261,17 @@ func TestLyricsSwitchBetweenSyncedAndStatic(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !tt.HasText("Synced") || !tt.HasText("Static") || !tt.HasText("first words") {
-		t.Fatalf("timed lyrics are not shown with their modes: %q", tt.Texts())
+	if !tt.HasText("first words") {
+		t.Fatalf("timed lyrics are not shown: %q", tt.Texts())
 	}
-	if err := tt.Click("Static"); err != nil {
+	if err := tt.Click("Synced lyrics"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	if !a.settings.StaticLyrics || !tt.HasText("first words\nsecond words") {
 		t.Fatalf("static mode shows the plain text: %v %q", a.settings.StaticLyrics, tt.Texts())
 	}
-	if err := tt.Click("Synced"); err != nil {
+	if err := tt.Click("Synced lyrics"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
