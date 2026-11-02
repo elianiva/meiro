@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-03
+
 ### Added
 
 - **Pull a page down to load it again.** Swiping down from the top of Home, Explore or Library loads the page again, as the refresh shortcut does. A ring fills as you pull, and the page loads again when the ring is full. A page scrolled away from its top scrolls back to it instead.
