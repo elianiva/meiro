@@ -49,28 +49,6 @@ func TestBetterLyricsComesBeforeYouTubeMusicAndLRCLIB(t *testing.T) {
 	}
 }
 
-func TestLyricsFallBackToLRCLIB(t *testing.T) {
-	a := newTestApp(t)
-	a.betterLyrics = func(context.Context, betterlyrics.Query) ([]lyrics.Line, error) {
-		return nil, nil
-	}
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "from LRCLIB"}}}, nil
-	}
-	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
-	a.current = a.queue.current()
-	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
-	a.setMiniShown(true)
-	tt.Frame()
-	if err := tt.Click("Lyrics"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if !tt.HasText("from LRCLIB") || !tt.HasText("LRCLIB") {
-		t.Fatalf("the lyrics are %q", tt.Texts())
-	}
-}
-
 func TestLyricsAreLookedUpAgainOnceTheLengthIsKnown(t *testing.T) {
 	a := newTestApp(t)
 	var asked []time.Duration

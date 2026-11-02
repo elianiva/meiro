@@ -43,8 +43,6 @@ func (a *app) miniPlayer(c *ui.Context) {
 	col.Children(func() {
 		ui.Column(c.Key("mini-content")).Grow(1).MinHeight(0).Gap(8).Children(func() {
 			ui.Row(c.Key("mini-player")).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-				// Drawn at playerArt pixels, the size followArtwork takes its colour
-				// from, so the picture it needs is the one this frame fetches.
 				a.art(c, a.current.Thumbnail, playerArt, miniArt, m3.Large, func() {
 					if a.current.IsVideo() {
 						m3.VideoBadge(c, miniArt)

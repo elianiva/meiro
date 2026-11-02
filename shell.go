@@ -25,6 +25,10 @@ func (a *app) view(c *ui.Context) {
 	// The zoom comes first: the frame that sets another one builds again at
 	// the new size, and everything below measures the window it zoomed.
 	c.SetZoom(a.zoom())
+	// The artwork comes before the theme: a cover whose colour just landed
+	// draws its theme this frame, and the glide it starts asks for the frames
+	// that follow, rather than waiting for the next unrelated repaint.
+	a.followArtwork()
 	th := a.resolveTheme(c)
 	m3.Provide(c, th)
 	a.syncWindowButtons(th.Dark)
@@ -35,7 +39,6 @@ func (a *app) view(c *ui.Context) {
 	// everything.
 
 	a.syncLocation()
-	a.followArtwork()
 	if a.notice != "" {
 		if a.noticeHelp {
 			c.AddToast(ui.Toast{Title: a.notice, Action: "Learn more", OnAction: a.openToolHelp})

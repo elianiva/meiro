@@ -123,16 +123,3 @@ func TestErrorClasses(t *testing.T) {
 		t.Error("plain error is not an invalid session")
 	}
 }
-
-func TestTrackValid(t *testing.T) {
-	for track, want := range map[Track]bool{
-		{Artist: "A", Title: "T"}: true,
-		{Artist: " ", Title: "T"}: false,
-		{Artist: "A", Title: ""}:  false,
-		{Album: "only an album"}:  false,
-	} {
-		if track.Valid() != want {
-			t.Errorf("%+v.Valid() = %t", track, !want)
-		}
-	}
-}

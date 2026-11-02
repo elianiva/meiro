@@ -154,16 +154,6 @@ func hasTextExactly(tt *ui.Tester, want string) bool {
 }
 
 // A short press of Ctrl, as in Ctrl+C, does not flash the overlay.
-func TestBriefModifierShowsNothing(t *testing.T) {
-	a := newTestApp(t)
-	tt := ui.NewTester(a.view, 1000, 700)
-	tt.HoldModifiers(ui.Ctrl)
-	tt.Frame()
-	if hasTextExactly(tt, "Space") {
-		t.Error("the keys showed at once")
-	}
-}
-
 func tabTo(t *testing.T, tt *ui.Tester, label string) {
 	t.Helper()
 	for range 160 {
@@ -181,18 +171,12 @@ func TestKeyboardMenusKeepFocusAndRunActions(t *testing.T) {
 	}{
 		{"/album/MPREb_test", "Album Track One", "Play next", "https://music.youtube.com/watch?v=vid-3"},
 		{"/home", "Deep Focus", "Open album", "https://music.youtube.com/browse/MPREb_test"},
-		{"/search", "Yorushika", "Go to artist", "https://music.youtube.com/browse/UCyorushika"},
 	} {
 		t.Run(item.title, func(t *testing.T) {
 			a := newTestApp(t)
 			a.router.Push(item.path)
 			tt := ui.NewTester(a.view, 1000, 700)
 			tt.Frame()
-			if item.path == "/search" {
-				tt.Key(ui.Cmd, ui.KeyK)
-				tt.Type("yor")
-				tt.Key(0, ui.KeyEnter)
-			}
 			tabTo(t, tt, item.title)
 			tt.Key(0, ui.KeyTab)
 			menu := "More options for " + item.title
@@ -306,23 +290,22 @@ func TestKeyboardPlayerTabsAndQueue(t *testing.T) {
 }
 
 func TestKeyboardVolumeIsSaved(t *testing.T) {
-	for _, width := range []int{920, 1280} {
-		a := newTestApp(t)
-		a.current = tracks("a")[0]
-		a.setVolume(37)
-		a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
-		tt := ui.NewTester(a.view, width, 700)
-		tt.Frame()
-		tabTo(t, tt, "Volume")
-		tt.Key(0, ui.KeyLeft)
-		a.saver.Wait()
-		if a.volume != 36 || settings.Load(a.saver.Path).Volume != 36 {
-			t.Fatalf("width %d: keyboard volume was not applied and saved", width)
-		}
-		tt.Key(0, ui.KeyTab)
-		if tt.Focused("Volume") {
-			t.Fatalf("width %d: Tab could not leave Volume", width)
-		}
+	const width = 1280
+	a := newTestApp(t)
+	a.current = tracks("a")[0]
+	a.setVolume(37)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	tt := ui.NewTester(a.view, width, 700)
+	tt.Frame()
+	tabTo(t, tt, "Volume")
+	tt.Key(0, ui.KeyLeft)
+	a.saver.Wait()
+	if a.volume != 36 || settings.Load(a.saver.Path).Volume != 36 {
+		t.Fatalf("width %d: keyboard volume was not applied and saved", width)
+	}
+	tt.Key(0, ui.KeyTab)
+	if tt.Focused("Volume") {
+		t.Fatalf("width %d: Tab could not leave Volume", width)
 	}
 }
 

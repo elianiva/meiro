@@ -208,3 +208,29 @@ func TestImportedAccountChoiceSurvivesRestartAndRefresh(t *testing.T) {
 		})
 	}
 }
+
+// A row YouTube marks as another channel but does not name has no page ID to
+// switch with, so the menu says why instead of leaving the click unanswered.
+func TestUnnamedChannelSaysWhyItCannotSwitch(t *testing.T) {
+	resetFakes()
+	fakePageID.Store("")
+	a := signedInApp(t)
+	a.account.session.channels = []youtube.AccountChannel{
+		{Name: "Main channel", Selected: true},
+		{Name: "Brand channel"},
+	}
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	for _, label := range []string{"Account", "Brand channel"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+	}
+	if !tt.HasText("Could not switch to “Brand channel”: YouTube did not name that channel.") {
+		t.Errorf("the menu swallowed the click: %q", tt.Texts())
+	}
+	if a.account.session.channel != "" {
+		t.Errorf("channel = %q, want the session unchanged", a.account.session.channel)
+	}
+}

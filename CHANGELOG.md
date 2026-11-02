@@ -6,10 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Shelves no longer draw a scroll bar.** The arrows beside a shelf's title page it, and the wheel and the touchpad still move it sideways. The row of cards ends closer to the section below.
+- **The close prompt shows which of its buttons quits.** "Close Meiro" reads as a destructive action on macOS and Linux, and Escape keeps Meiro running on macOS, where it did nothing before.
+
 ### Fixed
 
+- **A channel the account menu cannot switch to says why.** A row YouTube lists without the channel it stands for used to close the menu and leave you where you were. It now says that YouTube did not name the channel.
+- **The theme follows the album art again.** Meiro takes the colour from the cover the player shows, so the theme changes with each song at any display scaling instead of keeping the last colour.
 - **Playing a large playlist before it finishes loading keeps every song.** Its remaining songs join the playback queue before Auto-play recommendations.
-
 - **Auto-play continues after a playlist ends.** When its queue runs out, recommendations start from the final song instead of reopening the original playlist.
 
 ## [0.5.2] - 2026-11-01

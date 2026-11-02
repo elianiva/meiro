@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/png"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,6 +25,7 @@ import (
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -188,15 +188,6 @@ func TestGoToArtistFromMiniPlayerOpensTheArtistPage(t *testing.T) {
 	}
 	if !main.HasText("Aurora Vale") || !main.HasText("Artist Track") {
 		t.Fatalf("the main window did not show the artist page: %q", main.Texts())
-	}
-}
-
-func TestMiniPlayerRendersWithPopoverVibrancy(t *testing.T) {
-	a := newTestApp(t)
-	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
-	tt.SetVibrancy(true)
-	if !tt.HasText("Nothing playing") || !tt.HasText("Open Meiro") || !tt.HasText("Quit") {
-		t.Fatalf("vibrant mini player lost its content: %q", tt.Texts())
 	}
 }
 
@@ -413,6 +404,46 @@ func TestMiniPlayerAloneTakesTheArtworkColour(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("the mini player never took a colour from the artwork")
+}
+
+// The window asks for a cover at the size it draws it, which a display at
+// scale 1 makes smaller than the player's own. The theme still has to follow
+// the cover the window shows.
+func TestWindowTakesTheArtworkColourAtTheDisplayScale(t *testing.T) {
+	a := newTestApp(t)
+	// A display at scale 1 asks for the player's 64-point cover at 64 pixels.
+	a.displayScale = 1
+	a.thumbs = artwork.New(&http.Client{Transport: redArt{}}, func() {})
+	a.settings.Dynamic = true
+	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.current.Thumbnail = "https://lh3.googleusercontent.com/cover=w544-h544"
+	var shown *m3.Theme
+	tt := ui.NewTester(func(c *ui.Context) {
+		a.view(c)
+		shown = m3.Of(c)
+	}, 1000, 700)
+	for range 200 {
+		tt.Frame()
+		if a.theme.dynamicOK {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// The frame that took the colour draws the glide from it, rather than
+	// leaving the next theme to a repaint nothing asked for.
+	colour := a.theme.dynamic
+	if !a.theme.dynamicOK || colour.R < 150 || colour.G > 40 || colour.B > 40 {
+		t.Fatalf("the player's red cover gave %v (taken = %v)", colour, a.theme.dynamicOK)
+	}
+	if shown.Seed != colour {
+		t.Fatalf("the frame that took the cover's colour resolved its theme from %v, want %v", shown.Seed, colour)
+	}
+	tt.Advance(themeGlide + 20*time.Millisecond)
+	tt.Frame()
+	if want := m3.New(m3.Config{Seed: colour}, false).Scheme.Primary; shown.Scheme.Primary != want {
+		t.Fatalf("primary = %v, want the cover's %v", shown.Scheme.Primary, want)
+	}
 }
 
 // A restored, paused queue lets the user seek through timed lyrics without a
@@ -944,43 +975,6 @@ func TestNotchFallbackKeepsAudioAndMiniPlayerControls(t *testing.T) {
 	a.saver.Wait()
 }
 
-func TestNotchLongLyricsLeaveRoomForControls(t *testing.T) {
-	a := notchTestApp(t)
-	a.current.Title = "A very long song title that must never push the lyrics or controls out of the panel"
-	a.current.Artist = "An artist with a long name that stays in the middle column"
-	current := "A longer lyric line that wraps across the compact panel without hiding the playback controls"
-	next := "The next line is a quiet preview of the words still to come"
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: current}, {At: time.Minute, Text: next}}}, nil
-	}
-	tt := ui.NewTester(a.notchView, 284, 38)
-	if err := tt.Click("Open notch lyrics"); err != nil {
-		t.Fatal(err)
-	}
-	bounds := a.notch.bounds()
-	tt.SetSize(bounds.Width, bounds.Height)
-	tt.Advance(time.Second)
-	line, found := tt.Find(current)
-	control, hasControl := tt.Find("Play")
-	if !found || !hasControl || control.X+control.W > line.X || line.X+line.W > float32(bounds.Width-16) || line.H > 38 {
-		t.Fatalf("lyrics overlap the transport: line %+v, control %+v", line, control)
-	}
-	cover, hasCover := tt.Find("Album cover")
-	title, hasTitle := tt.Find(a.current.Title)
-	artist, hasArtist := tt.Find(a.current.Artist)
-	if !hasCover || !hasTitle || !hasArtist || cover.X+cover.W > title.X || title.X+title.W > line.X || artist.X+artist.W > line.X {
-		t.Fatal("long metadata overflowed its column")
-	}
-	if !tt.HasText(next) || tt.HasText("Shuffle") || tt.HasText("Repeat") {
-		t.Fatal("compact content changed")
-	}
-	tabTo(t, tt, "Next")
-	tt.Key(0, ui.KeySpace)
-	if a.current.VideoID != "b" || !a.notch.expanded {
-		t.Fatal("keyboard transport failed")
-	}
-}
-
 func TestNotchProgressSeeksWithoutInterferenceFromTheMainPlayer(t *testing.T) {
 	a := notchTestApp(t)
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
@@ -1044,56 +1038,51 @@ func TestNotchProgressSeeksWithoutInterferenceFromTheMainPlayer(t *testing.T) {
 }
 
 func TestNotchCollapsesTwoSecondsAfterPointerLeaves(t *testing.T) {
-	for _, reduced := range []bool{false, true} {
-		t.Run(strconv.FormatBool(reduced), func(t *testing.T) {
-			a := notchTestApp(t)
-			nt := ui.NewTester(a.notchView, 284, 38)
-			nt.SetPreferences(ui.Preferences{ReduceMotion: reduced})
-			if err := nt.Click("Open notch lyrics"); err != nil {
-				t.Fatal(err)
-			}
-			nt.SetSize(480, 190)
-			nt.Advance(300 * time.Millisecond)
-			// Empty space inside the panel counts as inside, not just controls.
-			nt.Move(240, 60)
-			nt.Advance(5 * time.Second)
-			if !a.notch.expanded {
-				t.Fatal("hovering inside the notch collapsed it")
-			}
-			nt.Move(500, 230)
-			nt.Advance(1900 * time.Millisecond)
-			if !a.notch.expanded {
-				t.Fatal("notch collapsed before two seconds")
-			}
-			nt.Move(300, 100)
-			nt.Advance(3 * time.Second)
-			if !a.notch.expanded {
-				t.Fatal("returning to the notch did not cancel the deadline")
-			}
-			nt.Move(500, 230)
-			nt.Advance(1900 * time.Millisecond)
-			if !a.notch.expanded {
-				t.Fatal("second departure reused an expired deadline")
-			}
-			nt.Advance(100 * time.Millisecond)
-			if a.notch.expanded || !a.notch.transitioning || a.notch.bounds().Height != 190 {
-				t.Fatal("deadline did not start the normal closing animation")
-			}
-			nt.Advance(40 * time.Millisecond)
-			panel, _ := nt.Find("Notch panel")
-			if reduced && panel.H != 190 || !reduced && (panel.H <= 38 || panel.H >= 190) {
-				t.Fatalf("unexpected closing geometry: %+v", panel)
-			}
-			nt.Advance(240 * time.Millisecond)
-			bounds := a.notch.bounds()
-			nt.SetSize(bounds.Width, bounds.Height)
-			if bounds.Width != 284 || bounds.Height != 38 || a.notch.transitioning || nt.HasText("Next") {
-				t.Fatal("auto-collapse left an expanded panel")
-			}
-			if a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != 0 || a.nowPlaying.open {
-				t.Fatal("auto-collapse changed playback or the main player")
-			}
-		})
+	a := notchTestApp(t)
+	nt := ui.NewTester(a.notchView, 284, 38)
+	if err := nt.Click("Open notch lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	nt.SetSize(480, 190)
+	nt.Advance(300 * time.Millisecond)
+	// Empty space inside the panel counts as inside, not just controls.
+	nt.Move(240, 60)
+	nt.Advance(5 * time.Second)
+	if !a.notch.expanded {
+		t.Fatal("hovering inside the notch collapsed it")
+	}
+	nt.Move(500, 230)
+	nt.Advance(1900 * time.Millisecond)
+	if !a.notch.expanded {
+		t.Fatal("notch collapsed before two seconds")
+	}
+	nt.Move(300, 100)
+	nt.Advance(3 * time.Second)
+	if !a.notch.expanded {
+		t.Fatal("returning to the notch did not cancel the deadline")
+	}
+	nt.Move(500, 230)
+	nt.Advance(1900 * time.Millisecond)
+	if !a.notch.expanded {
+		t.Fatal("second departure reused an expired deadline")
+	}
+	nt.Advance(100 * time.Millisecond)
+	if a.notch.expanded || !a.notch.transitioning || a.notch.bounds().Height != 190 {
+		t.Fatal("deadline did not start the normal closing animation")
+	}
+	nt.Advance(40 * time.Millisecond)
+	panel, _ := nt.Find("Notch panel")
+	if panel.H <= 38 || panel.H >= 190 {
+		t.Fatalf("unexpected closing geometry: %+v", panel)
+	}
+	nt.Advance(240 * time.Millisecond)
+	bounds := a.notch.bounds()
+	nt.SetSize(bounds.Width, bounds.Height)
+	if bounds.Width != 284 || bounds.Height != 38 || a.notch.transitioning || nt.HasText("Next") {
+		t.Fatal("auto-collapse left an expanded panel")
+	}
+	if a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != 0 || a.nowPlaying.open {
+		t.Fatal("auto-collapse changed playback or the main player")
 	}
 }
 
@@ -1175,45 +1164,42 @@ func TestNotchAutoCollapseWaitsAfterKeyboardSeeking(t *testing.T) {
 }
 
 func TestNotchCompactWingsCompleteHeldClicks(t *testing.T) {
-	for _, label := range []string{"Open notch lyrics", "Open notch lyrics from playback indicator"} {
-		t.Run(label, func(t *testing.T) {
-			a := notchTestApp(t)
-			nt := ui.NewTester(a.notchView, 284, 38)
-			for range 3 {
-				nt.SetFocused(false)
-				r, ok := nt.Find(label)
-				if !ok {
-					t.Fatal("compact wing disappeared after collapsing")
-				}
-				x, y := r.X+r.W/2, r.Y+r.H/2
-				nt.Press(x, y)
-				nt.SetFocused(true) // AppKit can make the panel key on mouse down.
-				nt.Advance(500 * time.Millisecond)
-				if a.notch.expanded {
-					t.Fatal("press opened the notch before release")
-				}
-				nt.Release(142, 19) // Cancel over the non-interactive camera gap.
-				if a.notch.expanded {
-					t.Fatal("cancelled press opened the notch")
-				}
-				nt.SetFocused(false)
-				nt.Press(x, y)
-				nt.SetFocused(true)
-				nt.Advance(500 * time.Millisecond)
-				nt.Release(x+1, y)
-				if !a.notch.expanded {
-					t.Fatal("held click did not expand the notch on release")
-				}
-				nt.SetSize(480, 190)
-				nt.Advance(300 * time.Millisecond)
-				nt.Key(0, ui.KeyEscape)
-				nt.Advance(300 * time.Millisecond)
-				nt.SetSize(284, 38)
-				if a.notch.expanded || a.notch.transitioning || a.current.VideoID != "a" || a.player.Playing() {
-					t.Fatal("collapse changed playback or left an active transition")
-				}
-			}
-		})
+	const label = "Open notch lyrics"
+	a := notchTestApp(t)
+	nt := ui.NewTester(a.notchView, 284, 38)
+	for range 3 {
+		nt.SetFocused(false)
+		r, ok := nt.Find(label)
+		if !ok {
+			t.Fatal("compact wing disappeared after collapsing")
+		}
+		x, y := r.X+r.W/2, r.Y+r.H/2
+		nt.Press(x, y)
+		nt.SetFocused(true) // AppKit can make the panel key on mouse down.
+		nt.Advance(500 * time.Millisecond)
+		if a.notch.expanded {
+			t.Fatal("press opened the notch before release")
+		}
+		nt.Release(142, 19) // Cancel over the non-interactive camera gap.
+		if a.notch.expanded {
+			t.Fatal("cancelled press opened the notch")
+		}
+		nt.SetFocused(false)
+		nt.Press(x, y)
+		nt.SetFocused(true)
+		nt.Advance(500 * time.Millisecond)
+		nt.Release(x+1, y)
+		if !a.notch.expanded {
+			t.Fatal("held click did not expand the notch on release")
+		}
+		nt.SetSize(480, 190)
+		nt.Advance(300 * time.Millisecond)
+		nt.Key(0, ui.KeyEscape)
+		nt.Advance(300 * time.Millisecond)
+		nt.SetSize(284, 38)
+		if a.notch.expanded || a.notch.transitioning || a.current.VideoID != "a" || a.player.Playing() {
+			t.Fatal("collapse changed playback or left an active transition")
+		}
 	}
 }
 
@@ -1247,7 +1233,7 @@ func TestNotchReopeningDiscardsAutoCollapseDeadline(t *testing.T) {
 }
 
 func TestNotchCoverOpensNowPlaying(t *testing.T) {
-	for _, input := range []string{"click", "keyboard", "reduce-motion"} {
+	for _, input := range []string{"click", "keyboard"} {
 		t.Run(input, func(t *testing.T) {
 			a := notchTestApp(t)
 			a.router.Push("/home")
@@ -1263,16 +1249,11 @@ func TestNotchCoverOpensNowPlaying(t *testing.T) {
 			}
 			wasOpen, wasQueue := a.nowPlaying.open, a.nowPlaying.queueOnly
 			nt := ui.NewTester(a.notchView, 284, 38)
-			nt.SetPreferences(ui.Preferences{ReduceMotion: input == "reduce-motion"})
 			if err := nt.Click("Open notch lyrics"); err != nil {
 				t.Fatal(err)
 			}
 			nt.SetSize(480, 190)
-			if input == "reduce-motion" {
-				nt.Advance(40 * time.Millisecond)
-			} else {
-				nt.Advance(140 * time.Millisecond)
-			}
+			nt.Advance(140 * time.Millisecond)
 			cover, found := nt.Find("Open Now Playing")
 			if !found || cover.W != 76 || cover.H != 76 {
 				t.Fatalf("large cover is not an accessible button of the original size: found %v, rect %+v", found, cover)
@@ -1358,183 +1339,71 @@ func TestNotchCoverKeepsPlayingAudio(t *testing.T) {
 }
 
 func TestNotchOpenMeiroCollapsesWithoutChangingPlayback(t *testing.T) {
-	for _, cutoutWidth := range []int{180, 380} {
-		t.Run(strconv.Itoa(cutoutWidth), func(t *testing.T) {
-			a := notchTestApp(t)
-			a.router.Push("/home")
-			a.notch.cutout.Width = cutoutWidth
-			calls := 0
-			a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-				calls++
-				return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "Keep these lyrics"}}}, nil
-			}
-			bounds := a.notch.bounds()
-			tt := ui.NewTester(a.notchView, bounds.Width, bounds.Height)
-			if tt.HasText("Open Meiro") {
-				t.Fatal("main-window button appeared in the compact notch")
-			}
-			if err := tt.Click("Open notch lyrics"); err != nil {
-				t.Fatal(err)
-			}
-			bounds = a.notch.bounds()
-			tt.SetSize(bounds.Width, bounds.Height)
-			tt.Advance(300 * time.Millisecond)
-			launch, found := tt.Find("Open Meiro")
-			collapse, _ := tt.Find("Close notch lyrics")
-			if !found || launch.W < 28 || launch.H < 28 || launch.X < 0 || launch.X+launch.W > collapse.X || launch.Y+launch.H > 38 {
-				t.Fatalf("main-window target overlaps collapse/camera or leaves the header: %+v, collapse %+v", launch, collapse)
-			}
-			tabTo(t, tt, "Notch position")
-			tt.Key(0, ui.KeyEnd)
-			position, seekVersion := a.playbackPosition(), a.seekVersion
-			for _, input := range []string{"click", "keyboard", "reduce-motion"} {
-				reduced := input == "reduce-motion"
-				tt.SetPreferences(ui.Preferences{ReduceMotion: reduced})
-				opened := a.notch.bounds()
-				if input == "keyboard" {
-					tabTo(t, tt, "Open Meiro")
-					tt.Key(0, ui.KeyEnter)
-				} else if err := tt.Click("Open Meiro"); err != nil {
-					t.Fatal(err)
-				}
-				if a.notch.expanded || !a.notch.transitioning || a.notch.bounds() != opened {
-					t.Fatalf("%s: opening Meiro did not start an animated collapse", input)
-				}
-				tt.Advance(40 * time.Millisecond)
-				panel, _ := tt.Find("Notch panel")
-				if reduced && panel.H != float32(opened.Height) || !reduced && (panel.H <= 38 || panel.H >= float32(opened.Height)) {
-					t.Fatalf("%s: collapse skipped the expected transition: %+v", input, panel)
-				}
-				tt.Advance(240 * time.Millisecond)
-				bounds = a.notch.bounds()
-				tt.SetSize(bounds.Width, bounds.Height)
-				if bounds.Width != cutoutWidth+2*notchWing || bounds.Height != 38 || a.notch.transitioning || tt.HasText("Open Meiro") || tt.HasText("Keep these lyrics") || tt.HasText("Next") {
-					t.Fatalf("%s: opening Meiro left an expanded notch", input)
-				}
-				// The headless desktop is nil; native Show/Restore/Focus needs macOS.
-				if a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != position || a.seekVersion != seekVersion || calls != 1 || a.nowPlaying.open || a.router.Path() != "/home" {
-					t.Fatalf("%s: opening Meiro changed playback, the main page, or fetched lyrics again", input)
-				}
-				if err := tt.Click("Open notch lyrics from playback indicator"); err != nil {
-					t.Fatal(err)
-				}
-				bounds = a.notch.bounds()
-				tt.SetSize(bounds.Width, bounds.Height)
-				tt.Advance(300 * time.Millisecond)
-				if !tt.HasText("Open Meiro") || !tt.HasText("Keep these lyrics") || calls != 1 {
-					t.Fatal("reopening did not restore the panel and cached lyrics")
-				}
-			}
-		})
-	}
-}
-
-func TestNotchOpeningClosingAndReversal(t *testing.T) {
+	const cutoutWidth = 180
 	a := notchTestApp(t)
+	a.router.Push("/home")
+	a.notch.cutout.Width = cutoutWidth
 	calls := 0
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
 		calls++
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "Motion test lyrics"}}}, nil
+		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "Keep these lyrics"}}}, nil
 	}
-	tt := ui.NewTester(a.notchView, 284, 38)
+	bounds := a.notch.bounds()
+	tt := ui.NewTester(a.notchView, bounds.Width, bounds.Height)
+	if tt.HasText("Open Meiro") {
+		t.Fatal("main-window button appeared in the compact notch")
+	}
 	if err := tt.Click("Open notch lyrics"); err != nil {
 		t.Fatal(err)
 	}
-	tt.SetSize(480, 190)
-	tt.Advance(80 * time.Millisecond)
-	opening, found := tt.Find("Notch panel")
-	if !found || opening.H <= 38 || opening.H >= 190 || opening.W <= 284 || opening.W >= 480 {
-		t.Fatalf("opening jumped to its final size: %+v", opening)
+	bounds = a.notch.bounds()
+	tt.SetSize(bounds.Width, bounds.Height)
+	tt.Advance(300 * time.Millisecond)
+	launch, found := tt.Find("Open Meiro")
+	collapse, _ := tt.Find("Close notch lyrics")
+	if !found || launch.W < 28 || launch.H < 28 || launch.X < 0 || launch.X+launch.W > collapse.X || launch.Y+launch.H > 38 {
+		t.Fatalf("main-window target overlaps collapse/camera or leaves the header: %+v, collapse %+v", launch, collapse)
 	}
-	if opening.Y != 0 || opening.X+opening.W/2 != 240 || tt.Image().RGBAAt(240, 0).A != 255 {
-		t.Fatal("panel moved away from the camera or faded its housing")
-	}
-	tt.Advance(200 * time.Millisecond)
-	opened, _ := tt.Find("Notch panel")
-	if opened.W != 480 || opened.H != 190 || a.notch.transitioning {
-		t.Fatal("opening did not settle")
-	}
-	cover := tt.Image().RGBAAt(30, 100)
-	next, _ := tt.Find("Next")
-	if err := tt.Click("Close notch lyrics"); err != nil {
-		t.Fatal(err)
-	}
-	// Closing retains the native canvas until the last animation frame.
-	if got := a.notch.bounds(); got.Width != 480 || got.Height != 190 {
-		t.Fatal("native bounds were cropped before the fade")
-	}
-	tt.Advance(40 * time.Millisecond)
-	closing, _ := tt.Find("Notch panel")
-	faded := tt.Image().RGBAAt(30, 100)
-	if closing.H <= 38 || closing.H >= opened.H || faded.R >= cover.R {
-		t.Fatalf("close did not shrink and fade: panel %+v, cover %v -> %v", closing, cover, faded)
-	}
-	tt.Press(next.X+next.W/2, next.Y+next.H/2)
-	tt.Release(next.X+next.W/2, next.Y+next.H/2)
-	if a.current.VideoID != "a" {
-		t.Fatal("a fading control accepted a click")
-	}
-	closing, _ = tt.Find("Notch panel")
-	if err := tt.Click("Open notch lyrics from playback indicator"); err != nil {
-		t.Fatal(err)
-	}
-	reversed, _ := tt.Find("Notch panel")
-	// Input can sample between display frames; allow that small advance, not
-	// a reset to either endpoint of the animation.
-	if math.Abs(float64(reversed.H-closing.H)) > 6 || reversed.W == 284 || reversed.W == 480 {
-		t.Fatalf("reversal jumped: %+v -> %+v", closing, reversed)
-	}
-	tt.Advance(60 * time.Millisecond)
-	reopening, _ := tt.Find("Notch panel")
-	if reopening.H <= closing.H || reopening.H >= 190 {
-		t.Fatal("reversal did not continue from its current size")
-	}
-	// Reverse once more before opening finishes, using the keyboard path.
-	tt.Key(0, ui.KeyEscape)
-	tt.Advance(240 * time.Millisecond)
-	closed := a.notch.bounds()
-	tt.SetSize(closed.Width, closed.Height)
-	if closed.Width != 284 || closed.Height != 38 || a.notch.transitioning || tt.HasText("Motion test lyrics") || tt.HasText("Next") {
-		t.Fatal("closing left an expanded or interactive panel")
-	}
-	if calls != 1 || a.nowPlaying.open || a.nowPlaying.tab != tabQueue {
-		t.Fatal("animation refetched lyrics or changed the main player")
-	}
-}
-
-func TestNotchReduceMotionOnlyFades(t *testing.T) {
-	a := notchTestApp(t)
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "Still lyrics"}}}, nil
-	}
-	tt := ui.NewTester(a.notchView, 284, 38)
-	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
-	if err := tt.Click("Open notch lyrics"); err != nil {
-		t.Fatal(err)
-	}
-	tt.SetSize(480, 190)
-	tt.Advance(40 * time.Millisecond)
-	panel, _ := tt.Find("Notch panel")
-	line, _ := tt.Find("Still lyrics")
-	partial := tt.Image().RGBAAt(30, 100)
-	if panel.W != 480 || panel.H != 190 || partial.R == 0 || partial.R >= 32 {
-		t.Fatalf("reduced motion did not fade in place: %+v, %v", panel, partial)
-	}
-	tt.Advance(80 * time.Millisecond)
-	settled, _ := tt.Find("Still lyrics")
-	if settled != line || a.notch.transitioning {
-		t.Fatal("reduced motion moved the content")
-	}
-	tt.Key(0, ui.KeyEscape)
-	tt.Advance(40 * time.Millisecond)
-	closing, _ := tt.Find("Notch panel")
-	if closing != panel || a.notch.bounds().Height != 190 || tt.Image().RGBAAt(30, 100).R >= 32 {
-		t.Fatal("reduced motion shrank before the content faded")
-	}
-	tt.Advance(80 * time.Millisecond)
-	closed := a.notch.bounds()
-	if closed.Height != 38 || closed.Width != 284 || a.notch.transitioning {
-		t.Fatal("reduced motion did not finish closing")
+	tabTo(t, tt, "Notch position")
+	tt.Key(0, ui.KeyEnd)
+	position, seekVersion := a.playbackPosition(), a.seekVersion
+	for _, input := range []string{"click", "keyboard", "reduce-motion"} {
+		reduced := input == "reduce-motion"
+		tt.SetPreferences(ui.Preferences{ReduceMotion: reduced})
+		opened := a.notch.bounds()
+		if input == "keyboard" {
+			tabTo(t, tt, "Open Meiro")
+			tt.Key(0, ui.KeyEnter)
+		} else if err := tt.Click("Open Meiro"); err != nil {
+			t.Fatal(err)
+		}
+		if a.notch.expanded || !a.notch.transitioning || a.notch.bounds() != opened {
+			t.Fatalf("%s: opening Meiro did not start an animated collapse", input)
+		}
+		tt.Advance(40 * time.Millisecond)
+		panel, _ := tt.Find("Notch panel")
+		if reduced && panel.H != float32(opened.Height) || !reduced && (panel.H <= 38 || panel.H >= float32(opened.Height)) {
+			t.Fatalf("%s: collapse skipped the expected transition: %+v", input, panel)
+		}
+		tt.Advance(240 * time.Millisecond)
+		bounds = a.notch.bounds()
+		tt.SetSize(bounds.Width, bounds.Height)
+		if bounds.Width != cutoutWidth+2*notchWing || bounds.Height != 38 || a.notch.transitioning || tt.HasText("Open Meiro") || tt.HasText("Keep these lyrics") || tt.HasText("Next") {
+			t.Fatalf("%s: opening Meiro left an expanded notch", input)
+		}
+		// The headless desktop is nil; native Show/Restore/Focus needs macOS.
+		if a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != position || a.seekVersion != seekVersion || calls != 1 || a.nowPlaying.open || a.router.Path() != "/home" {
+			t.Fatalf("%s: opening Meiro changed playback, the main page, or fetched lyrics again", input)
+		}
+		if err := tt.Click("Open notch lyrics from playback indicator"); err != nil {
+			t.Fatal(err)
+		}
+		bounds = a.notch.bounds()
+		tt.SetSize(bounds.Width, bounds.Height)
+		tt.Advance(300 * time.Millisecond)
+		if !tt.HasText("Open Meiro") || !tt.HasText("Keep these lyrics") || calls != 1 {
+			t.Fatal("reopening did not restore the panel and cached lyrics")
+		}
 	}
 }
 

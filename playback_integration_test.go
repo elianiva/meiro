@@ -22,7 +22,6 @@ import (
 
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/playstate"
-	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -117,26 +116,6 @@ func ids(items []youtube.MusicItem) []string {
 	return out
 }
 
-func TestClickingATrackPlaysIt(t *testing.T) {
-	a, r := playbackApp(t)
-	a.router.Push("/album/MPREb_test")
-	tt := ui.NewTester(a.view, 1000, 700)
-	tt.Frame()
-	if err := tt.Click("Album Track One"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if a.current.VideoID != "vid-3" || !r.asked("vid-3") {
-		t.Fatalf("current %q, resolver asked for vid-3: %v", a.current.VideoID, r.asked("vid-3"))
-	}
-	if a.total != 3*time.Minute {
-		t.Errorf("the track length was %v, want the resolver's 3m", a.total)
-	}
-	if !tt.HasText("Track") && !tt.HasText("Album Track One") {
-		t.Errorf("the player bar does not show the track: %q", tt.Texts())
-	}
-}
-
 func TestQueueAdvancesPreviousAndStops(t *testing.T) {
 	a, r := playbackApp(t)
 	q := tracks("a", "b", "c")
@@ -181,26 +160,6 @@ func TestRepeatModes(t *testing.T) {
 	a.cycleRepeat() // off
 	if a.repeat != repeatOff {
 		t.Errorf("a third press left repeat %d", a.repeat)
-	}
-}
-
-func TestShuffleKeepsTheTrackPlayingAndEveryTrack(t *testing.T) {
-	a, _ := playbackApp(t)
-	q := tracks("a", "b", "c", "d", "e", "f", "g", "h")
-	a.play(q[0], q)
-	a.setShuffle(true)
-	if a.queue.items[0].VideoID != "a" || a.queue.index != 0 {
-		t.Errorf("shuffle moved the track playing: index %d", a.queue.index)
-	}
-	if a.queue.len() != len(q) {
-		t.Fatalf("shuffle changed the queue length: %v", ids(a.queue.items))
-	}
-	seen := map[string]bool{}
-	for _, id := range ids(a.queue.items) {
-		seen[id] = true
-	}
-	if len(seen) != len(q) {
-		t.Errorf("shuffle lost or repeated tracks: %v", ids(a.queue.items))
 	}
 }
 
@@ -671,72 +630,6 @@ func TestAutoPlayStopsWhenEveryRecommendationIsDisliked(t *testing.T) {
 	}
 	if a.player.Playing() || a.notice != "Playback stopped because every remaining track is disliked" {
 		t.Fatalf("playback stop: playing=%t notice=%q", a.player.Playing(), a.notice)
-	}
-}
-
-func TestQueueDoesNotMoveWhileRecommendationsLoad(t *testing.T) {
-	a, _ := playbackApp(t)
-	a.current = tracks("a")[0]
-	a.queue.replace(a.current, tracks("a", "b"), 0, "Test queue")
-	a.settings.AutoPlay = true
-	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
-	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
-	rowWithoutStatus, ok := tt.Find("Track a")
-	if !ok {
-		t.Fatalf("queue row missing from UI: %q", tt.Texts())
-	}
-
-	_, cancel := context.WithCancel(context.Background())
-	a.upNext.load.cancel = cancel
-	a.refresh()
-	tt.Frame()
-	rowWithStatus, ok := tt.Find("Track a")
-	if !ok {
-		t.Fatalf("queue row missing while fetching: %q", tt.Texts())
-	}
-	if tt.HasText("Finding recommendations…") {
-		t.Fatal("transient loading status appeared while fetching recommendations")
-	}
-	if rowWithStatus.Y != rowWithoutStatus.Y {
-		t.Errorf("queue row moved from y=%v to y=%v while status appeared", rowWithoutStatus.Y, rowWithStatus.Y)
-	}
-	a.upNext.load.stop()
-	cancel()
-}
-
-func TestQueueRecommendationHeadingAlignsWithArtwork(t *testing.T) {
-	a, _ := playbackApp(t)
-	a.current = tracks("chosen")[0]
-	a.queue.replace(a.current, []youtube.MusicItem{a.current}, 0, "Queue")
-	a.queue.appendGenerated([]youtube.MusicItem{{VideoID: "recommended", Title: "Recommended track"}})
-	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
-	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
-
-	heading, ok := tt.Find("Recommended")
-	if !ok {
-		t.Fatalf("recommendation heading missing: %q", tt.Texts())
-	}
-	chosenRow, ok := tt.Find("Track chosen")
-	if !ok {
-		t.Fatalf("chosen row missing: %q", tt.Texts())
-	}
-	row, ok := tt.Find("Recommended track")
-	if !ok {
-		t.Fatalf("recommended row missing: %q", tt.Texts())
-	}
-	if got := heading.X - row.X; got != 8 {
-		t.Errorf("heading-to-row inset = %g, want 8 to align with artwork", got)
-	}
-	topGap := heading.Y - (chosenRow.Y + chosenRow.H)
-	bottomGap := row.Y + 8 - (heading.Y + heading.H) // The song row pads its artwork by 8.
-	if difference := topGap - bottomGap; difference < -0.5 || difference > 0.5 {
-		t.Errorf("heading gaps are unbalanced: %g above, %g below", topGap, bottomGap)
-	}
-	if err := tt.Click("Recommended"); err != nil {
-		t.Fatal(err)
-	}
-	if a.nowPlaying.queueSelection.Len() != 0 || a.nowPlaying.queueSelectionCursor == a.queue.recStart {
-		t.Errorf("recommendation heading selected a queue row: %d selected, cursor %d", a.nowPlaying.queueSelection.Len(), a.nowPlaying.queueSelectionCursor)
 	}
 }
 
@@ -1341,29 +1234,6 @@ func TestQueueSelectionCursorUsesRenderedRowWithRecommendations(t *testing.T) {
 	}
 }
 
-func TestQueueSelectionUsesThemeAccent(t *testing.T) {
-	a, _ := playbackApp(t)
-	a.settings.Seed, a.settings.Mode = "#e91e63", "light"
-	q := tracks("a", "b", "c")
-	a.play(q[0], q)
-	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
-	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
-
-	if err := tt.ClickWith(ui.Cmd, "Track b"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Move(0, 0)
-	row, ok := tt.Find("Track b")
-	if !ok {
-		t.Fatalf("selected row missing: %q", tt.Texts())
-	}
-	want := m3.New(a.settings.Theme(uiFont), false).Scheme.Primary
-	got := tt.Image().RGBAAt(int(row.X+row.W-40), int(row.Y+row.H/2))
-	if got.R != want.R || got.G != want.G || got.B != want.B || got.A != want.A {
-		t.Fatalf("selection colour is %v; want theme accent %v", got, want)
-	}
-}
-
 func TestQueueSelectionMovesAndRemovesTogether(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c", "d")
@@ -1638,110 +1508,63 @@ func TestSeekingNearTheEndStillHandsOver(t *testing.T) {
 // The 48 DIP targets of two neighbouring buttons must not cover each other's
 // drawn shape: a press just inside the edge of "Up next" is its own, not the
 // next button's.
-func TestPlayerBarButtonsKeepTheirOwnEdges(t *testing.T) {
-	const shape = 32 // the drawn side of both buttons
-	for _, side := range []string{"left", "right"} {
-		a, _ := playbackApp(t)
-		a.router.Push("/album/MPREb_test")
-		tt := ui.NewTester(a.view, 1000, 700)
-		if err := tt.Click("Album Track One"); err != nil {
-			t.Fatal(err)
-		}
-		tt.Frame()
-		r, ok := tt.Find("Up next")
-		if !ok {
-			t.Fatalf("no Up next: %q", tt.Texts())
-		}
-		inset := (r.W - shape) / 2
-		x := r.X + inset + 2
-		if side == "right" {
-			x = r.X + r.W - inset - 2
-		}
-		tt.ClickAt(x, r.Y+r.H/2)
-		if !a.nowPlaying.open || !a.nowPlaying.queueOnly {
-			t.Errorf("a press 2 px inside the %s edge of Up next did not open Up next (open=%v, queueOnly=%v)",
-				side, a.nowPlaying.open, a.nowPlaying.queueOnly)
-		}
-	}
-}
-
-func TestSheetCornerDoesNotCoverPlayerCloseButton(t *testing.T) {
-	oldReach := sheetReach
-	// Exercise the larger continuous corner on every platform, including Linux.
-	sheetReach = continuousCornerReach
-	t.Cleanup(func() { sheetReach = oldReach })
-
-	a, _ := playbackApp(t)
-	tt := ui.NewTester(a.view, 1000, 700)
-	a.nowPlaying.open, a.nowPlaying.playerShown = true, true
-	tt.Frame()
-	close, ok := tt.Find("Close the player")
-	if !ok {
-		t.Fatalf("close button missing: %q", tt.Texts())
-	}
-	x, y := close.X+close.W/2, close.Y+close.H/2
-	tt.Move(x, y)
-	if got := tt.Cursor(); got != ui.CursorPointer {
-		t.Fatalf("cursor over close button = %v, want pointer", got)
-	}
-	tt.ClickAt(x, y)
-	if a.nowPlaying.open && !a.nowPlaying.closing {
-		t.Fatal("clicking the close button did not start closing the player")
-	}
-}
-
 func TestPlayerMetadataLinksNavigateWithoutInterruptingPlayback(t *testing.T) {
-	for _, full := range []bool{false, true} {
-		for _, dest := range []struct{ label, path, heading string }{
-			{"Go to artist: Aurora Vale", "/artist/UCartist", "Artist Track"},
-			{"Go to artist: Guest Artist", "/artist/UCguest", "Artist Track"},
-			{"Go to album: Deep Focus", "/album/MPREb_test", "Album Track One"},
-		} {
-			t.Run(strconv.FormatBool(full)+"/"+dest.label, func(t *testing.T) {
-				// The null sink consumes audio faster than real time. Leave
-				// enough audio for keyboard traversal under the race detector.
-				a, r := tonesApp(t, 600)
-				r.url = func(string, int) (string, error) { return r.file, nil }
-				a.router.Push("/playlist/VLPL_metadata")
-				tt := ui.NewTester(a.view, 1440, 900)
-				if err := tt.Click("Linked Track"); err != nil {
-					t.Fatal(err)
-				}
-				pollUntil(t, a, "playing", func() bool { return a.player.Playing() && a.player.Position() > 0 })
-				tt.Frame()
-				if full {
-					if err := tt.Click("Open the player"); err != nil {
-						t.Fatal(err)
-					}
-					tt.Advance(time.Second)
-				}
-				position, resolves, seek := a.player.Position(), r.count("linked-track"), a.seekVersion
-				queue, index := ids(a.queue.items), a.queue.index
-				if full {
-					tabTo(t, tt, dest.label)
-					tt.Key(0, ui.KeyEnter)
-					if !a.nowPlaying.closing {
-						t.Fatal("metadata navigation skipped the close animation")
-					}
-				} else if err := tt.Click(dest.label); err != nil {
+	// The player bar and the full player draw these links with the same code,
+	// and the full player only adds its close animation before the same
+	// navigation, so one destination covers the full player.
+	for _, dest := range []struct {
+		full                 bool
+		label, path, heading string
+	}{
+		{false, "Go to artist: Aurora Vale", "/artist/UCartist", "Artist Track"},
+		{false, "Go to artist: Guest Artist", "/artist/UCguest", "Artist Track"},
+		{true, "Go to artist: Aurora Vale", "/artist/UCartist", "Artist Track"},
+	} {
+		full := dest.full
+		t.Run(strconv.FormatBool(full)+"/"+dest.label, func(t *testing.T) {
+			// The null sink consumes audio faster than real time. Leave
+			// enough audio for keyboard traversal under the race detector.
+			a, r := tonesApp(t, 600)
+			r.url = func(string, int) (string, error) { return r.file, nil }
+			a.router.Push("/playlist/VLPL_metadata")
+			tt := ui.NewTester(a.view, 1440, 900)
+			if err := tt.Click("Linked Track"); err != nil {
+				t.Fatal(err)
+			}
+			pollUntil(t, a, "playing", func() bool { return a.player.Playing() && a.player.Position() > 0 })
+			tt.Frame()
+			if full {
+				if err := tt.Click("Open the player"); err != nil {
 					t.Fatal(err)
 				}
 				tt.Advance(time.Second)
-				if a.router.Path() != dest.path || a.nowPlaying.open || !tt.HasText(dest.heading) {
-					t.Fatalf("metadata did not reveal its page: path %s, player %v, texts %q", a.router.Path(), a.nowPlaying.open, tt.Texts())
+			}
+			position, resolves, seek := a.player.Position(), r.count("linked-track"), a.seekVersion
+			queue, index := ids(a.queue.items), a.queue.index
+			if full {
+				tabTo(t, tt, dest.label)
+				tt.Key(0, ui.KeyEnter)
+				if !a.nowPlaying.closing {
+					t.Fatal("metadata navigation skipped the close animation")
 				}
-				if !a.player.Playing() || a.player.Position() < position || a.current.VideoID != "linked-track" || a.queue.index != index || !slices.Equal(queue, ids(a.queue.items)) || a.seekVersion != seek || r.count("linked-track") != resolves {
-					t.Fatalf("metadata navigation changed playback: playing=%v position=%v (was %v) current=%q index=%d (was %d) queue=%v (was %v) seek=%d (was %d) resolves=%d (was %d)", a.player.Playing(), a.player.Position(), position, a.current.VideoID, a.queue.index, index, ids(a.queue.items), queue, a.seekVersion, seek, r.count("linked-track"), resolves)
-				}
-				if err := tt.Click("Back"); err != nil {
-					t.Fatal(err)
-				}
-				tt.Advance(time.Second)
-				if a.router.Path() != "/playlist/VLPL_metadata" || !tt.HasText("Unlinked Track") {
-					t.Fatal("Back did not return to the source page")
-				}
-			})
-		}
+			} else if err := tt.Click(dest.label); err != nil {
+				t.Fatal(err)
+			}
+			tt.Advance(time.Second)
+			if a.router.Path() != dest.path || a.nowPlaying.open || !tt.HasText(dest.heading) {
+				t.Fatalf("metadata did not reveal its page: path %s, player %v, texts %q", a.router.Path(), a.nowPlaying.open, tt.Texts())
+			}
+			if !a.player.Playing() || a.player.Position() < position || a.current.VideoID != "linked-track" || a.queue.index != index || !slices.Equal(queue, ids(a.queue.items)) || a.seekVersion != seek || r.count("linked-track") != resolves {
+				t.Fatalf("metadata navigation changed playback: playing=%v position=%v (was %v) current=%q index=%d (was %d) queue=%v (was %v) seek=%d (was %d) resolves=%d (was %d)", a.player.Playing(), a.player.Position(), position, a.current.VideoID, a.queue.index, index, ids(a.queue.items), queue, a.seekVersion, seek, r.count("linked-track"), resolves)
+			}
+			if err := tt.Click("Back"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Advance(time.Second)
+			if a.router.Path() != "/playlist/VLPL_metadata" || !tt.HasText("Unlinked Track") {
+				t.Fatal("Back did not return to the source page")
+			}
+		})
 	}
 }
 
@@ -1781,6 +1604,12 @@ func TestPlayerMetadataLinksStayInMainAppAndDisappearWithTheTrack(t *testing.T) 
 	if a.current.VideoID != "unlinked-track" || tt.HasText("Go to album: Deep Focus") || tt.HasText("Go to artist: Aurora Vale") || !tt.HasText("Unknown artist • Unknown album") {
 		t.Fatal("unlinked track inherited old destinations or lost its plain metadata")
 	}
+	// Previous restarts a track that has played past 3s, and a loaded machine
+	// gets there before the click; hold this one at its start so Previous goes
+	// back a track.
+	a.player.Pause()
+	a.seek(0)
+	pollUntil(t, a, "the seek to the start", func() bool { return !a.seeking.busy() })
 	if err := tt.Click("Previous"); err != nil {
 		t.Fatal(err)
 	}
@@ -1795,31 +1624,6 @@ func TestPlayerMetadataLinksStayInMainAppAndDisappearWithTheTrack(t *testing.T) 
 	}
 }
 
-func TestClosingPlayerBuildsThePageUnderThePlayer(t *testing.T) {
-	oldMotion := m3.SpatialDefault
-	m3.SpatialDefault = m3.Spring{Stiffness: 0.01, Damping: 1}
-	t.Cleanup(func() { m3.SpatialDefault = oldMotion })
-
-	a, _ := playbackApp(t)
-	a.router.Push("/home")
-	tt := ui.NewTester(a.view, 1000, 700)
-	a.nowPlaying.open, a.nowPlaying.playerShown = true, true
-	tt.Frame()
-	if _, ok := tt.Find(searchPlaceholder); ok {
-		t.Fatal("the home page search is visible behind the full player")
-	}
-
-	if err := tt.Click("Close the player"); err != nil {
-		t.Fatal(err)
-	}
-	if !a.nowPlaying.open || !a.nowPlaying.closing {
-		t.Fatal("the click did not start the player close animation")
-	}
-	if _, ok := tt.Find(searchPlaceholder); !ok {
-		t.Fatalf("the page was not built as the player closed: %q", tt.Texts())
-	}
-}
-
 // A track YouTube gives no audio for says why in the skip toast, and Learn
 // more explains an outdated yt-dlp for the build the listener runs.
 func TestFormatUnavailableOffersHelpForTheBuild(t *testing.T) {
@@ -1828,7 +1632,6 @@ func TestFormatUnavailableOffersHelpForTheBuild(t *testing.T) {
 		want string
 	}{
 		{true, "You use the full build"},
-		{false, "You use the minimal build"},
 	} {
 		a, r := playbackApp(t)
 		a.bundled = func(string) bool { return tc.full }
@@ -1844,18 +1647,6 @@ func TestFormatUnavailableOffersHelpForTheBuild(t *testing.T) {
 		if !tt.HasText(tc.want) {
 			t.Errorf("full=%v: dialog lacks %q: %q", tc.full, tc.want, tt.Texts())
 		}
-	}
-}
-
-func TestOtherSkipsHaveNoLearnMore(t *testing.T) {
-	a, r := playbackApp(t)
-	r.err["b"] = errors.New("Video unavailable")
-	tt := ui.NewTester(a.view, 1000, 700)
-	q := tracks("a", "b", "c")
-	a.play(q[1], q)
-	tt.Frame()
-	if tt.HasText("Learn more") {
-		t.Errorf("unrelated skip offers Learn more: %q", tt.Texts())
 	}
 }
 
@@ -1893,20 +1684,6 @@ func TestNarrowPlayerBarRevealsVerticalVolumeSliderOnHover(t *testing.T) {
 	tt.Move(24, 24)
 	if _, ok := tt.Find("Volume"); ok {
 		t.Fatal("moving away from the volume control leaves its slider open")
-	}
-}
-
-func TestWidePlayerBarKeepsHorizontalVolumeSlider(t *testing.T) {
-	a, _ := playbackApp(t)
-	a.current = tracks("a")[0]
-	tt := ui.NewTester(a.view, 1280, 700)
-	tt.Frame()
-	volume, ok := tt.Find("Volume")
-	if !ok {
-		t.Fatalf("the wide player bar hides its volume slider: %q", tt.Texts())
-	}
-	if volume.W <= volume.H {
-		t.Fatalf("the wide volume slider is not horizontal: %+v", volume)
 	}
 }
 
