@@ -17,6 +17,15 @@ const (
 	playerGutter = 16
 	sheetInset   = 8
 	pageGutter   = 24
+	// detailCompactSlot is the room the top bar keeps for a detail page's
+	// compact header, whether it is showing or not, so the global search
+	// beside it never moves as the page scrolls.
+	detailCompactSlot = 300
+	// topbarBackButton is the room Back takes, and topbarLeftBlock the whole
+	// left side of the bar. Every page keeps that block, so the search sits in
+	// the same place on every page.
+	topbarBackButton = 40
+	topbarLeftBlock  = topbarBackButton + 16 + detailCompactSlot
 )
 
 // view builds the window: the navigation rail, the sheet that holds the page
@@ -227,26 +236,47 @@ func (a *app) topBar(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	r, _ := a.route()
 	back := r.isDetail()
-	padding := float32(pageGutter)
-	if back {
-		padding -= 8
-	}
+	// Every page keeps the same left block, even one without a back button or
+	// a compact header, so the global search never changes place between
+	// pages or when a detail page scrolls. A plain page insets its heading by
+	// 8 DIPs inside that block, putting it back on the same gutter it had
+	// before the block existed.
+	padding := float32(pageGutter) - 8
 	topbar := ui.Row(c).Height(76).PaddingX(padding).Gap(16).AlignItems(ui.Center).Shrink(0).DragWindow()
 	if back {
 		// A page with a hero carries its wash up behind the bar.
 		topbar.Background(sc.PrimaryContainer.Mix(sc.Surface, 0.45))
 	}
+	compactTarget := float32(0)
+	if a.detailCompact {
+		compactTarget = 1
+	}
+	compact := m3.Animate(topbar, "compact-header", compactTarget, m3.EffectsSlow)
 	topbar.Children(func() {
-		if back {
-			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconArrowBack, Label: "Back", Key: "back"}).Clicked() {
-				a.router.Back()
+		left := ui.Row(c).Width(topbarLeftBlock).Shrink(0).Gap(16).AlignItems(ui.Center)
+		left.Children(func() {
+			if back {
+				if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconArrowBack, Label: "Back", Key: "back"}).Clicked() {
+					a.router.Back()
+				}
+				// The slot keeps its width whether the compact header shows
+				// or not, so the global search never moves when the page
+				// scrolls.
+				ui.Row(c).Width(detailCompactSlot).Shrink(0).Children(func() {
+					if compact > 0.01 {
+						a.compactHeader(c, compact)
+					}
+				})
+				return
 			}
-		}
-		title := ""
-		if r.heading != nil {
-			title = r.heading(c.Now())
-		}
-		m3.EmphasizedText(c, m3.HeadlineMedium, title).SingleLine().TextColor(sc.OnSurface).Shrink(0)
+			title := ""
+			if r.heading != nil {
+				title = r.heading(c.Now())
+			}
+			if title != "" {
+				m3.EmphasizedText(c, m3.HeadlineMedium, title).SingleLine().Margin(0, 0, 0, 8).MaxWidth(topbarLeftBlock - 8).Shrink(1).MinWidth(0).TextColor(sc.OnSurface)
+			}
+		})
 		ui.Spacer(c)
 		if r.bare {
 			// Settings has a local filter; Stats has no search entry point.

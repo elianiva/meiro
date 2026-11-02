@@ -48,6 +48,8 @@ func (a *app) pageList(c *ui.Context) {
 	// has been laid out: plan the lines again when it turns out different.
 	r, _ := a.route()
 	a.listWidth = list.Bounds().W
+	first, _ := a.list.Visible()
+	a.detailCompact = r.isDetail() && first > 0
 	if a.gridColumns(r) != a.page.rowsKey.columns {
 		c.Invalidate()
 	}

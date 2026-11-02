@@ -609,7 +609,7 @@ func TestTheHeroMenuOpensAgainAfterItCloses(t *testing.T) {
 	tt := open(a, "/playlist/VLPL_songs")
 	tt.Frame()
 	for round := range 2 {
-		if err := tt.RightClick("More options for "); err != nil {
+		if err := tt.RightClick("More options for Ameiro Playlist"); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()
@@ -958,6 +958,94 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 	if _, ok := tt.Find("Search in this playlist"); !ok {
 		t.Errorf("the search button did not come back: %q", tt.Texts())
+	}
+}
+
+func TestGlobalSearchKeepsItsPlaceAcrossPages(t *testing.T) {
+	a := newTestApp(t)
+	tt := ui.NewTester(a.view, 1000, 700)
+	a.router.Push("/home")
+	for range 5 {
+		tt.Frame()
+	}
+	home, ok := tt.Find(searchPlaceholder)
+	if !ok {
+		t.Fatalf("the home page has no global search: %q", tt.Texts())
+	}
+	a.router.Push("/playlist/VLPL_songs")
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	for range 5 {
+		tt.Frame()
+	}
+	playlist, ok := tt.Find(searchPlaceholder)
+	if !ok {
+		t.Fatalf("the playlist page has no global search: %q", tt.Texts())
+	}
+	if home != playlist {
+		t.Fatalf("the global search moved between pages: home %v, playlist %v", home, playlist)
+	}
+}
+
+func TestPlaylistHeaderFollowsTheScroll(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	tt.Frame()
+	if a.detailCompact {
+		t.Fatal("the compact header showed before the hero was scrolled away")
+	}
+	if _, ok := tt.Find("Play playlist"); ok {
+		t.Fatalf("the compact header showed before scrolling: %q", tt.Texts())
+	}
+	searchBefore, ok := tt.Find(searchPlaceholder)
+	if !ok {
+		t.Fatalf("the page has no global search: %q", tt.Texts())
+	}
+	// Scroll the page until the hero is gone: the top bar takes its artwork,
+	// name and actions while the search stays in the song toolbar.
+	tt.Scroll(700, 500, 0, 900)
+	for range 2 {
+		tt.Frame()
+	}
+	tt.Advance(500 * time.Millisecond)
+	for range 5 {
+		tt.Frame()
+	}
+	if !a.detailCompact {
+		t.Fatalf("the compact header did not show after scrolling: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Play playlist"); !ok {
+		t.Fatalf("the compact header has no Play: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Shuffle playlist"); !ok {
+		t.Fatalf("the compact header has no Shuffle: %q", tt.Texts())
+	}
+	if searchAfter, ok := tt.Find(searchPlaceholder); !ok || searchAfter != searchBefore {
+		t.Fatalf("the global search moved or changed with the compact header: before %v, after %v", searchBefore, searchAfter)
+	}
+	// Scrolling back to the top puts the hero back and takes the compact
+	// header away.
+	tt.Scroll(700, 500, 0, -2000)
+	for range 2 {
+		tt.Frame()
+	}
+	tt.Advance(500 * time.Millisecond)
+	for range 5 {
+		tt.Frame()
+	}
+	if a.detailCompact {
+		t.Fatalf("the compact header stayed after scrolling back to the top: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Play playlist"); ok {
+		t.Fatalf("the compact header did not leave at the top: %q", tt.Texts())
+	}
+	if searchBack, ok := tt.Find(searchPlaceholder); !ok || searchBack != searchBefore {
+		t.Fatalf("the global search moved after scrolling back: before %v, back %v", searchBefore, searchBack)
 	}
 }
 
