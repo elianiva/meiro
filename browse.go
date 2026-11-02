@@ -48,7 +48,7 @@ func (a *app) pageList(c *ui.Context) {
 	}
 	list := ui.List(c, a.list, len(rows), func(i int) {
 		a.rowView(c, rows, i)
-	}).Grow(1).Padding(0, 0, a.clearance())
+	}).Grow(1).Padding(0, 0, a.clearance()).TrackScroll(a.page.scroll).HandleInput(a.pullScroll)
 	// The grid's lines depend on the width, which is known only once the list
 	// has been laid out: plan the lines again when it turns out different.
 	r, _ := a.route()

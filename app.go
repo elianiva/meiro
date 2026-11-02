@@ -108,7 +108,9 @@ type app struct {
 	// detailCompact is whether a detail page's hero has scrolled out of
 	// view, so the top bar carries its artwork, name and actions instead.
 	detailCompact bool
-	search        searchState
+	// pull is the pull-to-refresh gesture of the page shown.
+	pull   pullState
+	search searchState
 	// searchField and detailSearchField move the keyboard to the top bar's
 	// search and to the playlist page's, where Focus waits while one is hidden.
 	searchField, detailSearchField ui.Handle
@@ -211,7 +213,7 @@ func newApp() *app {
 		openURL:    mygo.Shell.OpenExternal,
 		bundled:    proc.Bundled,
 		nowPlaying: nowPlayingState{queueSelectionAnchor: -1, queueSelectionCursor: -1},
-		page:       &pageData{},
+		page:       &pageData{scroll: &ui.ScrollState{}},
 		list:       &ui.ListState{},
 		pages:      lru.New[string, *pageData](pageCacheLimit),
 		details:    lru.New[string, detail](pageCacheLimit),

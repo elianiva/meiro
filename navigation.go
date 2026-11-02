@@ -80,6 +80,9 @@ type pageData struct {
 	// list is where the page is scrolled to, kept with it so that going back
 	// to a page shows it where it was left.
 	list *ui.ListState
+	// scroll is how far the list is scrolled, which the pull to refresh reads
+	// to tell a pull from a scroll back to the top.
+	scroll *ui.ScrollState
 }
 
 // fresh reports whether a kept page can be shown as it is.
@@ -141,6 +144,8 @@ func (a *app) onNavigate() {
 	a.pageMore.stop()
 	a.nowPlaying.open, a.nowPlaying.closing = false, false
 	a.nowPlaying.navigateTo = nil
+	// A pull to refresh belongs to the visit of the page it pulls.
+	a.pull = pullState{}
 	location := a.router.Location()
 	r, id := a.route()
 	if r.open != nil {
@@ -166,7 +171,7 @@ func (a *app) onNavigate() {
 	// the accessibility tree built from the last frame.
 	a.list = &ui.ListState{}
 	a.list.ScrollTo(0, ui.Start)
-	a.page = &pageData{rowsDirty: true, list: a.list}
+	a.page = &pageData{rowsDirty: true, list: a.list, scroll: &ui.ScrollState{}}
 	a.pages.Delete(location)
 	if r.isDetail() {
 		a.page.detail, _ = a.details.Get(a.path())

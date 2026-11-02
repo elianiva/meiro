@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Pull a page down to load it again.** Swiping down from the top of Home, Explore or Library loads the page again, as the refresh shortcut does. A ring fills as you pull, and the page loads again when the ring is full. A page scrolled away from its top scrolls back to it instead.
+
 ### Changed
 
 - **The lyrics read as lyrics.** The line being sung takes the theme's accent colour, the other lines fade with their distance from it, and both ends of the list dissolve into the card instead of being cut by it. The words of a song read at a comfortable width instead of across the whole tab.

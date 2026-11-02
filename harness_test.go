@@ -65,6 +65,8 @@ var (
 	// lastWrite is the last playlist write the fake YouTube was asked for:
 	// which endpoint, and the fields of its body.
 	lastWrite atomic.Value
+	// homeLoads counts the home feeds the fake has answered.
+	homeLoads atomic.Int32
 )
 
 // searchBody is the last search request the fake YouTube was asked for.
@@ -131,6 +133,9 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = suggestionsResponse
 	case strings.Contains(asked, "FEmusic_explore"):
 		reply = exploreResponse
+	case strings.Contains(asked, "FEmusic_home"):
+		homeLoads.Add(1)
+		reply = homeResponse
 	case strings.Contains(asked, `"continuation":"home-more"`):
 		homeMoreRequests.Add(1)
 		reply = homeMoreResponse
@@ -625,6 +630,7 @@ func resetFakes() {
 	playlistDeletes.Store(0)
 	subscribeWrites.Store(0)
 	homeMoreRequests.Store(0)
+	homeLoads.Store(0)
 	aiChecks.Store(0)
 	refuseWrites.Store(false)
 	duplicateWrites.Store(false)

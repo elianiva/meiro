@@ -214,6 +214,7 @@ func (a *app) sheetContents(c *ui.Context) {
 	a.topBar(c)
 	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
 		a.routerView(c)
+		a.pullIndicator(c)
 	})
 	if a.current.VideoID != "" {
 		a.playerBar(c)
