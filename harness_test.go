@@ -578,7 +578,7 @@ func playlistPage() string {
 
 // playlistSongsResponse is a playlist page of three songs, each with an artist
 // beside it, for searching the page.
-const playlistSongsResponse = `{"contents":{"playlistVideoListRenderer":{"contents":[
+const playlistSongsResponse = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Ameiro Playlist"}]},"subtitle":{"runs":[{"text":"Playlist"},{"text":" • "},{"text":"Nova"},{"text":" • "},{"text":"3 songs"}]},"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/ameiro.png"}]}}}}},"contents":{"playlistVideoListRenderer":{"contents":[
 	{"musicResponsiveListItemRenderer":{
 		"playlistItemData":{"videoId":"song-one"},
 		"flexColumns":[

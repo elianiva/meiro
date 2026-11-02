@@ -105,7 +105,10 @@ type app struct {
 	carousels   *lru.Cache[string, *m3.CarouselState]
 	list        *ui.ListState
 	listWidth   float32 // width the page's list had in the last frame
-	search      searchState
+	// detailCompact is whether a detail page's hero has scrolled out of
+	// view, so the top bar carries its artwork, name and actions instead.
+	detailCompact bool
+	search        searchState
 	// searchField and detailSearchField move the keyboard to the top bar's
 	// search and to the playlist page's, where Focus waits while one is hidden.
 	searchField, detailSearchField ui.Handle

@@ -94,6 +94,53 @@ func (a *app) heroButtonSize() m3.ButtonSize {
 	return m3.Medium56
 }
 
+// compactHeader puts a detail page's identity and actions in the top bar once
+// its hero has scrolled out of view: the artwork, the name, and the actions
+// that play it. shown is how far the header has come in, so the three parts
+// arrive one after another, and leave in the opposite order. The playlist
+// search stays in the song toolbar.
+func (a *app) compactHeader(c *ui.Context, shown float32) {
+	d := a.page.detail
+	if d.title == "" {
+		return
+	}
+	sc := m3.Of(c).Scheme
+	r, _ := a.route()
+	none := len(a.page.playable) == 0
+	playLabel, shuffleLabel := "Play", "Shuffle"
+	if r.target == youtube.TargetPlaylist {
+		playLabel, shuffleLabel = "Play playlist", "Shuffle playlist"
+	}
+	// Each part has its own window of the same fade, so they arrive art,
+	// title, then actions, and leave in reverse. The move is small: the bar
+	// should read as settling, not sliding.
+	part := func(from float32) float32 { return min(max((shown-from)/0.35, 0), 1) }
+	artIn, titleIn, actionsIn := part(0), part(0.12), part(0.3)
+	ui.Row(c).Gap(10).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
+		if d.art != "" {
+			a.art(c, d.art, 96, 34, m3.Small).Opacity(artIn).Translate(0, (1-artIn)*6)
+		}
+		m3.EmphasizedText(c, m3.TitleMedium, d.title).SingleLine().MaxWidth(140).Shrink(1).MinWidth(0).TextColor(sc.OnSurface).
+			Opacity(titleIn).Translate(0, (1-titleIn)*6)
+		ui.Row(c).Gap(2).Shrink(0).Opacity(actionsIn).Translate(0, (1-actionsIn)*6).Children(func() {
+			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconPlay, Label: playLabel, Kind: m3.FilledIcon, Size: m3.ExtraSmall32, Disabled: none, Key: "compact-play"}).Clicked() {
+				a.playAll()
+			}
+			// A show is listened to in order, as in the hero.
+			if r.target != youtube.TargetPodcast {
+				if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconShuffle, Label: shuffleLabel, Kind: m3.StandardIcon, Size: m3.ExtraSmall32, Disabled: none, Key: "compact-shuffle"}).Clicked() {
+					a.shufflePage()
+				}
+			}
+			if state, id, ok := a.pageDownload(); ok {
+				if m3.IconButton(c, m3.IconButtonSpec{Icon: state.icon, Label: state.label, Kind: m3.StandardIcon, Size: m3.ExtraSmall32, Disabled: state.disabled, Key: "compact-download"}).Clicked() {
+					a.togglePageDownload(id, state)
+				}
+			}
+		})
+	})
+}
+
 // playlistSort draws two controls above the list: a menu that picks what to
 // sort by, and a button that reverses the direction. Both sit on the songs
 // toolbar with the search, so they carry no container of their own: the row is
