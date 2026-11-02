@@ -134,6 +134,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.Contains(asked, `"continuation":"home-more"`):
 		homeMoreRequests.Add(1)
 		reply = homeMoreResponse
+	case strings.Contains(asked, "VLPL_page_token"):
+		reply = paginatedPlaylistResponse(0, 100, "", "playlist-tracks")
 	case strings.Contains(asked, "VLPL_paginated"):
 		reply = paginatedPlaylistResponse(0, 100, "playlist-tracks", "playlist-more")
 	case strings.Contains(asked, `"continuation":"playlist-tracks"`):

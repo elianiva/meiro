@@ -68,6 +68,7 @@ type pageData struct {
 	loadedAt     time.Time
 	rows         []row
 	playable     []youtube.MusicItem
+	playlistMore string
 	// rowsDirty marks the rows stale. A change of the page's data sets it,
 	// and the next frame rebuilds them; otherwise they are reused. rowsKey
 	// is the shape they were built from, so a change a caller did not mark
@@ -243,13 +244,8 @@ func (a *app) loadPage(r *route, id string) {
 		// A playlist page shows its whole playlist and what YouTube suggests
 		// under it, so the page asks for both as it opens.
 		if r.id == routePlaylist {
-			token, suggestions := feed.more, ""
-			for _, section := range feed.sections {
-				if (section.Kind == "musicPlaylistShelfRenderer" || section.Kind == "playlistVideoListRenderer") && section.ContinuationToken != "" {
-					token, suggestions = section.ContinuationToken, feed.more
-					break
-				}
-			}
+			token, suggestions := playlistContinuations(feed.sections, feed.more)
+			p.playlistMore = token
 			p.feed.more = ""
 			a.loadPlaylistRest(p, client, token, suggestions)
 		}
@@ -279,6 +275,7 @@ func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token, sugge
 			log.Printf("loading the rest of a playlist: %v", err)
 			return
 		}
+		p.playlistMore = ""
 		feed := &p.feed
 		if len(more.items) > 0 {
 			switch {
@@ -297,6 +294,17 @@ func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token, sugge
 			feed.similarShown = min(suggestionsShown, len(feed.similar))
 		}
 	})
+}
+
+// playlistContinuations keeps the playlist's songs ahead of suggestions,
+// whether YouTube puts the next token on the song shelf or the page.
+func playlistContinuations(sections []youtube.MusicSection, pageToken string) (songs, suggestions string) {
+	for _, section := range sections {
+		if (section.Kind == "musicPlaylistShelfRenderer" || section.Kind == "playlistVideoListRenderer") && section.ContinuationToken != "" {
+			return section.ContinuationToken, pageToken
+		}
+	}
+	return pageToken, ""
 }
 
 // readPlaylistRest follows the playlist's continuation until YouTube returns

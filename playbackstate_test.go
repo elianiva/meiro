@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/youtube"
@@ -142,5 +144,38 @@ func TestExitKeepsTheLastChangeWithoutWaitingOutTheDebounce(t *testing.T) {
 	}
 	if got := playstate.Load(path); fmt.Sprint(ids(got.Items)) != "[a b c late]" {
 		t.Errorf("the last change was lost: %v", ids(got.Items))
+	}
+}
+
+func TestARestartContinuesAnUnfinishedPlaylist(t *testing.T) {
+	resetFakes()
+	first, _ := playbackApp(t)
+	var songs []youtube.MusicItem
+	for i := range 100 {
+		songs = append(songs, youtube.MusicItem{VideoID: fmt.Sprintf("track-%d", i), Title: fmt.Sprintf("Track %d", i), Duration: "3:00"})
+	}
+	first.queue.replace(songs[0], songs, 0, "Large playlist")
+	first.queue.playlistMore = "playlist-tracks"
+	path := filepath.Join(t.TempDir(), "playback.json")
+	var writer playstate.Writer
+	writer.Path = path
+	writer.Save(first.queue.state(time.Second))
+	writer.Wait()
+
+	second, _ := playbackApp(t)
+	second.restorePlayback(path)
+	if second.player.Active() {
+		t.Fatal("restoring started playback")
+	}
+	tt := ui.NewTester(second.view, 1000, 700)
+	if err := tt.Click("Play"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if second.queue.len() != 146 || second.queue.remaining() != 145 || second.current.VideoID != "track-0" {
+		t.Fatalf("resumed playlist: current=%q queue=%d remaining=%d", second.current.VideoID, second.queue.len(), second.queue.remaining())
+	}
+	if second.queue.playlistMore != "" {
+		t.Fatal("completed playlist still has a pending continuation")
 	}
 }

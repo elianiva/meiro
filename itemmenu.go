@@ -115,7 +115,7 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 					close()
 				}
 			} else if m3.MenuItem(c, "Download", m3.IconDownload).Clicked() {
-				a.withCollectionTracks(item, key, func(songs []youtube.MusicItem) { a.downloadCollection(item, songs) })
+				a.withCollectionTracks(item, key, true, func(songs []youtube.MusicItem, _ string) { a.downloadCollection(item, songs) })
 				close()
 			}
 		}

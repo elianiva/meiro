@@ -557,7 +557,7 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 	if index, ok := q.trackAt(a.nowPlaying.queueSelectionCursor); ok {
 		if view.Submitted() {
 			a.clearQueueSelection()
-			a.playFrom(q.at(index), q.items, index, youtube.UpNextOptions{}, q.source)
+			a.start(q.moveTo(index))
 		}
 		if list.Shortcut(c, ui.Shift, ui.KeyF10) {
 			a.menu.show(songKey(q.at(index), songOptions{list: "queue", position: index}), false, 0, 0)

@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Timed lyrics open on the line being sung.** Opening the Lyrics tab during a song left the current line below the middle of the list. It now lands in the middle when the tab opens, as it does when the song moves on.
 - **A channel the account menu cannot switch to says why.** A row YouTube lists without the channel it stands for used to close the menu and leave you where you were. It now says that YouTube did not name the channel.
 - **The theme follows the album art again.** Meiro takes the colour from the cover the player shows, so the theme changes with each song at any display scaling instead of keeping the last colour.
+- **Playing a large playlist before it finishes loading keeps every song.** Playback starts from the first page, and remaining songs join the queue before Auto-play recommendations, mixed into the upcoming songs when shuffle is on. If loading the rest fails, the available songs still play and Auto-play can continue.
+- **Auto-play continues after a playlist ends.** When its queue runs out, recommendations start from the final song instead of reopening the original playlist.
 
 ## [0.5.2] - 2026-11-01
 

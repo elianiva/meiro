@@ -53,3 +53,5 @@ Preconditions:
 - Saving an album and liking a track both count in `likeWrites`. Reset or compare a delta.
 
 - **Large playlists.** `/playlist/VLPL_paginated` supplies 100 initial songs, a song-shelf continuation with 46 more, and a separate suggestions continuation. `TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions` checks all 146 playable songs, their last ID, and suggestions kept separate.
+
+- Playlist playback must cover both shelf and page continuation tokens, early play while songs load, playlist-card playback, selecting another queued song, and resuming an unfinished playlist after restart. See `TestPlayingBeforeThePlaylistLoadsKeepsItsRemainingSongs`, `TestPlayingAPlaylistCardIncludesEverySong`, and `TestARestartContinuesAnUnfinishedPlaylist`.
