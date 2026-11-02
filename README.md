@@ -139,7 +139,13 @@ image to see it full size.
 
 ## Install
 
-Download the latest build for your system from the
+On macOS, install with Homebrew:
+
+```sh
+brew install --cask elianiva/tap/meiro
+```
+
+On any system, you can download the latest build from the
 [releases page](https://github.com/elianiva/meiro/releases).
 
 ### Which file do I download?
@@ -191,9 +197,11 @@ For example, on Ubuntu with a normal Intel or AMD computer, download
 
 ### Install steps
 
-**macOS:** Open the disk image and drag Meiro to Applications. The app is not
-notarized by Apple yet, so the first time, right-click it and choose **Open**
-(or allow it under System Settings > Privacy & Security).
+**macOS:** With Homebrew, the command above is all you need. The cask clears
+the download flag as it installs, so Meiro opens on the first launch without a
+prompt. From the disk image, open it and drag Meiro to Applications. The app is
+not notarized by Apple yet, so the first time, right-click it and choose
+**Open** (or allow it under System Settings > Privacy & Security).
 
 **Linux:** Install the `.deb` on Debian or Ubuntu, or the `.rpm` on Fedora or a
 compatible RPM-based distribution. With Flatpak, run

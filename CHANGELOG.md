@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Pull a page down to load it again.** Swiping down from the top of Home, Explore or Library loads the page again, as the refresh shortcut does. A ring fills as you pull, and the page loads again when the ring is full. A page scrolled away from its top scrolls back to it instead.
+- **Meiro installs with Homebrew on macOS.** `brew install --cask elianiva/tap/meiro` installs the universal build and follows the newest release. The cask clears the download flag that made Gatekeeper refuse the app on the first launch.
 
 ### Changed
 
