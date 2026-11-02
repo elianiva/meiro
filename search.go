@@ -135,6 +135,14 @@ func (a *app) cancelSuggestions() {
 	a.search.suggestOpen = false
 }
 
+// searchTint is the resting fill of the top bar's search and the Settings
+// search: the theme's primary container lightened enough to stand off the
+// header wash without becoming a neutral grey.
+func searchTint(c *ui.Context) ui.Color {
+	sc := m3.Of(c).Scheme
+	return sc.PrimaryContainer.Mix(sc.Surface, 0.72)
+}
+
 // searchBar is the field every page searches from, in the top bar. Submitting
 // it shows the search page; typing asks YouTube Music for what it offers,
 // which the panel under the bar shows.
@@ -150,6 +158,7 @@ func (a *app) searchBar(c *ui.Context) ui.Element {
 		Focus:           &a.searchField,
 		Height:          48,
 		MaxWidth:        520,
+		Container:       searchTint(c),
 		TrailingPadding: trailingPadding,
 	})
 	switch {
