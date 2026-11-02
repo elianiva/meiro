@@ -17,6 +17,9 @@ type SearchSpec struct {
 	Height float32
 	// MaxWidth keeps a wide bar from stretching across the window.
 	MaxWidth float32
+	// Container overrides the neutral resting fill, for a bar that should
+	// take the colour of the page behind it.
+	Container ui.Color
 	// TrailingPadding reserves room at the end of the input for an overlaid
 	// control, without shifting the control itself.
 	TrailingPadding float32
@@ -74,9 +77,16 @@ func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 		bar.PaddingX(8).Cursor(ui.CursorText)
 	default:
 		container := sc.SurfaceContainerHigh
+		if spec.Container.A != 0 {
+			container = spec.Container
+		}
 		border := ui.Color{}
 		if bar.FocusWithin() {
-			container = sc.SurfaceContainerHighest
+			if spec.Container.A != 0 {
+				container = Layer(container, sc.OnSurface, 0.08)
+			} else {
+				container = sc.SurfaceContainerHighest
+			}
 			border = sc.Primary
 		} else if bar.Hovered() {
 			container = Layer(container, sc.OnSurface, StateHover)

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -34,6 +35,11 @@ func TestMain(m *testing.M) {
 // writes the cookie database of a profile and waits to be killed;
 // "firefox-quit" exits at once, or after MEIRO_FAKE_BROWSER_WAIT exists.
 func fakeBrowser(mode string, args []string) {
+	// Edge's Windows launcher exits before the browser unless relaunch is
+	// disabled. Model that early exit without needing a real browser.
+	if mode == "edge-signin" && !slices.Contains(args, "--edge-skip-compat-layer-relaunch") {
+		os.Exit(0)
+	}
 	if mode == "firefox" || mode == "firefox-quit" {
 		profile := valueAfter(args, "-profile")
 		if profile == "" {
@@ -193,6 +199,27 @@ func TestSignInWindowReportsAClosedWindow(t *testing.T) {
 	options := fakeWindow(t, "quit")
 	if _, err := SignInWindow(context.Background(), options); !errors.Is(err, ErrWindowClosed) {
 		t.Errorf("err = %v, want ErrWindowClosed", err)
+	}
+}
+
+func TestSignInWindowKeepsWindowsEdgeAliveUntilTheSessionIsRead(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Edge's compatibility-layer relaunch is Windows-only")
+	}
+	options := fakeWindow(t, "edge-signin")
+	got, err := SignInWindow(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "SAPISID=live; SID=session; LOGIN_INFO=li"; got != want {
+		t.Errorf("header = %q, want %q", got, want)
+	}
+	profile, err := os.ReadFile(os.Getenv("MEIRO_FAKE_BROWSER_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(string(profile)); !os.IsNotExist(err) {
+		t.Errorf("the sign-in profile was left behind: %v", err)
 	}
 }
 
