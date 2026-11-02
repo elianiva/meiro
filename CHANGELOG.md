@@ -11,11 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The lyrics read as lyrics.** The line being sung takes the theme's accent colour, the other lines fade with their distance from it, and both ends of the list dissolve into the card instead of being cut by it. The words of a song read at a comfortable width instead of across the whole tab.
 - **The Lyrics tab's header is quieter.** A switch turns the timed lines on and off where the Synced and Static chips used to be, and a question mark at the other end of the row explains where the lyrics came from instead of naming the service in the line.
 - **A playlist stays recognizable while you scroll.** Once the hero scrolls out of view, the top bar carries the cover, name and the Play, Shuffle and Download actions beside Back, while the global search stays exactly where it is. The cover, name and actions fade in one after another, and scrolling back to the top reverses the stagger and restores the full hero.
+- **The search field takes the page's colour.** The top-bar search and the Settings search now use a light tonal fill instead of neutral grey, so they stand out against the header wash while still following the theme.
 - **Shelves no longer draw a scroll bar.** The arrows beside a shelf's title page it, and the wheel and the touchpad still move it sideways. The row of cards ends closer to the section below.
 - **The close prompt shows which of its buttons quits.** "Close Meiro" reads as a destructive action on macOS and Linux, and Escape keeps Meiro running on macOS, where it did nothing before.
 
 ### Fixed
 
+- **Signing in with Edge on Windows finishes.** The sign-in window stays connected until Meiro reads the session, then closes and removes its temporary profile.
 - **Timed lyrics open on the line being sung.** Opening the Lyrics tab during a song left the current line below the middle of the list. It now lands in the middle when the tab opens, as it does when the song moves on.
 - **A channel the account menu cannot switch to says why.** A row YouTube lists without the channel it stands for used to close the menu and leave you where you were. It now says that YouTube did not name the channel.
 - **The theme follows the album art again.** Meiro takes the colour from the cover the player shows, so the theme changes with each song at any display scaling instead of keeping the last colour.

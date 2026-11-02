@@ -17,6 +17,9 @@ type SearchSpec struct {
 	Height float32
 	// MaxWidth keeps a wide bar from stretching across the window.
 	MaxWidth float32
+	// Container overrides the neutral resting fill, for a bar that should
+	// take the colour of the page behind it.
+	Container ui.Color
 	// TrailingPadding reserves room at the end of the input for an overlaid
 	// control, without shifting the control itself.
 	TrailingPadding float32
@@ -38,9 +41,9 @@ type SearchResult struct {
 	Dismissed bool
 }
 
-// SearchBar builds a pill-shaped search field. It never searches by itself:
-// typing only edits the text, and Submitted reports Enter. The element is the
-// bar, for anchoring what opens under it, as the suggestions do.
+// SearchBar builds a search field. It never searches by itself: typing only
+// edits the text, and Submitted reports Enter. The element is the bar, for
+// anchoring what opens under it, as the suggestions do.
 func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 	sc := Of(c).Scheme
 	height := spec.Height
@@ -52,10 +55,19 @@ func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 		spec.Key = "search-bar"
 	}
 	bar := ui.Row(c.Key(spec.Key)).Height(height).PaddingX(16).Gap(12).AlignItems(ui.Center).Radius(Full)
+	// A container of its own replaces the neutral grey, and keeps both of
+	// the states that follow: a focus deepens the fill it was given.
 	container := sc.SurfaceContainerHigh
+	if spec.Container.A != 0 {
+		container = spec.Container
+	}
 	border := ui.Color{}
 	if bar.FocusWithin() {
-		container = sc.SurfaceContainerHighest
+		if spec.Container.A != 0 {
+			container = Layer(container, sc.OnSurface, 0.08)
+		} else {
+			container = sc.SurfaceContainerHighest
+		}
 		border = sc.Primary
 	} else if bar.Hovered() {
 		container = Layer(container, sc.OnSurface, StateHover)

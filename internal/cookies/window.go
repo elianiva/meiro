@@ -282,6 +282,10 @@ func chromiumWindowArgs(profile, url string) []string {
 		args = append(args, "--password-store=basic")
 	case "darwin":
 		args = append(args, "--use-mock-keychain")
+	case "windows":
+		// Edge otherwise relaunches and exits the process we watch, so
+		// sign-in stops before the browser can return the session.
+		args = append(args, "--edge-skip-compat-layer-relaunch")
 	}
 	return append(args, url)
 }
