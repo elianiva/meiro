@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The lyrics read as lyrics.** The line being sung takes the theme's accent colour, the other lines fade with their distance from it, and both ends of the list dissolve into the card instead of being cut by it. The words of a song read at a comfortable width instead of across the whole tab.
 - **The Lyrics tab's header is quieter.** A switch turns the timed lines on and off where the Synced and Static chips used to be, and a question mark at the other end of the row explains where the lyrics came from instead of naming the service in the line.
-- **Playlist search sits with Sort above the songs.** The search that narrows a playlist now lives in the toolbar with the sort controls instead of beside Play and Shuffle in the hero. It opens as a simple line under the field rather than a filled pill, and still keeps the page filtered to the songs that match.
+- **Playlist search sits with Sort above the songs.** The search that narrows a playlist now lives in the toolbar with the sort controls instead of beside Play and Shuffle in the hero. It opens as a simple line under the field rather than a filled pill, and still keeps the page filtered to the songs that match. The sort controls beside it are bare buttons too, with no outlined pill around the field or the direction.
 - **Shelves no longer draw a scroll bar.** The arrows beside a shelf's title page it, and the wheel and the touchpad still move it sideways. The row of cards ends closer to the section below.
 - **The close prompt shows which of its buttons quits.** "Close Meiro" reads as a destructive action on macOS and Linux, and Escape keeps Meiro running on macOS, where it did nothing before.
 
