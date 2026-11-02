@@ -511,9 +511,9 @@ func (a *app) playlistChoice(c *ui.Context, playlist youtube.MusicItem) {
 // at most.
 const detailSearchWidth = 520
 
-// detailSearchButton is the side of the button that opens the playlist search.
-// It matches the sort control beside it.
-const detailSearchButton = 56
+// detailSearchButton is the side of the button that opens the playlist search,
+// the small icon button the toolbar row is built from.
+const detailSearchButton = 40
 
 // playlistSearch draws the control that narrows a playlist page to the songs
 // that match: an icon button that opens into the bar the Search page uses,
@@ -537,7 +537,7 @@ func (a *app) playlistSearch(c *ui.Context) {
 		control.Children(func() {
 			button := m3.IconButton(c, m3.IconButtonSpec{
 				Icon: m3.IconSearch, Label: "Search in this playlist",
-				Kind: m3.StandardIcon, Size: m3.Medium56, Key: "playlist-search-open",
+				Kind: m3.StandardIcon, Size: m3.Small40, Key: "playlist-search-open",
 			})
 			if button.Clicked() {
 				a.detailSearchOpen = true

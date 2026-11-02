@@ -99,7 +99,7 @@ func (a *app) heroButtonSize() m3.ButtonSize {
 // toolbar with the search, so they carry no container of their own: the row is
 // a line of quiet controls over the songs, not three pills.
 func (a *app) playlistSort(c *ui.Context) {
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 		a.playlistSortField(c)
 		// The direction belongs to the page rather than to a field, so the
 		// button stays for the original order, which then reads backwards.
@@ -107,7 +107,7 @@ func (a *app) playlistSort(c *ui.Context) {
 		if a.detailSort.desc {
 			label, icon = "Sort ascending", m3.IconArrowDown
 		}
-		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Kind: m3.StandardIcon, Size: m3.Medium56, Key: "playlist-sort-direction"}).Clicked() {
+		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Kind: m3.StandardIcon, Size: m3.Small40, Key: "playlist-sort-direction"}).Clicked() {
 			a.detailSort.flip()
 		}
 	})
@@ -119,7 +119,7 @@ func (a *app) playlistSortField(c *ui.Context) {
 	if a.detailSortOpen {
 		rotation = 180
 	}
-	anchor := m3.Button(c, m3.ButtonSpec{Label: "Sort: " + a.detailSort.label(), Icon: m3.IconExpandMore, IconRotation: rotation, Kind: m3.TextOnly, Size: m3.Medium56, Key: "playlist-sort"})
+	anchor := m3.Button(c, m3.ButtonSpec{Label: "Sort: " + a.detailSort.label(), Icon: m3.IconExpandMore, IconRotation: rotation, Kind: m3.TextOnly, Size: m3.Medium56, Padding: 8, Key: "playlist-sort"})
 	// A menu ignores the press that lands on the button that opened it, so
 	// the button closes it, as the account menu's button does.
 	if anchor.Clicked() {
