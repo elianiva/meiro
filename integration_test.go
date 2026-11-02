@@ -980,6 +980,53 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 }
 
+// The songs toolbar heads the list of songs, so it stays at the top of the
+// list while the page scrolls under it, and the songs keep their own sort.
+func TestTheSongsToolbarStaysOnScreen(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	tt.Frame()
+	if _, ok := tt.Find("Sort: Original order"); !ok {
+		t.Fatalf("the page has no sort control: %q", tt.Texts())
+	}
+	// Far enough that the hero and the songs are behind the toolbar: only a
+	// pinned row can still be on screen here.
+	tt.Scroll(700, 500, 0, 900)
+	for range 3 {
+		tt.Frame()
+	}
+	first, _ := a.list.Visible()
+	if first == 0 {
+		t.Fatalf("the list did not scroll: %d", first)
+	}
+	sortControl, ok := tt.Find("Sort: Original order")
+	if !ok {
+		t.Fatalf("the songs toolbar left the screen: %q", tt.Texts())
+	}
+	// It sits at the top of the list, which starts under the top bar.
+	// A row scrolled out of the list keeps its label with a zero-height box,
+	// so the toolbar is on screen only if it is still drawn.
+	if sortControl.H == 0 || sortControl.Y < 60 || sortControl.Y > 200 {
+		t.Fatalf("the songs toolbar is at %v, not at the top of the list", sortControl.Y)
+	}
+	// The songs it heads are behind it by now: what is on screen under the
+	// toolbar is the next section, not the list of songs.
+	next, ok := tt.Find("Similar songs")
+	if !ok {
+		t.Fatalf("the page has no suggestions section: %q", tt.Texts())
+	}
+	if next.Y < sortControl.Y {
+		t.Fatalf("the suggestions are above the pinned toolbar: %v vs %v", next.Y, sortControl.Y)
+	}
+	if _, ok := tt.Find("Search in this playlist"); !ok {
+		t.Fatalf("the search left the pinned toolbar: %q", tt.Texts())
+	}
+}
+
 func TestBrowsingFromHomeIntoAnAlbum(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/home")

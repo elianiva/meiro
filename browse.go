@@ -32,6 +32,11 @@ func (a *app) pageList(c *ui.Context) {
 		}
 		return rows[i].key()
 	}
+	// The songs toolbar heads the list of songs, and stays at its top while
+	// they scroll under it.
+	a.list.Header = func(i int) bool {
+		return i < len(rows) && rows[i].shelf == "playlist-sort-header"
+	}
 	a.list.Label = func(i int) string {
 		if i >= len(rows) {
 			return ""
@@ -74,7 +79,10 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 		next := i+1 < len(rows) && (rows[i+1].kind == rowCards || rows[i+1].kind == rowColumns)
 		if r.shelf == "playlist-sort-header" {
 			sc := m3.Of(c).Scheme
-			ui.Row(c).Padding(8, pageGutter-8, 8, pageGutter).Gap(12).AlignItems(ui.Center).Children(func() {
+			// The row stays at the top of the list while the songs scroll
+			// under it, so it carries the page's own colour: without one the
+			// songs would show through it.
+			ui.Row(c).Padding(8, pageGutter-8, 8, pageGutter).Gap(12).AlignItems(ui.Center).Background(sc.Surface).Children(func() {
 				m3.EmphasizedText(c, m3.TitleLarge, r.title).SingleLine().Grow(1).MinWidth(0).TextColor(sc.OnSurface)
 				a.playlistSearch(c)
 				a.playlistSort(c)
