@@ -74,8 +74,9 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 		next := i+1 < len(rows) && (rows[i+1].kind == rowCards || rows[i+1].kind == rowColumns)
 		if r.shelf == "playlist-sort-header" {
 			sc := m3.Of(c).Scheme
-			ui.Row(c).Padding(8, pageGutter-8, 8, pageGutter).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Padding(8, pageGutter-8, 8, pageGutter).Gap(12).AlignItems(ui.Center).Children(func() {
 				m3.EmphasizedText(c, m3.TitleLarge, r.title).SingleLine().Grow(1).MinWidth(0).TextColor(sc.OnSurface)
+				a.playlistSearch(c)
 				a.playlistSort(c)
 			})
 		} else {

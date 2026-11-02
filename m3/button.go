@@ -242,8 +242,7 @@ type IconButtonSpec struct {
 	// while the button's action is under way.
 	Loading bool
 	Key     any
-	// Container gives a standard icon button a resting container of its own,
-	// as the search that opens into a bar has.
+	// Container gives a standard icon button a resting container of its own.
 	Container ui.Color
 	// Dimension sets the button's side in DIPs where none of the five sizes
 	// fits, as a play button in a player bar.

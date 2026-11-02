@@ -506,3 +506,77 @@ func (a *app) playlistChoice(c *ui.Context, playlist youtube.MusicItem) {
 		a.choosePlaylist(playlist)
 	}
 }
+
+// detailSearchWidth is how wide the bar the playlist search opens into reaches
+// at most.
+const detailSearchWidth = 520
+
+// detailSearchButton is the side of the button that opens the playlist search.
+// It matches the sort control beside it.
+const detailSearchButton = 56
+
+// playlistSearch draws the control that narrows a playlist page to the songs
+// that match: an icon button that opens into the bar the Search page uses,
+// beside Sort above the songs. Closing it puts the page back to its whole
+// list, since a search that showed none of a page's rows would leave nothing
+// to say it was still on.
+func (a *app) playlistSearch(c *ui.Context) {
+	// One element carries both states, so opening grows the control instead
+	// of swapping one thing for another. Its size is a maximum, which the
+	// animation moves: a width would only set the flex base, and the
+	// control's Grow then fills the rest of the line, so the bar would jump
+	// out at full size and jump back into the button when it closed.
+	control := ui.Row(c.Key("playlist-search")).MinWidth(0).Grow(1).Shrink(1)
+	target := float32(0)
+	if a.detailSearchOpen {
+		target = 1
+	}
+	grown := m3.Animate(control, "open", target, m3.SpatialFast)
+	if !a.detailSearchOpen && grown < 0.02 {
+		control.MaxWidth(detailSearchButton)
+		control.Children(func() {
+			button := m3.IconButton(c, m3.IconButtonSpec{
+				Icon: m3.IconSearch, Label: "Search in this playlist",
+				Kind: m3.StandardIcon, Size: m3.Medium56, Key: "playlist-search-open",
+			})
+			if button.Clicked() {
+				a.detailSearchOpen = true
+				a.detailSearchField.Focus()
+				a.detailSearchHadFocus = false
+			}
+		})
+		return
+	}
+	maxWidth := float32(detailSearchWidth)
+	if a.listWidth > 0 {
+		maxWidth = min(maxWidth, a.listWidth-48)
+	}
+	control.MaxWidth(detailSearchButton + (maxWidth-detailSearchButton)*min(max(grown, 0), 1))
+	control.Children(func() {
+		result, _ := m3.SearchBar(c, m3.SearchSpec{
+			Value:       &a.detailFilter,
+			Placeholder: "Search in this playlist",
+			Key:         "playlist-search-bar",
+			Focus:       &a.detailSearchField,
+			MaxWidth:    maxWidth,
+			Dismiss:     true,
+			Underline:   true,
+			NoClear:     true,
+		})
+		if result.Dismissed {
+			a.closePlaylistSearch()
+		} else {
+			if a.detailSearchHadFocus && !result.Focused && a.detailFilter == "" {
+				a.closePlaylistSearch()
+			}
+			a.detailSearchHadFocus = result.Focused
+		}
+	})
+}
+
+// closePlaylistSearch puts a playlist page back to its whole list, and the
+// control back to the button that opens the search.
+func (a *app) closePlaylistSearch() {
+	a.detailSearchOpen, a.detailSearchHadFocus = false, false
+	a.detailFilter = ""
+}

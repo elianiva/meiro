@@ -24,6 +24,13 @@ type SearchSpec struct {
 	// opens over the page it narrows rather than standing on a page of its
 	// own.
 	Dismiss bool
+	// Underline draws the bar as a line under the field, with no container
+	// around it: for a search that narrows the list in place, where a
+	// second pill beside the page's controls would be too much.
+	Underline bool
+	// NoClear leaves out the button that empties the field, for a filter
+	// whose text is cleared by closing the search instead.
+	NoClear bool
 }
 
 // SearchResult is what happened to a search bar this frame.
@@ -38,9 +45,10 @@ type SearchResult struct {
 	Dismissed bool
 }
 
-// SearchBar builds a pill-shaped search field. It never searches by itself:
-// typing only edits the text, and Submitted reports Enter. The element is the
-// bar, for anchoring what opens under it, as the suggestions do.
+// SearchBar builds a search field. It never searches by itself: typing only
+// edits the text, and Submitted reports Enter. The element is the bar, for
+// anchoring what opens under it, as the suggestions do. It is a filled pill by
+// default, or a single line under the field with Underline.
 func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 	sc := Of(c).Scheme
 	height := spec.Height
@@ -51,18 +59,29 @@ func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 	if spec.Key == nil {
 		spec.Key = "search-bar"
 	}
-	bar := ui.Row(c.Key(spec.Key)).Height(height).PaddingX(16).Gap(12).AlignItems(ui.Center).Radius(Full)
-	container := sc.SurfaceContainerHigh
-	border := ui.Color{}
-	if bar.FocusWithin() {
-		container = sc.SurfaceContainerHighest
-		border = sc.Primary
-	} else if bar.Hovered() {
-		container = Layer(container, sc.OnSurface, StateHover)
-	}
-	bar.Border(2, border).Background(container).Transition(Fade(EffectsFast)).Cursor(ui.CursorText).Grow(1)
+	bar := ui.Row(c.Key(spec.Key)).Height(height).Gap(12).AlignItems(ui.Center).Grow(1)
 	if spec.MaxWidth > 0 {
 		bar.MaxWidth(spec.MaxWidth)
+	}
+	lineColor, lineHeight := sc.Outline, float32(1)
+	switch {
+	case spec.Underline && bar.FocusWithin():
+		lineColor, lineHeight = sc.Primary, 2
+	case spec.Underline:
+		if bar.Hovered() {
+			lineColor = sc.OnSurfaceVariant
+		}
+		bar.PaddingX(8).Cursor(ui.CursorText)
+	default:
+		container := sc.SurfaceContainerHigh
+		border := ui.Color{}
+		if bar.FocusWithin() {
+			container = sc.SurfaceContainerHighest
+			border = sc.Primary
+		} else if bar.Hovered() {
+			container = Layer(container, sc.OnSurface, StateHover)
+		}
+		bar.PaddingX(16).Radius(Full).Border(2, border).Background(container).Transition(Fade(EffectsFast)).Cursor(ui.CursorText)
 	}
 	bar.Children(func() {
 		if spec.Dismiss {
@@ -83,11 +102,14 @@ func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 		if input.Changed() {
 			result.Changed = true
 		}
-		if *spec.Value != "" {
+		if *spec.Value != "" && !spec.NoClear {
 			if IconButton(c, IconButtonSpec{Icon: IconClose, Label: "Clear search", Size: ExtraSmall32, Key: "clear"}).Clicked() {
 				*spec.Value = ""
 				result.Cleared = true
 			}
+		}
+		if spec.Underline {
+			ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(lineHeight).Background(lineColor).PassThrough()
 		}
 	})
 	result.Focused = bar.FocusWithin()
