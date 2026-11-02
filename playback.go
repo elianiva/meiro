@@ -110,6 +110,16 @@ func (a *app) play(item youtube.MusicItem, tracks []youtube.MusicItem) {
 // playFrom starts an item from a queue, and remembers the context used to
 // ask YouTube Music for the generated queue that follows it.
 func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index int, options youtube.UpNextOptions, source string) {
+	token := ""
+	if r, id := a.route(); r.id == routePlaylist && id == options.PlaylistID && len(tracks) == len(a.page.playable) {
+		token = a.page.playlistMore
+	}
+	a.playFromWithContinuation(item, tracks, index, options, source, token)
+}
+
+// playFromWithContinuation starts the first page before reading the remaining
+// playlist songs, keeping recommendations behind them.
+func (a *app) playFromWithContinuation(item youtube.MusicItem, tracks []youtube.MusicItem, index int, options youtube.UpNextOptions, source, token string) {
 	if item.VideoID == "" {
 		return
 	}
@@ -124,9 +134,7 @@ func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index
 	a.learnCredits(item)
 	options.VideoID = item.VideoID
 	a.resetUpNext(options)
-	if r, id := a.route(); r.id == routePlaylist && id == options.PlaylistID && len(tracks) == len(a.page.playable) {
-		a.queue.playlistMore = a.page.playlistMore
-	}
+	a.queue.playlistMore = token
 	if a.loading() && a.current.VideoID == item.VideoID {
 		a.loadPlayingPlaylistRest()
 		a.ensureUpNext()

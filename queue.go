@@ -173,14 +173,7 @@ func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 	if playNext {
 		position = q.index + 1
 	}
-	position = min(max(position, 0), len(q.items))
-	q.items = slices.Insert(q.items, position, item)
-	if position <= q.index {
-		q.index++
-	}
-	if q.recStart >= 0 && position <= q.recStart {
-		q.recStart++
-	}
+	q.insertAt(item, position)
 	if playNext {
 		q.playNext = item.VideoID
 		// With auto-play off the queue stops at the generated tracks, so a
@@ -188,6 +181,35 @@ func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 		if !autoPlay && q.recStart >= 0 && position >= q.recStart {
 			q.recStart = position + 1
 		}
+	}
+}
+
+// appendPlaylist adds later pages before recommendations, mixing them among
+// the unplayed chosen songs when shuffled and remembering their original order.
+func (q *queue) appendPlaylist(items []youtube.MusicItem, shuffle bool) {
+	if shuffle && len(q.shuffleKept) == 0 {
+		q.shuffleKept = slices.Clone(q.items[:q.limit(false)])
+	}
+	for _, item := range items {
+		position := q.limit(false)
+		if shuffle {
+			q.shuffleKept = append(q.shuffleKept, item)
+			if position > q.index {
+				position = q.index + 1 + rand.IntN(position-q.index)
+			}
+		}
+		q.insertAt(item, position)
+	}
+}
+
+func (q *queue) insertAt(item youtube.MusicItem, position int) {
+	position = min(max(position, 0), len(q.items))
+	q.items = slices.Insert(q.items, position, item)
+	if position <= q.index {
+		q.index++
+	}
+	if q.recStart >= 0 && position <= q.recStart {
+		q.recStart++
 	}
 }
 

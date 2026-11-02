@@ -539,6 +539,55 @@ func TestAutoPlayFetchesAndQueuesRecommendations(t *testing.T) {
 	}
 }
 
+func TestExpiredRestoredPlaylistAllowsAutoPlay(t *testing.T) {
+	a, _ := playbackApp(t)
+	var continuations, recommendations int
+	a.account.public = youtube.NewClient(youtube.Options{HTTPClient: &http.Client{Transport: playbackRoundTrip(func(request *http.Request) (*http.Response, error) {
+		asked, err := io.ReadAll(request.Body)
+		if err != nil {
+			return nil, err
+		}
+		status := http.StatusOK
+		body := `{"contents":{"playlistPanelRenderer":{"contents":[{"playlistPanelVideoRenderer":{"videoId":"recommended","title":{"runs":[{"text":"Recommended track"}]}}}]}}}`
+		switch {
+		case strings.Contains(string(asked), `"continuation":"expired"`):
+			continuations++
+			status, body = http.StatusBadRequest, `{}`
+		case strings.HasSuffix(request.URL.Path, "/next"):
+			recommendations++
+		default:
+			request.Body = io.NopCloser(strings.NewReader(string(asked)))
+			return fakeMusic{}.RoundTrip(request)
+		}
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+	})}})
+	path := filepath.Join(t.TempDir(), "playback.json")
+	var writer playstate.Writer
+	writer.Path = path
+	writer.Save(playstate.State{Items: tracks("first", "last"), Index: 0, RecStart: -1, PlaylistMore: "expired"})
+	writer.Wait()
+	a.settings.AutoPlay = true
+	a.restorePlayback(path)
+	tt := ui.NewTester(a.view, 1000, 700)
+	if err := tt.Click("Play"); err != nil {
+		t.Fatal(err)
+	}
+	if a.queue.playlistMore != "" || continuations != 1 || recommendations != 1 || a.queue.recStart != 2 {
+		t.Fatalf("expired continuation blocked recommendations: token=%q browse=%d next=%d queue=%v", a.queue.playlistMore, continuations, recommendations, ids(a.queue.items))
+	}
+	if err := tt.Click("Next"); err != nil {
+		t.Fatal(err)
+	}
+	if continuations != 1 || a.current.VideoID != "last" {
+		t.Fatalf("track change retried expired continuation: browse=%d current=%q", continuations, a.current.VideoID)
+	}
+	a.persistPlayback()
+	a.playSave.writer.Wait()
+	if state := playstate.Load(path); state.PlaylistMore != "" {
+		t.Fatal("expired continuation was persisted again")
+	}
+}
+
 func TestAutoPlayRetriesRecommendationsWhenChosenQueueRunsOut(t *testing.T) {
 	var requests atomic.Int32
 	client := youtube.NewClient(youtube.Options{

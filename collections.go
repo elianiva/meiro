@@ -88,7 +88,7 @@ func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 		a.play(item, []youtube.MusicItem{item})
 		return
 	}
-	a.withCollectionTracks(item, key, func(songs []youtube.MusicItem) {
+	a.withCollectionTracks(item, key, false, func(songs []youtube.MusicItem, token string) {
 		// What the playlist is read from follows the song drawn to open it,
 		// so the queue YouTube is asked for keeps the same place.
 		start := 0
@@ -100,7 +100,7 @@ func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 			playlistIndex := start
 			options.PlaylistID, options.PlaylistIndex = target.ID, &playlistIndex
 		}
-		a.playFrom(songs[0], songs, 0, options, item.Title)
+		a.playFromWithContinuation(songs[0], songs, 0, options, item.Title, token)
 	})
 }
 
@@ -112,16 +112,16 @@ func (a *app) startRadio(item youtube.MusicItem, key string) {
 		a.playFrom(item, nil, 0, youtube.UpNextOptions{}, item.Title)
 		return
 	}
-	a.withCollectionTracks(item, key, func(songs []youtube.MusicItem) {
+	a.withCollectionTracks(item, key, false, func(songs []youtube.MusicItem, _ string) {
 		seed := songs[rand.IntN(len(songs))]
 		a.playFrom(seed, nil, 0, youtube.UpNextOptions{}, item.Title)
 	})
 }
 
 // withCollectionTracks reads the page of the album, the playlist or the artist
-// an item names and hands its tracks to then, keeping a second press on the
-// same card from reading it again.
-func (a *app) withCollectionTracks(item youtube.MusicItem, key string, then func([]youtube.MusicItem)) {
+// an item names and hands its tracks and continuation to then. Downloads ask
+// for all pages; playback can start before the remaining songs arrive.
+func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool, then func([]youtube.MusicItem, string)) {
 	target := item.Target()
 	if target.Kind != youtube.TargetAlbum && target.Kind != youtube.TargetPlaylist && target.Kind != youtube.TargetArtist {
 		return
@@ -142,8 +142,8 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, then func
 			// its own.
 		}
 		result, err := client.GetPlaylist(ctx, target.ID)
-		if err != nil {
-			return nil, err
+		if err != nil || !all {
+			return result, err
 		}
 		token, _ := playlistContinuations(result.Sections, result.ContinuationToken)
 		more, err := readPlaylistRest(ctx, token, client.ContinueBrowse)
@@ -169,7 +169,11 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, then func
 		if len(songs) == 0 {
 			return
 		}
-		then(songs)
+		token := ""
+		if target.Kind == youtube.TargetPlaylist && !all {
+			token, _ = playlistContinuations(result.Sections, result.ContinuationToken)
+		}
+		then(songs, token)
 	})
 }
 
@@ -210,14 +214,13 @@ func (a *app) loadPlayingPlaylistRest() {
 	startTask(a, &a.queueRest, openTimeout, func(ctx context.Context) (moreItems, error) {
 		return readPlaylistRest(ctx, token, client.ContinueBrowse)
 	}, func(more moreItems, err error) {
+		a.queue.playlistMore = ""
 		if err != nil {
 			a.notice = "Could not load the rest of the playlist: " + firstLine(err.Error())
+			a.ensureUpNext()
 			return
 		}
-		a.queue.playlistMore = ""
-		for _, item := range a.visibleItems(more.items) {
-			a.queue.insert(item, false, a.settings.AutoPlay)
-		}
+		a.queue.appendPlaylist(a.visibleItems(more.items), a.shuffle)
 		a.clearQueueSelection()
 		a.warmNext()
 		a.ensureUpNext()
