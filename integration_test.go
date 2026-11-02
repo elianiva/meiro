@@ -832,12 +832,24 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	if len(a.page.playable) != 3 {
 		t.Fatalf("the playlist page holds %d songs, want 3", len(a.page.playable))
 	}
-	// The search is a button that opens, not a bar that is always there.
+	// The search is a button that opens, not a bar that is always there,
+	// and it sits with Sort above the songs rather than in the hero.
 	if _, ok := tt.Find("Search in this playlist"); !ok {
 		t.Fatalf("the playlist page has no search button: %q", tt.Texts())
 	}
 	if a.detailSearchOpen {
 		t.Fatal("the search opened by itself")
+	}
+	searchButton, ok := tt.Find("Search in this playlist")
+	if !ok {
+		t.Fatalf("the playlist page has no search button: %q", tt.Texts())
+	}
+	sortControl, ok := tt.Find("Sort: Original order")
+	if !ok {
+		t.Fatalf("the playlist page has no sort control: %q", tt.Texts())
+	}
+	if searchButton.Y >= sortControl.Y+sortControl.H || searchButton.Y+searchButton.H <= sortControl.Y {
+		t.Fatalf("the search button is not on the Sort row: search %v, Sort %v", searchButton, sortControl)
 	}
 	// shown counts the playlist's own rows: a row of the suggestions that
 	// YouTube keeps under the page plays from its own list.
@@ -873,18 +885,25 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 
 	search("ameiro")
-	// The bar grows in place, on the row of the buttons that play the page:
-	// opening it must not move it to a row of its own.
+	// The bar grows in place on the row that sorts the songs, away from the
+	// hero: opening it must not move it to a row of its own.
 	play, ok := tt.Find("Play")
 	if !ok {
 		t.Fatalf("the page has no Play button: %q", tt.Texts())
+	}
+	sortControl, ok = tt.Find("Sort: Original order")
+	if !ok {
+		t.Fatalf("the page has no Sort control: %q", tt.Texts())
 	}
 	bar, ok := tt.Find("Search in this playlist")
 	if !ok {
 		t.Fatalf("the open search has no bar: %q", tt.Texts())
 	}
-	if bar.Y >= play.Y+play.H || bar.Y+bar.H <= play.Y {
-		t.Fatalf("the search bar is not on the Play row: bar %v, Play %v", bar, play)
+	if bar.Y >= sortControl.Y+sortControl.H || bar.Y+bar.H <= sortControl.Y {
+		t.Fatalf("the search bar is not on the Sort row: bar %v, Sort %v", bar, sortControl)
+	}
+	if bar.Y < play.Y+play.H && bar.Y+bar.H > play.Y {
+		t.Fatalf("the search bar is still on the hero row: bar %v, Play %v", bar, play)
 	}
 	if !slices.ContainsFunc(a.page.rows, func(r row) bool { return r.shelf == "playlist-sort-header" }) {
 		t.Errorf("filtering hid the playlist sort header: %#v", a.page.rows)
@@ -958,6 +977,53 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 	if _, ok := tt.Find("Search in this playlist"); !ok {
 		t.Errorf("the search button did not come back: %q", tt.Texts())
+	}
+}
+
+// The songs toolbar heads the list of songs, so it stays at the top of the
+// list while the page scrolls under it, and the songs keep their own sort.
+func TestTheSongsToolbarStaysOnScreen(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	tt.Frame()
+	if _, ok := tt.Find("Sort: Original order"); !ok {
+		t.Fatalf("the page has no sort control: %q", tt.Texts())
+	}
+	// Far enough that the hero and the songs are behind the toolbar: only a
+	// pinned row can still be on screen here.
+	tt.Scroll(700, 500, 0, 900)
+	for range 3 {
+		tt.Frame()
+	}
+	first, _ := a.list.Visible()
+	if first == 0 {
+		t.Fatalf("the list did not scroll: %d", first)
+	}
+	sortControl, ok := tt.Find("Sort: Original order")
+	if !ok {
+		t.Fatalf("the songs toolbar left the screen: %q", tt.Texts())
+	}
+	// It sits at the top of the list, which starts under the top bar.
+	// A row scrolled out of the list keeps its label with a zero-height box,
+	// so the toolbar is on screen only if it is still drawn.
+	if sortControl.H == 0 || sortControl.Y < 60 || sortControl.Y > 200 {
+		t.Fatalf("the songs toolbar is at %v, not at the top of the list", sortControl.Y)
+	}
+	// The songs it heads are behind it by now: what is on screen under the
+	// toolbar is the next section, not the list of songs.
+	next, ok := tt.Find("Similar songs")
+	if !ok {
+		t.Fatalf("the page has no suggestions section: %q", tt.Texts())
+	}
+	if next.Y < sortControl.Y {
+		t.Fatalf("the suggestions are above the pinned toolbar: %v vs %v", next.Y, sortControl.Y)
+	}
+	if _, ok := tt.Find("Search in this playlist"); !ok {
+		t.Fatalf("the search left the pinned toolbar: %q", tt.Texts())
 	}
 }
 
