@@ -109,7 +109,6 @@ func settingsRowsFor(query string) []settingsRow {
 }
 
 func (a *app) settingsSearchBar(c *ui.Context) {
-	sc := m3.Of(c).Scheme
 	const buttonWidth, maxWidth = float32(40), float32(520)
 	control := ui.Row(c.Key("settings-search")).Width(maxWidth).MinWidth(0).Shrink(1)
 	target := float32(0)
@@ -122,7 +121,7 @@ func (a *app) settingsSearchBar(c *ui.Context) {
 		control.Children(func() {
 			button := m3.IconButton(c, m3.IconButtonSpec{
 				Icon: m3.IconSearch, Label: "Search settings", Kind: m3.StandardIcon,
-				Size: m3.Small40, Key: "settings-search-open", Container: sc.SurfaceContainerHigh,
+				Size: m3.Small40, Key: "settings-search-open", Container: searchTint(c),
 			})
 			if button.Clicked() {
 				a.settingsSearch.open = true
@@ -139,6 +138,7 @@ func (a *app) settingsSearchBar(c *ui.Context) {
 			Key:         "settings-search-bar",
 			Focus:       &a.settingsSearch.field,
 			MaxWidth:    maxWidth,
+			Container:   searchTint(c),
 			Dismiss:     true,
 		})
 		if result.Changed || result.Cleared {
