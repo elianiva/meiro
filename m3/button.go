@@ -62,6 +62,11 @@ type ButtonSpec struct {
 	Size         ButtonSize
 	// Square gives the button the squarer shape; the default is a pill.
 	Square bool
+	// Padding overrides the room the label and the icon keep inside the
+	// shape. A button with no container of its own draws nothing but its
+	// content, so the size's padding reads as a gap between it and the
+	// controls beside it on a toolbar row.
+	Padding float32
 	// Toggle makes the button a toggle: Selected is its state, and a selected
 	// toggle swaps its shape, as Expressive buttons do, so that state shows in
 	// shape as well as in colour.
@@ -204,7 +209,11 @@ func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 	b.Height(d.height+2*reachBy).Margin(-reachBy, 0)
 	iconRotation := Animate(b, "icon-rotation", spec.IconRotation, SpatialFast)
 	b.Children(func() {
-		shape := ui.Row(c).Height(d.height).PaddingX(d.pad).Gap(d.gap).Radius(radius).Background(fill).
+		pad := d.pad
+		if spec.Padding > 0 {
+			pad = spec.Padding
+		}
+		shape := ui.Row(c).Height(d.height).PaddingX(pad).Gap(d.gap).Radius(radius).Background(fill).
 			Justify(ui.Center).AlignItems(ui.Center).TextColor(content).Transition(Fade(EffectsFast))
 		focusRing(c, b, shape, radius)
 		if outline.A != 0 {
@@ -242,8 +251,7 @@ type IconButtonSpec struct {
 	// while the button's action is under way.
 	Loading bool
 	Key     any
-	// Container gives a standard icon button a resting container of its own,
-	// as the search that opens into a bar has.
+	// Container gives a standard icon button a resting container of its own.
 	Container ui.Color
 	// Dimension sets the button's side in DIPs where none of the five sizes
 	// fits, as a play button in a player bar.
