@@ -59,6 +59,29 @@ func TestQueueKeepsItsPlaceThroughChanges(t *testing.T) {
 	}
 }
 
+// Adding to the queue while auto-play already plays a generated track puts
+// the added tracks after it, not behind it in the original queue.
+func TestQueueAddsAfterAGeneratedCurrent(t *testing.T) {
+	q := newQueue()
+	chosen := tracks("a", "b", "c")
+	q.replace(chosen[0], chosen, 0, "Album")
+	q.appendGenerated(tracks("r1", "r2", "r3"))
+	q.moveTo(q.find("r1"))
+	q.insert(youtube.MusicItem{VideoID: "x"}, false, true)
+	q.insert(youtube.MusicItem{VideoID: "y"}, false, true)
+	want := []string{"a", "b", "c", "r1", "x", "y", "r2", "r3"}
+	if got := ids(q.items); !slices.Equal(got, want) || q.recStart != 3 {
+		t.Fatalf("queue = %v, recStart %d; want %v and 3", got, q.recStart, want)
+	}
+	if next, ok := q.next(true, repeatOff); !ok || q.at(next).VideoID != "x" {
+		t.Fatalf("next = %d, %v; want x", next, ok)
+	}
+	q.moveTo(q.find("x"))
+	if next, ok := q.next(true, repeatOff); !ok || q.at(next).VideoID != "y" {
+		t.Fatalf("next after x = %d, %v; want y", next, ok)
+	}
+}
+
 // A queue that would hold more generated tracks than the limit drops played
 // tracks first, and never more than the limit.
 func TestQueueBoundsGeneratedTracks(t *testing.T) {

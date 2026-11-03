@@ -165,10 +165,22 @@ func (q *queue) find(videoID string) int {
 
 // insert adds a chosen track: after the current one when playNext is set,
 // and otherwise at the end of the chosen tracks, ahead of the generated ones.
+// Once auto-play has moved into the generated tracks their boundary is behind
+// the current one, so the track goes after it, before the next generated one.
 func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 	position := len(q.items)
 	if q.recStart >= 0 {
-		position = q.recStart
+		if q.index < q.recStart {
+			position = q.recStart
+		} else {
+			position = q.index + 1
+			for position < len(q.items) {
+				if _, generated := q.generated[q.items[position].VideoID]; generated {
+					break
+				}
+				position++
+			}
+		}
 	}
 	if playNext {
 		position = q.index + 1
