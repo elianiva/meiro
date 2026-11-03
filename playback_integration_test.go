@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/youtube"
@@ -137,6 +139,93 @@ func TestQueueAdvancesPreviousAndStops(t *testing.T) {
 	a.trackEnded() // the end of the queue, nothing repeats
 	if a.current.VideoID != "c" || a.loading() {
 		t.Errorf("the queue end: current=%q loading=%v", a.current.VideoID, a.loading())
+	}
+}
+
+// shownNotices records the track notifications the app shows, in place of
+// the desktop. front says whether a Meiro window is in front.
+type shownNotices struct {
+	front     bool
+	shown     []string
+	covers    int
+	dismissed int
+}
+
+func (n *shownNotices) appActive() bool { return n.front }
+
+func (n *shownNotices) notify(item youtube.MusicItem, icon []byte) {
+	n.shown = append(n.shown, item.VideoID)
+	if len(icon) > 0 {
+		n.covers++
+	}
+}
+
+func (n *shownNotices) dismissNotification() { n.dismissed++ }
+
+func TestTrackNotificationsSkipTracksStartedWhileMeiroIsInFront(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("macOS shows no track notifications")
+	}
+	a, _ := playbackApp(t)
+	a.settings.NotifyTrack = true
+	n := &shownNotices{}
+	a.notices = n
+	q := tracks("a", "b", "c")
+
+	a.play(q[0], q)
+	if !slices.Equal(n.shown, []string{"a"}) || n.dismissed != 0 {
+		t.Fatalf("in the background: shown %v, dismissed %d", n.shown, n.dismissed)
+	}
+	n.front = true
+	a.trackEnded()
+	if a.current.VideoID != "b" || !slices.Equal(n.shown, []string{"a"}) {
+		t.Fatalf("with Meiro in front, playing %q showed %v", a.current.VideoID, n.shown)
+	}
+	if n.dismissed != 1 {
+		t.Fatalf("the earlier track's notification was dismissed %d times, want 1", n.dismissed)
+	}
+	n.front = false
+	a.trackEnded()
+	if a.current.VideoID != "c" || !slices.Equal(n.shown, []string{"a", "c"}) || n.dismissed != 1 {
+		t.Fatalf("back in the background: playing %q showed %v, dismissed %d", a.current.VideoID, n.shown, n.dismissed)
+	}
+}
+
+func TestTrackNotificationLooksAtTheFrontWindowOnceItsCoverArrives(t *testing.T) {
+	if !notificationArtworkNeeded() {
+		t.Skip("only Windows downloads the cover before showing the notification")
+	}
+	a, _ := playbackApp(t)
+	a.settings.NotifyTrack = true
+	n := &shownNotices{}
+	a.notices = n
+	var asked []string
+	a.thumbs = artwork.New(&http.Client{Transport: artworkTransport(func(r *http.Request) (*http.Response, error) {
+		asked = append(asked, r.URL.String())
+		if r.URL.String() == "https://img.test/b=w96-h96" {
+			if n.front {
+				t.Error("Meiro was in front before the second cover was asked for")
+			}
+			n.front = true // The user comes to Meiro while the cover downloads.
+		}
+		return redArt{}.RoundTrip(r)
+	})}, func() {})
+	t.Cleanup(a.thumbs.Close)
+	q := tracks("a", "b")
+	for i := range q {
+		q[i].Thumbnail = "https://img.test/" + q[i].VideoID + "=w544-h544"
+	}
+
+	a.play(q[0], q)
+	if !slices.Equal(n.shown, []string{"a"}) || n.covers != 1 {
+		t.Fatalf("in the background: shown %v with %d covers", n.shown, n.covers)
+	}
+	a.trackEnded()
+	if !slices.Contains(asked, "https://img.test/b=w96-h96") {
+		t.Fatalf("the second track's cover was never asked for: %v", asked)
+	}
+	if a.current.VideoID != "b" || !slices.Equal(n.shown, []string{"a"}) || n.dismissed != 1 {
+		t.Fatalf("focused during the download: playing %q showed %v, dismissed %d", a.current.VideoID, n.shown, n.dismissed)
 	}
 }
 

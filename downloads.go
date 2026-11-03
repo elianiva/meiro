@@ -112,6 +112,66 @@ func (a *app) downloadCollection(item youtube.MusicItem, tracks []youtube.MusicI
 	a.queueDownloads(songs, false)
 }
 
+// syncCollectionDownload downloads the tracks a downloaded album or playlist
+// gained since it was downloaded. It only adds to the saved list, so the part
+// of a playlist that has loaded can be synced before the rest arrives.
+func (a *app) syncCollectionDownload(p *pageData, r *route, id string) {
+	d := &a.downloads
+	if d.dir == "" || (r.id != routeAlbum && r.id != routePlaylist) || p.feed.loading || p.feed.err != "" {
+		return
+	}
+	collection, ok := d.lib.Collection(id)
+	if !ok {
+		return
+	}
+	tracks := pageTracks(p.feed)
+	ids := make([]string, 0, len(tracks)+len(collection.Tracks))
+	var added []youtube.MusicItem
+	for _, track := range tracks {
+		if track.VideoID == "" || !track.IsTrack() || slices.Contains(ids, track.VideoID) {
+			continue
+		}
+		ids = append(ids, track.VideoID)
+		if slices.Contains(collection.Tracks, track.VideoID) {
+			continue
+		}
+		if track.Thumbnail == "" {
+			track.Thumbnail = collection.Item.Thumbnail
+		}
+		added = append(added, track)
+	}
+	if len(added) == 0 {
+		return
+	}
+	// The playlist's own order, then any saved track it no longer lists.
+	for _, videoID := range collection.Tracks {
+		if !slices.Contains(ids, videoID) {
+			ids = append(ids, videoID)
+		}
+	}
+	d.lib.SetCollectionTracks(id, ids)
+	a.saveDownloads()
+	a.queueDownloads(added, false)
+}
+
+// pageTracks is the songs an album or playlist page lists, in its own order,
+// without the suggestions under a playlist.
+func pageTracks(feed pageState) []youtube.MusicItem {
+	sections := feed.sections
+	if len(sections) == 0 {
+		sections = []youtube.MusicSection{{Items: feed.items}}
+	}
+	var tracks []youtube.MusicItem
+	for _, section := range sections {
+		for _, item := range section.Items {
+			if item.IsTrack() {
+				tracks = append(tracks, item)
+			}
+		}
+	}
+	return tracks
+}
+
 // queueDownloads puts the tracks that are not downloaded yet in the queue.
 func (a *app) queueDownloads(items []youtube.MusicItem, single bool) {
 	d := &a.downloads

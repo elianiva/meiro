@@ -44,8 +44,10 @@ func (a *app) pullable() bool {
 // to scroll, and leaves every other scroll to the list.
 func (a *app) pullScroll(ev ui.InputEvent) bool {
 	// A flick that carries on past the top is the trackpad's own momentum and
-	// not a pull: only what the fingers scroll pulls the page.
-	if ev.Kind != ui.InputScroll || ev.DY == 0 || ev.Momentum || !a.pullable() {
+	// not a pull: only what the fingers scroll pulls the page. Shift turns the
+	// wheel sideways, which the runtime maps after the handlers pass it on, so
+	// the pull leaves it to the shelf under the pointer.
+	if ev.Kind != ui.InputScroll || ev.DY == 0 || ev.Mods&ui.Shift != 0 || ev.Momentum || !a.pullable() {
 		return false
 	}
 	p := &a.pull

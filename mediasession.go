@@ -93,6 +93,7 @@ func (a *app) syncSystemMedia() {
 		VideoID:     a.current.VideoID,
 		Title:       a.current.Title,
 		Artist:      a.current.Subtitle,
+		Album:       a.current.Album,
 		ArtworkURL:  a.current.Thumbnail,
 		Duration:    a.total,
 		Position:    position,

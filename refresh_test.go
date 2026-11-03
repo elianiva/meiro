@@ -82,6 +82,37 @@ func TestScrollingBackToTheTopDoesNotLoadThePage(t *testing.T) {
 	}
 }
 
+// Shift turns the wheel sideways, so a pull must leave it to the shelf under
+// the pointer.
+func TestShiftScrollDoesNotPullThePage(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	homeLoads.Store(0)
+
+	// The tester's scroll sends no modifiers, so call the handler as the
+	// runtime would with Shift held.
+	if a.pullScroll(ui.InputEvent{Kind: ui.InputScroll, DY: -pullRefresh, Mods: ui.Shift}) {
+		t.Error("the pull took a Shift scroll")
+	}
+	if got := a.pull.distance; got != 0 {
+		t.Errorf("a Shift scroll pulled the page %v", got)
+	}
+	if got := homeLoads.Load(); got != 0 {
+		t.Errorf("a Shift scroll loaded the page %d times, want none", got)
+	}
+
+	// The same scroll without Shift is still a pull.
+	if !a.pullScroll(ui.InputEvent{Kind: ui.InputScroll, DY: -pullRefresh}) {
+		t.Error("the pull left an ordinary scroll")
+	}
+	if got := homeLoads.Load(); got != 1 {
+		t.Errorf("an ordinary pull loaded the page %d times, want once", got)
+	}
+}
+
 func TestPullLeavesAPageThatLoadsNothing(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)
