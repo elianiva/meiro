@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/egoist/mygo"
 	"golang.org/x/image/vector"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -21,7 +22,8 @@ import (
 // Windows puts Previous, Play or Pause, and Next under the thumbnail that
 // shows when the pointer rests on the taskbar button, the way Spotify does.
 // Keyboard media keys (Play/Pause, Next, Previous, Stop) are handled both
-// globally via RegisterHotKey and through WM_APPCOMMAND when focused.
+// globally via RegisterHotKey and through WM_APPCOMMAND when focused. The
+// system's media controls show the track too; see mediaTransport.
 //
 // Explorer makes the taskbar button when the window first shows, and again
 // when the window shows after hiding or when Explorer restarts, and each
@@ -184,6 +186,8 @@ type windowsSession struct {
 	shown [buttonCount]thumbButton
 	// hotkeys are the IDs successfully registered with RegisterHotKey.
 	hotkeys []int
+	// media is the system's media controls.
+	media *mediaTransport
 }
 
 var (
@@ -226,6 +230,7 @@ func New(controls Controls) (Session, error) {
 		return nil, errors.New("cannot subclass the window for its taskbar buttons")
 	}
 	sessions[s.hwnd] = s
+	s.media = newMediaTransport(mygo.NowPlaying, controls, loadArtwork)
 	s.registerHotKeys()
 	// An elevated Meiro would not hear Explorer, which runs unelevated.
 	for _, msg := range []uint32{taskbarButtonCreated, wmCommand, wmHotkey, wmAppCommand} {
@@ -240,6 +245,9 @@ func New(controls Controls) (Session, error) {
 func (s *windowsSession) Update(state State) error {
 	s.state = state
 	s.apply()
+	if s.media != nil {
+		s.media.update(state)
+	}
 	return nil
 }
 
@@ -258,6 +266,9 @@ func (s *windowsSession) Close() error {
 // is gone or the session closes.
 func (s *windowsSession) release() {
 	delete(sessions, s.hwnd)
+	if s.media != nil {
+		s.media.close()
+	}
 	for _, id := range s.hotkeys {
 		_, _, _ = procUnregisterHotKey.Call(s.hwnd, uintptr(id))
 	}
