@@ -34,7 +34,7 @@ func indexOf(list []string) map[string]int {
 // Letters of the alphabet said as words, and the reading of that name.
 var letterNames = map[string]string{
 	"기역": "기역", "니은": "니은", "리을": "리을", "미음": "미음", "비읍": "비읍", "시옷": "시옷", "이응": "이응",
-	"디귱": "디귱", "지읋": "지읋", "치읏": "치읏", "키읍": "키읍", "티읏": "티읏", "피읍": "피읍", "히읏": "히읏",
+	"디귿": "디귿", "지읒": "지읒", "치읓": "치읓", "키읔": "키읔", "티읕": "티읕", "피읖": "피읖", "히읗": "히읗",
 }
 
 // specialLetter is how ㄷ, ㅈ, ㅊ, ㅋ, ㅌ, ㅍ, ㅎ are said when they are the
@@ -70,11 +70,11 @@ var (
 
 // Words whose pronunciation the rules above do not reach.
 var fixedReading = map[string]string{
-	"베갯잇":  "베갴닏",
-	"깍잎":   "깨닙",
+	"베갯잇":  "베갠닏",
+	"깻잎":   "깬닙",
 	"나뭇잎":  "나문닙",
-	"도리깍열": "도리깨녘",
-	"뒷윳":   "들닻",
+	"도리깻열": "도리깬녈",
+	"뒷윷":   "뒨뉻",
 	"전역":   "저녁",
 }
 
