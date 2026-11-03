@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Adding to the queue keeps the song after the one playing.** When Auto-play had already moved into recommendations, an added song went back to the original queue behind the track playing, so it never played. It now joins the queue after the current track, and recommendations that have played fold into the queue above the Recommended heading as YouTube Music does.
+- **A large playlist loads every song.** YouTube returns the songs after a playlist's first page in a shape Meiro did not follow, so a playlist of several hundred songs stopped after its first pages. The page now follows every page to the end, with a spinner under the songs while the next page arrives.
 - **Track notifications stay away while you use Meiro.** A new track no longer shows a notification while the main window or the mini player is in front, and the previous track's notification goes away. Notifications still appear while you are in another app.
 - **Downloaded playlists pick up songs added later.** Reopening a downloaded playlist fetches the songs added since it was downloaded, and the Download button counts them until they are saved.
 - **Shift+scroll over a shelf scrolls it sideways.** It used to pull the page down to refresh when the page was at its top.
