@@ -1848,6 +1848,62 @@ func TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions(t *testing.T) {
 	}
 }
 
+// YouTube appends the pages after a playlist's first one rather than wrapping
+// them in a shelf, which is what a playlist of a few hundred songs looks like.
+func TestAPlaylistLoadsEveryAppendedContinuation(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	a.router.Push("/playlist/VLPL_appended")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 100 && len(a.page.playable) < 246; i++ {
+		tt.Frame()
+	}
+	if got := len(a.page.playable); got != 246 {
+		t.Fatalf("playlist has %d playable songs, want all 246", got)
+	}
+	if got := a.page.playable[245].VideoID; got != "track-245" {
+		t.Fatalf("last playlist song = %q, want track-245", got)
+	}
+}
+
+// A playlist whose later pages are still arriving says so under its songs.
+func TestAPlaylistShowsItsNextPageLoading(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	var pending func()
+	a.run = func(work func()) {
+		if a.pageSimilar.busy() && pending == nil {
+			pending = work
+			return
+		}
+		work()
+	}
+	a.router.Push("/playlist/VLPL_appended")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if pending == nil {
+		t.Fatal("the playlist did not ask for its later pages")
+	}
+	if !hasRowKind(a.page.rows, rowStreaming) {
+		t.Fatalf("the playlist shows no loading row while its later pages arrive: %v", a.page.rows)
+	}
+	pending()
+	tt.Frame()
+	if hasRowKind(a.page.rows, rowStreaming) {
+		t.Fatalf("the loading row stays after the playlist loaded: %v", a.page.rows)
+	}
+}
+
+// hasRowKind reports whether the page's rows include one of kind.
+func hasRowKind(rows []row, kind rowKind) bool {
+	for _, r := range rows {
+		if r.kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
 func TestPlayingBeforeThePlaylistLoadsKeepsItsRemainingSongs(t *testing.T) {
 	for _, scenario := range []struct {
 		id       string

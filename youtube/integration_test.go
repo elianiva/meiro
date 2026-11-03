@@ -105,6 +105,27 @@ func TestContinueBrowseReusesIssuedVisitorData(t *testing.T) {
 	}
 }
 
+// A page YouTube appends its items to carries the token of the page after it
+// in a trailing continuationItemRenderer, not in a shelf.
+func TestBrowseReadsTheTokenYouTubeAppendsWithItsItems(t *testing.T) {
+	const page = `{"onResponseReceivedActions":[{"appendContinuationItemsAction":{"continuationItems":[
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"track-1"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Track 1"}]}}}]}},
+		{"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{
+			"token":"appended-more","request":"CONTINUATION_REQUEST_TYPE_BROWSE"}}}}
+	]}}]}`
+	result := browseResult(decodeResponse(json.RawMessage(page)))
+	if result.ContinuationToken != "appended-more" {
+		t.Errorf("continuation = %q, want appended-more", result.ContinuationToken)
+	}
+	if len(result.Sections) != 0 {
+		t.Errorf("sections = %#v, want the items to be the page's own", result.Sections)
+	}
+	if len(result.Items) != 1 || result.Items[0].VideoID != "track-1" {
+		t.Errorf("items = %#v, want track-1", result.Items)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

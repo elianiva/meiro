@@ -85,8 +85,10 @@ type rowsKey struct {
 	more    string
 	moreErr string
 	// moreBusy says the next part of the page is on its way, which the list
-	// shows a spinner for.
+	// shows a spinner for. restBusy says the same of a playlist's later
+	// pages, which load on their own rather than from Show more.
 	moreBusy bool
+	restBusy bool
 	// similar is how many songs a playlist page suggests and how many of them
 	// it shows; both are zero on a page without suggestions.
 	similar      int
@@ -139,6 +141,7 @@ func (a *app) syncRows() {
 		// Playlist-local controls are not page data, so the key carries them:
 		// changing either one asks for rows again.
 		key.filter, key.sort = a.detailFilter, a.detailSort
+		key.restBusy = a.pageSimilar.busy()
 	}
 	if a.page.rows == nil || a.page.rowsDirty || key != a.page.rowsKey {
 		a.page.rowsKey, a.page.rowsDirty = key, false
@@ -355,7 +358,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	switch {
 	case s.moreErr != "":
 		rows = append(rows, row{kind: rowMore, title: "Could not load more. Try again", track: -1})
-	case key.moreBusy:
+	case key.moreBusy || key.restBusy:
 		rows = append(rows, row{kind: rowStreaming, title: "more", track: -1})
 	case s.more != "" && r.id != routeSearch && r.id != routePlaylist:
 		rows = append(rows, row{kind: rowMore, title: "Show more", track: -1})

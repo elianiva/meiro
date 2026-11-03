@@ -346,6 +346,13 @@ func browseContinuationQueue(result *BrowseResult) []browseContinuation {
 // browse response. Shelf continuations are owned by their renderer and must
 // remain available on the corresponding MusicSection instead.
 func pageContinuationToken(root any) string {
+	// YouTube continues a playlist, a show or a shelf in an appended list
+	// rather than in a continuation renderer: it answers the next page with
+	// the items themselves and a trailing continuationItemRenderer, under no
+	// shelf at all. The token is the page's own, and so are the items.
+	if token := appendedContinuationToken(root); token != "" {
+		return token
+	}
 	var walk func(any) string
 	walk = func(value any) string {
 		switch node := value.(type) {
@@ -371,6 +378,32 @@ func pageContinuationToken(root any) string {
 		return ""
 	}
 	return walk(root)
+}
+
+// appendedContinuationToken reads the token of a page YouTube appends items
+// to: onResponseReceivedActions[0].appendContinuationItemsAction. The action
+// lists the items, and a trailing continuationItemRenderer asks for the page
+// after them.
+func appendedContinuationToken(root any) string {
+	object, ok := root.(*jsonObject)
+	if !ok {
+		return ""
+	}
+	actions, _ := object.get("onResponseReceivedActions").([]any)
+	for _, action := range actions {
+		appended, _ := nestedObject(action, "appendContinuationItemsAction")
+		items, _ := appended.get("continuationItems").([]any)
+		for index := len(items) - 1; index >= 0; index-- {
+			renderer, ok := nestedObject(items[index], "continuationItemRenderer")
+			if !ok {
+				continue
+			}
+			if token := continuationToken(renderer); token != "" {
+				return token
+			}
+		}
+	}
+	return ""
 }
 
 func continuationToken(root any) string {
