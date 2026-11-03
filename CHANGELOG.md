@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Japanese and Korean lyrics show a Latin reading.** Under a line in Japanese or Korean, Meiro shows how it is read, in Latin, and leaves the original line where it is. A line that is already Latin gains nothing under it. The switch beside the timed-lyrics switch turns the reading off.
+
 ## [0.6.0] - 2026-11-03
 
 ### Added
