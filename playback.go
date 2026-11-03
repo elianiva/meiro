@@ -60,6 +60,8 @@ type playback struct {
 	// notificationArtwork loads the current cover before showing its track
 	// notification on Windows.
 	notificationArtwork task
+	// notices shows track notifications in place of the desktop, for tests.
+	notices trackNotices
 	// loudnessLoad and preloadLoudnessLoad ask for the loudness of the current
 	// and the next track; a result lands in loudnessMap whenever it arrives.
 	loudnessLoad        task
@@ -262,12 +264,24 @@ func (a *app) afterEnter(item youtube.MusicItem, changed bool) {
 // show it instead of the app icon. Other platforms keep their normal
 // notification path.
 func (a *app) notifyTrack(item youtube.MusicItem) {
-	if a.desktop == nil {
+	notices := a.trackNotices()
+	if notices == nil {
 		return
+	}
+	// Whether Meiro is in front is asked as the notification would appear,
+	// after the cover has downloaded: the user may have come to the app in
+	// the meantime. What they see there needs no banner, and the earlier
+	// track's is stale.
+	show := func(icon []byte) {
+		if notices.appActive() {
+			notices.dismissNotification()
+			return
+		}
+		notices.notify(item, icon)
 	}
 	if !notificationArtworkNeeded() || a.thumbs == nil {
 		a.notificationArtwork.stop()
-		a.desktop.notify(item, nil)
+		show(nil)
 		return
 	}
 	startTask(a, &a.notificationArtwork, 8*time.Second, func(ctx context.Context) ([]byte, error) {
@@ -280,8 +294,20 @@ func (a *app) notifyTrack(item youtube.MusicItem) {
 			log.Printf("fetching track notification artwork: %v", err)
 			icon = nil // The coloured app icon is the safe fallback.
 		}
-		a.desktop.notify(item, icon)
+		show(icon)
 	})
+}
+
+// trackNotices is where track notifications go: the desktop, or what a test
+// puts in its place. It is nil without either.
+func (a *app) trackNotices() trackNotices {
+	if a.notices != nil {
+		return a.notices
+	}
+	if a.desktop == nil {
+		return nil
+	}
+	return a.desktop
 }
 
 // starting reports whether a chosen track is being checked or resolved.

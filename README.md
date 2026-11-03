@@ -62,7 +62,7 @@ scrobble your listening to Last.fm.
   mini player from the tray. On Linux, the tray menu offers **Open Meiro** and
   **Quit**; the mini player is not available there.
 - **Works with your computer's controls.** Use your media keys, the Now Playing
-  widget on Mac, or the media controls on Linux.
+  widget on Mac, or the media controls on Windows and Linux.
 - **Share what you hear on Discord.** With Discord or another client that
   supports Discord Rich Presence running, enable Discord Rich Presence in
   Settings → Desktop to show the current track, artist, cover and a time bar
