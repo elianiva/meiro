@@ -1848,6 +1848,24 @@ func TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions(t *testing.T) {
 	}
 }
 
+// YouTube appends the pages after a playlist's first one rather than wrapping
+// them in a shelf, which is what a playlist of a few hundred songs looks like.
+func TestAPlaylistLoadsEveryAppendedContinuation(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	a.router.Push("/playlist/VLPL_appended")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 100 && len(a.page.playable) < 246; i++ {
+		tt.Frame()
+	}
+	if got := len(a.page.playable); got != 246 {
+		t.Fatalf("playlist has %d playable songs, want all 246", got)
+	}
+	if got := a.page.playable[245].VideoID; got != "track-245" {
+		t.Fatalf("last playlist song = %q, want track-245", got)
+	}
+}
+
 func TestPlayingBeforeThePlaylistLoadsKeepsItsRemainingSongs(t *testing.T) {
 	for _, scenario := range []struct {
 		id       string

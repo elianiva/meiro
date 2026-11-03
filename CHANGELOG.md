@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **A large playlist loads every song.** YouTube returns the songs after a playlist's first page in a shape Meiro did not follow, so a playlist of several hundred songs stopped after its first pages. The page now follows every page to the end.
+
 ## [0.6.0] - 2026-11-03
 
 ### Added

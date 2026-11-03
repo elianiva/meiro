@@ -147,6 +147,12 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = paginatedPlaylistResponse(100, 146, "", "")
 	case strings.Contains(asked, `"continuation":"playlist-more"`):
 		reply = playlistSuggestionsResponse
+	case strings.Contains(asked, "VLPL_appended"):
+		reply = appendedPlaylistResponse(0, 100, "playlist-appended-more")
+	case strings.Contains(asked, `"continuation":"playlist-appended-more"`):
+		reply = appendedPlaylistResponse(100, 200, "playlist-appended-more-2")
+	case strings.Contains(asked, `"continuation":"playlist-appended-more-2"`):
+		reply = appendedPlaylistResponse(200, 246, "")
 	case strings.Contains(asked, "VLPL_video"):
 		reply = playlistPage()
 	case strings.Contains(asked, "VLPL_songs"):
@@ -1081,4 +1087,21 @@ func paginatedPlaylistResponse(start, end int, next, suggestions string) string 
 		kind = "musicPlaylistShelfContinuation"
 	}
 	return fmt.Sprintf(`{"contents":{"%s":{"contents":[%s],"continuations":[{"nextContinuationData":{"continuation":%q}}]}},"continuations":[{"nextContinuationData":{"continuation":%q}}]}`, kind, strings.Join(items, ","), next, suggestions)
+}
+
+// appendedPlaylistResponse is a playlist page in the shape YouTube answers
+// today: the songs of the first page sit in a shelf, and each later page is an
+// onResponseReceivedActions list that ends with a continuationItemRenderer.
+func appendedPlaylistResponse(start, end int, next string) string {
+	var items []string
+	for i := start; i < end; i++ {
+		items = append(items, fmt.Sprintf(`{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"track-%d"},"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Track %d"}]}}}]}}`, i, i))
+	}
+	if next != "" {
+		items = append(items, fmt.Sprintf(`{"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":%q,"request":"CONTINUATION_REQUEST_TYPE_BROWSE"}}}}`, next))
+	}
+	if start == 0 {
+		return fmt.Sprintf(`{"contents":{"twoColumnBrowseResultsRenderer":{"secondaryContents":{"sectionListRenderer":{"contents":[{"musicPlaylistShelfRenderer":{"contents":[%s]}}]}}}}}`, strings.Join(items, ","))
+	}
+	return fmt.Sprintf(`{"onResponseReceivedActions":[{"appendContinuationItemsAction":{"continuationItems":[%s]}}]}`, strings.Join(items, ","))
 }
