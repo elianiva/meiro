@@ -66,12 +66,6 @@ func (a *app) hero(c *ui.Context) {
 				a.libraryButton(c)
 				a.downloadButton(c)
 				a.subscribeButton(c)
-				if r.id == routePlaylist {
-					// One call site, beside the buttons that play the page:
-					// the control keeps its place, and its button, while it
-					// opens into the bar.
-					a.playlistSearch(c)
-				}
 			})
 		})
 	})
@@ -100,92 +94,59 @@ func (a *app) heroButtonSize() m3.ButtonSize {
 	return m3.Medium56
 }
 
-// detailSearchWidth is how wide the bar the playlist search opens into reaches
-// at most.
-const detailSearchWidth = 520
-
-// detailSearchButton is the side of the button that opens the playlist search,
-// which is the height of the buttons beside it.
-func (a *app) detailSearchButton() float32 {
-	if a.narrowHero() {
-		return 40
-	}
-	return 56
-}
-
-// playlistSearch draws the control that narrows a playlist page to the songs
-// that match: an icon button that opens into the bar the Search page uses,
-// beside the buttons that play the page. Closing it puts the page back to its
-// whole list, since a search that showed none of a page's rows would leave
-// nothing to say it was still on.
-func (a *app) playlistSearch(c *ui.Context) {
-	sc := m3.Of(c).Scheme
-	// One element carries both states, so opening grows the control instead
-	// of swapping one thing for another. Its size is a maximum, which the
-	// animation moves: a width would only set the flex base, and the
-	// control's Grow then fills the rest of the line, so the bar would jump
-	// out at full size and jump back into the button when it closed.
-	control := ui.Row(c.Key("playlist-search")).MinWidth(0).Grow(1).Shrink(1)
-	target := float32(0)
-	if a.detailSearchOpen {
-		target = 1
-	}
-	grown := m3.Animate(control, "open", target, m3.SpatialFast)
-	if !a.detailSearchOpen && grown < 0.02 {
-		control.MaxWidth(a.detailSearchButton())
-		control.Children(func() {
-			button := m3.IconButton(c, m3.IconButtonSpec{
-				Icon: m3.IconSearch, Label: "Search in this playlist",
-				Kind: m3.StandardIcon, Size: a.heroButtonSize(), Key: "playlist-search-open",
-				// The bar's own container, so the button that opens the
-				// search and the bar it opens are one thing growing rather
-				// than two that do not match.
-				Container: sc.SurfaceContainerHigh,
-			})
-			if button.Clicked() {
-				a.detailSearchOpen = true
-				a.detailSearchField.Focus()
-				a.detailSearchHadFocus = false
-			}
-		})
+// compactHeader puts a detail page's identity and actions in the top bar once
+// its hero has scrolled out of view: the artwork, the name, and the actions
+// that play it. shown is how far the header has come in, so the three parts
+// arrive one after another, and leave in the opposite order. The playlist
+// search stays in the song toolbar.
+func (a *app) compactHeader(c *ui.Context, shown float32) {
+	d := a.page.detail
+	if d.title == "" {
 		return
 	}
-	maxWidth := float32(detailSearchWidth)
-	if a.listWidth > 0 {
-		maxWidth = min(maxWidth, a.listWidth-48)
+	sc := m3.Of(c).Scheme
+	r, _ := a.route()
+	none := len(a.page.playable) == 0
+	playLabel, shuffleLabel := "Play", "Shuffle"
+	if r.target == youtube.TargetPlaylist {
+		playLabel, shuffleLabel = "Play playlist", "Shuffle playlist"
 	}
-	control.MaxWidth(a.detailSearchButton() + (maxWidth-a.detailSearchButton())*min(max(grown, 0), 1))
-	control.Children(func() {
-		result, _ := m3.SearchBar(c, m3.SearchSpec{
-			Value:       &a.detailFilter,
-			Placeholder: "Search in this playlist",
-			Key:         "playlist-search-bar",
-			Focus:       &a.detailSearchField,
-			MaxWidth:    maxWidth,
-			Dismiss:     true,
-		})
-		if result.Dismissed {
-			a.closePlaylistSearch()
-		} else {
-			if a.detailSearchHadFocus && !result.Focused && a.detailFilter == "" {
-				a.closePlaylistSearch()
-			}
-			a.detailSearchHadFocus = result.Focused
+	// Each part has its own window of the same fade, so they arrive art,
+	// title, then actions, and leave in reverse. The move is small: the bar
+	// should read as settling, not sliding.
+	part := func(from float32) float32 { return min(max((shown-from)/0.35, 0), 1) }
+	artIn, titleIn, actionsIn := part(0), part(0.12), part(0.3)
+	ui.Row(c).Gap(10).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
+		if d.art != "" {
+			a.art(c, d.art, 96, 34, m3.Small).Opacity(artIn).Translate(0, (1-artIn)*6)
 		}
+		m3.EmphasizedText(c, m3.TitleMedium, d.title).SingleLine().MaxWidth(140).Shrink(1).MinWidth(0).TextColor(sc.OnSurface).
+			Opacity(titleIn).Translate(0, (1-titleIn)*6)
+		ui.Row(c).Gap(2).Shrink(0).Opacity(actionsIn).Translate(0, (1-actionsIn)*6).Children(func() {
+			if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconPlay, Label: playLabel, Kind: m3.FilledIcon, Size: m3.ExtraSmall32, Disabled: none, Key: "compact-play"}).Clicked() {
+				a.playAll()
+			}
+			// A show is listened to in order, as in the hero.
+			if r.target != youtube.TargetPodcast {
+				if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconShuffle, Label: shuffleLabel, Kind: m3.StandardIcon, Size: m3.ExtraSmall32, Disabled: none, Key: "compact-shuffle"}).Clicked() {
+					a.shufflePage()
+				}
+			}
+			if state, id, ok := a.pageDownload(); ok {
+				if m3.IconButton(c, m3.IconButtonSpec{Icon: state.icon, Label: state.label, Kind: m3.StandardIcon, Size: m3.ExtraSmall32, Disabled: state.disabled, Key: "compact-download"}).Clicked() {
+					a.togglePageDownload(id, state)
+				}
+			}
+		})
 	})
 }
 
-// closePlaylistSearch puts a playlist page back to its whole list, and the
-// control back to the button that opens the search.
-func (a *app) closePlaylistSearch() {
-	a.detailSearchOpen, a.detailSearchHadFocus = false, false
-	a.detailFilter = ""
-}
-
 // playlistSort draws two controls above the list: a menu that picks what to
-// sort by, and a button that reverses the direction.
+// sort by, and a button that reverses the direction. Both sit on the songs
+// toolbar with the search, so they carry no container of their own: the row is
+// a line of quiet controls over the songs, not three pills.
 func (a *app) playlistSort(c *ui.Context) {
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 		a.playlistSortField(c)
 		// The direction belongs to the page rather than to a field, so the
 		// button stays for the original order, which then reads backwards.
@@ -193,7 +154,7 @@ func (a *app) playlistSort(c *ui.Context) {
 		if a.detailSort.desc {
 			label, icon = "Sort ascending", m3.IconArrowDown
 		}
-		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Kind: m3.OutlinedIcon, Size: m3.Medium56, Key: "playlist-sort-direction"}).Clicked() {
+		if m3.IconButton(c, m3.IconButtonSpec{Icon: icon, Label: label, Kind: m3.StandardIcon, Size: m3.Small40, Key: "playlist-sort-direction"}).Clicked() {
 			a.detailSort.flip()
 		}
 	})
@@ -205,7 +166,7 @@ func (a *app) playlistSortField(c *ui.Context) {
 	if a.detailSortOpen {
 		rotation = 180
 	}
-	anchor := m3.Button(c, m3.ButtonSpec{Label: "Sort: " + a.detailSort.label(), Icon: m3.IconExpandMore, IconRotation: rotation, Kind: m3.Outlined, Size: m3.Medium56, Key: "playlist-sort"})
+	anchor := m3.Button(c, m3.ButtonSpec{Label: "Sort: " + a.detailSort.label(), Icon: m3.IconExpandMore, IconRotation: rotation, Kind: m3.TextOnly, Size: m3.Medium56, Padding: 8, Key: "playlist-sort"})
 	// A menu ignores the press that lands on the button that opened it, so
 	// the button closes it, as the account menu's button does.
 	if anchor.Clicked() {

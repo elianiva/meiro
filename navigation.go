@@ -68,6 +68,7 @@ type pageData struct {
 	loadedAt     time.Time
 	rows         []row
 	playable     []youtube.MusicItem
+	playlistMore string
 	// rowsDirty marks the rows stale. A change of the page's data sets it,
 	// and the next frame rebuilds them; otherwise they are reused. rowsKey
 	// is the shape they were built from, so a change a caller did not mark
@@ -79,6 +80,9 @@ type pageData struct {
 	// list is where the page is scrolled to, kept with it so that going back
 	// to a page shows it where it was left.
 	list *ui.ListState
+	// scroll is how far the list is scrolled, which the pull to refresh reads
+	// to tell a pull from a scroll back to the top.
+	scroll *ui.ScrollState
 }
 
 // fresh reports whether a kept page can be shown as it is.
@@ -134,11 +138,14 @@ func (a *app) onNavigate() {
 	// belongs to the visit, not the page. A page kept from before rebuilds
 	// its rows, since the search is part of the rows' key.
 	a.detailFilter, a.detailSearchOpen, a.detailSearchHadFocus, a.detailSort, a.detailSortOpen = "", false, false, playlistSort{}, false
+	a.detailCompact = false
 	a.closeSettingsSearch()
 	a.pageLoad.stop()
 	a.pageMore.stop()
 	a.nowPlaying.open, a.nowPlaying.closing = false, false
 	a.nowPlaying.navigateTo = nil
+	// A pull to refresh belongs to the visit of the page it pulls.
+	a.pull = pullState{}
 	location := a.router.Location()
 	r, id := a.route()
 	if r.open != nil {
@@ -164,7 +171,7 @@ func (a *app) onNavigate() {
 	// the accessibility tree built from the last frame.
 	a.list = &ui.ListState{}
 	a.list.ScrollTo(0, ui.Start)
-	a.page = &pageData{rowsDirty: true, list: a.list}
+	a.page = &pageData{rowsDirty: true, list: a.list, scroll: &ui.ScrollState{}}
 	a.pages.Delete(location)
 	if r.isDetail() {
 		a.page.detail, _ = a.details.Get(a.path())
@@ -242,13 +249,8 @@ func (a *app) loadPage(r *route, id string) {
 		// A playlist page shows its whole playlist and what YouTube suggests
 		// under it, so the page asks for both as it opens.
 		if r.id == routePlaylist {
-			token, suggestions := feed.more, ""
-			for _, section := range feed.sections {
-				if (section.Kind == "musicPlaylistShelfRenderer" || section.Kind == "playlistVideoListRenderer") && section.ContinuationToken != "" {
-					token, suggestions = section.ContinuationToken, feed.more
-					break
-				}
-			}
+			token, suggestions := playlistContinuations(feed.sections, feed.more)
+			p.playlistMore = token
 			p.feed.more = ""
 			a.loadPlaylistRest(p, client, token, suggestions)
 		}
@@ -278,6 +280,7 @@ func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token, sugge
 			log.Printf("loading the rest of a playlist: %v", err)
 			return
 		}
+		p.playlistMore = ""
 		feed := &p.feed
 		if len(more.items) > 0 {
 			switch {
@@ -296,6 +299,17 @@ func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token, sugge
 			feed.similarShown = min(suggestionsShown, len(feed.similar))
 		}
 	})
+}
+
+// playlistContinuations keeps the playlist's songs ahead of suggestions,
+// whether YouTube puts the next token on the song shelf or the page.
+func playlistContinuations(sections []youtube.MusicSection, pageToken string) (songs, suggestions string) {
+	for _, section := range sections {
+		if (section.Kind == "musicPlaylistShelfRenderer" || section.Kind == "playlistVideoListRenderer") && section.ContinuationToken != "" {
+			return section.ContinuationToken, pageToken
+		}
+	}
+	return pageToken, ""
 }
 
 // readPlaylistRest follows the playlist's continuation until YouTube returns

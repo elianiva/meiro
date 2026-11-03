@@ -136,6 +136,39 @@ func TestShuffleKeepsTheGeneratedTracksAtTheEnd(t *testing.T) {
 	}
 }
 
+func TestLatePlaylistSongsPreserveHistoryAndPlayNext(t *testing.T) {
+	for _, shuffle := range []bool{false, true} {
+		q := newQueue()
+		chosen := tracks("a", "b", "c", "d")
+		q.replace(chosen[0], chosen, 0, "Playlist")
+		q.appendGenerated(tracks("r1", "r2"))
+		if shuffle {
+			q.shuffleQueue()
+		}
+		q.moveTo(1)
+		history := slices.Clone(q.items[:2])
+		q.insert(tracks("next")[0], true, true)
+		q.appendPlaylist(tracks("late1", "late2", "late1"), shuffle)
+		if q.index != 1 || !slices.Equal(ids(q.items[:2]), ids(history)) {
+			t.Fatalf("shuffle=%t changed played tracks: %v", shuffle, ids(q.items))
+		}
+		if q.recStart != 8 || !slices.Equal(ids(q.items[8:]), []string{"r1", "r2"}) || len(q.generated) != 2 {
+			t.Fatalf("shuffle=%t changed generated tracks: %v at %d", shuffle, ids(q.items), q.recStart)
+		}
+		if next, ok := q.next(true, repeatOff); !ok || q.at(next).VideoID != "next" {
+			t.Fatalf("shuffle=%t lost play-next priority", shuffle)
+		}
+		q.restoreQueue()
+		want := []string{"a", "b", "c", "d", "late1", "late2", "late1", "next"}
+		if !shuffle {
+			want = []string{"a", "b", "next", "c", "d", "late1", "late2", "late1"}
+		}
+		if !slices.Equal(ids(q.items[:8]), want) || q.current().VideoID != history[1].VideoID {
+			t.Fatalf("shuffle=%t restored %v at %d", shuffle, ids(q.items), q.index)
+		}
+	}
+}
+
 func TestReplaceWithATrackOutsideTheTracksPlaysItAlone(t *testing.T) {
 	q := newQueue()
 	q.replace(youtube.MusicItem{VideoID: "solo"}, tracks("a", "b"), 0, "")

@@ -22,7 +22,19 @@ permissions:
 jobs:
   # The pushed tag names the release. A manual run on a tag retries that
   # release; a manual run on a branch builds without publishing.
+  #
+  # Only the repository owner starts this workflow. Write access is enough to
+  # push a desktop-v tag or to dispatch a manual run, and either one would
+  # build and publish with this repository's secrets: the updater signing key,
+  # the Last.fm key, and TAP_TOKEN. Every other job waits on this one, so one
+  # check covers them all. A fork carries this file but not the owner, so it
+  # refuses there too. triggering_actor is the user who re-ran the workflow,
+  # which actor alone would still report as the owner.
   gate:
+    if: >-
+      github.repository_owner == 'elianiva' &&
+      github.actor == 'elianiva' &&
+      github.triggering_actor == 'elianiva'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -403,7 +415,14 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: needs.gate.outputs.tag != ''
+    # Publishing writes the release, so it repeats the owner check instead of
+    # trusting the gate alone: a later edit that lets a run past the gate
+    # still cannot publish.
+    if: >-
+      needs.gate.outputs.tag != '' &&
+      github.repository_owner == 'elianiva' &&
+      github.actor == 'elianiva' &&
+      github.triggering_actor == 'elianiva'
     needs: [gate, build]
     runs-on: ubuntu-latest
     permissions:
@@ -441,7 +460,7 @@ jobs:
           {
             echo "## Downloads"
             echo
-            echo "- **macOS**: the universal \`.dmg\` (Apple Silicon and Intel)."
+            echo "- **macOS**: \`brew install --cask elianiva/tap/meiro\`, or the universal \`.dmg\` (Apple Silicon and Intel)."
             echo "- **Windows** (\`amd64\`): the \`-portable.zip\` (extract and run \`Meiro.exe\`), or the \`-setup.exe\` installer. Untested: the author has no Windows machine."
             echo "- **Linux** (\`amd64\`, \`arm64\`): \`.deb\`, \`.rpm\`, \`.flatpak\` (full build only), \`.AppImage\` or \`.tar.gz\`."
             echo "- Full builds bundle ffmpeg and yt-dlp; \`minimal\` builds use the ones on your system."
@@ -466,3 +485,31 @@ jobs:
             --title "Meiro $version minimal updates" \
             --notes "Update files for the minimal builds of desktop-v$version. Download Meiro from that release." \
             --target "${{ needs.gate.outputs.sha }}" --latest=false
+
+  # The Homebrew tap takes the new version as soon as it is published, so
+  # `brew install` offers it without waiting for the tap's daily check.
+  # repository_dispatch is how one repository's workflow reaches another: a
+  # workflow's own token only reaches its own repository, so this uses
+  # TAP_TOKEN, a fine-grained token for elianiva/homebrew-tap with contents
+  # write. Without the secret the tap still updates on its schedule.
+  tap:
+    needs: [gate, release]
+    # TAP_TOKEN writes to another repository, so this job repeats the owner
+    # check as well.
+    if: >-
+      needs.gate.outputs.tag != '' &&
+      github.repository_owner == 'elianiva' &&
+      github.actor == 'elianiva' &&
+      github.triggering_actor == 'elianiva'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the tap to take the new release
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          GH_REPO: elianiva/homebrew-tap
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "TAP_TOKEN is not set; elianiva/homebrew-tap updates on its own."
+            exit 0
+          fi
+          gh api --method POST "repos/$GH_REPO/dispatches" -f event_type=meiro-release

@@ -35,11 +35,12 @@ type playbackSave struct {
 // queueMark is what makes one queue differ from another: the tracks in their
 // order, and the places in them.
 type queueMark struct {
-	tracks   uint64
-	index    int
-	recStart int
-	playNext string
-	source   string
+	tracks       uint64
+	index        int
+	recStart     int
+	playNext     string
+	source       string
+	playlistMore string
 }
 
 // mark summarises the queue. It reads every track's ID, which is cheap
@@ -50,14 +51,14 @@ func (q *queue) mark() queueMark {
 		_, _ = h.Write([]byte(item.VideoID))
 		_, _ = h.Write([]byte{0})
 	}
-	return queueMark{h.Sum64(), q.index, q.recStart, q.playNext, q.source}
+	return queueMark{h.Sum64(), q.index, q.recStart, q.playNext, q.source, q.playlistMore}
 }
 
 // state is the queue as it is saved, with the position in the current track.
 func (q *queue) state(position time.Duration) playstate.State {
 	return playstate.State{
 		Items: q.items, Index: q.index, RecStart: q.recStart,
-		PlayNext: q.playNext, Source: q.source, Position: position,
+		PlayNext: q.playNext, Source: q.source, Position: position, PlaylistMore: q.playlistMore,
 	}.Window()
 }
 
@@ -66,6 +67,7 @@ func (q *queue) restore(s playstate.State) {
 	*q = newQueue()
 	q.items = slices.Clone(s.Items)
 	q.index, q.recStart, q.playNext, q.source = s.Index, s.RecStart, s.PlayNext, s.Source
+	q.playlistMore = s.PlaylistMore
 	q.regenerate()
 	for i := len(q.items) - 1; i > q.index; i-- {
 		item := q.items[i]

@@ -110,8 +110,10 @@ the turn after subscribing and continue when it arrives.
    git push origin desktop-v0.4.2
    ```
 
-   The tag push starts `.github/workflows/release.yml`. It checks that the tag
-   matches `mygo.json`, confirms CI passed on that commit, builds platform
+   The tag push starts `.github/workflows/release.yml`. Its first job refuses
+   a run that `elianiva` did not start, so a tag pushed or a run re-run by
+   anyone else is skipped instead of published. The job then checks that the
+   tag matches `mygo.json`, confirms CI passed on that commit, builds platform
    packages, and publishes the full release plus the minimal-update release.
    The workflow takes release notes from the version's `CHANGELOG.md` section.
    Tag pushes do not run `CI`.

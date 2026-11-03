@@ -301,36 +301,62 @@ func (a *app) syncDownloadsPage() {
 	p.feed = pageState{sections: sections}
 }
 
-// downloadButton is the hero's button that downloads an album or a playlist,
-// says how far that has got, and removes the download again.
-func (a *app) downloadButton(c *ui.Context) {
+// pageDownloadState is what the download control for the page shows.
+type pageDownloadState struct {
+	label          string
+	icon           *ui.SVG
+	kind           m3.ButtonKind
+	disabled       bool
+	busy, complete bool
+}
+
+// pageDownload returns the state of the download control for the page shown,
+// the collection its ID names, and whether the page offers one at all.
+func (a *app) pageDownload() (pageDownloadState, string, bool) {
 	r, id := a.route()
 	if a.downloads.dir == "" || r.id != routeAlbum && r.id != routePlaylist {
-		return
+		return pageDownloadState{}, "", false
 	}
 	done, total, saved, busy := a.collectionDownload(id)
 	complete := saved && done == total
-	label, icon, kind := "Download", m3.IconDownload, m3.Tonal
+	state := pageDownloadState{label: "Download", icon: m3.IconDownload, kind: m3.Tonal, busy: busy, complete: complete}
 	switch {
 	case busy:
-		label, kind = "Downloading "+strconv.Itoa(done)+"/"+strconv.Itoa(total), m3.Outlined
+		state.label = "Downloading " + strconv.Itoa(done) + "/" + strconv.Itoa(total)
+		state.kind = m3.Outlined
 	case complete:
-		label, icon, kind = "Downloaded", m3.IconDownloadDone, m3.Outlined
+		state.label, state.icon, state.kind = "Downloaded", m3.IconDownloadDone, m3.Outlined
 	}
 	// A playlist's songs past its first page are still on their way while
 	// the rest of it loads, and a download now would leave them out.
-	disabled := !busy && !complete && (len(a.page.playable) == 0 || a.pageSimilar.busy() || a.page.feed.loading)
-	if !m3.Button(c, m3.ButtonSpec{Label: label, Icon: icon, Kind: kind, Size: a.heroButtonSize(), Disabled: disabled, Key: "hero-download"}).Clicked() {
-		return
-	}
-	if busy || complete {
+	state.disabled = !busy && !complete && (len(a.page.playable) == 0 || a.pageSimilar.busy() || a.page.feed.loading)
+	return state, id, true
+}
+
+// togglePageDownload downloads the page shown, or removes its download when
+// one is done or under way.
+func (a *app) togglePageDownload(id string, state pageDownloadState) {
+	if state.busy || state.complete {
 		a.removeCollectionDownload(id)
 		return
 	}
+	r, _ := a.route()
 	kindOf := youtube.KindPlaylist
 	if r.id == routeAlbum {
 		kindOf = youtube.KindAlbum
 	}
 	d := a.page.detail
 	a.downloadCollection(youtube.MusicItem{BrowseID: id, Title: d.title, Subtitle: d.subtitle, Thumbnail: d.art, Kind: kindOf}, a.page.playable)
+}
+
+// downloadButton is the hero's button that downloads an album or a playlist,
+// says how far that has got, and removes the download again.
+func (a *app) downloadButton(c *ui.Context) {
+	state, id, ok := a.pageDownload()
+	if !ok {
+		return
+	}
+	if m3.Button(c, m3.ButtonSpec{Label: state.label, Icon: state.icon, Kind: state.kind, Size: a.heroButtonSize(), Disabled: state.disabled, Key: "hero-download"}).Clicked() {
+		a.togglePageDownload(id, state)
+	}
 }

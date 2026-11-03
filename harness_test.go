@@ -65,6 +65,8 @@ var (
 	// lastWrite is the last playlist write the fake YouTube was asked for:
 	// which endpoint, and the fields of its body.
 	lastWrite atomic.Value
+	// homeLoads counts the home feeds the fake has answered.
+	homeLoads atomic.Int32
 )
 
 // searchBody is the last search request the fake YouTube was asked for.
@@ -131,9 +133,14 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = suggestionsResponse
 	case strings.Contains(asked, "FEmusic_explore"):
 		reply = exploreResponse
+	case strings.Contains(asked, "FEmusic_home"):
+		homeLoads.Add(1)
+		reply = homeResponse
 	case strings.Contains(asked, `"continuation":"home-more"`):
 		homeMoreRequests.Add(1)
 		reply = homeMoreResponse
+	case strings.Contains(asked, "VLPL_page_token"):
+		reply = paginatedPlaylistResponse(0, 100, "", "playlist-tracks")
 	case strings.Contains(asked, "VLPL_paginated"):
 		reply = paginatedPlaylistResponse(0, 100, "playlist-tracks", "playlist-more")
 	case strings.Contains(asked, `"continuation":"playlist-tracks"`):
@@ -578,7 +585,7 @@ func playlistPage() string {
 
 // playlistSongsResponse is a playlist page of three songs, each with an artist
 // beside it, for searching the page.
-const playlistSongsResponse = `{"contents":{"playlistVideoListRenderer":{"contents":[
+const playlistSongsResponse = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Ameiro Playlist"}]},"subtitle":{"runs":[{"text":"Playlist"},{"text":" • "},{"text":"Nova"},{"text":" • "},{"text":"3 songs"}]},"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/ameiro.png"}]}}}}},"contents":{"playlistVideoListRenderer":{"contents":[
 	{"musicResponsiveListItemRenderer":{
 		"playlistItemData":{"videoId":"song-one"},
 		"flexColumns":[
@@ -623,6 +630,7 @@ func resetFakes() {
 	playlistDeletes.Store(0)
 	subscribeWrites.Store(0)
 	homeMoreRequests.Store(0)
+	homeLoads.Store(0)
 	aiChecks.Store(0)
 	refuseWrites.Store(false)
 	duplicateWrites.Store(false)

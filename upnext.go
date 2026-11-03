@@ -38,7 +38,7 @@ const upNextTimeout = 45 * time.Second
 // only when the generated part is almost played out.
 func (a *app) ensureUpNext() {
 	u := &a.upNext
-	if !a.settings.AutoPlay || a.current.VideoID == "" || u.load.busy() || a.queue.len() == 0 {
+	if a.queue.playlistMore != "" || a.queueRest.busy() || !a.settings.AutoPlay || a.current.VideoID == "" || u.load.busy() || a.queue.len() == 0 {
 		return
 	}
 	client := a.client()
@@ -54,7 +54,7 @@ func (a *app) ensureUpNext() {
 				return
 			}
 			u.seen = map[string]struct{}{}
-			u.options.VideoID = a.current.VideoID
+			u.options = youtube.UpNextOptions{VideoID: a.current.VideoID}
 		case a.queue.remaining() > 1 && !u.waiting:
 			return
 		default:

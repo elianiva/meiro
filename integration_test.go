@@ -609,7 +609,7 @@ func TestTheHeroMenuOpensAgainAfterItCloses(t *testing.T) {
 	tt := open(a, "/playlist/VLPL_songs")
 	tt.Frame()
 	for round := range 2 {
-		if err := tt.RightClick("More options for "); err != nil {
+		if err := tt.RightClick("More options for Ameiro Playlist"); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()
@@ -832,12 +832,24 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	if len(a.page.playable) != 3 {
 		t.Fatalf("the playlist page holds %d songs, want 3", len(a.page.playable))
 	}
-	// The search is a button that opens, not a bar that is always there.
+	// The search is a button that opens, not a bar that is always there,
+	// and it sits with Sort above the songs rather than in the hero.
 	if _, ok := tt.Find("Search in this playlist"); !ok {
 		t.Fatalf("the playlist page has no search button: %q", tt.Texts())
 	}
 	if a.detailSearchOpen {
 		t.Fatal("the search opened by itself")
+	}
+	searchButton, ok := tt.Find("Search in this playlist")
+	if !ok {
+		t.Fatalf("the playlist page has no search button: %q", tt.Texts())
+	}
+	sortControl, ok := tt.Find("Sort: Original order")
+	if !ok {
+		t.Fatalf("the playlist page has no sort control: %q", tt.Texts())
+	}
+	if searchButton.Y >= sortControl.Y+sortControl.H || searchButton.Y+searchButton.H <= sortControl.Y {
+		t.Fatalf("the search button is not on the Sort row: search %v, Sort %v", searchButton, sortControl)
 	}
 	// shown counts the playlist's own rows: a row of the suggestions that
 	// YouTube keeps under the page plays from its own list.
@@ -873,18 +885,25 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 
 	search("ameiro")
-	// The bar grows in place, on the row of the buttons that play the page:
-	// opening it must not move it to a row of its own.
+	// The bar grows in place on the row that sorts the songs, away from the
+	// hero: opening it must not move it to a row of its own.
 	play, ok := tt.Find("Play")
 	if !ok {
 		t.Fatalf("the page has no Play button: %q", tt.Texts())
+	}
+	sortControl, ok = tt.Find("Sort: Original order")
+	if !ok {
+		t.Fatalf("the page has no Sort control: %q", tt.Texts())
 	}
 	bar, ok := tt.Find("Search in this playlist")
 	if !ok {
 		t.Fatalf("the open search has no bar: %q", tt.Texts())
 	}
-	if bar.Y >= play.Y+play.H || bar.Y+bar.H <= play.Y {
-		t.Fatalf("the search bar is not on the Play row: bar %v, Play %v", bar, play)
+	if bar.Y >= sortControl.Y+sortControl.H || bar.Y+bar.H <= sortControl.Y {
+		t.Fatalf("the search bar is not on the Sort row: bar %v, Sort %v", bar, sortControl)
+	}
+	if bar.Y < play.Y+play.H && bar.Y+bar.H > play.Y {
+		t.Fatalf("the search bar is still on the hero row: bar %v, Play %v", bar, play)
 	}
 	if !slices.ContainsFunc(a.page.rows, func(r row) bool { return r.shelf == "playlist-sort-header" }) {
 		t.Errorf("filtering hid the playlist sort header: %#v", a.page.rows)
@@ -958,6 +977,141 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 	if _, ok := tt.Find("Search in this playlist"); !ok {
 		t.Errorf("the search button did not come back: %q", tt.Texts())
+	}
+}
+
+// The songs toolbar heads the list of songs, so it stays at the top of the
+// list while the page scrolls under it, and the songs keep their own sort.
+func TestTheSongsToolbarStaysOnScreen(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	tt.Frame()
+	if _, ok := tt.Find("Sort: Original order"); !ok {
+		t.Fatalf("the page has no sort control: %q", tt.Texts())
+	}
+	// Far enough that the hero and the songs are behind the toolbar: only a
+	// pinned row can still be on screen here.
+	tt.Scroll(700, 500, 0, 900)
+	for range 3 {
+		tt.Frame()
+	}
+	first, _ := a.list.Visible()
+	if first == 0 {
+		t.Fatalf("the list did not scroll: %d", first)
+	}
+	sortControl, ok := tt.Find("Sort: Original order")
+	if !ok {
+		t.Fatalf("the songs toolbar left the screen: %q", tt.Texts())
+	}
+	// It sits at the top of the list, which starts under the top bar.
+	// A row scrolled out of the list keeps its label with a zero-height box,
+	// so the toolbar is on screen only if it is still drawn.
+	if sortControl.H == 0 || sortControl.Y < 60 || sortControl.Y > 200 {
+		t.Fatalf("the songs toolbar is at %v, not at the top of the list", sortControl.Y)
+	}
+	// The songs it heads are behind it by now: what is on screen under the
+	// toolbar is the next section, not the list of songs.
+	next, ok := tt.Find("Similar songs")
+	if !ok {
+		t.Fatalf("the page has no suggestions section: %q", tt.Texts())
+	}
+	if next.Y < sortControl.Y {
+		t.Fatalf("the suggestions are above the pinned toolbar: %v vs %v", next.Y, sortControl.Y)
+	}
+	if _, ok := tt.Find("Search in this playlist"); !ok {
+		t.Fatalf("the search left the pinned toolbar: %q", tt.Texts())
+	}
+}
+
+func TestGlobalSearchKeepsItsPlaceAcrossPages(t *testing.T) {
+	a := newTestApp(t)
+	tt := ui.NewTester(a.view, 1000, 700)
+	a.router.Push("/home")
+	for range 5 {
+		tt.Frame()
+	}
+	home, ok := tt.Find(searchPlaceholder)
+	if !ok {
+		t.Fatalf("the home page has no global search: %q", tt.Texts())
+	}
+	a.router.Push("/playlist/VLPL_songs")
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	for range 5 {
+		tt.Frame()
+	}
+	playlist, ok := tt.Find(searchPlaceholder)
+	if !ok {
+		t.Fatalf("the playlist page has no global search: %q", tt.Texts())
+	}
+	if home != playlist {
+		t.Fatalf("the global search moved between pages: home %v, playlist %v", home, playlist)
+	}
+}
+
+func TestPlaylistHeaderFollowsTheScroll(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.router.Push("/playlist/VLPL_songs")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for i := 0; i < 20 && len(a.page.playable) == 0; i++ {
+		tt.Frame()
+	}
+	tt.Frame()
+	if a.detailCompact {
+		t.Fatal("the compact header showed before the hero was scrolled away")
+	}
+	if _, ok := tt.Find("Play playlist"); ok {
+		t.Fatalf("the compact header showed before scrolling: %q", tt.Texts())
+	}
+	searchBefore, ok := tt.Find(searchPlaceholder)
+	if !ok {
+		t.Fatalf("the page has no global search: %q", tt.Texts())
+	}
+	// Scroll the page until the hero is gone: the top bar takes its artwork,
+	// name and actions while the search stays in the song toolbar.
+	tt.Scroll(700, 500, 0, 900)
+	for range 2 {
+		tt.Frame()
+	}
+	tt.Advance(500 * time.Millisecond)
+	for range 5 {
+		tt.Frame()
+	}
+	if !a.detailCompact {
+		t.Fatalf("the compact header did not show after scrolling: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Play playlist"); !ok {
+		t.Fatalf("the compact header has no Play: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Shuffle playlist"); !ok {
+		t.Fatalf("the compact header has no Shuffle: %q", tt.Texts())
+	}
+	if searchAfter, ok := tt.Find(searchPlaceholder); !ok || searchAfter != searchBefore {
+		t.Fatalf("the global search moved or changed with the compact header: before %v, after %v", searchBefore, searchAfter)
+	}
+	// Scrolling back to the top puts the hero back and takes the compact
+	// header away.
+	tt.Scroll(700, 500, 0, -2000)
+	for range 2 {
+		tt.Frame()
+	}
+	tt.Advance(500 * time.Millisecond)
+	for range 5 {
+		tt.Frame()
+	}
+	if a.detailCompact {
+		t.Fatalf("the compact header stayed after scrolling back to the top: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Play playlist"); ok {
+		t.Fatalf("the compact header did not leave at the top: %q", tt.Texts())
+	}
+	if searchBack, ok := tt.Find(searchPlaceholder); !ok || searchBack != searchBefore {
+		t.Fatalf("the global search moved after scrolling back: before %v, back %v", searchBefore, searchBack)
 	}
 }
 
@@ -1691,5 +1845,239 @@ func TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions(t *testing.T) {
 	}
 	if got := len(a.page.feed.similar); got != 7 {
 		t.Fatalf("playlist has %d suggestions, want 7 kept separate", got)
+	}
+}
+
+func TestPlayingBeforeThePlaylistLoadsKeepsItsRemainingSongs(t *testing.T) {
+	for _, scenario := range []struct {
+		id       string
+		replace  bool
+		pickNext bool
+	}{
+		{"VLPL_paginated", false, false},
+		{"VLPL_paginated", true, false},
+		{"VLPL_page_token", false, false},
+		{"VLPL_paginated", false, true},
+	} {
+		t.Run(scenario.id+strconv.FormatBool(scenario.replace)+strconv.FormatBool(scenario.pickNext), func(t *testing.T) {
+			resetFakes()
+			a, _ := playbackApp(t)
+			var pending []func()
+			var heldPage, heldQueue bool
+			a.run = func(work func()) {
+				if a.pageSimilar.busy() && !heldPage {
+					heldPage = true
+					pending = append(pending, work)
+					return
+				}
+				if a.queueRest.busy() && !heldQueue {
+					heldQueue = true
+					pending = append(pending, work)
+					return
+				}
+				work()
+			}
+			a.router.Push("/playlist/" + scenario.id)
+			tt := ui.NewTester(a.view, 1000, 700)
+			tt.Frame()
+			if len(a.page.playable) != 100 {
+				t.Fatalf("first page has %d songs, want 100", len(a.page.playable))
+			}
+			if err := tt.Click("Play"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			if a.queue.len() != 100 || a.current.VideoID != "track-0" {
+				t.Fatalf("early playback: current=%q queue=%d", a.current.VideoID, a.queue.len())
+			}
+			if scenario.pickNext {
+				if err := tt.Click("Up next"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				if err := tt.Click("Track 1"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+			}
+			// Leaving the page must not lose its queue's pending songs.
+			a.router.Push("/album/MPREb_test")
+			tt.Frame()
+			if scenario.replace {
+				if err := tt.Click("Album Track One"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+			}
+			for len(pending) > 0 {
+				work := pending[0]
+				pending = pending[1:]
+				work()
+			}
+			tt.Frame()
+			if scenario.replace {
+				if a.queue.len() != 1 || a.current.VideoID != "vid-3" {
+					t.Fatalf("old playlist changed the replacement queue: %v", ids(a.queue.items))
+				}
+				return
+			}
+			wantCurrent, wantRemaining := "track-0", 145
+			if scenario.pickNext {
+				wantCurrent, wantRemaining = "track-1", 144
+			}
+			if a.queue.len() != 146 || a.queue.remaining() != wantRemaining || a.current.VideoID != wantCurrent {
+				t.Fatalf("completed playback: current=%q queue=%d remaining=%d", a.current.VideoID, a.queue.len(), a.queue.remaining())
+			}
+			if got := a.queue.at(145).VideoID; got != "track-145" {
+				t.Fatalf("final song = %q, want track-145", got)
+			}
+		})
+	}
+}
+
+func TestPlayingAPlaylistCardIncludesEverySong(t *testing.T) {
+	for _, onPage := range []bool{false, true} {
+		t.Run(strconv.FormatBool(onPage), func(t *testing.T) {
+			resetFakes()
+			a, _ := playbackApp(t)
+			var pending func()
+			heldPage := false
+			a.run = func(work func()) {
+				if onPage && a.pageSimilar.busy() && !heldPage {
+					heldPage = true
+					return
+				}
+				if a.queueRest.busy() && pending == nil {
+					pending = work
+					return
+				}
+				work()
+			}
+			if onPage {
+				a.router.Push("/playlist/PL_paginated")
+				tt := ui.NewTester(a.view, 1000, 700)
+				tt.Frame()
+			}
+			a.playCollection(youtube.MusicItem{PlaylistID: "PL_paginated", Title: "Large playlist"}, "large-playlist", false)
+			if a.queue.len() != 100 || a.current.VideoID != "track-0" || pending == nil {
+				t.Fatalf("first page did not start before the rest: current=%q queue=%d pending=%t", a.current.VideoID, a.queue.len(), pending != nil)
+			}
+			pending()
+			if a.queue.len() != 146 || a.queue.remaining() != 145 {
+				t.Fatalf("card playback: queue=%d remaining=%d, want 146 and 145", a.queue.len(), a.queue.remaining())
+			}
+			if got := a.queue.at(145).VideoID; got != "track-145" {
+				t.Fatalf("final song = %q, want track-145", got)
+			}
+		})
+	}
+}
+
+func TestPlaylistRadioOnlyReadsTheFirstPage(t *testing.T) {
+	resetFakes()
+	a, _ := playbackApp(t)
+	var continuations int
+	a.account.public = youtube.NewClient(youtube.Options{HTTPClient: &http.Client{Transport: playbackRoundTrip(func(request *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			return nil, err
+		}
+		request.Body = io.NopCloser(strings.NewReader(string(body)))
+		if strings.Contains(string(body), `"continuation"`) {
+			continuations++
+		}
+		return fakeMusic{}.RoundTrip(request)
+	})}})
+	a.startRadio(youtube.MusicItem{PlaylistID: "PL_paginated", Title: "Large playlist"}, "large-playlist")
+	if a.current.VideoID == "" || a.queue.len() != 1 || continuations != 0 || a.queue.playlistMore != "" {
+		t.Fatalf("radio: current=%q queue=%d continuations=%d token=%q", a.current.VideoID, a.queue.len(), continuations, a.queue.playlistMore)
+	}
+}
+
+func TestPlaylistDownloadsReadEveryPage(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	var songs []youtube.MusicItem
+	a.withCollectionTracks(youtube.MusicItem{PlaylistID: "PL_paginated"}, "download-playlist", true, func(items []youtube.MusicItem, token string) {
+		songs = items
+		if token != "" {
+			t.Fatal("download still has unread songs")
+		}
+	})
+	if len(songs) != 146 || songs[145].VideoID != "track-145" {
+		t.Fatalf("download has %d songs, want all 146", len(songs))
+	}
+}
+
+func TestPlaylistCardStillPlaysWhenItsContinuationFails(t *testing.T) {
+	resetFakes()
+	a, r := playbackApp(t)
+	a.account.public = youtube.NewClient(youtube.Options{HTTPClient: &http.Client{Transport: playbackRoundTrip(func(request *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			return nil, err
+		}
+		if strings.Contains(string(body), `"continuation":"playlist-tracks"`) {
+			return &http.Response{StatusCode: http.StatusBadRequest, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`)), Request: request}, nil
+		}
+		request.Body = io.NopCloser(strings.NewReader(string(body)))
+		return fakeMusic{}.RoundTrip(request)
+	})}})
+	a.playCollection(youtube.MusicItem{PlaylistID: "PL_paginated", Title: "Large playlist"}, "large-playlist", false)
+	if a.current.VideoID != "track-0" || a.queue.len() != 100 || !r.asked("track-0") {
+		t.Fatalf("failed continuation prevented playback: current=%q queue=%d", a.current.VideoID, a.queue.len())
+	}
+	if !strings.Contains(a.notice, "Could not load the rest") || a.queue.playlistMore != "" {
+		t.Fatalf("failed continuation: notice=%q token=%q", a.notice, a.queue.playlistMore)
+	}
+}
+
+func TestLatePlaylistSongsJoinTheShuffle(t *testing.T) {
+	resetFakes()
+	a, _ := playbackApp(t)
+	var pending func()
+	heldPage := false
+	a.run = func(work func()) {
+		if a.pageSimilar.busy() && !heldPage {
+			heldPage = true
+			return
+		}
+		if a.queueRest.busy() && pending == nil {
+			pending = work
+			return
+		}
+		work()
+	}
+	a.router.Push("/playlist/VLPL_paginated")
+	tt := ui.NewTester(a.view, 1000, 700)
+	if err := tt.Click("Shuffle"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Next"); err != nil {
+		t.Fatal(err)
+	}
+	if pending == nil || a.queue.index != 1 {
+		t.Fatal("playlist continuation was not held while playback advanced")
+	}
+	history := slices.Clone(a.queue.items[:a.queue.index+1])
+	original := slices.Clone(a.queue.shuffleKept)
+	pending()
+	if a.queue.len() != 146 || !slices.Equal(ids(a.queue.items[:a.queue.index+1]), ids(history)) {
+		t.Fatal("late songs changed playback history or lost playlist songs")
+	}
+	if len(a.queue.shuffleKept) != 146 {
+		t.Fatalf("shuffle remembers %d songs, want the full 146 in original order", len(a.queue.shuffleKept))
+	}
+	for i := 100; i < 146; i++ {
+		original = append(original, youtube.MusicItem{VideoID: "track-" + strconv.Itoa(i)})
+	}
+	// Leave the playlist hero so Shuffle names the player's toggle.
+	a.router.Push("/search")
+	tt.Frame()
+	if err := tt.Click("Shuffle"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(ids(a.queue.items), ids(original)) {
+		t.Fatal("turning shuffle off did not restore late songs in playlist order")
 	}
 }
