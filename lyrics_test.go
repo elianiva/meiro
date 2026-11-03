@@ -147,6 +147,39 @@ func TestTheSungLineSitsInTheMiddleOfTheLyrics(t *testing.T) {
 	}
 }
 
+func TestRomanizedLyricsSitUnderJapaneseAndKoreanLines(t *testing.T) {
+	a := newTestApp(t)
+	a.betterLyrics = func(context.Context, betterlyrics.Query) ([]lyrics.Line, error) {
+		return []lyrics.Line{
+			{At: 0, Text: "안녕하세요"},
+			{At: 4 * time.Second, Text: "さくら"},
+			{At: 8 * time.Second, Text: "hello"},
+		}, nil
+	}
+	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.total = time.Minute
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	if err := tt.Click("Lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("annyeonghaseyo") || !tt.HasText("sakura") || !tt.HasText("안녕하세요") || !tt.HasText("hello") {
+		t.Fatalf("the reading is not under the line: %q", tt.Texts())
+	}
+	if err := tt.Click("Romanization"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.settings.RomanizedLyrics || tt.HasText("annyeonghaseyo") || tt.HasText("sakura") {
+		t.Fatalf("the reading stayed on: %v %q", a.settings.RomanizedLyrics, tt.Texts())
+	}
+	if !tt.HasText("안녕하세요") || !tt.HasText("さくら") {
+		t.Fatalf("turning the reading off hid the line: %q", tt.Texts())
+	}
+}
+
 func TestLyricWordsLightAsTheyAreSung(t *testing.T) {
 	sc := m3.New(m3.Config{}, true).Scheme
 	line := lyrics.Line{At: 0, Text: "one two three", Words: []lyrics.Word{
