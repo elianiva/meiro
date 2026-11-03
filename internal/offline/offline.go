@@ -185,6 +185,18 @@ func (l *Library) AddCollection(c Collection) {
 	l.Collections = collections
 }
 
+// SetCollectionTracks replaces the tracks of a downloaded album or playlist,
+// keeping its place in the library. It reports whether the collection is there.
+func (l *Library) SetCollectionTracks(id string, tracks []string) bool {
+	for i := range l.Collections {
+		if l.Collections[i].ID() == id {
+			l.Collections[i].Tracks = tracks
+			return true
+		}
+	}
+	return false
+}
+
 // RemoveCollection takes an album or a playlist out of the library, with the
 // songs that were downloaded only for it. It returns the files of those songs.
 func (l *Library) RemoveCollection(id string) []string {
