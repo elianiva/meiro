@@ -26,6 +26,8 @@ use_repo(
     "com_github_fsnotify_fsnotify",
     "com_github_go_macos_objc",
     "com_github_godbus_dbus_v5",
+    "com_github_ikawaha_kagome_dict_ipa",
+    "com_github_ikawaha_kagome_v2",
     "com_github_microsoft_go_winio",
     "org_golang_x_image",
     "org_golang_x_sys",
@@ -38,8 +40,7 @@ golangci_lint_repo = use_repo_rule("//tools:golangci_lint.bzl", "golangci_lint")
 golangci_lint_repo(name = "golangci_lint")
 
 # The formatter is a pinned release binary for the same reason: the check
-# only reads files, and compiling a formatter to do that costs more than
-# reading them does.
+# only reads files, rather than compiling a formatter to do that.
 gofumpt_repo = use_repo_rule("//tools:gofumpt.bzl", "gofumpt")
 
 gofumpt_repo(name = "gofumpt")
