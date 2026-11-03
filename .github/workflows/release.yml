@@ -22,7 +22,19 @@ permissions:
 jobs:
   # The pushed tag names the release. A manual run on a tag retries that
   # release; a manual run on a branch builds without publishing.
+  #
+  # Only the repository owner starts this workflow. Write access is enough to
+  # push a desktop-v tag or to dispatch a manual run, and either one would
+  # build and publish with this repository's secrets: the updater signing key,
+  # the Last.fm key, and TAP_TOKEN. Every other job waits on this one, so one
+  # check covers them all. A fork carries this file but not the owner, so it
+  # refuses there too. triggering_actor is the user who re-ran the workflow,
+  # which actor alone would still report as the owner.
   gate:
+    if: >-
+      github.repository_owner == 'elianiva' &&
+      github.actor == 'elianiva' &&
+      github.triggering_actor == 'elianiva'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -403,7 +415,14 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: needs.gate.outputs.tag != ''
+    # Publishing writes the release, so it repeats the owner check instead of
+    # trusting the gate alone: a later edit that lets a run past the gate
+    # still cannot publish.
+    if: >-
+      needs.gate.outputs.tag != '' &&
+      github.repository_owner == 'elianiva' &&
+      github.actor == 'elianiva' &&
+      github.triggering_actor == 'elianiva'
     needs: [gate, build]
     runs-on: ubuntu-latest
     permissions:
@@ -475,7 +494,13 @@ jobs:
   # write. Without the secret the tap still updates on its schedule.
   tap:
     needs: [gate, release]
-    if: needs.gate.outputs.tag != ''
+    # TAP_TOKEN writes to another repository, so this job repeats the owner
+    # check as well.
+    if: >-
+      needs.gate.outputs.tag != '' &&
+      github.repository_owner == 'elianiva' &&
+      github.actor == 'elianiva' &&
+      github.triggering_actor == 'elianiva'
     runs-on: ubuntu-latest
     steps:
       - name: Ask the tap to take the new release

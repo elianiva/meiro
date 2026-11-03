@@ -12,6 +12,15 @@ concurrency:
 
 jobs:
   deploy:
+    # A deploy writes to production with the Cloudflare token, so only the
+    # repository owner may start it, by a push to master or by hand.
+    # triggering_actor is the user who re-ran the workflow, which actor alone
+    # would still report as the owner. A fork carries this file but not the
+    # owner, so it refuses there too.
+    if: >-
+      github.repository_owner == 'elianiva' &&
+      github.actor == 'elianiva' &&
+      github.triggering_actor == 'elianiva'
     runs-on: ubuntu-latest
     defaults:
       run:
