@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "artwork.go",
         "media.go",
+        "nowplaying_windows.go",
         "session_darwin.go",
         "session_linux.go",
         "session_other.go",
@@ -32,11 +33,13 @@ go_library(
         "//conditions:default": [],
     }) + select({
         "@rules_go//go/platform:windows_amd64": [
+            "@com_github_egoist_mygo//:mygo",
             "@org_golang_x_image//vector",
             "@org_golang_x_sys//windows",
             "@org_golang_x_sys//windows/registry",
         ],
         "@rules_go//go/platform:windows_arm64": [
+            "@com_github_egoist_mygo//:mygo",
             "@org_golang_x_image//vector",
             "@org_golang_x_sys//windows",
             "@org_golang_x_sys//windows/registry",
@@ -48,6 +51,7 @@ go_library(
 go_test(
     name = "systemmedia_test",
     srcs = [
+        "nowplaying_windows_test.go",
         "session_linux_test.go",
         "session_windows_test.go",
     ],
@@ -58,6 +62,14 @@ go_test(
         ],
         "@rules_go//go/platform:linux": [
             "@com_github_godbus_dbus_v5//:dbus",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "@rules_go//go/platform:windows_amd64": [
+            "@com_github_egoist_mygo//:mygo",
+        ],
+        "@rules_go//go/platform:windows_arm64": [
+            "@com_github_egoist_mygo//:mygo",
         ],
         "//conditions:default": [],
     }),

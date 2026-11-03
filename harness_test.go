@@ -59,7 +59,10 @@ var (
 	// YouTube answers one for a song the playlist holds already.
 	duplicateWrites atomic.Bool
 	hypeSongAdded   atomic.Bool
-	fakeLikeState   atomic.Value // what /next says of vid-3, as a string; "" says nothing
+	// fakePlaylistGrows adds a second song to the growing playlist's page, as
+	// YouTube does when the user adds one elsewhere.
+	fakePlaylistGrows atomic.Bool
+	fakeLikeState     atomic.Value // what /next says of vid-3, as a string; "" says nothing
 	// fakeAI holds the video IDs the fake's player page labels as made with AI.
 	fakeAI sync.Map
 	// lastWrite is the last playlist write the fake YouTube was asked for:
@@ -157,6 +160,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = playlistPage()
 	case strings.Contains(asked, "VLPL_songs"):
 		reply = playlistSongsResponse
+	case strings.Contains(asked, "VLPL_grows"):
+		reply = growingPlaylistResponse()
 	case strings.Contains(asked, "VLPL_metadata"):
 		reply = metadataPlaylistResponse
 	case strings.Contains(asked, "VLPL_album_cover"):
@@ -587,6 +592,31 @@ func playlistPage() string {
 		`"contents":{"playlistVideoListRenderer":{"contents":[
 	{"playlistVideoRenderer":{"videoId":"playlist-video","playlistItemData":{"playlistSetVideoId":"set-video-1"},"title":{"simpleText":"Playlist video"},"lengthText":{"simpleText":"5:21"}}}
 ]}}}`
+}
+
+// growingPlaylistResponse is a playlist page of one song, which gains a second
+// one when fakePlaylistGrows is set, as a playlist the user added to elsewhere
+// does.
+func growingPlaylistResponse() string {
+	second := ""
+	if fakePlaylistGrows.Load() {
+		second = `,
+	{"musicResponsiveListItemRenderer": {
+		"playlistItemData": {"videoId": "grow-two"},
+		"flexColumns": [
+			{"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": [{"text": "Growing Track Two"}]}}}
+		]
+	}}`
+	}
+	return `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Growing Playlist"}]}}},
+	"contents":{"playlistVideoListRenderer":{"contents":[
+	{"musicResponsiveListItemRenderer": {
+		"playlistItemData": {"videoId": "grow-one"},
+		"flexColumns": [
+			{"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": [{"text": "Growing Track One"}]}}}
+		]
+	}}` + second + `
+	]}}}`
 }
 
 // playlistSongsResponse is a playlist page of three songs, each with an artist

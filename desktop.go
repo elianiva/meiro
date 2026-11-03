@@ -133,6 +133,36 @@ func (d *desktop) keepAwake(on bool) {
 	d.awake = mygo.Power.KeepAwake("Playing music", false)
 }
 
+// trackNotices is the system side of track notifications. The desktop is
+// the real one; tests record what the app asks of it.
+type trackNotices interface {
+	// appActive reports whether a Meiro window, the main window or the
+	// mini player, is the one in front.
+	appActive() bool
+	notify(item youtube.MusicItem, icon []byte)
+	// dismissNotification removes the track notification shown last, with
+	// the icons it holds.
+	dismissNotification()
+}
+
+// appActive reports whether a Meiro window is in front. On Windows MyGo asks
+// for the foreground window, which the mini player counts as too.
+func (d *desktop) appActive() bool { return d != nil && mygo.App.IsActive() }
+
+// dismissNotification removes the track notification shown last, the
+// temporary tray icon that showed its cover and the cover's native icon.
+func (d *desktop) dismissNotification() {
+	if d == nil {
+		return
+	}
+	if d.notification != nil {
+		d.notification.Close()
+		d.notification = nil
+	}
+	d.clearNotificationTray()
+	d.clearNotificationArtwork()
+}
+
 // notify announces a track with its cover when the platform supports it, and
 // brings the window back when the user clicks the notification.
 func (d *desktop) notify(item youtube.MusicItem, icon []byte) {

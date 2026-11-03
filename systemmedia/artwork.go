@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (windows && (amd64 || arm64))
 
 package systemmedia
 
@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// loadArtwork bounds compressed bytes and image dimensions before AppKit
+// loadArtwork bounds compressed bytes and image dimensions before the system
 // decodes the image. DecodeConfig avoids decoding the full pixel payload here.
 func loadArtwork(ctx context.Context, url string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
