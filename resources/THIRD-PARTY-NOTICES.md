@@ -21,6 +21,14 @@ standalone build from <https://github.com/yt-dlp/yt-dlp>, released into the
 public domain under the Unlicense. It bundles other free software; its
 repository lists it.
 
+## MeCab IPAdic
+
+Supplies the dictionary reading of a Japanese lyric line. This is the IPA
+dictionary packaged by [kagome-dict](https://github.com/ikawaha/kagome-dict),
+used under its dictionary terms. A reading is a dictionary guess, so a word
+with more than one reading may not match the one the song uses. Korean
+readings are computed from the letters and do not use this dictionary.
+
 ## QuickJS
 
 Runs the JavaScript that yt-dlp needs to solve YouTube's challenges. This is
