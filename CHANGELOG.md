@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Track notifications stay away while you use Meiro.** A new track no longer shows a notification while the main window or the mini player is in front, and the previous track's notification goes away. Notifications still appear while you are in another app.
+
 ## [0.6.0] - 2026-11-03
 
 ### Added
