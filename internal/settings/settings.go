@@ -75,6 +75,9 @@ type Settings struct {
 	SignInSource string `json:"signInSource,omitempty"`
 	// StaticLyrics shows lyrics as plain text even when a track has them timed.
 	StaticLyrics bool `json:"staticLyrics,omitempty"`
+	// RomanizedLyrics shows a Latin reading under a Japanese or Korean line.
+	// A settings file from before the switch leaves it on.
+	RomanizedLyrics bool `json:"romanizedLyrics"`
 	// NotifyTrack shows a desktop notification when a new track starts,
 	// except on macOS, where playback is presented by the notch or menu bar.
 	NotifyTrack bool `json:"notifyTrack"`
@@ -137,7 +140,7 @@ const (
 func Defaults() Settings {
 	return Settings{
 		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: runtime.GOOS != "darwin", ShowTray: runtime.GOOS != "darwin", TrayMark: TrayMarkWordmark,
-		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade,
+		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade, RomanizedLyrics: true,
 	}
 }
 
