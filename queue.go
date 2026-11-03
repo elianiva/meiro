@@ -23,8 +23,9 @@ const autoplayQueueLimit = 100
 type queue struct {
 	items []youtube.MusicItem
 	index int
-	// recStart is the place of the first generated track, or -1 when the
-	// queue holds none.
+	// recStart is the place of the first generated track still to play, or
+	// -1 when none is. Generated tracks before it have played, and are part
+	// of the queue rather than its recommendations.
 	recStart  int
 	generated map[string]struct{}
 	// playNext is the track the user asked to play next, which plays before
@@ -149,13 +150,27 @@ func (q *queue) nextEligible(autoPlay bool, repeat repeatMode, skipDisliked bool
 	return 0, false
 }
 
-// moveTo makes the track at index the current one.
+// moveTo makes the track at index the current one. The recommendations that
+// have played fold into the queue, so the divider keeps only what is still to
+// come after the track playing.
 func (q *queue) moveTo(index int) youtube.MusicItem {
 	q.index = index
+	q.recStart = q.firstGeneratedFrom(q.index + 1)
 	if q.items[index].VideoID == q.playNext {
 		q.playNext = ""
 	}
 	return q.items[index]
+}
+
+// firstGeneratedFrom is the place of the first generated track at or after
+// from, or -1 when none is.
+func (q *queue) firstGeneratedFrom(from int) int {
+	for index := max(from, 0); index < len(q.items); index++ {
+		if _, generated := q.generated[q.items[index].VideoID]; generated {
+			return index
+		}
+	}
+	return -1
 }
 
 // find is the place of a track in the queue, or -1.
@@ -240,11 +255,10 @@ func (q *queue) remove(index int) bool {
 	if id == q.playNext {
 		q.playNext = ""
 	}
+	delete(q.generated, id)
 	if q.recStart >= 0 {
 		if index < q.recStart {
 			q.recStart--
-		} else {
-			delete(q.generated, id)
 		}
 		if q.recStart >= len(q.items) {
 			q.recStart = -1
@@ -416,6 +430,11 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 // The generated tracks keep their place at the end. The order the chosen
 // tracks were in is kept for restoreQueue.
 func (q *queue) shuffleQueue() {
+	// A recommendation that has folded into the queue still came from
+	// Auto-play: arranging the queue around it would drag history with it.
+	if _, generated := q.generated[q.current().VideoID]; generated {
+		return
+	}
 	limit := len(q.items)
 	if q.recStart >= 0 && q.recStart < limit {
 		limit = q.recStart
@@ -553,13 +572,7 @@ func (q *queue) moveRows(rows []int, to int) bool {
 		return false
 	}
 	q.items, q.index = moved, index
-	q.recStart = -1
-	if len(q.generated) > 0 {
-		q.recStart = slices.IndexFunc(moved, func(item youtube.MusicItem) bool {
-			_, ok := q.generated[item.VideoID]
-			return ok
-		})
-	}
+	q.recStart = q.firstGeneratedFrom(q.index + 1)
 	return true
 }
 

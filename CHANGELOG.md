@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- **Adding to the queue keeps the song after the one playing.** When Auto-play had already moved into recommendations, an added song went back to the original queue behind the track playing, so it never played. It now joins the queue after the current track.
+- **Adding to the queue keeps the song after the one playing.** When Auto-play had already moved into recommendations, an added song went back to the original queue behind the track playing, so it never played. It now joins the queue after the current track, and recommendations that have played fold into the queue above the Recommended heading as YouTube Music does.
 
 ## [0.6.0] - 2026-11-03
 

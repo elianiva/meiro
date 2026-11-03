@@ -75,6 +75,9 @@ func (q *queue) restore(s playstate.State) {
 			q.remove(i)
 		}
 	}
+	// A queue saved before recommendations folded into it still points at the
+	// first one played: put the boundary after the track that was playing.
+	q.recStart = q.firstGeneratedFrom(q.index + 1)
 }
 
 // restorePlayback brings back the queue and the track the last run left,
