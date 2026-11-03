@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "romanize",
+    srcs = [
+        "japanese.go",
+        "korean.go",
+        "romanize.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/romanize",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "@com_github_ikawaha_kagome_dict_ipa//:ipa",
+        "@com_github_ikawaha_kagome_v2//tokenizer",
+    ],
+)
+
+go_test(
+    name = "romanize_test",
+    srcs = ["romanize_test.go"],
+    embed = [":romanize"],
+)
