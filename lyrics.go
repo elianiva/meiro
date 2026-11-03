@@ -11,6 +11,7 @@ import (
 	"github.com/elianiva/meiro/internal/betterlyrics"
 	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lyrics"
+	"github.com/elianiva/meiro/internal/romanize"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -173,7 +174,20 @@ func findLyrics(ctx context.Context, sources lyricSources, client *youtube.Clien
 	if found.text == "" && len(found.synced) == 0 {
 		return found, lookupErr
 	}
+	// The reading is worked out with the lookup, off the thread that draws,
+	// because the Japanese dictionary is large to open the first time.
+	warmReadings(found)
 	return found, nil
+}
+
+// warmReadings fills the reading cache for the lines about to be shown.
+func warmReadings(found loadedLyrics) {
+	for _, line := range found.synced {
+		romanize.Reading(line.Text)
+	}
+	for line := range strings.SplitSeq(found.text, "\n") {
+		romanize.Reading(line)
+	}
 }
 
 // lyricsSource finds the lyrics LRCLIB has of a track.
@@ -200,11 +214,17 @@ func (a *app) lyricsView(c *ui.Context) {
 			a.syncedLyrics(c)
 			return
 		}
+		if !timed && lyricsHaveReading(l) {
+			ui.Row(c).Padding(0, 16, 0).Gap(18).AlignItems(ui.Center).Children(func() {
+				a.romanizationSwitch(c)
+				ui.Box(c).Grow(1)
+			})
+		}
 		// The plain words are a page to read, so they keep a measure of their
 		// own rather than the width of a panel that may be very wide.
 		ui.Scroll(c).Grow(1).Padding(16, 24, 40).Children(func() {
 			ui.Column(c).FillWidth().MaxWidth(lyricMeasure).AlignSelf(ui.Center).Children(func() {
-				m3.Text(c, m3.BodyLarge, l.text).LineHeight(1.7).TextColor(sc.OnSurface).Selectable()
+				a.plainLyrics(c, l.text, sc)
 				if l.footer != "" && !timed {
 					m3.Text(c, m3.BodySmall, l.footer).TextColor(sc.OnSurfaceVariant).Margin(16, 0, 0)
 				}
@@ -232,6 +252,9 @@ func (a *app) lyricsModes(c *ui.Context, synced bool) {
 			}
 			a.saveSettings()
 		}
+		if lyricsHaveReading(l) {
+			a.romanizationSwitch(c)
+		}
 		ui.Box(c).Grow(1)
 		if l.footer != "" {
 			if m3.IconButton(c, m3.IconButtonSpec{
@@ -241,6 +264,61 @@ func (a *app) lyricsModes(c *ui.Context, synced bool) {
 			}
 		}
 	})
+}
+
+// romanizationSwitch turns the Latin reading under a Japanese or Korean
+// line on and off. The choice is kept with the other settings.
+func (a *app) romanizationSwitch(c *ui.Context) {
+	reading := a.settings.RomanizedLyrics
+	if m3.CompactSwitch(c, &reading, "Romanization").Tooltip("Romanization").Changed() {
+		a.settings.RomanizedLyrics = reading
+		a.saveSettings()
+	}
+}
+
+// lyricsHaveReading reports whether any line of the lyrics has a Latin
+// reading to show.
+func lyricsHaveReading(l *lyricsState) bool {
+	for _, line := range l.synced {
+		if romanize.Reading(line.Text) != "" {
+			return true
+		}
+	}
+	for line := range strings.SplitSeq(l.text, "\n") {
+		if romanize.Reading(line) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// lyricReading is the Latin reading under a line, or nothing when the user
+// has turned readings off or the line has none.
+func lyricReading(a *app, text string) string {
+	if !a.settings.RomanizedLyrics {
+		return ""
+	}
+	return romanize.Reading(text)
+}
+
+// plainLyrics is the lyrics as a page. A line with a reading keeps the
+// original and puts the reading under it; a page with no readings stays one
+// block, as it did before readings existed.
+func (a *app) plainLyrics(c *ui.Context, text string, sc m3.Scheme) {
+	if !a.settings.RomanizedLyrics || !lyricsHaveReading(&lyricsState{text: text}) {
+		m3.Text(c, m3.BodyLarge, text).LineHeight(1.7).TextColor(sc.OnSurface).Selectable()
+		return
+	}
+	for line := range strings.SplitSeq(text, "\n") {
+		shown := line
+		if shown == "" {
+			shown = " "
+		}
+		m3.Text(c, m3.BodyLarge, shown).LineHeight(1.7).TextColor(sc.OnSurface).Selectable()
+		if reading := romanize.Reading(line); reading != "" {
+			m3.Text(c, m3.BodyMedium, reading).TextColor(sc.OnSurfaceVariant).LineHeight(1.3)
+		}
+	}
 }
 
 // lyricsSourceDialog says which service the lyrics of the track playing came
@@ -361,7 +439,7 @@ func (a *app) lyricLine(c *ui.Context, line lyrics.Line, at time.Duration, i, no
 	opacity, size := lyricLook(distance)
 	text := line.Text
 	if text == "" {
-		text = "♪"
+		text = "\u266a"
 	}
 	// The line being sung takes the accent colour, so that the eye finds it
 	// without having to read its weight or its brightness.
@@ -376,11 +454,16 @@ func (a *app) lyricLine(c *ui.Context, line lyrics.Line, at time.Duration, i, no
 	size = m3.Animate(row, "size", size, m3.EffectsSlow)
 	row.Opacity(opacity).TransformOrigin(0, 0.5).Scale(size, size)
 	row.Children(func() {
-		if len(line.Words) > 0 {
-			m3.EmphasizedRichText(c, m3.HeadlineSmall, lyricWords(line, at, lit)...).FontWeight(800).LineHeight(1.25)
-			return
-		}
-		m3.EmphasizedText(c, m3.HeadlineSmall, text).FontWeight(800).TextColor(lit).LineHeight(1.25)
+		ui.Column(c).FillWidth().Gap(2).Children(func() {
+			if len(line.Words) > 0 {
+				m3.EmphasizedRichText(c, m3.HeadlineSmall, lyricWords(line, at, lit)...).FontWeight(800).LineHeight(1.25)
+			} else {
+				m3.EmphasizedText(c, m3.HeadlineSmall, text).FontWeight(800).TextColor(lit).LineHeight(1.25)
+			}
+			if reading := lyricReading(a, line.Text); reading != "" {
+				m3.Text(c, m3.BodyMedium, reading).TextColor(lit.Alpha(0.65)).LineHeight(1.2)
+			}
+		})
 	})
 	if row.Clicked() {
 		a.seek(line.At)
