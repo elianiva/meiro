@@ -246,13 +246,17 @@ func (a *app) loadPage(r *route, id string) {
 			return
 		}
 		a.applyPage(p, r, path, client, result, false)
+		// A downloaded album or playlist picks up the songs it gained since,
+		// from the part of the page that has loaded; the rest adds its own
+		// when it arrives.
+		a.syncCollectionDownload(p, r, id)
 		// A playlist page shows its whole playlist and what YouTube suggests
 		// under it, so the page asks for both as it opens.
 		if r.id == routePlaylist {
 			token, suggestions := playlistContinuations(feed.sections, feed.more)
 			p.playlistMore = token
 			p.feed.more = ""
-			a.loadPlaylistRest(p, client, token, suggestions)
+			a.loadPlaylistRest(p, r, id, client, token, suggestions)
 		}
 	})
 }
@@ -261,7 +265,7 @@ func (a *app) loadPage(r *route, id string) {
 // playlist that came after its first page join it, and the first answer that
 // is a shelf is what YouTube suggests under the playlist, which the page shows
 // after it, a few at a time.
-func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token, suggestions string) {
+func (a *app) loadPlaylistRest(p *pageData, r *route, id string, client *youtube.Client, token, suggestions string) {
 	if token == "" || a.pageSimilar.busy() {
 		return
 	}
@@ -298,6 +302,7 @@ func (a *app) loadPlaylistRest(p *pageData, client *youtube.Client, token, sugge
 			feed.similarMore = more.next
 			feed.similarShown = min(suggestionsShown, len(feed.similar))
 		}
+		a.syncCollectionDownload(p, r, id)
 	})
 }
 

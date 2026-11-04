@@ -53,5 +53,6 @@ Preconditions:
 - Saving an album and liking a track both count in `likeWrites`. Reset or compare a delta.
 
 - **Large playlists.** `/playlist/VLPL_paginated` supplies 100 initial songs, a song-shelf continuation with 46 more, and a separate suggestions continuation. `TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions` checks all 146 playable songs, their last ID, and suggestions kept separate.
+- **Pages YouTube appends.** `/playlist/VLPL_appended` supplies 100 songs in a shelf and two later pages as `onResponseReceivedActions[0].appendContinuationItemsAction.continuationItems`, each ending with a `continuationItemRenderer`. `TestAPlaylistLoadsEveryAppendedContinuation` checks all 246 songs and the last ID; `TestAPlaylistShowsItsNextPageLoading` holds the later pages and checks that a spinner shows under the songs until they arrive. This is the shape a real large playlist uses; the shelf wrapper is only the older one.
 
 - Playlist playback must cover both shelf and page continuation tokens, early play while songs load, playlist-card playback, selecting another queued song, and resuming an unfinished playlist after restart. See `TestPlayingBeforeThePlaylistLoadsKeepsItsRemainingSongs`, `TestPlayingAPlaylistCardIncludesEverySong`, and `TestARestartContinuesAnUnfinishedPlaylist`.

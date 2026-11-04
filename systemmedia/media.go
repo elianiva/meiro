@@ -27,6 +27,7 @@ type State struct {
 	VideoID    string
 	Title      string
 	Artist     string
+	Album      string
 	ArtworkURL string
 	Duration   time.Duration
 	Position   time.Duration

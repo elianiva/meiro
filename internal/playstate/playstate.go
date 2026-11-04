@@ -29,7 +29,7 @@ type State struct {
 	Items []youtube.MusicItem `json:"items"`
 	// Index is the place of the current track in Items.
 	Index int `json:"index"`
-	// RecStart is the place of the first generated track, or -1.
+	// RecStart is the place of the first generated track still to play, or -1.
 	RecStart int `json:"recStart"`
 	// PlayNext is the track the user asked to play next, if any.
 	PlayNext string `json:"playNext,omitempty"`

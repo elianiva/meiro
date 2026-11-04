@@ -353,6 +353,9 @@ type FABSpec struct {
 	Size  FABSize
 	Tone  FABTone
 	Key   any
+	// Radius overrides the corner the size gives, for a button that sits on
+	// a surface whose own corners it should follow.
+	Radius float32
 }
 
 // FABSize is the size of a floating action button.
@@ -396,6 +399,9 @@ func FAB(c *ui.Context, spec FABSpec) ui.Element {
 		size, radius, icon = 40, Medium, 24
 	case FABLarge:
 		size, radius, icon = 96, ExtraLarge, 36
+	}
+	if spec.Radius > 0 {
+		radius = spec.Radius
 	}
 	if b.Pressed() {
 		radius = max(radius/2, Small/2)

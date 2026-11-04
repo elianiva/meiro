@@ -5,7 +5,7 @@ A user downloads songs, albums and playlists, then plays them with no network. T
 ## Sub-features
 
 - `download-song` downloads a song from its menu on any row or card, and removes it again from the same menu. A downloaded song shows a check beside its length.
-- `download-collection` downloads an album or playlist from its page's Download button, which then reads Downloading n/m and Downloaded. Clicking it again removes the download. Album and playlist cards and rows offer Download and Remove download in their menu.
+- `download-collection` downloads an album or playlist from its page's Download button, which then reads Downloading n/m and Downloaded. Clicking it again removes the download. Album and playlist cards and rows offer Download and Remove download in their menu. A downloaded album or playlist fetches the songs added to it since it was downloaded, when its page next loads.
 - `downloads-page` lists the downloaded albums and playlists, then the songs, and plays from them.
 - `downloads-offline` plays a downloaded song from its file without resolving it, and opens a downloaded album or playlist from its download when the network fails.
 
@@ -24,6 +24,7 @@ Preconditions:
 - Call `a.openDownloads(dir)` with a temp dir: without it the app has no downloads folder and hides every download control.
 - Give `playbackApp(t)` a resolver URL served by `httptest`, so the download saves real bytes.
 - `TestADownloadedAlbumPlaysOffline` downloads the album, checks that the album page keeps its own content after a visit to Downloads, restarts the app on the same folder with every request failing, opens the album from Downloads, plays it without resolving, and removes the download.
+- `TestADownloadedPlaylistPicksUpASongAddedLater` downloads a playlist, adds a song to the fake's page, reopens the playlist from Downloads, and checks that the new song is fetched without fetching the old one again and that the offline page lists both.
 - `offline.TestRemovingACollectionKeepsSongsWantedElsewhere` and `offline.TestReadKeepsListedSongsAndSweepsUnlistedAudio` cover the index.
 
 ## Gotchas
