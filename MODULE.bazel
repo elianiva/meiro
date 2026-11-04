@@ -26,6 +26,7 @@ use_repo(
     "com_github_fsnotify_fsnotify",
     "com_github_go_macos_objc",
     "com_github_godbus_dbus_v5",
+    "com_github_ikawaha_kagome_dict",
     "com_github_ikawaha_kagome_dict_ipa",
     "com_github_ikawaha_kagome_v2",
     "com_github_microsoft_go_winio",

@@ -11,7 +11,6 @@ import (
 	"github.com/elianiva/meiro/internal/betterlyrics"
 	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lyrics"
-	"github.com/elianiva/meiro/internal/romaji"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -102,22 +101,35 @@ func (a *app) loadLyrics() {
 // replaces the work in flight.
 func (a *app) romanizeLyrics() {
 	l := &a.nowPlaying.lyrics
-	if !a.settings.RomanizeLyrics {
+	if !a.settings.RomanizeLyrics || a.romanize == nil {
 		l.romanization.stop()
 		l.romaji = nil
+		// Turning it off gives the dictionary's memory back; the file stays,
+		// so turning it on again does not download anything.
+		if a.romanizeDict != nil {
+			a.romanizeDict.Unload()
+		}
 		return
 	}
 	lines := lyricLines(l)
 	if len(lines) == 0 {
 		return
 	}
-	startTask(a, &l.romanization, noTimeout, func(context.Context) (map[string]string, error) {
-		return romaji.Lines(lines)
+	if a.romanizeDict != nil && !a.romanizeDict.Cached() {
+		a.notice = "Downloading the Japanese dictionary for the first time…"
+	}
+	startTask(a, &l.romanization, noTimeout, func(ctx context.Context) (map[string]string, error) {
+		return a.romanize(ctx, lines)
 	}, func(found map[string]string, err error) {
 		if err != nil {
-			// The dictionary is part of the app, so this is not something the
-			// user can fix. The lyrics still show, just without the Latin.
+			// The dictionary could not be downloaded or read. Turn the setting
+			// back off, so the switch says what happened and turning it on
+			// again is the retry.
 			log.Printf("lyrics: romanization failed: %v", err)
+			l.romaji = nil
+			a.settings.RomanizeLyrics = false
+			a.saveSettings()
+			a.notice = "Couldn't load the Japanese dictionary. Check your connection and try again."
 			return
 		}
 		l.romaji = found
@@ -336,7 +348,7 @@ func (a *app) lyricsModes(c *ui.Context, synced bool) {
 		// The letters stand for the Latin spelling the second switch turns on.
 		ui.Icon(c, m3.IconTranslate).FontSize(18).TextColor(sc.OnSurfaceVariant)
 		romanize := a.settings.RomanizeLyrics
-		if m3.CompactSwitch(c, &romanize, "Romanize lyrics").Tooltip("Romanize Japanese lyrics").Changed() {
+		if m3.CompactSwitch(c, &romanize, "Romanize lyrics").Tooltip("Romanize Japanese lyrics; downloads a dictionary the first time it is needed").Changed() {
 			a.settings.RomanizeLyrics = romanize
 			a.saveSettings()
 			a.romanizeLyrics()

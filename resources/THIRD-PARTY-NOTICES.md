@@ -2,8 +2,8 @@
 
 The full release of Meiro ships three programs next to the app. The minimal
 release does not bundle these programs; it uses the system's ffmpeg, yt-dlp,
-and Node.js or Bun. The app itself also carries a Japanese dictionary for the
-Latin spelling of Japanese lyrics, described below.
+and Node.js or Bun. The app downloads a Japanese dictionary on first use, for the Latin
+spelling of Japanese lyrics; it is described below.
 
 ## ffmpeg
 
@@ -30,7 +30,10 @@ the MIT License (the text is in `licenses/quickjs-MIT.txt`).
 
 ## Japanese dictionary
 
-Reads the kanji in Japanese lyrics for their Latin spelling. This is
+Reads the kanji in Japanese lyrics for their Latin spelling. Meiro downloads
+this the first time romanization is used, from
+[Kagome's IPADIC dictionary](https://github.com/ikawaha/kagome-dict) at the
+pinned `ipa/v1.2.6` commit, and checks it against a known SHA-256. This is
 [Kagome](https://github.com/ikawaha/kagome) and its IPADIC dictionary, both
 under the MIT License, embedding data from mecab-ipadic-2.7.0-20070801.
 

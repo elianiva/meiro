@@ -360,6 +360,15 @@ func newTestApp(t testing.TB) *app {
 	}
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) { return nil, nil }
 	a.betterLyrics = func(context.Context, betterlyrics.Query) ([]lyrics.Line, error) { return nil, nil }
+	// A test never reaches the dictionary download: unless it gives lines a
+	// spelling, they map to themselves and nothing appears under them.
+	a.romanize = func(_ context.Context, lines []string) (map[string]string, error) {
+		out := make(map[string]string, len(lines))
+		for _, line := range lines {
+			out[line] = line
+		}
+		return out, nil
+	}
 	a.account.newClient = newFakeClient
 	a.account.public = newFakeClient(nil)
 	return a

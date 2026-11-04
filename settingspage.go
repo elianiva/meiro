@@ -492,7 +492,7 @@ func (a *app) lyricsCard(c *ui.Context) {
 	a.settingsCard(c, "Japanese lyrics", m3.IconLyrics, func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Romanize Japanese lyrics",
-				"Show Latin letters under each Japanese line, from how its words and kanji are read.").Grow(1)
+				"Show Latin letters under each Japanese line, from how its words and kanji are read. The dictionary downloads the first time it is used.").Grow(1)
 			on := a.settings.RomanizeLyrics
 			if m3.Switch(c, &on, "Romanize lyrics").Changed() {
 				a.settings.RomanizeLyrics = on

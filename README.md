@@ -410,7 +410,8 @@ See the [open issues](https://github.com/elianiva/meiro/issues) for the rest.
 
 Meiro does not run its own account service, analytics, telemetry or servers.
 It connects to YouTube and Google for YouTube Music, streams and artwork, and
-uses yt-dlp to find streams. If you connect Last.fm in Settings, Meiro also
+uses yt-dlp to find streams. Turning on Japanese romanization downloads its
+dictionary from a CDN the first time. If you connect Last.fm in Settings, Meiro also
 sends your listening there. When automatic updates are enabled, Meiro contacts
 its update server to check for new versions. You can turn this off in Settings
 under Updates.
@@ -431,6 +432,8 @@ What Meiro keeps on your device:
   both.
 - **Cached audio and artwork**, in the cache folder you chose. Set the audio
   limit to `0` to turn the audio cache off.
+- **The Japanese dictionary**, about 12 MB, in the app's user data folder after
+  romanization is turned on.
 - **Logs**, with secrets removed, in the logs folder.
 
 Meiro reads cookies only when you choose to sign in, and only to take the

@@ -21,6 +21,7 @@ import (
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
+	"github.com/elianiva/meiro/internal/romaji"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/player"
@@ -57,6 +58,11 @@ type app struct {
 	// bundled reports whether a helper program is the one inside the app.
 	// Tests replace it.
 	bundled func(name string) bool
+	// romanize turns lyric lines into Latin letters, and romanizeDict is the
+	// dictionary it downloads on first use. setup sets both; tests replace
+	// romanize.
+	romanize     func(ctx context.Context, lines []string) (map[string]string, error)
+	romanizeDict *romaji.Dictionary
 
 	// What the user chose, and the writer that keeps it.
 	settings settings.Settings

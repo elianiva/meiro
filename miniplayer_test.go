@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -286,6 +287,15 @@ func TestRomanizationShowsTheLatinSpellingUnderJapaneseLyrics(t *testing.T) {
 	a := newTestApp(t)
 	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
 	a.settings.RomanizeLyrics = true
+	a.romanize = func(_ context.Context, lines []string) (map[string]string, error) {
+		out := make(map[string]string, len(lines))
+		for _, line := range lines {
+			out[line] = line
+		}
+		out["夜に駆ける"] = "yoru ni kakeru"
+		out["君の名前を呼ぶよ"] = "kimi no namae o yobu yo"
+		return out, nil
+	}
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
 		return &lrclib.Lyrics{Synced: []lyrics.Line{
 			{At: 0, Text: "夜に駆ける"},
@@ -336,6 +346,42 @@ func TestRomanizationShowsTheLatinSpellingUnderJapaneseLyrics(t *testing.T) {
 	a.saver.Wait()
 	if !settings.Load(a.saver.Path).RomanizeLyrics {
 		t.Error("the romanization choice was not saved")
+	}
+}
+
+// A dictionary that cannot be downloaded says so and leaves the switch off, so
+// turning it on again is the retry.
+func TestRomanizationTurnsOffWhenTheDictionaryCannotBeLoaded(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.romanize = func(context.Context, []string) (map[string]string, error) {
+		return nil, errors.New("the dictionary is not reachable")
+	}
+	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
+		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "東京"}}}, nil
+	}
+	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	tt.Frame()
+	if err := tt.Click("Lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Romanize lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.settings.RomanizeLyrics || a.nowPlaying.lyrics.romaji != nil {
+		t.Fatalf("a failed dictionary left romanization on: %v %#v", a.settings.RomanizeLyrics, a.nowPlaying.lyrics.romaji)
+	}
+	if !strings.Contains(a.notice, "Japanese dictionary") {
+		t.Fatalf("a failed dictionary said %q", a.notice)
+	}
+	a.saver.Wait()
+	if settings.Load(a.saver.Path).RomanizeLyrics {
+		t.Error("a failed dictionary left the setting saved on")
 	}
 }
 

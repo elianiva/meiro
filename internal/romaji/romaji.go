@@ -1,8 +1,8 @@
 // Package romaji turns Japanese lyrics into Latin letters the way pear-desktop
 // does for its Japanese lyrics: a Kuromoji-style tokenizer reads the kanji, and
 // the readings become Hepburn romanization. The tokenizer is Kagome, a Go port
-// of Kuromoji, with the IPADIC dictionary Kuromoji uses, so Meiro needs no
-// JavaScript or dictionary download at runtime.
+// of Kuromoji, with the IPADIC dictionary Kuromoji uses. The dictionary is
+// downloaded on first use, so the app does not carry its 11 MB.
 package romaji
 
 import (
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/ikawaha/kagome-dict/ipa"
+	kagomedict "github.com/ikawaha/kagome-dict/dict"
 	"github.com/ikawaha/kagome/v2/tokenizer"
 )
 
@@ -23,38 +23,31 @@ type Romanizer struct {
 	mu sync.Mutex
 }
 
-// New reads the IPADIC dictionary embedded in the app and returns a Romanizer.
-// It takes a moment and some memory, so call it off the main thread and keep
-// the result.
-func New() (*Romanizer, error) {
-	tok, err := tokenizer.New(ipa.Dict())
+// NewFromFile reads an IPADIC dictionary in Kagome's zipped format and returns
+// a Romanizer. It takes a moment and some memory, so call it off the main
+// thread and keep the result.
+func NewFromFile(path string) (*Romanizer, error) {
+	d, err := kagomedict.LoadDictFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return newRomanizer(d)
+}
+
+func newRomanizer(d *kagomedict.Dict) (*Romanizer, error) {
+	tok, err := tokenizer.New(d)
 	if err != nil {
 		return nil, err
 	}
 	return &Romanizer{tok: tok}, nil
 }
 
-var (
-	sharedOnce sync.Once
-	shared     *Romanizer
-	sharedErr  error
-)
-
-// Lines romanizes the lines of a song and returns each line's Latin spelling.
+// Lines romanizes the lines of one song and returns each line's Latin spelling.
 // A line that is not Japanese maps to itself, so a caller can look every line
 // up and show only the ones that changed.
 //
 // A song counts as Japanese when any line has kana. Lyrics with none are left
 // alone rather than guessed at, so Chinese lyrics are not read as Japanese.
-func Lines(lines []string) (map[string]string, error) {
-	sharedOnce.Do(func() { shared, sharedErr = New() })
-	if sharedErr != nil {
-		return nil, sharedErr
-	}
-	return shared.Lines(lines), nil
-}
-
-// Lines romanizes the lines of one song. See the package-level Lines.
 func (r *Romanizer) Lines(lines []string) map[string]string {
 	japanese := false
 	for _, line := range lines {
