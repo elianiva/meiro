@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **The progress handle keeps one width.** On a desktop whose scale is not a whole number, the bar that marks the position in a track rounded to one of two widths as it moved, so it looked to flicker wide and thin. Its edges now land on whole device pixels.
+
 ## [0.6.0] - 2026-11-03
 
 ### Added

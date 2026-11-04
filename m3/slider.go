@@ -28,6 +28,18 @@ const (
 	wavePeriodMS   = 1800
 )
 
+// handleBox returns a slider's handle as a box of whole device pixels whose
+// left edge sits on the pixel grid. A handle four DIPs wide lands on four
+// device pixels at 100%, but a desktop scale that is not whole turns it into
+// 4.8: the bar then rounds to five or to four depending on where it sits
+// between two pixels, so as it travels it looks to flicker wide and thin.
+func handleBox(p *ui.Painter, cx, cy, w, h float32) ui.Rect {
+	scale := p.Scale()
+	width := max(float32(math.Round(float64(w*scale))), 1)
+	left := float32(math.Round(float64(cx*scale - width/2)))
+	return ui.Rect{X: left / scale, Y: cy - h/2, W: width / scale, H: h}
+}
+
 // wavePhase is where the travelling wave sits at a wall-clock time, in
 // milliseconds since the epoch. It moves toward the start of the track as time
 // passes and repeats once per period, so its value is always negative except
@@ -208,7 +220,7 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 			}
 		}
 		// The handle.
-		p.Fill(ui.Rect{X: hx - handleW/2, Y: cy - handleH/2, W: handleW, H: handleH}, handle, handleW/2)
+		p.Fill(handleBox(p, hx, cy, handleW, handleH), handle, handleW/2)
 		if focused {
 			p.Stroke(ui.Rect{X: hx - 6, Y: cy - handleH/2 - 3, W: 12, H: handleH + 6}, sc.Secondary, 6, 2)
 		}
