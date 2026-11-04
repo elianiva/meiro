@@ -13,6 +13,7 @@ player and the macOS notch show the same lyrics in their own layouts.
 - `lyrics-line-sync`: YouTube Music and LRCLIB time whole lines, which stay lit for as long as they are sung and fade with their distance from it.
 - `lyrics-source`: the question mark at the end of the row opens a dialog that names where the lyrics came from (Better Lyrics, YouTube Music or LRCLIB) and the order Meiro asks them in. The button is absent when a source named none.
 - `lyrics-modes`: a switch under the tabs turns the timed lines on and off, remembered in Settings; off shows the plain text. The clock beside it is what the switch turns on, and the label "Synced lyrics" is the switch's own. Static shows the words of the timed lines joined, when the source has no plain text.
+- `lyrics-romanization`: the translate icon and switch beside the synced one, or the same switch in Settings → Lyrics, show a Japanese line's Hepburn spelling under it in both timed and plain views. A song counts as Japanese when any lyric line has kana; a line already Latin is not repeated. The word readings come from a dictionary loaded when the switch is first turned on, not at startup.
 - `lyrics-follow`: the line being sung sits in the middle of the list, in the theme's accent colour, and every other line is dimmer and smaller the further it is from it. The list dissolves into the card at its top and bottom instead of being cut by them, and reads at a fixed measure rather than the width of the tab. Opening the tab during a song places the current line in the middle at once.
 - `lyrics-seek`: clicking a line seeks to it.
 - `lyrics-fallback`: no lyrics and a failed lookup are different states; a failure is tried again the next time the tab opens.
@@ -44,6 +45,11 @@ the player finishes rising.
 - The "Synced lyrics" label of the mode switch and the "Where these lyrics come
   from" label of the source button repeat on both the panel and the mini player;
   a tester can only click what its own window shows.
+- The romanization switch's label is "Romanize lyrics" while its row in Settings
+  is titled "Romanize Japanese lyrics"; clicking the title does nothing.
+- Turning romanization on loads an embedded dictionary for the first time, so a
+  test that enables it pays a fraction of a second even though `a.run` runs the
+  work inline.
 - A line with no words still renders through `m3.EmphasizedText`; only lines
   with `Words` use `ui.RichText`, so a lyric-only line keeps its old look.
 - The source dialog drops the `Source: ` prefix of the footer before showing it,

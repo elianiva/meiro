@@ -291,6 +291,33 @@ func TestSettingsSearchFiltersSettingsInPlace(t *testing.T) {
 	}
 }
 
+func TestRomanizeLyricsSettingIsSearchableAndSaved(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("romaji")
+	tt.Frame()
+	if !tt.HasText("Romanize Japanese lyrics") {
+		t.Fatalf("the romanization setting is not in Settings search: %q", tt.Texts())
+	}
+	if err := tt.Click("Romanize lyrics"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.settings.RomanizeLyrics {
+		t.Fatal("the switch did not turn romanization on")
+	}
+	a.saver.Wait()
+	if !settings.Load(a.saver.Path).RomanizeLyrics {
+		t.Error("romanization was not saved")
+	}
+}
+
 func TestHomeShowMoreAppendsContinuationSections(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)

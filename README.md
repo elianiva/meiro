@@ -53,7 +53,7 @@ scrobble your listening to Last.fm.
 - **Lyrics that follow the song.** The line being sung is highlighted as the
   song plays, and word-synced lyrics light each word as it is reached. Meiro
   takes them from Better Lyrics, YouTube Music or LRCLIB. You can switch to
-  plain text.
+  plain text, and show Japanese lyrics in Latin letters.
 - **Music that keeps going.** When your queue ends, Meiro adds similar songs so
   the music does not stop.
 - **Pick up where you left off.** Open Meiro again and your queue and song are
@@ -530,6 +530,11 @@ half of the title.
   full build ships all three; the minimal build leaves them all to the system.
   See
   [`resources/THIRD-PARTY-NOTICES.md`](resources/THIRD-PARTY-NOTICES.md).
+- [Kagome](https://github.com/ikawaha/kagome), a Go port of Kuromoji, reads
+  the kanji in Japanese lyrics for their Latin spelling, with its IPADIC
+  dictionary. The romanization follows
+  [Kuroshiro](https://github.com/hexenq/kuroshiro) and the way
+  [pear-desktop](https://github.com/pear-devs/pear-desktop) uses both.
 - [Google Sans](https://github.com/googlefonts/googlesans) sets the text,
   under the SIL Open Font License (`fonts/OFL.txt`).
 
