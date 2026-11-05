@@ -174,6 +174,13 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 				close()
 			}
 		}
+		if library, ok := a.songLibrary(item); ok {
+			label, icon := songLibraryLabel(library)
+			if entry(label, icon).Clicked() {
+				a.toggleSongLibrary(item)
+				close()
+			}
+		}
 		if entry("Start radio", m3.IconShuffle).Clicked() {
 			a.startRadio(item, key)
 			close()

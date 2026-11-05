@@ -2,7 +2,9 @@ package youtube
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -143,4 +145,98 @@ func libraryToggle(toggle *jsonObject) (LibraryState, bool) {
 		saved = rendererBool(toggle.get("isToggled"))
 	}
 	return LibraryState{ID: strings.TrimPrefix(id, "VL"), Saved: saved}, true
+}
+
+// SongLibrary is whether a song is in the account's library, as its menu
+// says, and the tokens that put it there and take it out. YouTube Music keeps
+// a song in the library apart from its like: the menu's "Save to library"
+// writes a feedback token, not a rating.
+type SongLibrary struct {
+	Saved bool
+	// Add and Remove are the feedback tokens of the two writes. The menu
+	// gives both whatever the song's state, and they do not change with it.
+	Add, Remove string
+}
+
+// SongInLibrary is what the song's menu said of its place in the library, and
+// false when it said nothing, as a menu seen signed out does not.
+func (item MusicItem) SongInLibrary() (SongLibrary, bool) {
+	if item.SongLibrary == nil {
+		return SongLibrary{}, false
+	}
+	return *item.SongLibrary, true
+}
+
+// SaveSongToLibrary puts a song in the account's library, or takes it out,
+// without touching its like. token is the feedback token the song's menu gave
+// for that write.
+func (c *Client) SaveSongToLibrary(ctx context.Context, token string) error {
+	if c.cookieAuth == nil {
+		return errors.New("youtube: SaveSongToLibrary requires cookie authentication")
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return errors.New("youtube: SaveSongToLibrary needs a feedback token")
+	}
+	const endpoint = "feedback"
+	raw, err := c.execute(ctx, endpoint, map[string]any{"feedbackTokens": []string{token}})
+	if err != nil {
+		return err
+	}
+	if err := writeFailure(endpoint, raw); err != nil {
+		return err
+	}
+	var response struct {
+		FeedbackResponses []struct {
+			IsProcessed bool `json:"isProcessed"`
+		} `json:"feedbackResponses"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return fmt.Errorf("youtube: decode %s response: %w", endpoint, err)
+	}
+	if len(response.FeedbackResponses) == 0 || !response.FeedbackResponses[0].IsProcessed {
+		return errors.New("youtube: " + endpoint + " was not processed")
+	}
+	return nil
+}
+
+// itemSongLibrary reads the library toggle of a song's menu: the menu item
+// whose endpoints are feedback tokens and whose icon is a bookmark. The icon
+// names the write on offer: an empty bookmark saves, a filled one removes.
+// Newer pages always show the empty bookmark and say the state with
+// isToggled instead. It is nil for an item with no such toggle: anything seen
+// signed out, and anything that is not a song.
+func itemSongLibrary(renderer *jsonObject) *SongLibrary {
+	menu, _ := renderer.get("menu").(*jsonObject)
+	menuRenderer, _ := menu.get("menuRenderer").(*jsonObject)
+	entries, _ := menuRenderer.get("items").([]any)
+	for _, entry := range entries {
+		object, _ := entry.(*jsonObject)
+		toggle, ok := object.get("toggleMenuServiceItemRenderer").(*jsonObject)
+		if !ok {
+			continue
+		}
+		token := func(name string) string {
+			endpoint, _ := toggle.get(name).(*jsonObject)
+			feedback, _ := endpoint.get("feedbackEndpoint").(*jsonObject)
+			value, _ := feedback.get("feedbackToken").(string)
+			return value
+		}
+		icon := nestedString(toggle.get("defaultIcon"), "iconType")
+		toggled := toggle.has("isToggled") && rendererBool(toggle.get("isToggled"))
+		var state SongLibrary
+		switch icon {
+		case "BOOKMARK_BORDER", "LIBRARY_ADD":
+			state = SongLibrary{Saved: toggled, Add: token("defaultServiceEndpoint"), Remove: token("toggledServiceEndpoint")}
+		case "BOOKMARK", "LIBRARY_SAVED", "LIBRARY_REMOVE":
+			state = SongLibrary{Saved: true, Add: token("toggledServiceEndpoint"), Remove: token("defaultServiceEndpoint")}
+		default:
+			continue
+		}
+		if state.Add == "" || state.Remove == "" {
+			continue
+		}
+		return &state
+	}
+	return nil
 }

@@ -2,6 +2,7 @@ package youtube
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,52 @@ func TestCardsSayWhetherTheyAreInTheLibrary(t *testing.T) {
 	for title, state := range want {
 		if got[title] != state {
 			t.Errorf("%s: library %+v, want %+v", title, got[title], state)
+		}
+	}
+}
+
+func TestSongsSayWhetherTheyAreInTheLibrary(t *testing.T) {
+	row := func(title, menu string) string {
+		return `{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"` + title + `"},
+			"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"` + title + `"}]}}}]` + menu + `}}`
+	}
+	toggle := func(fields string) string {
+		return `,"menu":{"menuRenderer":{"items":[{"menuNavigationItemRenderer":{}},{"toggleMenuServiceItemRenderer":{` + fields + `}}]}}`
+	}
+	const (
+		add    = `"defaultServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"A"}},"toggledServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"R"}}`
+		remove = `"defaultServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"R"}},"toggledServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"A"}}`
+	)
+	page := `{"contents":{"musicShelfRenderer":{"contents":[` + strings.Join([]string{
+		row("toggled", toggle(`"defaultIcon":{"iconType":"BOOKMARK_BORDER"},"isToggled":true,`+add)),
+		row("untoggled", toggle(`"defaultIcon":{"iconType":"BOOKMARK_BORDER"},"isToggled":false,`+add)),
+		row("offers save", toggle(`"defaultIcon":{"iconType":"LIBRARY_ADD"},`+add)),
+		row("offers removal", toggle(`"defaultIcon":{"iconType":"LIBRARY_SAVED"},`+remove)),
+		row("pin", toggle(`"defaultIcon":{"iconType":"KEEP"},`+add)),
+		row("playlist toggle", toggle(`"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"playlistId":"PL1"}}}`)),
+		row("plain", ""),
+	}, ",") + `]}}}`
+	got := map[string]*SongLibrary{}
+	for _, item := range browseResult(decodeResponse(json.RawMessage(page))).Items {
+		got[item.Title] = item.SongLibrary
+	}
+	want := map[string]*SongLibrary{
+		"toggled":         {Saved: true, Add: "A", Remove: "R"},
+		"untoggled":       {Add: "A", Remove: "R"},
+		"offers save":     {Add: "A", Remove: "R"},
+		"offers removal":  {Saved: true, Add: "A", Remove: "R"},
+		"pin":             nil,
+		"playlist toggle": nil,
+		"plain":           nil,
+	}
+	for title, state := range want {
+		g, ok := got[title]
+		if !ok {
+			t.Errorf("%s: no item parsed", title)
+			continue
+		}
+		if (g == nil) != (state == nil) || (g != nil && *g != *state) {
+			t.Errorf("%s: song library %+v, want %+v", title, g, state)
 		}
 	}
 }

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Save a song to your library without liking it.** A signed-in song's menu offers Add to library, or Remove from library once it is there, as YouTube Music does. It keeps the song in your library apart from your likes: liking or unliking a song leaves it where it is, and adding one does not like it.
+
 ## [0.6.1] - 2026-11-05
 
 ### Added

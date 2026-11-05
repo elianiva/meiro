@@ -50,6 +50,9 @@ var (
 	// refuseWrites makes it answer them, and the library and subscription
 	// writes after them, as YouTube answers a request it rejects: with a 400.
 	likeWrites atomic.Int32
+	// songLibraryWrites counts the feedback writes that save a song to the
+	// library or take it out, refused the same way.
+	songLibraryWrites atomic.Int32
 	// subscribeWrites counts the subscription writes, refused the same way.
 	subscribeWrites atomic.Int32
 	refuseWrites    atomic.Bool
@@ -112,6 +115,20 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 			reply, status = rejectedResponse, http.StatusBadRequest
 		} else if id := writtenPlaylist(); id != "" {
 			fakeLibrary.Store(id, strings.HasSuffix(request.URL.Path, "/like/like"))
+		}
+	case strings.HasSuffix(request.URL.Path, "/feedback"):
+		songLibraryWrites.Add(1)
+		recordWrite(request.URL.Path, asked)
+		reply = `{"feedbackResponses":[{"isProcessed":true}]}`
+		if refuseWrites.Load() {
+			reply, status = rejectedResponse, http.StatusBadRequest
+		} else if tokens, _ := written().body["feedbackTokens"].([]any); len(tokens) == 1 {
+			token, _ := tokens[0].(string)
+			if song, ok := strings.CutPrefix(token, "add-"); ok {
+				fakeLibrary.Store("song:"+song, true)
+			} else if song, ok := strings.CutPrefix(token, "remove-"); ok {
+				fakeLibrary.Store("song:"+song, false)
+			}
 		}
 	case strings.HasSuffix(request.URL.Path, "/subscription/subscribe"), strings.HasSuffix(request.URL.Path, "/subscription/unsubscribe"):
 		subscribeWrites.Add(1)
@@ -461,9 +478,20 @@ func albumPage() string {
 		"flexColumns":[
 			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Album Track One"}]}}},
 			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"4:12"}]}}}
-		]
+		],
+		` + songLibraryMenu("vid-3") + `
 	}}
 ]}}}`
+}
+
+// songLibraryMenu is the menu of a song row signed in: the toggle that saves
+// the song to the library, as YouTube Music now gives it, with the empty
+// bookmark always and the state in isToggled.
+func songLibraryMenu(videoID string) string {
+	return fmt.Sprintf(`"menu":{"menuRenderer":{"items":[{"toggleMenuServiceItemRenderer":{
+		"defaultIcon":{"iconType":"BOOKMARK_BORDER"},"toggledIcon":{"iconType":"BOOKMARK"},"isToggled":%t,
+		"defaultServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"add-%s"}},
+		"toggledServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"remove-%s"}}}}]}}`, fakeSaved("song:"+videoID), videoID, videoID)
 }
 
 // aiAlbumPage is an album for checking the AI filter: one labelled song before
@@ -663,6 +691,7 @@ var fakeLibrary sync.Map
 // starts with.
 func resetFakes() {
 	likeWrites.Store(0)
+	songLibraryWrites.Store(0)
 	playlistDeletes.Store(0)
 	subscribeWrites.Store(0)
 	homeMoreRequests.Store(0)

@@ -179,6 +179,10 @@ type MusicItem struct {
 	// have none, which are nearly all of them, stay small: a page's rows copy
 	// them. Nothing changes what it points to; a change gives the item another.
 	Library *LibraryState `json:"-"`
+	// SongLibrary is whether the account has saved the song to its library,
+	// apart from its like, when the song's menu said, and nil when it did not.
+	// It is not saved with the item and is a pointer, as Library is.
+	SongLibrary *SongLibrary `json:"-"`
 	// Artist is the first artist the item credits, which the scrobble and the
 	// lyrics search take, Album the album, and Artists every artist. They are
 	// read from the links of the byline rather than from the flattened

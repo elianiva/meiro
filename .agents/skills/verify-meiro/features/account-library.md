@@ -9,6 +9,7 @@ A user signs in, sees their library, likes tracks, subscribes to artists, saves 
 - `account-rejected` asks to sign in again when YouTube refuses the session.
 - `library-save` saves and removes an album or playlist, from the page and from its card.
 - `library-like` likes and unlikes from the track menu and the player heart.
+- `library-song` adds a song to the library and takes it out from the track menu, apart from its like.
 - `library-dislike` dislikes and removes a dislike from the track menu and player; a refused write restores the previous rating.
 - `library-subscribe` subscribes and unsubscribes on an artist page.
 - `library-playlist` creates a playlist, adds a song, sorts or searches a playlist page, and deletes one.
@@ -30,6 +31,7 @@ Preconditions:
 
 - **Save.** On `/album/MPREb_test`, `p.click("Save to library", "saved")`. The button reads `Remove from library`. Verified: `written().endpoint` ends in `/like/like`, because saving an album is a like write.
 - **Like.** `p.openMenu("Album Track One", "menu")`, then `p.click("Like", "liked")`. `likeWrite()` returns `/like/like` and `vid-3`. Verified: after Save and Like in one test, `likeWrites.Load()` is `2`.
+- **Song in the library.** `p.openMenu("Album Track One", "menu")`, then `p.click("Add to library", "added")`. The fake's album row carries the song's bookmark toggle (`songLibraryMenu`); the write is one `/feedback` with `feedbackTokens` `["add-vid-3"]`, counted in `songLibraryWrites`, not `likeWrites`. The menu then reads `Remove from library`, which sends `remove-vid-3`. Mirror `TestAddingASongToTheLibraryWithoutLikingIt`.
 - **Subscribe.** On `/artist/UCartist`, click `Subscribe`. It reads `Subscribed` and `subscribeWrites.Load()` is `1`.
 - **New playlist.** On `/library`, `p.click("New playlist", "dialog")`, type a name, `p.click("Create", "created")`. `playlistCreates.Load()` is `1`.
 - **Add to playlist.** `p.openMenu("Ambient One", "menu")`, `p.click("Add to playlist", "picker")`, then `p.click("Add to Hype", "added")`. Verified: `written()` is one `/browse/edit_playlist` for `PLhype`, the picker closes, and the toast reads `Added “Ambient One” to “Hype”`. With `duplicateWrites.Store(true)` YouTube answers the add with its duplicate notice instead: the same clicks close the picker and toast `“Ambient One” is already in “Hype”`, with no failed status on screen (`TestAddingASongAlreadyInAPlaylist`).

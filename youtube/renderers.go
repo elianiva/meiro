@@ -318,6 +318,7 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	item.PlaylistSetID = nestedString(renderer.get("playlistItemData"), "playlistSetVideoId")
 	item.Like = likeStatus(renderer)
 	item.Library = itemLibraryState(renderer)
+	item.SongLibrary = itemSongLibrary(renderer)
 	if item.BrowseID == "" && (kind == KindTrack || kind == KindVideo) {
 		// A song or a video names no page of its own: the artist beside it
 		// is the page the row can open. A row that names its own page, as an
