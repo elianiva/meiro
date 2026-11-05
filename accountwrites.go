@@ -294,8 +294,10 @@ func (a *app) libraryButton(c *ui.Context) {
 // from its like, and false when it offers nothing: signed out, or a menu that
 // had no such item.
 func (a *app) songLibrary(item youtube.MusicItem) (youtube.SongLibrary, bool) {
-	library, ok := item.SongInLibrary()
-	return library, ok && a.signedIn() && item.VideoID != ""
+	if item.SongLibrary == nil || !a.signedIn() || item.VideoID == "" {
+		return youtube.SongLibrary{}, false
+	}
+	return *item.SongLibrary, true
 }
 
 // songLibraryLabel is what a song's menu offers for its place in the library.
@@ -326,17 +328,14 @@ func (a *app) toggleSongLibrary(item youtube.MusicItem) {
 	a.writeBehind(key, func(ctx context.Context, client *youtube.Client) error {
 		return client.SaveSongToLibrary(ctx, token)
 	}, func(err error) {
-		switch {
-		case err != nil && save:
-			a.setSongSaved(id, library, false)
+		if err == nil {
+			return
+		}
+		a.setSongSaved(id, library, !save)
+		if save {
 			a.notice = "Could not add “" + item.Title + "” to your library: " + firstLine(err.Error())
-		case err != nil:
-			a.setSongSaved(id, library, true)
+		} else {
 			a.notice = "Could not remove “" + item.Title + "” from your library: " + firstLine(err.Error())
-		case save:
-			a.notice = "Added “" + item.Title + "” to your library"
-		default:
-			a.notice = "Removed “" + item.Title + "” from your library"
 		}
 	})
 }

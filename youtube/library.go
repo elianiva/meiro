@@ -158,15 +158,6 @@ type SongLibrary struct {
 	Add, Remove string
 }
 
-// SongInLibrary is what the song's menu said of its place in the library, and
-// false when it said nothing, as a menu seen signed out does not.
-func (item MusicItem) SongInLibrary() (SongLibrary, bool) {
-	if item.SongLibrary == nil {
-		return SongLibrary{}, false
-	}
-	return *item.SongLibrary, true
-}
-
 // SaveSongToLibrary puts a song in the account's library, or takes it out,
 // without touching its like. token is the feedback token the song's menu gave
 // for that write.

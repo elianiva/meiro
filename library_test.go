@@ -255,11 +255,8 @@ func TestAddingASongToTheLibraryWithoutLikingIt(t *testing.T) {
 		t.Fatalf("adding wrote %q (%d library writes, %d like writes)", token, songLibraryWrites.Load(), likeWrites.Load())
 	}
 	song := a.page.feed.sections[0].Items[0]
-	if library, _ := song.SongInLibrary(); !library.Saved || song.Like == youtube.Liked {
-		t.Fatalf("the song says library %+v, like %v after adding", library, song.Like)
-	}
-	if !tt.HasText("Added “Album Track One” to your library") {
-		t.Fatalf("no notice for the add: %q", tt.Texts())
+	if song.SongLibrary == nil || !song.SongLibrary.Saved || song.Like == youtube.Liked {
+		t.Fatalf("the song says library %+v, like %v after adding", song.SongLibrary, song.Like)
 	}
 
 	// Liking and unliking leave the library alone.
@@ -296,7 +293,7 @@ func TestAddingASongToTheLibraryWithoutLikingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if library, _ := a.page.feed.sections[0].Items[0].SongInLibrary(); library.Saved || !tt.HasText("Could not add “Album Track One” to your library") {
+	if library := a.page.feed.sections[0].Items[0].SongLibrary; library == nil || library.Saved || !tt.HasText("Could not add “Album Track One” to your library") {
 		t.Fatalf("a refused add was not taken back: %+v %q", library, tt.Texts())
 	}
 }
