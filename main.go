@@ -33,6 +33,7 @@ import (
 	"github.com/elianiva/meiro/internal/memprof"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
+	"github.com/elianiva/meiro/internal/romaji"
 	"github.com/elianiva/meiro/internal/secretfile"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/player"
@@ -200,6 +201,8 @@ func (a *app) setup() {
 		a.openScrobbler(secretfile.File{Path: filepath.Join(directory, "lastfm-session.txt"), Keychain: mygo.Secrets, Name: credentialsKey}, filepath.Join(directory, "lastfm-pending.json"))
 		a.openCredits(filepath.Join(directory, "credits.json"))
 		a.openDownloads(filepath.Join(directory, "Downloads"))
+		a.romanizeDict = romaji.DefaultDictionary(filepath.Join(directory, "romaji", "ipa.dict"))
+		a.romanize = a.romanizeDict.Lines
 	} else {
 		a.account.signIn.err = err.Error()
 	}

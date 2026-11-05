@@ -11,6 +11,9 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-macos/objc v0.11.2
 	github.com/godbus/dbus/v5 v5.2.4
+	github.com/ikawaha/kagome-dict v1.1.7
+	github.com/ikawaha/kagome-dict/ipa v1.2.6
+	github.com/ikawaha/kagome/v2 v2.9.9
 	golang.org/x/image v0.47.0
 	golang.org/x/sys v0.49.0
 )
