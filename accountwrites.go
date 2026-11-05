@@ -74,6 +74,9 @@ func (a *app) toggleRating(item youtube.MusicItem, rating youtube.LikeStatus) {
 		return client.RateTrack(ctx, id, after)
 	}, func(err error) {
 		if err == nil {
+			if after == youtube.Liked {
+				a.saveLikedSong(item)
+			}
 			return
 		}
 		a.setLike(id, before, false)
@@ -143,7 +146,9 @@ func (a *app) learnLikes(items []youtube.MusicItem) {
 func (a *app) forgetAccountState() {
 	clear(a.writing)
 	a.page.library, a.page.subscription = youtube.LibraryState{}, youtube.Subscription{}
-	a.eachItem(func(item *youtube.MusicItem) { item.Like, item.Library = youtube.LikeUnknown, nil })
+	a.eachItem(func(item *youtube.MusicItem) {
+		item.Like, item.Library, item.SongLibrary = youtube.LikeUnknown, nil, nil
+	})
 }
 
 // likeButton is the heart of the full player: filled while the track is liked.
@@ -286,6 +291,84 @@ func (a *app) libraryButton(c *ui.Context) {
 	if m3.Button(c, m3.ButtonSpec{Label: label, Icon: icon, Kind: kind, Size: a.heroButtonSize(), Key: "hero-library"}).Clicked() {
 		a.toggleLibrary(library, a.page.detail.title)
 	}
+}
+
+// songLibrary is what a song's menu offers for its place in the library, apart
+// from its like, and false when it offers nothing: signed out, or a menu that
+// had no such item.
+func (a *app) songLibrary(item youtube.MusicItem) (youtube.SongLibrary, bool) {
+	if item.SongLibrary == nil || !a.signedIn() || item.VideoID == "" {
+		return youtube.SongLibrary{}, false
+	}
+	return *item.SongLibrary, true
+}
+
+// songLibraryLabel is what a song's menu offers for its place in the library.
+func songLibraryLabel(library youtube.SongLibrary) (label string, icon *ui.SVG) {
+	if library.Saved {
+		return "Remove from library", m3.IconCheck
+	}
+	return "Add to library", m3.IconAdd
+}
+
+// toggleSongLibrary puts a song in the library, or takes it out, without
+// touching its like. Like the other writes, the change shows at once, is
+// written behind it, is taken back with a notice if YouTube refuses it, and a
+// press while the song's last change is out is ignored.
+func (a *app) toggleSongLibrary(item youtube.MusicItem) {
+	library, ok := a.songLibrary(item)
+	id := item.VideoID
+	key := "songlibrary:" + id
+	if !ok || a.writing[key] {
+		return
+	}
+	save := !library.Saved
+	token := library.Remove
+	if save {
+		token = library.Add
+	}
+	a.setSongSaved(id, library, save)
+	a.writeBehind(key, func(ctx context.Context, client *youtube.Client) error {
+		return client.SaveSongToLibrary(ctx, token)
+	}, func(err error) {
+		if err == nil {
+			return
+		}
+		a.setSongSaved(id, library, !save)
+		if save {
+			a.notice = "Could not add “" + item.Title + "” to your library: " + firstLine(err.Error())
+		} else {
+			a.notice = "Could not remove “" + item.Title + "” from your library: " + firstLine(err.Error())
+		}
+	})
+}
+
+// saveLikedSong puts a song that has just been liked in the library too, if its
+// menu offered that and it is not there yet. Taking the like back, or a
+// dislike, leaves the library as it is.
+func (a *app) saveLikedSong(item youtube.MusicItem) {
+	a.eachItem(func(held *youtube.MusicItem) {
+		if held.VideoID == item.VideoID && held.SongLibrary != nil {
+			item.SongLibrary = held.SongLibrary
+		}
+	})
+	if library, ok := a.songLibrary(item); ok && !library.Saved {
+		a.toggleSongLibrary(item)
+	}
+}
+
+// setSongSaved gives every copy of a song the app holds the state, keeping the
+// tokens its menu gave. Kept pages are read again, so they say what YouTube
+// says of the change.
+func (a *app) setSongSaved(videoID string, library youtube.SongLibrary, saved bool) {
+	library.Saved = saved
+	a.eachItem(func(item *youtube.MusicItem) {
+		if item.VideoID == videoID {
+			state := library
+			item.SongLibrary = &state
+		}
+	})
+	a.pages.Clear()
 }
 
 // canSubscribe says whether an artist can be followed, or unfollowed, now: it

@@ -224,3 +224,129 @@ func TestAddingASongRefreshesThePlaylist(t *testing.T) {
 }
 
 // A control that looks small still takes a press 48 DIPs wide and high.
+
+// songLibraryToken is the token the last feedback write sent to YouTube.
+func songLibraryToken() string {
+	tokens, _ := written().body["feedbackTokens"].([]any)
+	if len(tokens) != 1 {
+		return ""
+	}
+	token, _ := tokens[0].(string)
+	return token
+}
+
+func TestAddingASongToTheLibraryWithoutLikingIt(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a := signedInApp(t)
+	a.router.Push("/album/MPREb_test")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+
+	openTrackMenu(t, tt, "Album Track One")
+	if !tt.HasText("Add to library") || tt.HasText("Remove from library") {
+		t.Fatalf("a song not in the library should offer to add it: %q", tt.Texts())
+	}
+	if err := tt.Click("Add to library"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if token := songLibraryToken(); token != "add-vid-3" || songLibraryWrites.Load() != 1 || likeWrites.Load() != 0 {
+		t.Fatalf("adding wrote %q (%d library writes, %d like writes)", token, songLibraryWrites.Load(), likeWrites.Load())
+	}
+	song := a.page.feed.sections[0].Items[0]
+	if song.SongLibrary == nil || !song.SongLibrary.Saved || song.Like == youtube.Liked {
+		t.Fatalf("the song says library %+v, like %v after adding", song.SongLibrary, song.Like)
+	}
+
+	// Liking a saved song, and unliking it, leave the library alone.
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Like"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Unlike"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if songLibraryWrites.Load() != 1 || !fakeSaved("song:vid-3") {
+		t.Fatalf("liking touched the library: %d writes, saved %t", songLibraryWrites.Load(), fakeSaved("song:vid-3"))
+	}
+
+	openTrackMenu(t, tt, "Album Track One")
+	if !tt.HasText("Remove from library") {
+		t.Fatalf("a saved song should offer to remove it: %q", tt.Texts())
+	}
+	if err := tt.Click("Remove from library"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if token := songLibraryToken(); token != "remove-vid-3" || songLibraryWrites.Load() != 2 || fakeSaved("song:vid-3") {
+		t.Fatalf("removing wrote %q (%d writes)", token, songLibraryWrites.Load())
+	}
+
+	// A refused add is taken back.
+	refuseWrites.Store(true)
+	openTrackMenu(t, tt, "Album Track One")
+	if err := tt.Click("Add to library"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if library := a.page.feed.sections[0].Items[0].SongLibrary; library == nil || library.Saved || !tt.HasText("Could not add “Album Track One” to your library") {
+		t.Fatalf("a refused add was not taken back: %+v %q", library, tt.Texts())
+	}
+}
+
+func TestLikingASongSavesItToTheLibrary(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a := signedInApp(t)
+	a.router.Push("/album/MPREb_test")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	click := func(label string) {
+		t.Helper()
+		openTrackMenu(t, tt, "Album Track One")
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		tt.Frame()
+	}
+
+	click("Like")
+	if token := songLibraryToken(); token != "add-vid-3" || songLibraryWrites.Load() != 1 || !fakeSaved("song:vid-3") {
+		t.Fatalf("liking saved %q (%d library writes)", token, songLibraryWrites.Load())
+	}
+	if library := a.page.feed.sections[0].Items[0].SongLibrary; library == nil || !library.Saved {
+		t.Fatalf("the liked song does not show saved: %+v", library)
+	}
+
+	// Taking the like back, and disliking, keep the song in the library.
+	click("Unlike")
+	click("Dislike")
+	if songLibraryWrites.Load() != 1 || !fakeSaved("song:vid-3") {
+		t.Fatalf("unliking or disliking touched the library: %d writes, saved %t", songLibraryWrites.Load(), fakeSaved("song:vid-3"))
+	}
+
+	// A like YouTube refuses saves nothing.
+	click("Remove from library")
+	refuseWrites.Store(true)
+	click("Like")
+	if songLibraryWrites.Load() != 2 || fakeSaved("song:vid-3") {
+		t.Fatalf("a refused like wrote to the library: %d writes", songLibraryWrites.Load())
+	}
+}
+
+func TestSignedOutSongsOfferNoLibrary(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	a.router.Push("/album/MPREb_test")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	openTrackMenu(t, tt, "Album Track One")
+	if tt.HasText("Add to library") {
+		t.Fatalf("a signed-out menu offers the library: %q", tt.Texts())
+	}
+}

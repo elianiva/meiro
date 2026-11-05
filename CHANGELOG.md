@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Songs have their own place in your library.** A signed-in song's menu offers Add to library, or Remove from library once it is there, so you can save a song without liking it. Liking a song also saves it to your library. Unliking or disliking a song leaves it in your library.
+
 ## [0.6.1] - 2026-11-05
 
 ### Added
