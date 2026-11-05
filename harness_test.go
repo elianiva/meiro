@@ -68,6 +68,9 @@ var (
 	fakeLikeState     atomic.Value // what /next says of vid-3, as a string; "" says nothing
 	// fakeAI holds the video IDs the fake's player page labels as made with AI.
 	fakeAI sync.Map
+	// lastLikeWrite is the last like write, kept apart from lastWrite because a
+	// like is followed by the write that saves the song to the library.
+	lastLikeWrite atomic.Value
 	// lastWrite is the last playlist write the fake YouTube was asked for:
 	// which endpoint, and the fields of its body.
 	lastWrite atomic.Value
@@ -110,6 +113,7 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.HasSuffix(request.URL.Path, "/like/like"), strings.HasSuffix(request.URL.Path, "/like/dislike"), strings.HasSuffix(request.URL.Path, "/like/removelike"):
 		likeWrites.Add(1)
 		recordWrite(request.URL.Path, asked)
+		lastLikeWrite.Store(written())
 		reply = likeResponse
 		if refuseWrites.Load() {
 			reply, status = rejectedResponse, http.StatusBadRequest

@@ -36,7 +36,7 @@ func openTrackMenu(t *testing.T, tt *ui.Tester, title string) {
 // likeWrite is the last like write the fake YouTube was asked for: its
 // endpoint, and the video its target names.
 func likeWrite() (endpoint, videoID string) {
-	write := written()
+	write, _ := lastLikeWrite.Load().(playlistWrite)
 	target, _ := write.body["target"].(map[string]any)
 	videoID, _ = target["videoId"].(string)
 	return write.endpoint[strings.LastIndex(write.endpoint, "/like/"):], videoID

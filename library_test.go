@@ -259,7 +259,7 @@ func TestAddingASongToTheLibraryWithoutLikingIt(t *testing.T) {
 		t.Fatalf("the song says library %+v, like %v after adding", song.SongLibrary, song.Like)
 	}
 
-	// Liking and unliking leave the library alone.
+	// Liking a saved song, and unliking it, leave the library alone.
 	openTrackMenu(t, tt, "Album Track One")
 	if err := tt.Click("Like"); err != nil {
 		t.Fatal(err)
@@ -295,6 +295,47 @@ func TestAddingASongToTheLibraryWithoutLikingIt(t *testing.T) {
 	tt.Frame()
 	if library := a.page.feed.sections[0].Items[0].SongLibrary; library == nil || library.Saved || !tt.HasText("Could not add “Album Track One” to your library") {
 		t.Fatalf("a refused add was not taken back: %+v %q", library, tt.Texts())
+	}
+}
+
+func TestLikingASongSavesItToTheLibrary(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a := signedInApp(t)
+	a.router.Push("/album/MPREb_test")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	click := func(label string) {
+		t.Helper()
+		openTrackMenu(t, tt, "Album Track One")
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		tt.Frame()
+	}
+
+	click("Like")
+	if token := songLibraryToken(); token != "add-vid-3" || songLibraryWrites.Load() != 1 || !fakeSaved("song:vid-3") {
+		t.Fatalf("liking saved %q (%d library writes)", token, songLibraryWrites.Load())
+	}
+	if library := a.page.feed.sections[0].Items[0].SongLibrary; library == nil || !library.Saved {
+		t.Fatalf("the liked song does not show saved: %+v", library)
+	}
+
+	// Taking the like back, and disliking, keep the song in the library.
+	click("Unlike")
+	click("Dislike")
+	if songLibraryWrites.Load() != 1 || !fakeSaved("song:vid-3") {
+		t.Fatalf("unliking or disliking touched the library: %d writes, saved %t", songLibraryWrites.Load(), fakeSaved("song:vid-3"))
+	}
+
+	// A like YouTube refuses saves nothing.
+	click("Remove from library")
+	refuseWrites.Store(true)
+	click("Like")
+	if songLibraryWrites.Load() != 2 || fakeSaved("song:vid-3") {
+		t.Fatalf("a refused like wrote to the library: %d writes", songLibraryWrites.Load())
 	}
 }
 

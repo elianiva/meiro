@@ -74,6 +74,9 @@ func (a *app) toggleRating(item youtube.MusicItem, rating youtube.LikeStatus) {
 		return client.RateTrack(ctx, id, after)
 	}, func(err error) {
 		if err == nil {
+			if after == youtube.Liked {
+				a.saveLikedSong(item)
+			}
 			return
 		}
 		a.setLike(id, before, false)
@@ -338,6 +341,20 @@ func (a *app) toggleSongLibrary(item youtube.MusicItem) {
 			a.notice = "Could not remove “" + item.Title + "” from your library: " + firstLine(err.Error())
 		}
 	})
+}
+
+// saveLikedSong puts a song that has just been liked in the library too, if its
+// menu offered that and it is not there yet. Taking the like back, or a
+// dislike, leaves the library as it is.
+func (a *app) saveLikedSong(item youtube.MusicItem) {
+	a.eachItem(func(held *youtube.MusicItem) {
+		if held.VideoID == item.VideoID && held.SongLibrary != nil {
+			item.SongLibrary = held.SongLibrary
+		}
+	})
+	if library, ok := a.songLibrary(item); ok && !library.Saved {
+		a.toggleSongLibrary(item)
+	}
 }
 
 // setSongSaved gives every copy of a song the app holds the state, keeping the
