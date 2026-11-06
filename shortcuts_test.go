@@ -544,6 +544,36 @@ func TestSearchSuggestionKeysLeaveTheFieldItsKeys(t *testing.T) {
 		tt.Frame()
 		wantSearched(t, a, "xyoyr")
 	})
+	t.Run("modified arrows leave the highlight", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		for _, mods := range []ui.Modifiers{ui.Shift, ui.Ctrl, ui.Alt} {
+			tt.Key(mods, ui.KeyDown)
+			tt.Key(mods, ui.KeyUp)
+			tt.Key(mods, ui.KeyDown)
+		}
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		wantSearched(t, a, "yor")
+	})
+	t.Run("the arrows act only in the field", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		tt.Key(0, ui.KeyTab)
+		if tt.Focused(searchPlaceholder) {
+			t.Fatal("Tab kept the focus in the field")
+		}
+		pressKeys(tt, ui.KeyDown, ui.KeyDown)
+		tt.Key(ui.Shift, ui.KeyTab)
+		if !tt.Focused(searchPlaceholder) {
+			t.Fatal("Shift+Tab did not return to the field")
+		}
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		wantSearched(t, a, "yor")
+	})
 	t.Run("a click still chooses what it is on", func(t *testing.T) {
 		a := newTestApp(t)
 		searches.Store(0)
