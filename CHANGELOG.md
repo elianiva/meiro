@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **A song picked from the search suggestions plays its radio.** Picking a song under the search field queued the other songs the text matched around it, and on a playlist's page it asked YouTube Music for that playlist's queue. The song now plays alone with the mix YouTube Music generates for it, as Start radio does. Albums, artists and playlists in the suggestions still open their page.
+
 ## [0.6.1] - 2026-11-05
 
 ### Added

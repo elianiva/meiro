@@ -208,14 +208,8 @@ func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
 			if len(queries) > 0 && len(items) > 0 {
 				ui.Box(c).Height(1).FillWidth().Margin(8, 8).Background(sc.OutlineVariant)
 			}
-			var tracks []youtube.MusicItem
-			for _, item := range items {
-				if item.IsTrack() {
-					tracks = append(tracks, item)
-				}
-			}
 			for i, item := range items {
-				a.suggestionItem(c, item, tracks, i)
+				a.suggestionItem(c, item, i)
 			}
 		})
 	})
@@ -243,7 +237,7 @@ func (a *app) suggestionRow(c *ui.Context, query string) {
 // Music already matches the text being typed with. Choosing it opens what it
 // names; a right click offers the menu the item offers wherever else it
 // appears, as a song row or a card does.
-func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, tracks []youtube.MusicItem, position int) {
+func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, position int) {
 	sc := m3.Of(c).Scheme
 	key := "suggestion-item-" + strconv.Itoa(position)
 	row := ui.ButtonBase(c.Key(key))
@@ -279,12 +273,24 @@ func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, tracks []you
 		if hasAnchor {
 			anchor = menuAnchor
 		}
-		a.cardMenu(c, anchor, key, item, tracks)
+		a.cardMenu(c, anchor, key, item, nil)
 	}
 	if row.Clicked() {
-		a.cancelSuggestions()
-		a.activate(item, tracks)
+		a.openSuggestion(item, key)
 	}
+}
+
+// openSuggestion closes the panel under the search bar and opens an item
+// chosen from it. A song plays with its radio behind it, as Start radio
+// does: the other songs the text happens to match are no queue to play it
+// from, and the page the field sits on lends it no playlist.
+func (a *app) openSuggestion(item youtube.MusicItem, key string) {
+	a.cancelSuggestions()
+	if item.Target().Kind == youtube.TargetTrack {
+		a.startRadio(item, key)
+		return
+	}
+	a.activate(item, nil)
 }
 
 // searchPage is the filters of the search over what it found. The field
