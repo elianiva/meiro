@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **The arrow keys walk the search suggestions.** While the search field shows suggestions, Down and Up highlight them in order, and Enter opens the highlighted one as a click would. Past either end the highlight goes back to the text typed, so Enter searches it. Typing clears the highlight, and Escape closes the suggestions and keeps the text.
+
 ### Fixed
 
 - **A song picked from the search suggestions plays its radio.** Picking a song under the search field queued the other songs the text matched around it, and on a playlist's page it asked YouTube Music for that playlist's queue. The song now plays alone with the mix YouTube Music generates for it, as Start radio does. Albums, artists and playlists in the suggestions still open their page.
