@@ -5,6 +5,7 @@ A user types in the search bar, picks a suggestion or presses Enter, filters res
 ## Sub-features
 
 - `search-suggest` shows suggestions and matching items while typing, with no search run.
+- `search-keys` highlights a suggestion with Down and Up, and Enter opens it.
 - `search-run` shows results for a chosen suggestion or Enter, and remembers the query.
 - `search-filter` narrows results with the `Songs` and `Albums` chips and `Clear filters`.
 - `search-more` loads the next page when the list reaches its end.
@@ -28,6 +29,7 @@ Preconditions:
 
 - **Suggest.** `p.click(searchPlaceholder, "focus")`, `tt.Type("yor")`, `p.step("typed")`. `Yorushika songs` shows and `searches.Load()` is `0`.
 - **Run.** `p.click("Yorushika songs", "results")`. `Search Result Song` shows, `searches.Load()` is `1`, and `a.settings.Recent[0]` is `Yorushika songs`.
+- **Keys.** `tt.Key(0, ui.KeyDown)` highlights `Yorushika`, and Enter searches it. Past either end the highlight returns to the text typed, so Enter searches that (`TestArrowKeysChooseASearchSuggestion`).
 - **Run from another page.** The panel hangs under the field every page searches from, so a suggestion chosen from `/explore` shows the search page too, as Enter does (`TestChoosingASuggestionFromAnotherPageShowsTheSearch`).
 - **Filter.** Verified. `p.click("Songs", "songs-only")`. `searchBody()` contains `"params"`. `p.click("Clear filters", "cleared")`.
 - **Next page.** Mirror `TestSearchLoadsTheNextPageItself`. `searchesMore.Load()` becomes `1` with no click.

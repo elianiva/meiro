@@ -48,6 +48,10 @@ type searchState struct {
 	suggestions youtube.SearchSuggestions
 	suggest     task
 	suggestOpen bool
+	// highlight is the entry of the panel the arrow keys are on, counting
+	// from 1 in the order shownSuggestions lists them. 0 is the text typed,
+	// which Enter searches.
+	highlight int
 }
 
 // runSearch searches for query with the filter given. It is the only way a
@@ -122,7 +126,8 @@ func (a *app) suggestSearches(query string) {
 		if err != nil || suggestions == nil {
 			suggestions = &youtube.SearchSuggestions{}
 		}
-		a.search.suggestions = *suggestions
+		// The highlight counted the entries this answer replaces.
+		a.search.suggestions, a.search.highlight = *suggestions, 0
 	})
 }
 
@@ -133,6 +138,59 @@ func (a *app) cancelSuggestions() {
 	a.search.suggest.stop()
 	a.search.suggestions = youtube.SearchSuggestions{}
 	a.search.suggestOpen = false
+	a.search.highlight = 0
+}
+
+// shownSuggestions is what the panel under the search bar lists, in its
+// order: the completed queries, then the items YouTube Music matches, each as
+// many as the panel holds and without the items the user hides. Both are empty
+// while the panel is closed.
+func (a *app) shownSuggestions() (queries []string, items []youtube.MusicItem) {
+	s := &a.search
+	if !s.suggestOpen || strings.TrimSpace(s.query) == "" {
+		return nil, nil
+	}
+	queries = s.suggestions.Queries
+	if len(queries) > suggestQueries {
+		queries = queries[:suggestQueries]
+	}
+	items = a.visibleItems(s.suggestions.Items)
+	if len(items) > suggestItems {
+		items = items[:suggestItems]
+	}
+	return queries, items
+}
+
+// highlightSuggestion moves the highlight of the panel under the search bar
+// by step around its n entries and the text typed, which sits between the
+// last entry and the first: Down from the text goes to the first entry, Up to
+// the last, and past either end the highlight returns to the text.
+func (a *app) highlightSuggestion(step, n int) {
+	h := a.search.highlight
+	if h < 0 || h > n {
+		h = 0
+	}
+	a.search.highlight = (h + step + n + 1) % (n + 1)
+}
+
+// chooseSuggestion does what a click on the entry at index of the panel under
+// the search bar does, counting from 0: a query is searched, and an item
+// opens or plays.
+func (a *app) chooseSuggestion(index int, queries []string, items []youtube.MusicItem) {
+	if index < len(queries) {
+		// The panel hangs under the field every page searches from, so a
+		// query chosen from it shows the search page wherever it was typed.
+		a.runSearchFrom(queries[index])
+		return
+	}
+	position := index - len(queries)
+	a.openSuggestion(items[position], suggestionKey(position))
+}
+
+// suggestionKey identifies the item at position in the panel under the search
+// bar, the same for a click and for the arrow keys.
+func suggestionKey(position int) string {
+	return "suggestion-item-" + strconv.Itoa(position)
 }
 
 // searchTint is the resting fill of the top bar's search and the Settings
@@ -161,7 +219,22 @@ func (a *app) searchBar(c *ui.Context) ui.Element {
 		Container:       searchTint(c),
 		TrailingPadding: trailingPadding,
 	})
+	queries, items := a.shownSuggestions()
+	n := len(queries) + len(items)
+	if a.search.highlight > n {
+		// The entries changed under the highlight.
+		a.search.highlight = 0
+	}
+	if n > 0 {
+		// Only while the panel lists something, and only in the field: the
+		// arrows walk the panel while the focus stays in the field, so typing
+		// goes on where it was.
+		a.searchField.OnShortcut(c, 0, ui.KeyDown, func() { a.highlightSuggestion(1, n) })
+		a.searchField.OnShortcut(c, 0, ui.KeyUp, func() { a.highlightSuggestion(-1, n) })
+	}
 	switch {
+	case result.Submitted && a.search.highlight > 0:
+		a.chooseSuggestion(a.search.highlight-1, queries, items)
 	case result.Submitted:
 		a.runSearchFrom(a.search.query)
 	case result.Cleared:
@@ -178,18 +251,11 @@ func (a *app) searchBar(c *ui.Context) ui.Element {
 // Choosing either searches what it names.
 func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
 	s := &a.search
-	if !s.suggestOpen || strings.TrimSpace(s.query) == "" {
-		return
-	}
-	queries := s.suggestions.Queries
-	if len(queries) > suggestQueries {
-		queries = queries[:suggestQueries]
-	}
-	items := a.visibleItems(s.suggestions.Items)
-	if len(items) > suggestItems {
-		items = items[:suggestItems]
-	}
+	queries, items := a.shownSuggestions()
 	if len(queries) == 0 && len(items) == 0 {
+		// Closed, by Escape or a press outside it, or empty: the next arrow
+		// starts from the text again.
+		s.highlight = 0
 		return
 	}
 	width := bar.Bounds().W
@@ -202,48 +268,50 @@ func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
 			Background(sc.SurfaceContainerHigh).TextColor(sc.OnSurface)
 		m3.Elevation(c, panel, 3)
 		panel.Children(func() {
-			for _, query := range queries {
-				a.suggestionRow(c, query)
+			for i, query := range queries {
+				if a.suggestionRow(c, query, s.highlight == i+1) {
+					a.chooseSuggestion(i, queries, items)
+				}
 			}
 			if len(queries) > 0 && len(items) > 0 {
 				ui.Box(c).Height(1).FillWidth().Margin(8, 8).Background(sc.OutlineVariant)
 			}
 			for i, item := range items {
-				a.suggestionItem(c, item, i)
+				if a.suggestionItem(c, item, i, s.highlight == len(queries)+i+1) {
+					a.chooseSuggestion(len(queries)+i, queries, items)
+				}
 			}
 		})
 	})
 }
 
-// suggestionRow is one completed query of the panel under the search bar.
-func (a *app) suggestionRow(c *ui.Context, query string) {
+// suggestionRow is one completed query of the panel under the search bar,
+// filled as focused while the arrow keys are on it. It reports a click.
+func (a *app) suggestionRow(c *ui.Context, query string, highlighted bool) bool {
 	sc := m3.Of(c).Scheme
 	row := ui.ButtonBase(c.Key("suggestion-" + query))
 	row.Height(m3.MinTarget).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).
 		Cursor(ui.CursorPointer).Label(query).
-		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), highlighted || row.FocusVisible()))
 	row.Children(func() {
 		ui.Icon(c, m3.IconSearch).FontSize(20).TextColor(sc.OnSurfaceVariant)
 		m3.Text(c, m3.BodyLarge, query).Grow(1).MinWidth(0).SingleLine().TextColor(sc.OnSurface)
 	})
-	if row.Clicked() {
-		// The panel hangs under the field every page searches from, so a
-		// query chosen from it shows the search page wherever it was typed.
-		a.runSearchFrom(query)
-	}
+	return row.Clicked()
 }
 
 // suggestionItem is one item of the panel under the search bar: what YouTube
-// Music already matches the text being typed with. Choosing it opens what it
-// names; a right click offers the menu the item offers wherever else it
-// appears, as a song row or a card does.
-func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, position int) {
+// Music already matches the text being typed with, filled as focused while
+// the arrow keys are on it. It reports a click, which opens what it names; a
+// right click offers the menu the item offers wherever else it appears, as a
+// song row or a card does.
+func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, position int, highlighted bool) bool {
 	sc := m3.Of(c).Scheme
-	key := "suggestion-item-" + strconv.Itoa(position)
+	key := suggestionKey(position)
 	row := ui.ButtonBase(c.Key(key))
 	row.Height(56).Padding(8, 8).Gap(12).Radius(m3.Medium).AlignItems(ui.Center).
 		Cursor(ui.CursorPointer).Label(item.Title).
-		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), highlighted || row.FocusVisible()))
 	var menuAnchor ui.Element
 	hasAnchor := false
 	row.Children(func() {
@@ -275,9 +343,7 @@ func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, position int
 		}
 		a.cardMenu(c, anchor, key, item, nil)
 	}
-	if row.Clicked() {
-		a.openSuggestion(item, key)
-	}
+	return row.Clicked()
 }
 
 // openSuggestion closes the panel under the search bar and opens an item

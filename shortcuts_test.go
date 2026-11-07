@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/youtube"
 )
 
 func TestDefaultShortcutsNavigate(t *testing.T) {
@@ -401,4 +403,215 @@ func untilPlaying(t *testing.T, a *app, tt *ui.Tester) {
 	if !a.player.Playing() {
 		t.Fatal("the track did not start")
 	}
+}
+
+// typeInSearch types query into the top bar's search field and waits for the
+// panel under it.
+func typeInSearch(t *testing.T, a *app, query string) *ui.Tester {
+	t.Helper()
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if err := tt.Click(searchPlaceholder); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type(query)
+	tt.Frame()
+	return tt
+}
+
+// pressKeys presses each key with no modifier.
+func pressKeys(tt *ui.Tester, keys ...ui.Key) {
+	for _, key := range keys {
+		tt.Key(0, key)
+	}
+}
+
+// wantSearched fails unless the app searched for query once, and nothing else
+// happened.
+func wantSearched(t *testing.T, a *app, query string) {
+	t.Helper()
+	if n := searches.Load(); n != 1 || a.search.submitted != query || a.search.query != query {
+		t.Fatalf("searched %d times for %q, the field reads %q; want one search for %q", n, a.search.submitted, a.search.query, query)
+	}
+	if a.current.VideoID != "" {
+		t.Errorf("a search played %q", a.current.VideoID)
+	}
+}
+
+// The panel under the search bar lists the completed queries, then the items
+// the text matches. Down from the field goes to the first entry and Up to the
+// last; past either end the highlight returns to the text typed. Enter
+// chooses the entry highlighted as a click does, or searches the text typed.
+func TestArrowKeysChooseASearchSuggestion(t *testing.T) {
+	down, up := ui.KeyDown, ui.KeyUp
+	for _, tc := range []struct {
+		name   string
+		keys   []ui.Key
+		search string // the search Enter runs
+		path   string // or the page it opens
+		video  string // or the song it plays
+	}{
+		{name: "down picks the first query", keys: []ui.Key{down}, search: "Yorushika"},
+		{name: "down walks the queries in order", keys: []ui.Key{down, down}, search: "Yorushika songs"},
+		{name: "down crosses the separator to the items", keys: []ui.Key{down, down, down}, path: "/artist/UCyorushika"},
+		{name: "up picks the last item", keys: []ui.Key{up}, video: "vid-suggest"},
+		{name: "up walks back", keys: []ui.Key{up, up}, path: "/artist/UCyorushika"},
+		{name: "up from the first query returns to the text", keys: []ui.Key{down, up}, search: "yor"},
+		{name: "down past the last item returns to the text", keys: []ui.Key{down, down, down, down, down}, search: "yor"},
+		{name: "down from the text starts over", keys: []ui.Key{up, down, down}, search: "Yorushika"},
+		{name: "no arrow searches the text", search: "yor"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(t)
+			a.router.Push("/explore")
+			searches.Store(0)
+			tt := typeInSearch(t, a, "yor")
+			if !tt.HasText("Yorushika songs") || !tt.HasText("Suggested Song") {
+				t.Fatalf("the panel is missing: %q", tt.Texts())
+			}
+			pressKeys(tt, tc.keys...)
+			if !tt.Focused(searchPlaceholder) || a.search.query != "yor" || searches.Load() != 0 {
+				t.Fatalf("the arrows moved the focus, edited the text or searched: field %q, %d searches", a.search.query, searches.Load())
+			}
+			tt.Key(0, ui.KeyEnter)
+			tt.Frame()
+			switch {
+			case tc.search != "":
+				wantSearched(t, a, tc.search)
+				if r, _ := a.route(); r.id != routeSearch {
+					t.Errorf("the search left the app on %q", a.path())
+				}
+			case tc.path != "":
+				if !strings.HasPrefix(a.path(), tc.path) || searches.Load() != 0 {
+					t.Errorf("Enter opened %q with %d searches, want %q", a.path(), searches.Load(), tc.path)
+				}
+			case tc.video != "":
+				if a.current.VideoID != tc.video || searches.Load() != 0 {
+					t.Errorf("Enter played %q with %d searches, want %q", a.current.VideoID, searches.Load(), tc.video)
+				}
+			}
+			if tc.search == "" && a.search.suggestOpen {
+				t.Error("the panel stayed open after an item was chosen")
+			}
+		})
+	}
+}
+
+// The arrows act only while the panel shows something to walk: without
+// suggestions, or once Escape closes the panel, Enter searches the text
+// typed. Typing, and keys the field edits with, still reach the field, and a
+// change to the text forgets the highlight.
+func TestSearchSuggestionKeysLeaveTheFieldItsKeys(t *testing.T) {
+	t.Run("escape closes the panel and keeps the text", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		pressKeys(tt, ui.KeyDown, ui.KeyEscape)
+		if a.search.suggestOpen || tt.HasText("Yorushika songs") || a.search.query != "yor" || !tt.Focused(searchPlaceholder) {
+			t.Fatalf("Escape left the panel open %v, the field %q, focused %v", a.search.suggestOpen, a.search.query, tt.Focused(searchPlaceholder))
+		}
+		pressKeys(tt, ui.KeyDown, ui.KeyEnter)
+		tt.Frame()
+		wantSearched(t, a, "yor")
+	})
+	t.Run("typing forgets the highlight", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		pressKeys(tt, ui.KeyDown, ui.KeyDown)
+		tt.Type("u")
+		tt.Frame()
+		if !tt.HasText("Yorushika songs") {
+			t.Fatalf("the new answer is missing: %q", tt.Texts())
+		}
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		wantSearched(t, a, "yoru")
+	})
+	t.Run("home and end still move the caret", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		pressKeys(tt, ui.KeyDown, ui.KeyHome)
+		tt.Type("x")
+		pressKeys(tt, ui.KeyEnd, ui.KeyLeft)
+		tt.Type("y")
+		tt.Frame()
+		if a.search.query != "xyoyr" {
+			t.Fatalf("the field reads %q, want %q", a.search.query, "xyoyr")
+		}
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		wantSearched(t, a, "xyoyr")
+	})
+	t.Run("modified arrows leave the highlight", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		for _, mods := range []ui.Modifiers{ui.Shift, ui.Ctrl, ui.Alt} {
+			tt.Key(mods, ui.KeyDown)
+			tt.Key(mods, ui.KeyUp)
+			tt.Key(mods, ui.KeyDown)
+		}
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		wantSearched(t, a, "yor")
+	})
+	t.Run("the arrows act only in the field", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		tt.Key(0, ui.KeyTab)
+		if tt.Focused(searchPlaceholder) {
+			t.Fatal("Tab kept the focus in the field")
+		}
+		pressKeys(tt, ui.KeyDown, ui.KeyDown)
+		tt.Key(ui.Shift, ui.KeyTab)
+		if !tt.Focused(searchPlaceholder) {
+			t.Fatal("Shift+Tab did not return to the field")
+		}
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		wantSearched(t, a, "yor")
+	})
+	t.Run("a click still chooses what it is on", func(t *testing.T) {
+		a := newTestApp(t)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		pressKeys(tt, ui.KeyDown)
+		if err := tt.Click("Yorushika songs"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		wantSearched(t, a, "Yorushika songs")
+	})
+	t.Run("a hidden item is skipped", func(t *testing.T) {
+		a := newTestApp(t)
+		a.settings.ExcludeAIGenerated = true
+		a.rememberAIDisclosure("vid-suggest", youtube.AIAlteredOrGenerated)
+		searches.Store(0)
+		tt := typeInSearch(t, a, "yor")
+		if tt.HasText("Suggested Song") || !tt.HasText("16M monthly audience") {
+			t.Fatalf("the panel shows the hidden song, or not the artist: %q", tt.Texts())
+		}
+		pressKeys(tt, ui.KeyUp, ui.KeyEnter)
+		tt.Frame()
+		if !strings.HasPrefix(a.path(), "/artist/UCyorushika") || a.current.VideoID != "" {
+			t.Fatalf("Up and Enter opened %q and played %q, want the artist", a.path(), a.current.VideoID)
+		}
+	})
+	t.Run("no suggestions", func(t *testing.T) {
+		s := &switchable{mode: "empty"}
+		a := stateApp(t, s, false)
+		tt := typeInSearch(t, a, "yor")
+		pressKeys(tt, ui.KeyDown, ui.KeyUp, ui.KeyDown)
+		if a.search.query != "yor" || !tt.Focused(searchPlaceholder) {
+			t.Fatalf("the arrows changed the field to %q", a.search.query)
+		}
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		if a.search.submitted != "yor" {
+			t.Fatalf("Enter searched %q, want the text typed", a.search.submitted)
+		}
+	})
 }
