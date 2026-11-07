@@ -467,6 +467,85 @@ func TestChoosingASuggestionFromAnotherPageShowsTheSearch(t *testing.T) {
 	}
 }
 
+// A song chosen among the suggestions plays on its own, followed by the mix
+// YouTube Music generates for it: the other songs the text matched are not
+// queued around it, and the page the field was typed on lends it nothing.
+func TestChoosingASuggestedSongStartsItsRadio(t *testing.T) {
+	for _, page := range []string{"/search", "/playlist/VLPL_songs"} {
+		t.Run(page, func(t *testing.T) {
+			resetFakes()
+			a, _ := playbackApp(t)
+			a.settings.AutoPlay = true
+			a.router.Push(page)
+			tt := ui.NewTester(a.view, 1000, 700)
+			if page != "/search" {
+				for i := 0; i < 20 && !tt.HasText("Meteorite"); i++ {
+					tt.Frame()
+				}
+				// The playlist was playing before the field was typed in.
+				if err := tt.Click("Meteorite"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				if a.current.VideoID != "song-two" || a.queue.source != "Ameiro Playlist" {
+					t.Fatalf("the playlist did not play: current %q, queue %v from %q", a.current.VideoID, ids(a.queue.items), a.queue.source)
+				}
+			}
+
+			if err := tt.Click(searchPlaceholder); err != nil {
+				t.Fatal(err)
+			}
+			tt.Type("pick")
+			tt.Frame()
+			if !tt.HasText("Pick One") || !tt.HasText("Pick Two") {
+				t.Fatalf("the suggested songs are missing: %q", tt.Texts())
+			}
+			if err := tt.Click("Pick Two"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+
+			if a.current.VideoID != "pick-two" {
+				t.Fatalf("choosing the second suggestion played %q", a.current.VideoID)
+			}
+			if got := ids(a.queue.items); !slices.Equal(got, []string{"pick-two", "radio-one", "radio-two"}) {
+				t.Fatalf("the queue is %v, want the song and its radio", got)
+			}
+			if a.queue.index != 0 || a.queue.recStart != 1 {
+				t.Errorf("the queue stands at %d with recommendations from %d, want 0 and 1", a.queue.index, a.queue.recStart)
+			}
+			if a.queue.source != "Pick Two" || a.queue.playlistMore != "" {
+				t.Errorf("the queue kept the page's context: source %q, playlist rest %q", a.queue.source, a.queue.playlistMore)
+			}
+			asked, _ := pickNextAsked.Load().(string)
+			if !strings.Contains(asked, `"playlistId":"RDAMVMpick-two"`) || strings.Contains(asked, `"playlistIndex"`) {
+				t.Errorf("the recommendations were asked for with %s, want the song's own mix", asked)
+			}
+			if a.search.suggestOpen {
+				t.Error("the suggestions stayed open after a song was chosen")
+			}
+
+			// The menu still queues a suggestion when asked to.
+			if err := tt.Click(searchPlaceholder); err != nil {
+				t.Fatal(err)
+			}
+			tt.Type(" again")
+			tt.Frame()
+			if err := tt.RightClick("Pick One"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			if err := tt.Click("Add to queue"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			if got := ids(a.queue.items); !slices.Contains(got, "pick-one") || !slices.Contains(got, "radio-one") || a.current.VideoID != "pick-two" {
+				t.Errorf("Add to queue left the queue %v playing %q", got, a.current.VideoID)
+			}
+		})
+	}
+}
+
 // An episode top result exposes Play and resolves the video ID carried by its
 // episode-page browse ID.
 func TestSearchEpisodeTopResultPlays(t *testing.T) {

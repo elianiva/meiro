@@ -63,6 +63,7 @@ var (
 	// YouTube does when the user adds one elsewhere.
 	fakePlaylistGrows atomic.Bool
 	fakeLikeState     atomic.Value // what /next says of vid-3, as a string; "" says nothing
+	pickNextAsked     atomic.Value // the last /next request for a pick- song, as a string
 	// fakeAI holds the video IDs the fake's player page labels as made with AI.
 	fakeAI sync.Map
 	// lastWrite is the last playlist write the fake YouTube was asked for:
@@ -132,8 +133,16 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = signedInAccountMenu
 	case strings.HasSuffix(request.URL.Path, "/account/accounts_list"), strings.HasSuffix(request.URL.Path, "/getAccountSwitcherEndpoint"):
 		reply = accountsResponse
+	case strings.HasSuffix(request.URL.Path, "/music/get_search_suggestions") && strings.Contains(asked, `"input":"pick`):
+		reply = pickSuggestionsResponse
 	case strings.HasSuffix(request.URL.Path, "/music/get_search_suggestions"):
 		reply = suggestionsResponse
+	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"pick-`):
+		pickNextAsked.Store(asked)
+		reply = `{"contents":{"playlistPanelRenderer":{"contents":[]}}}`
+		if strings.Contains(asked, `"playlistId":"RDAMVMpick-two"`) {
+			reply = pickRadioResponse
+		}
 	case strings.Contains(asked, "FEmusic_explore"):
 		reply = exploreResponse
 	case strings.Contains(asked, "FEmusic_home"):
@@ -672,6 +681,7 @@ func resetFakes() {
 	duplicateWrites.Store(false)
 	hypeSongAdded.Store(false)
 	fakeLikeState.Store("")
+	pickNextAsked.Store("")
 	fakeAI.Clear()
 	fakeLibrary.Clear()
 	fakeLibrary.Store("PLhype", true)
@@ -907,6 +917,33 @@ const suggestionsResponse = `{"contents":[
 			]}}
 	]}}
 ]}`
+
+// pickSuggestionsResponse is what a query starting with "pick" is answered
+// with: two songs and an album it already matches.
+const pickSuggestionsResponse = `{"contents":[
+	{"searchSuggestionsSectionRenderer":{"contents":[
+		{"musicResponsiveListItemRenderer":{
+			"playlistItemData":{"videoId":"pick-one"},
+			"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Pick One"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"3:10"}]}}}
+			]}},
+		{"musicResponsiveListItemRenderer":{
+			"playlistItemData":{"videoId":"pick-two"},
+			"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Pick Two"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone Else"},{"text":" • "},{"text":"2:40"}]}}}
+			]}}
+	]}}
+]}`
+
+// pickRadioResponse is the mix YouTube Music generates for pick-two on its
+// own: the song first, then what it recommends after it.
+const pickRadioResponse = `{"contents":{"playlistPanelRenderer":{"playlistId":"RDAMVMpick-two","contents":[
+	{"playlistPanelVideoRenderer":{"videoId":"pick-two","title":{"runs":[{"text":"Pick Two"}]}}},
+	{"playlistPanelVideoRenderer":{"videoId":"radio-one","title":{"runs":[{"text":"Radio One"}]}}},
+	{"playlistPanelVideoRenderer":{"videoId":"radio-two","title":{"runs":[{"text":"Radio Two"}]}}}
+]}}}`
 
 const accountsResponse = `{"accountSectionListRenderer":{"contents":[{"accountItemSectionRenderer":{"contents":[
 	{"accountItemRenderer":{"accountName":{"simpleText":"Main channel"},"isSelected":true,"hasChannel":true}},
