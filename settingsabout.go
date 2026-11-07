@@ -60,6 +60,31 @@ func updateSubtitle() string {
 	return "Signed releases install themselves."
 }
 
+// kofiURL is the project's tip page.
+const kofiURL = "https://ko-fi.com/elianiva"
+
+// supportCard is where the user leaves a tip, which is the only money the
+// project takes.
+func (a *app) supportCard(c *ui.Context) {
+	a.settingsCard(c, "Ko-fi", m3.IconCoffee, func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Buy me a coffee", "Meiro is free, with no ads and no paid tier.").Grow(1)
+			if m3.Button(c, m3.ButtonSpec{Label: "Open Ko-fi", Kind: m3.Tonal, Size: m3.Medium56, Key: "open-kofi"}).Clicked() {
+				a.openKoFi()
+			}
+		})
+	})
+}
+
+// openKoFi shows the tip page in the browser.
+func (a *app) openKoFi() {
+	spawn(a, func() error { return a.openURL(kofiURL) }, func(err error) {
+		if err != nil {
+			a.notice = "Could not open Ko-fi: " + err.Error()
+		}
+	})
+}
+
 // loadToolVersions reads the versions of yt-dlp and ffmpeg when Settings
 // opens, once: they only change with the app. Reading them runs the tools, so
 // it happens off the main thread.

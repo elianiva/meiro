@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **The arrow keys walk the search suggestions.** While the search field shows suggestions, Down and Up highlight them in order, and Enter opens the highlighted one as a click would. Past either end the highlight goes back to the text typed, so Enter searches it. Typing clears the highlight, and Escape closes the suggestions and keeps the text.
+- **Settings offers to support the project.** A new Ko-fi card under About and support has a button that opens the tip page in your browser.
 
 ### Fixed
 

@@ -1501,6 +1501,27 @@ func TestReportProblemOpensPrefilledIssue(t *testing.T) {
 	}
 }
 
+// Ko-fi opens the project's tip page from Settings.
+func TestSupportCardOpensKoFi(t *testing.T) {
+	a := newTestApp(t)
+	var opened []string
+	a.openURL = func(link string) error { opened = append(opened, link); return nil }
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("ko-fi")
+	tt.Frame()
+	if err := tt.Click("Open Ko-fi"); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 1 || opened[0] != kofiURL {
+		t.Fatalf("opened %v, want %q", opened, kofiURL)
+	}
+}
+
 // rejectingMusic answers every request the way YouTube answers a session it
 // no longer accepts.
 type rejectingMusic struct{}

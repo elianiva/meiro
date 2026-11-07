@@ -75,6 +75,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-about", heading: "About and support"},
 	{key: "updates", search: "about updates version", card: (*app).updatesCard},
+	{key: "support", search: "support donate donation tip coffee ko-fi kofi", card: (*app).supportCard},
 	{key: "tools", search: "support tools", card: (*app).toolsCard},
 	{key: "report", search: "support report problem bug", card: (*app).reportCard},
 	{key: "logs", search: "logs folder diagnostics", card: (*app).logsCard},

@@ -11,7 +11,8 @@
   <a href="#screenshots">Screenshots</a> ·
   <a href="#troubleshooting">Troubleshooting</a> ·
   <a href="#build-from-source">Build</a> ·
-  <a href="CONTRIBUTING.md">Contribute</a>
+  <a href="CONTRIBUTING.md">Contribute</a> ·
+  <a href="#support">Support</a>
 </p>
 
 A lightweight desktop music player for YouTube Music. Meiro has a native
@@ -493,6 +494,12 @@ Minimal downloads include `-minimal` in the filename. Find them on the
 Bug reports, fixes and docs are welcome. Read
 [CONTRIBUTING.md](CONTRIBUTING.md) first, and check the
 [non-goals](#non-goals) before you propose a feature.
+
+## Support
+
+Meiro is free, with no ads and no paid tier. If you want to say thanks, you can
+[buy me a coffee on Ko-fi](https://ko-fi.com/elianiva). A clear bug report helps
+too.
 
 ## About
 

@@ -1,9 +1,21 @@
 ---
-const links = [
-  { href: "https://github.com/elianiva/meiro", label: "GitHub" },
-  { href: "https://github.com/elianiva/meiro/releases/latest", label: "Releases" },
-  { href: "https://github.com/elianiva/meiro/issues", label: "Issues" },
-  { href: "https://github.com/elianiva/meiro/blob/master/CHANGELOG.md", label: "Changelog" },
+const groups = [
+  {
+    heading: "Project",
+    links: [
+      { href: "https://github.com/elianiva/meiro", label: "GitHub" },
+      { href: "https://github.com/elianiva/meiro/releases/latest", label: "Releases" },
+      { href: "https://github.com/elianiva/meiro/issues", label: "Issues" },
+      { href: "https://github.com/elianiva/meiro/blob/master/CHANGELOG.md", label: "Changelog" },
+    ],
+  },
+  {
+    heading: "Support",
+    links: [
+      { href: "https://ko-fi.com/elianiva", label: "Ko-fi" },
+      { href: "https://github.com/elianiva/meiro/blob/master/CONTRIBUTING.md", label: "Contribute" },
+    ],
+  },
 ];
 const mark = "w-full h-auto js:translate-y-9 js:opacity-0 js:[transition:opacity_1.4s_ease,translate_1.4s_var(--ease-glide)] js:group-[.in]/mark:translate-y-0 js:group-[.in]/mark:opacity-40";
 ---
@@ -18,18 +30,20 @@ const mark = "w-full h-auto js:translate-y-9 js:opacity-0 js:[transition:opacity
         <p class="text-[14px] text-muted">Beta and unofficial. Built with Go and MyGO!!!!!.</p>
       </div>
       <div class="flex gap-[clamp(32px,6vw,96px)]">
-        <div>
-          <h2 class="mb-3.5 text-[16px] font-semibold">Project</h2>
-          <ul class="grid gap-2">
-            {
-              links.map(({ href, label }) => (
-                <li>
-                  <a class="text-muted no-underline hover:text-ink hover:underline" href={href}>{label}</a>
-                </li>
-              ))
-            }
-          </ul>
-        </div>
+        {
+          groups.map(({ heading, links }) => (
+            <div>
+              <h2 class="mb-3.5 text-[16px] font-semibold">{heading}</h2>
+              <ul class="grid gap-2">
+                {links.map(({ href, label }) => (
+                  <li>
+                    <a class="text-muted no-underline hover:text-ink hover:underline" href={href}>{label}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
       </div>
     </div>
     <div
