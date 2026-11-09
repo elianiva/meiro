@@ -197,6 +197,20 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 			a.removeFromPlaylist(playlistID, item)
 			close()
 		}
+		if title := item.Title; title != "" && entry("Copy title", m3.IconMusicNote).Clicked() {
+			c.WriteClipboard(title)
+			c.Toast("Title copied")
+			close()
+		}
+		artist := item.Artists
+		if artist == "" {
+			artist = item.Artist
+		}
+		if artist != "" && entry("Copy artist", m3.IconPerson).Clicked() {
+			c.WriteClipboard(artist)
+			c.Toast("Artist copied")
+			close()
+		}
 		if entry("Copy link", m3.IconCopy).Clicked() {
 			c.WriteClipboard(youtube.WatchURL(item.VideoID))
 			c.Toast("Link copied")
