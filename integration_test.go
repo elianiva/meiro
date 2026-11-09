@@ -434,6 +434,70 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 	}
 }
 
+// A song's menu copies the song's title or every artist it credits, from a
+// right click or its menu button. A song whose byline links no artist has no
+// artist to offer.
+func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/playlist/VLPL_metadata")
+	tt := ui.NewTester(a.view, 1180, 850)
+	tt.Frame()
+
+	if err := tt.RightClick("Linked Track"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Copy title") || !tt.HasText("Copy artist") {
+		t.Fatalf("the menu on a song with credits offered %q", tt.Texts())
+	}
+	if err := tt.Click("Copy title"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := tt.Clipboard(); got != "Linked Track" {
+		t.Errorf("Copy title copied %q, want the song's title", got)
+	}
+	if a.menu.open {
+		t.Error("the menu stayed open after Copy title")
+	}
+
+	// The menu button offers the same actions as the right click.
+	row, ok := tt.Find("Linked Track")
+	if !ok {
+		t.Fatalf("the song row is missing: %q", tt.Texts())
+	}
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	if err := tt.Click("More options for Linked Track"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Copy artist"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := tt.Clipboard(); got != "Aurora Vale, Guest Artist" {
+		t.Errorf("Copy artist copied %q, want every credited artist", got)
+	}
+	if a.menu.open {
+		t.Error("the menu stayed open after Copy artist")
+	}
+
+	// A song whose byline links no artist has a title to copy, but none to
+	// credit.
+	if err := tt.RightClick("Unlinked Track"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Copy title") {
+		t.Errorf("the menu on a song without credits offered %q", tt.Texts())
+	}
+	if tt.HasText("Copy artist") {
+		t.Errorf("the menu on a song without credits offered Copy artist: %q", tt.Texts())
+	}
+	a.menu.close()
+}
+
 // The search field is in the top bar of every page of YouTube Music, and
 // submitting it there shows the search page with what it ran.
 // A suggested query is chosen to see what it searches, from whichever page the
