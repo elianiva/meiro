@@ -169,10 +169,10 @@ func tabTo(t *testing.T, tt *ui.Tester, label string) {
 
 func TestKeyboardMenusKeepFocusAndRunActions(t *testing.T) {
 	for _, item := range []struct {
-		path, title, first, link string
+		path, title, first, last, link string
 	}{
-		{"/album/MPREb_test", "Album Track One", "Play next", "https://music.youtube.com/watch?v=vid-3"},
-		{"/home", "Deep Focus", "Open album", "https://music.youtube.com/browse/MPREb_test"},
+		{"/album/MPREb_test", "Album Track One", "Play next", "Copy", "https://music.youtube.com/watch?v=vid-3"},
+		{"/home", "Deep Focus", "Open album", "Copy link", "https://music.youtube.com/browse/MPREb_test"},
 	} {
 		t.Run(item.title, func(t *testing.T) {
 			a := newTestApp(t)
@@ -199,10 +199,16 @@ func TestKeyboardMenusKeepFocusAndRunActions(t *testing.T) {
 				t.Fatal("a background shortcut ran while the menu was open")
 			}
 			tt.Key(0, ui.KeyEnd)
-			if !tt.Focused("Copy link") {
+			if !tt.Focused(item.last) {
 				t.Fatal("End did not focus the last menu action")
 			}
 			tt.Key(0, ui.KeyEnter)
+			if item.last == "Copy" {
+				// A song's copy actions sit on a second page.
+				if err := tt.Click("Copy link"); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if a.menu.open || tt.Clipboard() != item.link || !tt.Focused(menu) {
 				t.Fatalf("copy: %q, open: %v, focus restored: %v", tt.Clipboard(), a.menu.open, tt.Focused(menu))
 			}

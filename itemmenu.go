@@ -19,6 +19,8 @@ type itemMenu struct {
 	// pointer was, in the box of the item clicked.
 	atPointer bool
 	x, y      float32
+	// copying shows a song menu's copy entries in place of its other ones.
+	copying bool
 }
 
 // opened says whether the menu is open on the item with this key.
@@ -31,7 +33,7 @@ func (m *itemMenu) owns(key string) bool { return m.key == key }
 // show opens the menu on the item with this key. A menu opened by the pointer
 // points at x, y rather than at the item's menu button.
 func (m *itemMenu) show(key string, atPointer bool, x, y float32) {
-	m.key, m.open, m.atPointer = key, true, atPointer
+	m.key, m.open, m.atPointer, m.copying = key, true, atPointer, false
 	if atPointer {
 		m.x, m.y = x, y
 	}
@@ -141,6 +143,10 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 		entry := func(label string, icon *ui.SVG) ui.Element {
 			return m3.MenuItem(c, label, icon).Height(40)
 		}
+		if a.menu.copying {
+			a.copyMenuPage(c, entry, item, close)
+			return
+		}
 		if artistID := item.ArtistID(); artistID != "" {
 			if entry("Go to artist", m3.IconPerson).Clicked() {
 				a.openTarget(youtube.Target{Kind: youtube.TargetArtist, ID: artistID}, detail{})
@@ -197,30 +203,47 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 			a.removeFromPlaylist(playlistID, item)
 			close()
 		}
-		if title := item.Title; title != "" && entry("Copy title", m3.IconMusicNote).Clicked() {
-			c.WriteClipboard(title)
-			c.Toast("Title copied")
-			close()
-		}
-		artist := item.Artists
-		if artist == "" {
-			artist = item.Artist
-		}
-		if artist != "" && entry("Copy artist", m3.IconPerson).Clicked() {
-			c.WriteClipboard(artist)
-			c.Toast("Artist copied")
-			close()
-		}
-		if entry("Copy link", m3.IconCopy).Clicked() {
-			c.WriteClipboard(youtube.WatchURL(item.VideoID))
-			c.Toast("Link copied")
-			close()
+		if entry("Copy", m3.IconCopy).Clicked() {
+			a.menu.copying = true
 		}
 		if item.VideoID != "" && item.VideoID == a.current.VideoID && entry("Playback details", m3.IconSettings).Clicked() {
 			a.nerd = &nerdState{open: true}
 			close()
 		}
 	})
+}
+
+// copyMenuPage is the song menu's second page: what it can copy, under a
+// header that goes back to the first.
+func (a *app) copyMenuPage(c *ui.Context, entry func(string, *ui.SVG) ui.Element, item youtube.MusicItem, close func()) {
+	sc := m3.Of(c).Scheme
+	ui.Row(c).Height(48).Gap(4).AlignItems(ui.Center).Children(func() {
+		if m3.IconButton(c, m3.IconButtonSpec{
+			Icon: m3.IconChevronLeft, Label: "Back to the song menu", Size: m3.Small40, Key: "copy-back",
+		}).Clicked() {
+			a.menu.copying = false
+		}
+		m3.EmphasizedText(c, m3.LabelLarge, "Copy").TextColor(sc.OnSurface)
+	})
+	if title := item.Title; title != "" && entry("Copy title", m3.IconMusicNote).Clicked() {
+		c.WriteClipboard(title)
+		c.Toast("Title copied")
+		close()
+	}
+	artist := item.Artists
+	if artist == "" {
+		artist = item.Artist
+	}
+	if artist != "" && entry("Copy artist", m3.IconPerson).Clicked() {
+		c.WriteClipboard(artist)
+		c.Toast("Artist copied")
+		close()
+	}
+	if entry("Copy link", m3.IconCopy).Clicked() {
+		c.WriteClipboard(youtube.WatchURL(item.VideoID))
+		c.Toast("Link copied")
+		close()
+	}
 }
 
 // queueMenuItems are the edits a row of the queue offers for the track at a

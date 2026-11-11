@@ -388,7 +388,7 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	for _, want := range []string{"Play next", "Add to queue", "Add to playlist", "Copy link"} {
+	for _, want := range []string{"Play next", "Add to queue", "Add to playlist", "Copy"} {
 		if !tt.HasText(want) {
 			t.Errorf("right-clicking a song among the suggestions offered no %q: %q", want, tt.Texts())
 		}
@@ -447,8 +447,12 @@ func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
+	if err := tt.Click("Copy"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if !tt.HasText("Copy title") || !tt.HasText("Copy artist") {
-		t.Fatalf("the menu on a song with credits offered %q", tt.Texts())
+		t.Fatalf("the copy page of a song with credits offered %q", tt.Texts())
 	}
 	if err := tt.Click("Copy title"); err != nil {
 		t.Fatal(err)
@@ -472,6 +476,10 @@ func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
+	if err := tt.Click("Copy"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if err := tt.Click("Copy artist"); err != nil {
 		t.Fatal(err)
 	}
@@ -489,8 +497,12 @@ func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
+	if err := tt.Click("Copy"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if !tt.HasText("Copy title") {
-		t.Errorf("the menu on a song without credits offered %q", tt.Texts())
+		t.Errorf("the copy page of a song without credits offered %q", tt.Texts())
 	}
 	if tt.HasText("Copy artist") {
 		t.Errorf("the menu on a song without credits offered Copy artist: %q", tt.Texts())
@@ -729,8 +741,8 @@ func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
 		if !tt.HasText(c.offer) {
 			t.Errorf("right-clicking %q offered no %q: %q", c.result, c.offer, tt.Texts())
 		}
-		if !tt.HasText("Copy link") {
-			t.Errorf("the menu on %q has no Copy link: %q", c.result, tt.Texts())
+		if !tt.HasText("Copy") {
+			t.Errorf("the menu on %q has no Copy: %q", c.result, tt.Texts())
 		}
 		a.menu.close()
 		tt.Frame()
