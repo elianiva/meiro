@@ -25,15 +25,20 @@ import (
 // ErrMissing reports that yt-dlp is neither inside the app nor on PATH.
 var ErrMissing = errors.New("playing needs ffmpeg and yt-dlp on PATH")
 
-// Resolve asks yt-dlp for a direct audio URL of a track and its length. Stream
-// resolution is anonymous; account cookies stay with the YouTube API client
-// for account features and playback history.
-func Resolve(ctx context.Context, videoID string) (string, time.Duration, error) {
+// Resolve asks yt-dlp for a direct audio URL of a track and its length. It
+// resolves anonymously unless cookie, a Cookie header for YouTube, is given:
+// then yt-dlp signs in with it, which is what gives a YouTube Premium account
+// its better audio. A signed-in resolve needs the solver, so it skips the
+// js-less attempt.
+func Resolve(ctx context.Context, videoID, cookie string) (string, time.Duration, error) {
+	if cookie != "" {
+		return resolve(ctx, videoID, false, cookie)
+	}
 	// The visionos client returns anonymous audio URLs without a challenge.
 	// yt-dlp's default also asks the web client, which makes it run the solver
 	// under QuickJS for about seven seconds of CPU, so try visionos alone first
 	// and fall back to the full set if YouTube stops serving it.
-	streamURL, total, err := resolve(ctx, videoID, true)
+	streamURL, total, err := resolve(ctx, videoID, true, "")
 	if err == nil {
 		return streamURL, total, nil
 	}
@@ -41,10 +46,10 @@ func Resolve(ctx context.Context, videoID string) (string, time.Duration, error)
 		return "", 0, err
 	}
 	log.Printf("playback: js-less resolve failed video_id=%s, retrying with the solver: %v", videoID, err)
-	return resolve(ctx, videoID, false)
+	return resolve(ctx, videoID, false, "")
 }
 
-func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Duration, error) {
+func resolve(ctx context.Context, videoID string, jsless bool, cookie string) (string, time.Duration, error) {
 	path, err := proc.Tool("yt-dlp")
 	if err != nil {
 		return "", 0, ErrMissing
@@ -61,6 +66,14 @@ func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Dur
 	}
 	args := []string{"-f", "bestaudio", "-g", "--no-playlist", "--extractor-args", extractorArgs}
 	args = append(args, runtimeArgs...)
+	if cookie != "" {
+		file, remove, err := cookieFile(cookie)
+		if err != nil {
+			return "", 0, err
+		}
+		defer remove()
+		args = append(args, "--cookies", file)
+	}
 	args = append(args, youtube.WatchURL(videoID))
 	command := proc.Command(ctx, path, args...)
 	var stderr bytes.Buffer
@@ -84,6 +97,70 @@ func resolve(ctx context.Context, videoID string, jsless bool) (string, time.Dur
 	}
 	log.Printf("playback: yt-dlp resolved video_id=%s elapsed=%s", videoID, time.Since(started).Round(time.Millisecond))
 	return streamURL, durationFromURL(streamURL), nil
+}
+
+// cookieFile writes a Cookie header where yt-dlp can read it. The cookies are
+// a credential: remove deletes them, and runs as soon as yt-dlp has ended.
+func cookieFile(cookie string) (file string, remove func(), err error) {
+	directory, err := proc.MkdirTemp("meiro-cookies-")
+	if err != nil {
+		return "", nil, err
+	}
+	file = filepath.Join(directory, "cookies.txt")
+	if err := os.WriteFile(file, []byte(netscape(cookie)), 0o600); err != nil {
+		fsutil.RemoveAll(directory)
+		return "", nil, err
+	}
+	return file, func() { fsutil.RemoveAll(directory) }, nil
+}
+
+// HasPremium reports whether YouTube treats the account behind cookie as a
+// YouTube Premium subscriber. yt-dlp notices it while it reads a watch page
+// and says so in its debug output, so this runs it on one page, verbosely,
+// and reads that.
+func HasPremium(ctx context.Context, cookie string) (bool, error) {
+	path, err := proc.Tool("yt-dlp")
+	if err != nil {
+		return false, ErrMissing
+	}
+	file, remove, err := cookieFile(cookie)
+	if err != nil {
+		return false, err
+	}
+	defer remove()
+	output, runErr := proc.Command(ctx, path, "-v", "--simulate", "--no-playlist", "--no-warnings",
+		"--cookies", file, "--extractor-args", "youtube:skip=hls,dash;player_client=visionos",
+		youtube.WatchURL("jNQXAC9IVRw")).CombinedOutput()
+	if strings.Contains(string(output), "Detected YouTube Premium subscription") {
+		return true, nil
+	}
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if runErr != nil {
+		// The page was read before any format error, so a failed run that
+		// printed no detection may just not have got that far.
+		if reason := LastError(string(output)); reason != "" {
+			return false, errors.New(reason)
+		}
+		return false, runErr
+	}
+	return false, nil
+}
+
+// netscape writes a Cookie header as the cookies.txt file yt-dlp reads.
+func netscape(header string) string {
+	expires := time.Now().AddDate(1, 0, 0).Unix()
+	var out strings.Builder
+	out.WriteString("# Netscape HTTP Cookie File\n")
+	for part := range strings.SplitSeq(header, ";") {
+		name, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || name == "" {
+			continue
+		}
+		fmt.Fprintf(&out, ".youtube.com\tTRUE\t/\tTRUE\t%d\t%s\t%s\n", expires, name, value)
+	}
+	return out.String()
 }
 
 // BrowserCookie has yt-dlp read the cookies of one browser, or profile, as

@@ -50,6 +50,12 @@ type Settings struct {
 	AutoPlay bool `json:"autoPlay"`
 	// AutoSkipDisliked skips tracks known to have a thumbs-down.
 	AutoSkipDisliked bool `json:"autoSkipDisliked,omitempty"`
+	// AccountAudio resolves audio with the signed-in account, which gives a
+	// YouTube Premium account its higher bitrate. Off resolves anonymously.
+	AccountAudio bool `json:"accountAudio,omitempty"`
+	// PremiumOffered is set once the app has told a Premium account that
+	// playing audio as the account is available, so it asks only once.
+	PremiumOffered bool `json:"premiumOffered,omitempty"`
 	// ExcludeAIGenerated skips songs YouTube marks as altered or generated
 	// with AI. Unlabelled AI music still plays.
 	ExcludeAIGenerated bool `json:"excludeAIGenerated,omitempty"`

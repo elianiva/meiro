@@ -49,12 +49,18 @@ func (a *app) view(c *ui.Context) {
 
 	a.syncLocation()
 	if a.notice != "" {
-		if a.noticeHelp {
+		if a.noticePremium {
+			c.AddToast(ui.Toast{Title: a.notice, Action: "Turn on", OnAction: func() {
+				a.settings.AccountAudio = true
+				a.syncAudioAuth()
+				a.saveSettings()
+			}})
+		} else if a.noticeHelp {
 			c.AddToast(ui.Toast{Title: a.notice, Action: "Learn more", OnAction: a.openToolHelp})
 		} else {
 			c.Toast(a.notice)
 		}
-		a.notice, a.noticeHelp = "", false
+		a.notice, a.noticeHelp, a.noticePremium = "", false, false
 	}
 	a.syncSignInDialog()
 

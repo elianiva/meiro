@@ -292,6 +292,7 @@ func (a *app) useSession(s *session, from sessionSource) {
 		a.finishEpisodeProgress(false)
 	}
 	a.account.session = s
+	a.syncAudioAuth()
 	a.account.expired = ""
 	a.account.signIn.err = ""
 	if a.settings.Channel != s.channel || a.settings.SignInSource != from.browser ||
@@ -301,6 +302,7 @@ func (a *app) useSession(s *session, from sessionSource) {
 		a.saveSettings()
 	}
 	a.accountChanged()
+	a.offerPremium()
 	// The channel switcher fills in after the account is in use, so a slow
 	// channel list does not hold up the sign-in. The list is filed with the
 	// session it was read for, wherever the account has gone since.
@@ -322,6 +324,7 @@ func (a *app) endSession(reason string) {
 	had := a.account.session != nil
 	a.finishEpisodeProgress(false)
 	a.account.session = nil
+	a.syncAudioAuth()
 	a.account.expired = ""
 	a.account.signIn.err = reason
 	if reason != "" {

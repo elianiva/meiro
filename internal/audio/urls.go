@@ -79,6 +79,13 @@ func (c *URLs) Forget(videoID string) {
 	delete(c.entries, videoID)
 }
 
+// Reset drops everything remembered, for a change in how tracks are resolved.
+func (c *URLs) Reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	clear(c.entries)
+}
+
 func (c *URLs) run(ctx context.Context, videoID string, e *urlEntry) {
 	ctx, cancel := context.WithTimeout(ctx, ResolveTimeout)
 	defer cancel()

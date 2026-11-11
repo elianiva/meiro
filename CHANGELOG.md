@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Play audio as your account.** A new switch under Playback in Settings makes yt-dlp sign in with your YouTube account, so YouTube Premium gets its higher bitrate. It is off by default, and a song takes a few seconds longer to start. When yt-dlp finds a YouTube Premium subscription on your account, Meiro offers to turn it on, once.
 - **The arrow keys walk the search suggestions.** While the search field shows suggestions, Down and Up highlight them in order, and Enter opens the highlighted one as a click would. Past either end the highlight goes back to the text typed, so Enter searches it. Typing clears the highlight, and Escape closes the suggestions and keeps the text.
 - **Settings offers to support the project.** A new Ko-fi card under About and support has a button that opens the tip page in your browser.
 - **A song's menu copies its title or artist.** The menu on a song, from a right click or its three-dot button, offers Copy title and Copy artist next to Copy link. Copy artist copies every artist the song credits, and a song whose byline names no artist offers only its title.

@@ -22,6 +22,7 @@ import (
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/internal/ytdlp"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/systemmedia"
@@ -80,6 +81,9 @@ type app struct {
 	keyboard keyboardState
 	// openPath shows a file or folder in the system; tests replace it.
 	openPath func(path string) error
+	// hasPremium asks whether the account behind a cookie has YouTube
+	// Premium; tests replace it.
+	hasPremium func(ctx context.Context, cookie string) (bool, error)
 	// logsDir is the folder the log file is in; empty when there is none.
 	logsDir string
 	// notice is a message for the next frame to show as a toast.
@@ -87,6 +91,8 @@ type app struct {
 	// noticeHelp adds a Learn more button to the notice that opens the
 	// explanation of an outdated yt-dlp.
 	noticeHelp bool
+	// noticePremium makes the notice offer to turn on AccountAudio.
+	noticePremium bool
 
 	theme themeState
 
@@ -168,6 +174,7 @@ type app struct {
 	// started with.
 	audioCacheMu       sync.RWMutex
 	audioCache         *audio.Cache
+	audioAuth          audioAuth
 	retiredAudioCaches []*audio.Cache
 	cacheSongsText     string
 	cacheLimitError    string
@@ -224,7 +231,7 @@ func newApp() *app {
 		keyboard:   keyboardState{hintDelay: hintDelay},
 	}
 	a.scrobble = newScrobbler()
-	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}))), a.settings.Volume)
+	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}), &a.audioAuth)), a.settings.Volume)
 	a.aiFilter = newAIFilter()
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.run = func(work func()) {
@@ -234,6 +241,7 @@ func newApp() *app {
 		}()
 	}
 	a.sleep = sleep
+	a.hasPremium = ytdlp.HasPremium
 	a.openPath = func(path string) error { return a.desktop.openPath(path) }
 	a.account = newAccountState(func(auth *youtube.CookieAuth) *youtube.Client {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
