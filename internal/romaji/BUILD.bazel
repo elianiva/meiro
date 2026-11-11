@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "romaji",
+    srcs = [
+        "dictionary.go",
+        "kana.go",
+        "romaji.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/romaji",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "@com_github_ikawaha_kagome_dict//dict",
+        "@com_github_ikawaha_kagome_v2//tokenizer",
+    ],
+)
+
+go_test(
+    name = "romaji_test",
+    srcs = ["romaji_test.go"],
+    embed = [":romaji"],
+    deps = ["@com_github_ikawaha_kagome_dict_ipa//:ipa"],
+)

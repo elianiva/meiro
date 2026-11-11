@@ -38,6 +38,11 @@ type lyricsState struct {
 	settled       bool
 	// explain is whether the dialog about the source of the lyrics is open.
 	explain bool
+	// romanization is the work turning the lines into Latin letters, and
+	// romaji the spelling of each line, looked up by the line itself; both
+	// are there only while the user wants them.
+	romanization task
+	romaji       map[string]string
 }
 
 // loadedLyrics is what the lyrics of a track come to, from Better Lyrics,
@@ -59,6 +64,8 @@ func (a *app) loadLyrics() {
 	// lookup is made again, so the lyrics do not blink back to loading.
 	if again := l.videoID == id; !again {
 		l.text, l.footer, l.err, l.synced, l.followed = "", "", "", nil, -1
+		l.romanization.stop()
+		l.romaji = nil
 		a.nowPlaying.lyricsScroll.Y = 0
 		l.centerPending, l.settled = false, false
 	}
@@ -84,7 +91,83 @@ func (a *app) loadLyrics() {
 		default:
 			l.err = "No lyrics for this song."
 		}
+		a.romanizeLyrics()
 	})
+}
+
+// romanizeLyrics turns the lines of the lyrics into Latin letters, off the
+// main thread, when the user wants them. A track whose lyrics arrived and a
+// change of the setting both call it; a change while the lyrics stay the same
+// replaces the work in flight.
+func (a *app) romanizeLyrics() {
+	l := &a.nowPlaying.lyrics
+	if !a.settings.RomanizeLyrics || a.romanize == nil {
+		l.romanization.stop()
+		l.romaji = nil
+		// Turning it off gives the dictionary's memory back; the file stays,
+		// so turning it on again does not download anything.
+		if a.romanizeDict != nil {
+			a.romanizeDict.Unload()
+		}
+		return
+	}
+	lines := lyricLines(l)
+	if len(lines) == 0 {
+		return
+	}
+	if a.romanizeDict != nil && !a.romanizeDict.Cached() {
+		a.notice = "Downloading the Japanese dictionary for the first time…"
+	}
+	startTask(a, &l.romanization, noTimeout, func(ctx context.Context) (map[string]string, error) {
+		return a.romanize(ctx, lines)
+	}, func(found map[string]string, err error) {
+		if err != nil {
+			// The dictionary could not be downloaded or read. Turn the setting
+			// back off, so the switch says what happened and turning it on
+			// again is the retry.
+			log.Printf("lyrics: romanization failed: %v", err)
+			l.romaji = nil
+			a.settings.RomanizeLyrics = false
+			a.saveSettings()
+			a.notice = "Couldn't load the Japanese dictionary. Check your connection and try again."
+			return
+		}
+		l.romaji = found
+	})
+}
+
+// lyricLines are the lines the view can show, timed and plain, without
+// repeats, so each one is romanized once.
+func lyricLines(l *lyricsState) []string {
+	lines := make([]string, 0, len(l.synced)+1)
+	seen := make(map[string]bool, len(l.synced)+1)
+	add := func(line string) {
+		if seen[line] {
+			return
+		}
+		seen[line] = true
+		lines = append(lines, line)
+	}
+	for _, line := range l.synced {
+		add(line.Text)
+	}
+	if l.text != "" {
+		for _, line := range strings.Split(l.text, "\n") {
+			add(line)
+		}
+	}
+	return lines
+}
+
+// romanized is the Latin spelling of a line, or empty when there is none to
+// show: the user does not want it, the line is not Japanese, or the spelling
+// would repeat the line exactly.
+func (l *lyricsState) romanized(text string) string {
+	latin := l.romaji[text]
+	if latin == "" || latin == text {
+		return ""
+	}
+	return latin
 }
 
 // refreshLyrics looks the lyrics of the current track up again once the
@@ -204,11 +287,41 @@ func (a *app) lyricsView(c *ui.Context) {
 		// own rather than the width of a panel that may be very wide.
 		ui.Scroll(c).Grow(1).Padding(16, 24, 40).Children(func() {
 			ui.Column(c).FillWidth().MaxWidth(lyricMeasure).AlignSelf(ui.Center).Children(func() {
-				m3.Text(c, m3.BodyLarge, l.text).LineHeight(1.7).TextColor(sc.OnSurface).Selectable()
+				a.plainLyrics(c, l, sc)
 				if l.footer != "" && !timed {
 					m3.Text(c, m3.BodySmall, l.footer).TextColor(sc.OnSurfaceVariant).Margin(16, 0, 0)
 				}
 			})
+		})
+	}
+}
+
+// plainLyrics draws the plain words. They stay one block, so they wrap and
+// select as one, unless a line has a Latin spelling to sit under it; then each
+// line is drawn on its own to keep the spelling under the line it belongs to.
+func (a *app) plainLyrics(c *ui.Context, l *lyricsState, sc m3.Scheme) {
+	lines := strings.Split(l.text, "\n")
+	spellings := false
+	for _, line := range lines {
+		if l.romanized(line) != "" {
+			spellings = true
+			break
+		}
+	}
+	if !spellings {
+		m3.Text(c, m3.BodyLarge, l.text).LineHeight(1.7).TextColor(sc.OnSurface).Selectable()
+		return
+	}
+	for _, line := range lines {
+		if line == "" {
+			ui.Box(c).Height(lyricBlank)
+			continue
+		}
+		ui.Column(c).Gap(2).Children(func() {
+			m3.Text(c, m3.BodyLarge, line).LineHeight(1.7).TextColor(sc.OnSurface).Selectable()
+			if latin := l.romanized(line); latin != "" {
+				m3.Text(c, m3.BodySmall, latin).LineHeight(1.35).TextColor(sc.OnSurfaceVariant).Selectable()
+			}
 		})
 	}
 }
@@ -231,6 +344,14 @@ func (a *app) lyricsModes(c *ui.Context, synced bool) {
 				l.followed, l.settled = -1, false
 			}
 			a.saveSettings()
+		}
+		// The letters stand for the Latin spelling the second switch turns on.
+		ui.Icon(c, m3.IconTranslate).FontSize(18).TextColor(sc.OnSurfaceVariant)
+		romanize := a.settings.RomanizeLyrics
+		if m3.CompactSwitch(c, &romanize, "Romanize lyrics").Tooltip("Romanize Japanese lyrics; downloads a dictionary the first time it is needed").Changed() {
+			a.settings.RomanizeLyrics = romanize
+			a.saveSettings()
+			a.romanizeLyrics()
 		}
 		ui.Box(c).Grow(1)
 		if l.footer != "" {
@@ -273,6 +394,10 @@ var lyricScroll = ui.Smooth
 // one or two lines of it, where a panel as wide as the window would leave the
 // words trailing off to the edge.
 const lyricMeasure = 440
+
+// lyricBlank is the height of an empty line of plain lyrics: BodyLarge at the
+// line height the plain text is read at, so a verse keeps the break it has.
+const lyricBlank = 27
 
 // lyricFade is how far the timed lines dissolve into the card at the top and
 // the bottom of the list, instead of being cut by its edge.
@@ -376,11 +501,18 @@ func (a *app) lyricLine(c *ui.Context, line lyrics.Line, at time.Duration, i, no
 	size = m3.Animate(row, "size", size, m3.EffectsSlow)
 	row.Opacity(opacity).TransformOrigin(0, 0.5).Scale(size, size)
 	row.Children(func() {
-		if len(line.Words) > 0 {
-			m3.EmphasizedRichText(c, m3.HeadlineSmall, lyricWords(line, at, lit)...).FontWeight(800).LineHeight(1.25)
-			return
-		}
-		m3.EmphasizedText(c, m3.HeadlineSmall, text).FontWeight(800).TextColor(lit).LineHeight(1.25)
+		ui.Column(c).AlignItems(ui.Start).Gap(2).Children(func() {
+			if len(line.Words) > 0 {
+				m3.EmphasizedRichText(c, m3.HeadlineSmall, lyricWords(line, at, lit)...).FontWeight(800).LineHeight(1.25)
+			} else {
+				m3.EmphasizedText(c, m3.HeadlineSmall, text).FontWeight(800).TextColor(lit).LineHeight(1.25)
+			}
+			// The Latin spelling sits under the line, quieter than it, and
+			// lights with it rather than word by word.
+			if latin := l.romanized(text); latin != "" {
+				m3.Text(c, m3.BodySmall, latin).FontWeight(500).TextColor(lit.Alpha(0.72)).LineHeight(1.3)
+			}
+		})
 	})
 	if row.Clicked() {
 		a.seek(line.At)

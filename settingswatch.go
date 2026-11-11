@@ -249,4 +249,7 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 	if s.ExcludeAIGenerated != previous.ExcludeAIGenerated {
 		a.applyAIFilterChange()
 	}
+	if s.RomanizeLyrics != previous.RomanizeLyrics {
+		a.romanizeLyrics()
+	}
 }

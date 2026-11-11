@@ -65,6 +65,9 @@ var settingsRows = []settingsRow{
 	{key: "crossfade", search: "crossfade fade transition gap between tracks songs seconds", card: (*app).crossfadeCard},
 	{key: "ai", search: "ai artificial intelligence generated exclude skip filter songs", card: (*app).aiFilterCard},
 
+	{key: "h-lyrics", heading: "Lyrics"},
+	{key: "lyrics", search: "lyrics romanization romanisation romaji japanese latin reading pronunciation", card: (*app).lyricsCard},
+
 	{key: "h-system", heading: "System"},
 	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle notch macbook lyrics", card: (*app).desktopCard},
 	{key: "keyboard", search: "keyboard shortcuts keys", card: (*app).keyboardCard},
@@ -488,6 +491,23 @@ func (a *app) aiFilterCard(c *ui.Context) {
 			on := a.settings.ExcludeAIGenerated
 			if m3.Switch(c, &on, "Exclude AI-generated songs").Changed() {
 				a.setExcludeAIGenerated(on)
+			}
+		})
+	})
+}
+
+// lyricsCard controls how lyrics show: whether a Japanese line comes with its
+// Latin spelling. The switch is also beside the lyrics themselves.
+func (a *app) lyricsCard(c *ui.Context) {
+	a.settingsCard(c, "Japanese lyrics", m3.IconLyrics, func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Romanize Japanese lyrics",
+				"Show Latin letters under each Japanese line, from how its words and kanji are read. The dictionary downloads the first time it is used.").Grow(1)
+			on := a.settings.RomanizeLyrics
+			if m3.Switch(c, &on, "Romanize lyrics").Changed() {
+				a.settings.RomanizeLyrics = on
+				a.saveSettings()
+				a.romanizeLyrics()
 			}
 		})
 	})
