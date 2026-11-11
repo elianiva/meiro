@@ -153,6 +153,7 @@ go_library(
         "mediasession.go",
         "miniplayer.go",
         "navigation.go",
+        "nerdinfo.go",
         "notch.go",
         "notch_darwin.go",
         "notch_other.go",

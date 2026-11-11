@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-11
+
 ### Added
 
 - **A song's menu is shorter.** Copy title, Copy artist and Copy link moved under one Copy row, which opens them on a second page with a back button.
