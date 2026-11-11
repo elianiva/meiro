@@ -16,22 +16,34 @@ import (
 // and falls back to yt-dlp, which knows more ways to ask, when that fails.
 // Asking directly takes a request, where yt-dlp starts a Python process of
 // about 70 MB and takes a couple of seconds.
-func resolveAudio(client *youtube.Client, auth *audioAuth) audio.Resolver {
+func resolveAudio(client *youtube.Client, auth *audioAuth, traces *resolveTraces) audio.Resolver {
 	return func(ctx context.Context, videoID string) (string, time.Duration, error) {
+		trace := resolveTrace{VideoID: videoID, Signed: false}
+		started := time.Now()
+		defer func() { trace.Elapsed = time.Since(started); traces.put(trace) }()
 		// A signed-in resolve goes to yt-dlp alone: the direct request is
 		// anonymous, so it would never return the account's own formats.
 		if cookie := auth.get(); cookie != "" {
-			return ytdlp.Resolve(ctx, videoID, cookie)
+			trace.Source, trace.Signed = "yt-dlp", true
+			url, total, run, err := ytdlp.Resolve(ctx, videoID, cookie)
+			trace.Run, trace.URL = run, url
+			return url, total, err
 		}
 		url, total, err := client.AudioStream(ctx, videoID)
 		if err == nil {
+			trace.Source, trace.URL = "YouTube player request", url
 			return url, total, nil
 		}
+		trace.DirectError = err.Error()
 		if ctx.Err() != nil {
 			return "", 0, err
 		}
 		log.Printf("playback: direct resolve failed video_id=%s, trying yt-dlp: %v", videoID, err)
-		return ytdlp.Resolve(ctx, videoID, "")
+		trace.Source = "yt-dlp"
+		var run ytdlp.Run
+		url, total, run, err = ytdlp.Resolve(ctx, videoID, "")
+		trace.Run, trace.URL = run, url
+		return url, total, err
 	}
 }
 
@@ -173,6 +185,7 @@ func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position
 	} else if changed {
 		a.reportPlayback(item)
 	}
+	a.playing = playingAudio{videoID: item.VideoID, url: found.url, file: found.fromCache}
 	if !found.fromCache {
 		// The direct URL is already in hand, so the cache downloads it as it
 		// is instead of resolving the same track again.

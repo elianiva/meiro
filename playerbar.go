@@ -241,6 +241,17 @@ func (a *app) speedMenuRow(c *ui.Context, key string, speed float64) {
 	if row.Clicked() {
 		a.nowPlaying.speedChoices = true
 	}
+	details := ui.ButtonBase(c.Key(key + "-details"))
+	details.Height(48).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).
+		Label("Playback details").Role(ui.RoleMenuItem).
+		Background(m3.StateFill(ui.Transparent, sc.OnSurface, details.Hovered(), details.Pressed(), details.FocusVisible()))
+	details.Children(func() {
+		m3.LabelLarge.Style(ui.Text(c, "Playback details"), false).Grow(1).SingleLine().TextColor(sc.OnSurface)
+	})
+	if details.Clicked() {
+		a.nerd = &nerdState{open: true}
+		a.nowPlaying.speedMenu = ""
+	}
 }
 
 // speedChoices is the menu's second page: every speed, under a header that

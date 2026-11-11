@@ -78,6 +78,7 @@ func (a *app) view(c *ui.Context) {
 	a.deletePlaylistDialog(c)
 	a.addToPlaylistDialog(c)
 	a.toolHelpDialog(c)
+	a.nerdDialog(c)
 	a.crashDialog(c)
 	m3.Snackbars(c, 0)
 	a.shortcuts(c)

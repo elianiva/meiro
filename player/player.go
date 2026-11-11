@@ -47,6 +47,12 @@ const (
 	rangeSize = 10 << 20
 )
 
+// OutputFormat describes what the player gives the audio device: the system's
+// default one, at a fixed format ffmpeg decodes every stream to.
+func OutputFormat() string {
+	return fmt.Sprintf("System default device, %d kHz, %d channels, %d-bit PCM", sampleRate/1000, channelCount, bytesPerSample*8)
+}
+
 // EQFrequencies are the centre frequencies of the equaliser's bands, in Hz.
 // Ten ISO one-octave bands cover the audible range a music player is asked
 // to shape.

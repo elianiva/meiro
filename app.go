@@ -175,6 +175,9 @@ type app struct {
 	audioCacheMu       sync.RWMutex
 	audioCache         *audio.Cache
 	audioAuth          audioAuth
+	traces             resolveTraces
+	nerd               *nerdState
+	playing            playingAudio
 	retiredAudioCaches []*audio.Cache
 	cacheSongsText     string
 	cacheLimitError    string
@@ -231,7 +234,7 @@ func newApp() *app {
 		keyboard:   keyboardState{hintDelay: hintDelay},
 	}
 	a.scrobble = newScrobbler()
-	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}), &a.audioAuth)), a.settings.Volume)
+	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}), &a.audioAuth, &a.traces)), a.settings.Volume)
 	a.aiFilter = newAIFilter()
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.run = func(work func()) {
