@@ -216,6 +216,10 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 			c.Toast("Link copied")
 			close()
 		}
+		if item.VideoID != "" && item.VideoID == a.current.VideoID && entry("Playback details", m3.IconSettings).Clicked() {
+			a.nerd = &nerdState{open: true}
+			close()
+		}
 	})
 }
 
