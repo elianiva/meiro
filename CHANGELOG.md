@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Meiro starts from a terminal on Linux.** The Debian and Arch packages, and the tarball's `install.sh`, add a `meiro` command, so `meiro` in a terminal opens the app.
+
 ## [0.6.2] - 2026-11-11
 
 ### Added

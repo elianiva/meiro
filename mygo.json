@@ -12,8 +12,13 @@
     "tagPrefix": "desktop-v"
   },
   "linux": {
+    "maintainer": "elianiva <git@elianiva.com>",
+    "comment": "A lightweight desktop music player for YouTube Music",
     "depends": [
       "libayatana-appindicator3-1"
+    ],
+    "command": [
+      "meiro"
     ]
   }
 }
