@@ -384,6 +384,14 @@ the tray icon. Meiro skips that flyout; its Linux tray menu only offers
 works, but **Close to tray** does not. Linux media controls use MPRIS and do
 not depend on the tray.
 
+**Korean, Chinese or Japanese text does not show.** Meiro ships Google Sans,
+which covers Latin, Greek and Cyrillic only, so Meiro draws Korean, Chinese and
+Japanese text with a font your system provides. The `.deb` and `.rpm` packages
+recommend Noto CJK; with the tarball or the AppImage, install a font and
+restart Meiro: `fonts-noto-cjk` on Debian and Ubuntu,
+`google-noto-sans-cjk-fonts` on Fedora, or `noto-fonts-cjk` on Arch. macOS and
+Windows ship these fonts.
+
 **macOS says the app can't be opened.** Meiro is not notarized yet. Right-click
 it and choose **Open**, or allow it in System Settings > Privacy & Security.
 

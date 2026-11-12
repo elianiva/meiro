@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Meiro starts from a terminal on Linux.** The Debian and Arch packages, and the tarball's `install.sh`, add a `meiro` command, so `meiro` in a terminal opens the app.
 
+### Changed
+
+- **The Linux packages recommend a CJK font.** A fresh install can have no font for Korean, Chinese or Japanese text, which then drew as nothing. The `.deb` and `.rpm` packages now recommend Noto CJK, which covers all three.
+
 ## [0.6.2] - 2026-11-11
 
 ### Added
