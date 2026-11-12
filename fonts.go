@@ -15,8 +15,21 @@ import (
 //go:embed fonts/GoogleSans.ttf
 var googleSans []byte
 
-// fontFamily is the name the font registers under.
-const fontFamily = "Google Sans"
+// meiroHangul is Noto Sans KR cut to the Hangul syllables, the jamo and the
+// punctuation Korean text uses. Google Sans holds no Hangul, so without it a
+// Korean title draws as nothing when no installed font covers the script, as
+// on a minimal Linux. It is licensed under the SIL Open Font License: see
+// fonts/OFL-MeiroHangul.txt.
+//
+//go:embed fonts/MeiroHangul.ttf
+var meiroHangul []byte
+
+// fontFamily is the name the font registers under, and hangulFamily the name
+// the Korean fallback registers under.
+const (
+	fontFamily   = "Google Sans"
+	hangulFamily = "Meiro Hangul"
+)
 
 // uiFont is the typeface the theme asks for: empty until the font registers.
 var uiFont string
@@ -28,4 +41,12 @@ func init() {
 		return
 	}
 	uiFont = fontFamily
+	if err := ui.RegisterFont(meiroHangul, hangulFamily); err != nil {
+		// The system's Korean font does the job, when it has one.
+		log.Printf("registering %s: %v", hangulFamily, err)
+		return
+	}
+	// A family list, so text takes Latin from Google Sans and Hangul from the
+	// bundled font, whichever fonts the system has.
+	uiFont = fontFamily + ", " + hangulFamily
 }

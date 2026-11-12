@@ -185,7 +185,10 @@ go_library(
         "upnext.go",
         "zoom.go",
     ],
-    embedsrcs = ["fonts/GoogleSans.ttf"],
+    embedsrcs = [
+        "fonts/GoogleSans.ttf",
+        "fonts/MeiroHangul.ttf",
+    ],
     importpath = "github.com/elianiva/meiro",
     visibility = ["//visibility:private"],
     deps = [
