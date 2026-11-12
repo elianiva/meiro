@@ -115,8 +115,14 @@ type app struct {
 	// view, so the top bar carries its artwork, name and actions instead.
 	detailCompact bool
 	// pull is the pull-to-refresh gesture of the page shown.
-	pull   pullState
-	search searchState
+	pull pullState
+	// swipe is the row the pointer swipes sideways, which adds its track to
+	// the queue or takes it out. swipeMods are the modifiers a swipe asks
+	// for, which keep it apart from the other gestures of a row; tests clear
+	// them, since the tester sends no modifiers with the pointer.
+	swipe     swipeState
+	swipeMods ui.Modifiers
+	search    searchState
 	// searchField and detailSearchField move the keyboard to the top bar's
 	// search and to the playlist page's, where Focus waits while one is hidden.
 	searchField, detailSearchField ui.Handle
@@ -231,6 +237,7 @@ func newApp() *app {
 		writing:    make(map[string]bool),
 		stop:       make(chan struct{}),
 		statsRange: 14,
+		swipeMods:  ui.Shift,
 		keyboard:   keyboardState{hintDelay: hintDelay},
 	}
 	a.scrobble = newScrobbler()

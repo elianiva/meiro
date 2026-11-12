@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Meiro starts from a terminal on Linux.** The Debian and Arch packages, and the tarball's `install.sh`, add a `meiro` command, so `meiro` in a terminal opens the app.
+- **A row adds its track to the queue under the pointer.** Hovering a song in a playlist, album, artist, search result or the player's related list shows an add-to-queue button beside its length, and hovering a row of the queue shows a cross that takes it out. The track playing stays in the queue and offers no cross. The same actions remain in the row's menu for the keyboard.
+- **Shift and a sideways drag swipe a row.** Dragging a song row to either side with Shift held adds it to the queue, and dragging a queue row that way takes it out; the row slides aside and uncovers the action as it moves. A drag without Shift leaves the rows as they are, and a drag short of the mark springs back.
 
 ## [0.6.2] - 2026-11-11
 

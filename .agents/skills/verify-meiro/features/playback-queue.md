@@ -6,6 +6,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 
 - `play-click` plays the clicked track and fills the player bar.
 - `play-queue` adds, removes, reorders and clears queue items from the panel and menus.
+- `play-queue-pointer` adds a track to the queue, or takes one out, from the button under the pointer and from a sideways swipe with Shift held.
 - `play-modes` covers repeat (off, queue, track) and shuffle.
 - `play-seek` seeks, and hands over at the end of a track.
 - `play-fail` shows a readable reason, skips up to `maxSkips`, and retries on Play.
@@ -34,6 +35,9 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - Open the tray mini player from the tray icon on macOS and Windows. On Linux, choose `Open Meiro` from the tray menu to restore the main window; Linux does not offer the tray mini player.
 - In the mini player's queue, right-click a track and choose `Go to artist`. The flyout closes and the main window shows that artist's page.
 - Right click a track for `Play next` and `Add to queue`.
+- Hover a song row to show its add-to-queue button beside the length; hover a
+  queue row to show the cross that takes the track out. Shift-drag a row
+  sideways to do the same with a swipe; a drag without Shift leaves it alone.
 - In the main player, click an artist or album name below the track title to open its page. Back returns to the page you came from. Metadata can use two lines; clipped links show their full name in a tooltip.
 - In `Up next`, Cmd-click on macOS or Ctrl-click on Windows/Linux to select
   several tracks; Shift-click extends the selection. Drag a selected row to
@@ -58,6 +62,12 @@ Preconditions:
   visible without hovering.
 - **Next.** `p.click("Next", "next")`. The seeded album has one track, so Next stays on `vid-3`. Use a longer queue to see it move, and assert `a.current.VideoID`.
 - **Queue panel.** `p.click("Up next", "bar")`, then check `a.nowPlaying.open`. The panel draws in its own view. Make a second window with `panel := newProof(t, ui.NewTester(a.nowPlayingView, 1000, 700))` and call `panel.step`. It shows `Lyrics`, `Related` and `Clear queue`. The header reads `Playing from` and the playlist on one line, and the source, `Auto-play` and the count sit the same distance apart. To edit, right-click a row (`tt.RightClickAt` its middle) and choose `Remove from queue`, or click `Clear queue`, as `TestEditingTheQueueFromItsPanel` does.
+- **Pointer queue edits.** Hover a row with `tt.Move` and click `Add <title> to
+  queue`, or `Remove <title> from queue` in the queue. For the swipe, set
+  `a.swipeMods = 0` (the tester sends no modifiers with the pointer), then
+  `tt.Press`, `tt.Move` past `swipeCommit` twice, `tt.Release`. Mirror
+  `swipe_test.go`. The row of the track playing offers neither: it stays in the
+  queue.
 - **Add while Auto-play plays recommendations.** Play a chosen queue with Auto-play on, advance into a generated track, then add another track. It joins the queue after the track playing and before the remaining generated tracks; adding two keeps their order. Recommendations that have played, including the one playing, fold into the queue above the Recommended heading, which keeps only the recommendations still to come. Mirror `TestQueueAddsAfterAGeneratedCurrent` and `TestPlayedRecommendationsFoldIntoTheQueue`.
 - **Failure.** Set `r.err["bad"] = errors.New("Video unavailable")` before the click. The bar shows `This track is no longer available.` or the skip notice.
 - **Real audio.** Make a tone with `ffmpeg -f lavfi -i sine=duration=3`, set `r.file`, click the track, then loop `a.poll()` and `time.Sleep(10ms)` until `a.player.Position()` passes 500ms and `a.player.Playing()` is true. Then `p.step("heard")`. Verified: position reaches 700ms in under half a second.
@@ -72,6 +82,9 @@ Preconditions:
 
 ## Gotchas
 
+- The tester's pointer events carry no modifiers, so a swipe gated on Shift
+  needs `a.swipeMods = 0`. Prove the gate with a drag that leaves the queue as
+  it was, as `TestADragWithoutTheModifierLeavesTheQueueAlone` does.
 - A page keeps its scroll across testers: a scenario that renders the settings page after another window shows no rows. Give a settings scenario a fresh `newTestApp(t)`.
 - **Metadata links.** Use `/playlist/VLPL_metadata` in the fake for a song with two artist endpoints and an album in a separate column. Play `Linked Track` with `tonesApp(t, 30)`, then follow `Go to artist: Aurora Vale`, `Go to artist: Guest Artist` and `Go to album: Deep Focus` from both the bar and Now Playing (Tab/Enter too). Assert the route and destination contents, an advancing real player position, unchanged queue/seek version and no new stream resolution. Back must return to the playlist. Next to `Unlinked Track` removes links; Previous restores them, and playback errors still replace metadata. Render the notch and tray player to check neither acquired these links. Persist and reload the queue to verify destinations survive restart. The proof uses the preceding commit and the same canned renderer on both sides, so before fails because the links are absent.
 - Player metadata preserves original runs and their IDs. Do not infer destinations from names, put an album ID in a track's `BrowseID` (which changes its primary target), or mutate shared byline parts. Non-credit runs, such as kind and play count, stay plain text.
