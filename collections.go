@@ -9,8 +9,27 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// playAll plays everything on the page shown.
+// artistSongs is the playlist of all the songs of the artist page shown. The
+// page lists only a few of them, and its Songs shelf's title opens the rest.
+func (a *app) artistSongs() (youtube.MusicItem, bool) {
+	if r, _ := a.route(); r.target != youtube.TargetArtist {
+		return youtube.MusicItem{}, false
+	}
+	for _, section := range a.page.feed.sections {
+		if section.MoreID != "" {
+			return youtube.MusicItem{PlaylistID: section.MoreID, Title: a.page.detail.title}, true
+		}
+	}
+	return youtube.MusicItem{}, false
+}
+
+// playAll plays everything on the page shown. An artist's page plays all the
+// artist's songs, not only the few it lists.
 func (a *app) playAll() {
+	if list, ok := a.artistSongs(); ok {
+		a.playCollection(list, "hero-play", false)
+		return
+	}
 	if len(a.page.playable) == 0 {
 		return
 	}
@@ -21,6 +40,10 @@ func (a *app) playAll() {
 // shufflePage turns shuffle on and plays the page from a track drawn at
 // random, with the whole page arranged behind it.
 func (a *app) shufflePage() {
+	if list, ok := a.artistSongs(); ok {
+		a.playCollection(list, "hero-shuffle", true)
+		return
+	}
 	if len(a.page.playable) == 0 {
 		return
 	}
@@ -131,12 +154,29 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool,
 	}
 	a.openingKey = key
 	client := a.client()
+	// artistList is the playlist of all of an artist's songs, when the
+	// artist's page names one: the page lists only a few songs itself.
+	artistList := ""
 	startTask(a, &a.opening, openTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
 		switch target.Kind {
 		case youtube.TargetAlbum:
 			return client.GetAlbum(ctx, target.ID)
 		case youtube.TargetArtist:
-			return client.GetArtist(ctx, target.ID)
+			page, err := client.GetArtist(ctx, target.ID)
+			if err != nil {
+				return page, err
+			}
+			for _, section := range page.Sections {
+				if section.MoreID == "" {
+					continue
+				}
+				if songs, err := client.GetPlaylist(ctx, section.MoreID); err == nil && len(tracksOf(songs, "")) > 0 {
+					artistList = section.MoreID
+					return songs, nil
+				}
+				break
+			}
+			return page, nil
 		case youtube.TargetPlaylist, youtube.TargetTrack, youtube.TargetPodcast, youtube.TargetNone:
 			// The guard above leaves the playlist of the kinds that are not
 			// its own.
@@ -170,7 +210,7 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool,
 			return
 		}
 		token := ""
-		if target.Kind == youtube.TargetPlaylist && !all {
+		if (target.Kind == youtube.TargetPlaylist || artistList != "") && !all {
 			token, _ = playlistContinuations(result.Sections, result.ContinuationToken)
 		}
 		then(songs, token)
