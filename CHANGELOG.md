@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **A row adds its track to the queue under the pointer.** Hovering a song in a playlist, album, artist, search result or the player's related list shows an add-to-queue button beside its length, and hovering a row of the queue shows a cross that takes it out. The track playing stays in the queue and offers no cross. The same actions remain in the row's menu for the keyboard.
 - **Shift and a sideways drag swipe a row.** Dragging a song row to either side with Shift held adds it to the queue, and dragging a queue row that way takes it out; the row slides aside and uncovers the action as it moves. A drag without Shift leaves the rows as they are, and a drag short of the mark springs back.
 - **Playing an artist plays all of their songs.** The Play and Shuffle buttons on an artist's page, and on the artist's card and search result, queued only the handful of songs the page lists and then moved on to recommendations. They now play the artist's whole Songs list, as YouTube Music does, and an artist's card has a button that shuffles it.
+- **The queue's menu has even gaps.** Move up, Move down and Remove from queue were taller than the song's other actions, so the space around them looked wider. Every row is now the same height.
 
 ### Fixed
 

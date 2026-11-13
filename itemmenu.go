@@ -154,7 +154,7 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 			}
 		}
 		if o.list == "queue" {
-			a.queueMenuItems(c, o.position, close)
+			a.queueMenuItems(o.position, entry, close)
 		} else {
 			if entry("Play next", m3.IconNext).Clicked() {
 				a.enqueue(item, true)
@@ -247,12 +247,13 @@ func (a *app) copyMenuPage(c *ui.Context, entry func(string, *ui.SVG) ui.Element
 }
 
 // queueMenuItems are the edits a row of the queue offers for the track at a
-// place in it. The track playing stays where it is.
-func (a *app) queueMenuItems(c *ui.Context, index int, close func()) {
+// place in it. The track playing stays where it is. They share the song
+// menu's entry height, so their gaps match the actions around them.
+func (a *app) queueMenuItems(index int, entry func(string, *ui.SVG) ui.Element, close func()) {
 	q := &a.queue
 	if selected := a.selectedQueueIndices(); len(selected) > 1 {
 		label := "Remove " + strconv.Itoa(len(selected)) + " tracks"
-		m3.MenuItem(c, label, m3.IconClose).OnClick(func() {
+		entry(label, m3.IconClose).OnClick(func() {
 			a.removeSelectedFromQueue()
 			close()
 		})
@@ -262,18 +263,18 @@ func (a *app) queueMenuItems(c *ui.Context, index int, close func()) {
 		return
 	}
 	if index > 0 {
-		m3.MenuItem(c, "Move up", m3.IconExpandLess).OnClick(func() {
+		entry("Move up", m3.IconExpandLess).OnClick(func() {
 			a.shiftInQueue(index, -1)
 			close()
 		})
 	}
 	if index < q.len()-1 {
-		m3.MenuItem(c, "Move down", m3.IconExpandMore).OnClick(func() {
+		entry("Move down", m3.IconExpandMore).OnClick(func() {
 			a.shiftInQueue(index, 1)
 			close()
 		})
 	}
-	m3.MenuItem(c, "Remove from queue", m3.IconClose).OnClick(func() {
+	entry("Remove from queue", m3.IconClose).OnClick(func() {
 		a.removeFromQueue(index)
 		close()
 	})
