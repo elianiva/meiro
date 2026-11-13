@@ -23,7 +23,9 @@ import (
 
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/audio"
+	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/playstate"
+	"github.com/elianiva/meiro/systemmedia"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -1848,6 +1850,56 @@ func TestTheWindowTitleNamesTheTrackPlaying(t *testing.T) {
 	a.togglePlay()
 	if got := a.windowTitle(); got != "Meiro" {
 		t.Errorf("once paused the title is %q", got)
+	}
+}
+
+// recordingMedia keeps the states the app publishes to the system's media
+// controls, in place of the real session.
+type recordingMedia struct {
+	states []systemmedia.State
+}
+
+func (r *recordingMedia) Update(state systemmedia.State) error {
+	r.states = append(r.states, state)
+	return nil
+}
+
+func (r *recordingMedia) Close() error { return nil }
+
+// The media controls and the listening history name the artist the song
+// credits, not the byline YouTube flattens around it. The album is published
+// as its own field, so a desktop widget can show it where it has room.
+func TestSystemMediaAndHistoryNameTheArtist(t *testing.T) {
+	a, _ := tonesApp(t, 600)
+	a.historyPath = filepath.Join(t.TempDir(), "history.json")
+	t.Cleanup(a.historyWriter.Wait) // the play is written in the background
+	media := &recordingMedia{}
+	a.media = media
+	// The row YouTube gives a playlist track: the kind first, then two
+	// linked artists and a play count, with the album in its own column.
+	a.router.Push("/playlist/VLPL_metadata")
+	tt := ui.NewTester(a.view, 1000, 700)
+	if err := tt.Click("Linked Track"); err != nil {
+		t.Fatal(err)
+	}
+	pollUntil(t, a, "the track to play", a.player.Playing)
+	if len(media.states) == 0 {
+		t.Fatal("nothing was published to the media controls")
+	}
+	last := media.states[len(media.states)-1]
+	if want := "Aurora Vale, Guest Artist"; last.Artist != want {
+		t.Errorf("the media controls name the artist %q, want %q", last.Artist, want)
+	}
+	if want := "Deep Focus"; last.Album != want {
+		t.Errorf("the media controls name the album %q, want %q", last.Album, want)
+	}
+	a.historyWriter.Wait()
+	saved := history.Read(a.historyPath)
+	if len(saved) != 1 {
+		t.Fatalf("saved history = %+v", saved)
+	}
+	if want := "Aurora Vale, Guest Artist"; saved[0].Artist != want {
+		t.Errorf("the saved history names the artist %q, want %q", saved[0].Artist, want)
 	}
 }
 

@@ -222,7 +222,9 @@ func (p BylinePart) Target() Target {
 // Only a whole metadata segment matching the credited artist becomes a link.
 func (item MusicItem) PlayerByline() []BylinePart {
 	if item.Byline != nil {
-		return item.Byline.Parts
+		// A queue saved before the kind label was trimmed still holds it.
+		parts, _ := dropKindPrefix(item.Byline.Parts)
+		return parts
 	}
 	if id := item.ArtistID(); id != "" && item.Artist != "" {
 		segments := strings.Split(item.Subtitle, " • ")
@@ -248,6 +250,7 @@ func (item MusicItem) PlayerByline() []BylinePart {
 			}
 			parts = append(parts, part)
 		}
+		parts, _ = dropKindPrefix(parts)
 		return parts
 	}
 	return []BylinePart{{Text: item.Subtitle}}

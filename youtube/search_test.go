@@ -42,7 +42,7 @@ const searchPageResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[
 		"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLambient","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_PLAYLIST"}}}},
 		"flexColumns":[
 			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Ambient Mix"}]}}},
-			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"24 tracks"}]}}}
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Playlist"},{"text":" • "},{"text":"Someone","navigationEndpoint":{"browseEndpoint":{"browseId":"UCsomeone"}}},{"text":" • "},{"text":"24 tracks"}]}}}
 		]}}]}},
 	{"itemSectionRenderer":{"contents":[{"musicResponsiveListItemRenderer":{
 		"navigationEndpoint":{"browseEndpoint":{"browseId":"MPSPPLambient","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE"}}}},
@@ -112,8 +112,11 @@ func TestSearchRowsOpenWhatTheyName(t *testing.T) {
 	if artist := searchItem(t, result, "First Light").ArtistID(); artist != "UCsomeone" {
 		t.Errorf("the song credits artist %q, want UCsomeone", artist)
 	}
-	if subtitle := searchItem(t, result, "Ambient Works").Subtitle; subtitle != "Album • Someone • 2019" {
+	if subtitle := searchItem(t, result, "Ambient Works").Subtitle; subtitle != "Someone • 2019" {
 		t.Errorf("the album row reads %q", subtitle)
+	}
+	if subtitle := searchItem(t, result, "Ambient Mix").Subtitle; subtitle != "Someone • 24 tracks" {
+		t.Errorf("the playlist row reads %q", subtitle)
 	}
 }
 

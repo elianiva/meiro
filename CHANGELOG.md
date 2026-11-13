@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Meiro starts from a terminal on Linux.** The Debian and Arch packages, and the tarball's `install.sh`, add a `meiro` command, so `meiro` in a terminal opens the app.
+- **The media controls show the album.** The media controls on Linux, the status bars, lock screens and desktop widgets that read them, and the macOS Now Playing panel now get the album along with the title, artist and cover. Windows already did.
+
+### Changed
+
+- **Rows name the artist, not the kind of thing it is.** A song in search results read "Song • Ariana Grande & The Weeknd"; it now reads "Ariana Grande & The Weeknd". Album and playlist rows lose their label the same way, so an album in search results reads "Someone • 2019". A line that links no artist keeps YouTube's own wording.
+
+### Fixed
+
+- **The media controls and the listening history name the artist.** Both took the row's whole byline as the artist, so the media controls read "Song • Ariana Grande & The Weeknd", and a song played from an album was filed in the stats under "Ariana Grande & The Weeknd • My Everything • 2014". They now name the artists the song credits.
 
 ## [0.6.2] - 2026-11-11
 

@@ -92,7 +92,7 @@ func (a *app) syncSystemMedia() {
 	if err := a.media.Update(systemmedia.State{
 		VideoID:     a.current.VideoID,
 		Title:       a.current.Title,
-		Artist:      a.current.Subtitle,
+		Artist:      shownArtist(a.current),
 		Album:       a.current.Album,
 		ArtworkURL:  a.current.Thumbnail,
 		Duration:    a.total,
@@ -145,7 +145,8 @@ func (a *app) syncDiscordPresence() {
 
 // shownArtist is the artist line for a track: the credited artists, else the
 // one credit an older saved queue kept, else the byline the player shows for a
-// row that links none.
+// row that links none. An episode's byline names a date or a show, not an
+// artist, so it stays out.
 func shownArtist(item youtube.MusicItem) string {
 	if item.Artists != "" {
 		return item.Artists
@@ -153,7 +154,7 @@ func shownArtist(item youtube.MusicItem) string {
 	if item.Artist != "" {
 		return item.Artist
 	}
-	if item.Kind != youtube.KindTrack {
+	if item.Kind == youtube.KindEpisode {
 		return ""
 	}
 	return item.Subtitle

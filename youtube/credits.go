@@ -126,10 +126,11 @@ func artistBrowseEndpoint(value any) string {
 	return ""
 }
 
-// setPlayerByline preserves the displayed runs instead of matching artist
-// names inside a flattened string. An album may live in a separate column.
-func (item *MusicItem) setPlayerByline(renderer *jsonObject) {
-	if item.VideoID == "" || item.IsEpisode() {
+// setDisplayByline keeps the row's text and the player's byline in step, from
+// the displayed runs rather than by matching artist names inside a flattened
+// string. An album may live in a separate column.
+func (item *MusicItem) setDisplayByline(renderer *jsonObject) {
+	if item.IsEpisode() {
 		return
 	}
 	sources := []any{renderer.get("subtitle")}
@@ -141,20 +142,36 @@ func (item *MusicItem) setPlayerByline(renderer *jsonObject) {
 			}
 		}
 	}
+	// The runs read so far are the row's own metadata column, which starts
+	// with the kind of item. The bylines that follow start with who made it.
+	metadata := 1
 	if len(columns) > 0 {
 		sources = append(sources, columns[0])
+		metadata = len(sources)
 	}
 	sources = append(sources, renderer.get("longBylineText"), renderer.get("shortBylineText"))
 	parts := []BylinePart{{Text: item.Subtitle}}
-	for _, source := range sources {
+	kind := false
+	for i, source := range sources {
 		text := rendererText(source)
 		if text == "" || item.Subtitle == "" {
 			continue
 		}
 		if text == item.Subtitle || strings.TrimSuffix(text, " • "+item.Duration) == item.Subtitle {
 			parts = bylineParts(source, len(item.Subtitle))
+			kind = i < metadata
 			break
 		}
+	}
+	if kind {
+		var dropped int
+		parts, dropped = dropKindPrefix(parts)
+		item.Subtitle = item.Subtitle[min(dropped, len(item.Subtitle)):]
+	}
+	if item.VideoID == "" {
+		// A row that opens an album, an artist or a playlist plays nothing,
+		// so it needs no links.
+		return
 	}
 	// Some list renderers put the album in their own flex column, while the
 	// visible subtitle contains only artists. Keep its real destination too.
@@ -188,6 +205,29 @@ func (item *MusicItem) setPlayerByline(renderer *jsonObject) {
 			return
 		}
 	}
+}
+
+// dropKindPrefix removes the runs a row opens with to say what kind of item it
+// is when the run that follows opens a page: the row shows who made the track,
+// not what it is. The kind links nothing, so a run that links before any other
+// run is a name, as the artist of an artist card is, and stays. Only an artist
+// after the label says the label is a label: when an album comes first the text
+// before it is a name YouTube shows without linking, and dropping it would show
+// the album as the row's byline. It returns the runs that remain and how much
+// text went with the ones it dropped.
+func dropKindPrefix(parts []BylinePart) ([]BylinePart, int) {
+	first := 0
+	for first < len(parts) && !parts[first].Target().Opens() {
+		first++
+	}
+	if first == 0 || first == len(parts) || parts[first].Target().Kind != TargetArtist {
+		return parts, 0
+	}
+	dropped := 0
+	for _, part := range parts[:first] {
+		dropped += len(part.Text)
+	}
+	return parts[first:], dropped
 }
 
 // limit excludes a trailing duration already removed from Subtitle.
