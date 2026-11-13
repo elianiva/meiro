@@ -194,10 +194,10 @@ func TestTrackNotificationsSkipTracksStartedWhileMeiroIsInFront(t *testing.T) {
 }
 
 func TestTrackNotificationLooksAtTheFrontWindowOnceItsCoverArrives(t *testing.T) {
-	if !notificationArtworkNeeded() {
-		t.Skip("only Windows downloads the cover before showing the notification")
-	}
 	a, _ := playbackApp(t)
+	if !a.notificationArtworkNeeded() {
+		t.Skip("macOS presents playback in the notch or menu bar")
+	}
 	a.settings.NotifyTrack = true
 	n := &shownNotices{}
 	a.notices = n

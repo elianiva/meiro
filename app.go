@@ -67,6 +67,9 @@ type app struct {
 	// bundled reports whether a helper program is the one inside the app.
 	// Tests replace it.
 	bundled func(name string) bool
+	// notifications reports whether the system shows notifications. Tests
+	// replace it, since MyGo's answer needs its event loop.
+	notifications func() bool
 
 	// What the user chose, and the writer that keeps it.
 	settings settings.Settings
