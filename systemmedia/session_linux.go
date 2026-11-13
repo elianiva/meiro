@@ -357,6 +357,9 @@ func trackMetadata(state State) map[string]dbus.Variant {
 	if state.Artist != "" {
 		metadata["xesam:artist"] = dbus.MakeVariant([]string{state.Artist})
 	}
+	if state.Album != "" {
+		metadata["xesam:album"] = dbus.MakeVariant(state.Album)
+	}
 	if state.Duration > 0 {
 		metadata["mpris:length"] = dbus.MakeVariant(int64(state.Duration / time.Microsecond))
 	}

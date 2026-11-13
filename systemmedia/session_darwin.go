@@ -166,6 +166,9 @@ func (s *macSession) publishInfo(state State) {
 	if state.Artist != "" {
 		info.Send(objc.Sel("setObject:forKey:"), objc.NSString(state.Artist), objc.NSString("artist"))
 	}
+	if state.Album != "" {
+		info.Send(objc.Sel("setObject:forKey:"), objc.NSString(state.Album), objc.NSString("albumTitle"))
+	}
 	if state.Duration > 0 {
 		info.Send(objc.Sel("setObject:forKey:"), number(state.Duration.Seconds()), objc.NSString("playbackDuration"))
 	}

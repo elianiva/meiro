@@ -75,7 +75,7 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 
 	linux := session.(*linuxSession)
 	state := State{
-		VideoID: "video-1", Title: "A song", Artist: "An artist",
+		VideoID: "video-1", Title: "A song", Artist: "An artist", Album: "An album",
 		ArtworkURL: "https://lh3.googleusercontent.com/cover=w544-h544-l90-rj", Duration: 3 * time.Minute,
 		Position: 17 * time.Second, Status: Playing, Volume: 0.7,
 		CanPlay: true, CanPause: true, CanNext: true, CanPrevious: true, CanSeek: true,
@@ -103,6 +103,12 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 	}
 	if err := metadata["xesam:artist"].Store(&artists); err != nil || len(artists) != 1 || artists[0] != state.Artist {
 		t.Errorf("MPRIS artist = %v, err %v; want [%q]", artists, err, state.Artist)
+	}
+	// The album is its own field, so a widget that shows it can, and one that
+	// shows only the artist is not given it as part of the artist.
+	album := ""
+	if variant, ok := metadata["xesam:album"]; !ok || variant.Store(&album) != nil || album != state.Album {
+		t.Errorf("MPRIS album = %q, present %v; want %q", album, ok, state.Album)
 	}
 	var artworkURL string
 	wantArtworkURL := "https://lh3.googleusercontent.com/cover=w1024-h1024-l90-rj"

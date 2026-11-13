@@ -299,6 +299,7 @@ go_test(
         "//internal/settings",
         "//m3",
         "//player",
+        "//systemmedia",
         "//youtube",
         "@com_github_egoist_mygo//:mygo",
         "@com_github_egoist_mygo//ui",

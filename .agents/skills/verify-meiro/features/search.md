@@ -42,4 +42,5 @@ Preconditions:
 - A screenshot taken right after a navigation shows the page at the start of its 250 ms slide, painted off the window, because the tester's clock stands still. Call `tt.Advance(400 * time.Millisecond)` before `p.step`.
 - Settings has a separate `Search settings` button that expands into a local filter; it does not navigate to music search. Stats has no search entry point.
 - `searchBody()` is the last request body. Read it right after the action.
+- A row shows who made the item, not the kind YouTube puts first, so a song row reads `Someone`, not `Song • Someone`. The kind label goes only when a later run opens a page: a row whose runs all link nothing keeps YouTube's own line, as the `Artist • 19.6M monthly audience` card does. A row that links an album but no artist keeps its line too, because the text before the album is a name, not the kind. Live playlist rows are the case to watch: `Playlist • YouTube Music • 47 songs` keeps its label because YouTube links no run in it.
 - Results for an older query must not replace newer ones. Cover it with two queries in a row when you change the search task.

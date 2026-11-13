@@ -22,7 +22,7 @@ func (a *app) recordHistory(item youtube.MusicItem) {
 	a.history = history.Append(a.history, history.Entry{
 		VideoID:  item.VideoID,
 		Title:    item.Title,
-		Artist:   item.Subtitle,
+		Artist:   shownArtist(item),
 		PlayedAt: time.Now(),
 	})
 	a.saveHistory()

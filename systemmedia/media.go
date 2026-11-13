@@ -46,7 +46,8 @@ type State struct {
 
 func (s State) sameMetadata(other State) bool {
 	return s.VideoID == other.VideoID && s.Title == other.Title &&
-		s.Artist == other.Artist && s.ArtworkURL == other.ArtworkURL && s.Duration == other.Duration
+		s.Artist == other.Artist && s.Album == other.Album &&
+		s.ArtworkURL == other.ArtworkURL && s.Duration == other.Duration
 }
 
 func durationDistance(a, b time.Duration) time.Duration {

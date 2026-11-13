@@ -20,13 +20,13 @@ func TestSearchRowCreditsArtistFromLinksNotTheSubtitle(t *testing.T) {
 	if song.Artists != "Someone" {
 		t.Errorf("Artists = %q, want the one linked artist", song.Artists)
 	}
-	if song.Subtitle != "Song • Someone • 3:42" && song.Subtitle != "Song • Someone" {
-		t.Errorf("the display subtitle changed: %q", song.Subtitle)
+	if song.Subtitle != "Someone" {
+		t.Errorf("the row reads %q, want the artist without the kind YouTube puts before it", song.Subtitle)
 	}
 }
 
 func TestPanelItemsCreditArtistAndAlbum(t *testing.T) {
-	const response = `{"contents":{"playlistPanelRenderer":{"contents":[
+	const response = `{"contents":{"playlistPanelRenderer":{"playlistId":"RDAMVMvid","contents":[
 		{"playlistPanelVideoRenderer":{"videoId":"a","title":{"runs":[{"text":"Duet"}]},"longBylineText":{"runs":[
 			{"text":"First","navigationEndpoint":{"browseEndpoint":{"browseId":"UCfirst"}}},
 			{"text":" & "},
@@ -40,7 +40,10 @@ func TestPanelItemsCreditArtistAndAlbum(t *testing.T) {
 		{"playlistPanelVideoRenderer":{"videoId":"b","title":{"runs":[{"text":"Unlinked"}]},"longBylineText":{"runs":[{"text":"Plain Text Artist"},{"text":" • "},{"text":"2020"}]}}},
 		{"playlistPanelVideoRenderer":{"videoId":"c","title":{"runs":[{"text":"Bare"}]}}}
 	]}}}`
-	result := upNextResult(decodeResponse(json.RawMessage(response)))
+	result, err := searchServer(t, response, nil).GetUpNext(context.Background(), UpNextOptions{VideoID: "vid"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := map[string]MusicItem{}
 	for _, item := range result.Items {
 		got[item.VideoID] = item
@@ -84,9 +87,12 @@ func TestPlayerBylineKeepsSeparateAlbumColumnAndExactArtistRuns(t *testing.T) {
 	{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Record","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_record"}}}]}}}
 	]}`
 	item := parseMusicItem(KindTrack, decodeResponse(json.RawMessage(response)).(*jsonObject))
-	want := []BylinePart{{Text: "Song • "}, {Text: "Song", BrowseID: "UCsong"}, {Text: " • "}, {Text: "Record", BrowseID: "MPREb_record"}}
+	want := []BylinePart{{Text: "Song", BrowseID: "UCsong"}, {Text: " • "}, {Text: "Record", BrowseID: "MPREb_record"}}
 	if !slices.Equal(item.PlayerByline(), want) || item.Album != "Record" || item.Duration != "3:42" {
 		t.Fatalf("separate album or exact name boundaries were lost: %+v, %+v", item, item.PlayerByline())
+	}
+	if item.Subtitle != "Song" {
+		t.Fatalf("the row reads %q, want the artist alone", item.Subtitle)
 	}
 	data, err := json.Marshal(item)
 	if err != nil {
@@ -110,15 +116,41 @@ func TestCardPlayerBylineDoesNotLinkMetadataOrUnknownDestinations(t *testing.T) 
 	if !ok {
 		t.Fatal("card was not parsed")
 	}
-	want := []BylinePart{{Text: "Song • "}, {Text: "Band", BrowseID: "UCband"}, {Text: " • "}, {Text: "496M plays"}}
+	want := []BylinePart{{Text: "Band", BrowseID: "UCband"}, {Text: " • "}, {Text: "496M plays"}}
 	if !slices.Equal(item.PlayerByline(), want) {
 		t.Fatalf("card linked non-credit metadata or retained duration: %+v", item.PlayerByline())
+	}
+	// The card's own line drops the kind label too: it reads who made the
+	// track, not what kind of item it is.
+	if want := "Band • 496M plays"; item.Subtitle != want {
+		t.Errorf("card subtitle = %q, want %q", item.Subtitle, want)
+	}
+}
+
+// A row that links an album but no artist keeps YouTube's own line. The text
+// before the album is a name shown without a link, not the kind of item, so
+// dropping it would leave the album reading as the row's byline.
+func TestRowWhoseAlbumLinksBeforeAnyArtistKeepsItsLine(t *testing.T) {
+	const response = `{"playlistItemData":{"videoId":"song"},"flexColumns":[
+	{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Title"}]}}},
+	{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Song • Unlinked Artist • "},
+	{"text":"The Album","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_the"}}},{"text":" • 2019"}]}}}
+	]}`
+	item := parseMusicItem(KindTrack, decodeResponse(json.RawMessage(response)).(*jsonObject))
+	if want := "Song • Unlinked Artist • The Album • 2019"; item.Subtitle != want {
+		t.Errorf("the row reads %q, want its own line %q", item.Subtitle, want)
+	}
+	if item.Artist != "" || item.Artists != "" {
+		t.Errorf("a row that links no artist credits %q %q", item.Artist, item.Artists)
+	}
+	if item.Album != "The Album" {
+		t.Errorf("the album is %q, want The Album", item.Album)
 	}
 }
 
 func TestLegacyPlayerBylineLinksOnlyAnUnambiguousCredit(t *testing.T) {
 	item := MusicItem{VideoID: "song", BrowseID: "UCband", Artist: "Band", Subtitle: "Song • Band • 2020"}
-	want := []BylinePart{{Text: "Song"}, {Text: " • "}, {Text: "Band", BrowseID: "UCband"}, {Text: " • "}, {Text: "2020"}}
+	want := []BylinePart{{Text: "Band", BrowseID: "UCband"}, {Text: " • "}, {Text: "2020"}}
 	if !slices.Equal(item.PlayerByline(), want) {
 		t.Fatal("legacy artist ID was not preserved")
 	}
@@ -138,7 +170,7 @@ func TestTwoRowSubtitleCreditsArtist(t *testing.T) {
 	// album's by their renderer, only by the video they carry.
 	for _, kind := range []ItemKind{KindVideo, KindMusicItem} {
 		item := parseMusicItem(kind, decodeResponse(json.RawMessage(renderer)).(*jsonObject))
-		if item.Artist != "Singer" || item.Subtitle != "Song • Singer" {
+		if item.Artist != "Singer" || item.Subtitle != "Singer" {
 			t.Errorf("%s: Artist = %q, subtitle %q", kind, item.Artist, item.Subtitle)
 		}
 	}

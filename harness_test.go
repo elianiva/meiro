@@ -818,7 +818,7 @@ const searchMixedResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":
 				"navigationEndpoint":{"browseEndpoint":{"browseId":"MPREb_row"}},
 				"flexColumns":[
 					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Row Album"}]}}},
-					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Album"},{"text":" • "},{"text":"Someone"}]}}}
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Album"},{"text":" • "},{"text":"Someone","navigationEndpoint":{"browseEndpoint":{"browseId":"UCsomeone"}}}]}}}
 				]}},
 			{"musicResponsiveListItemRenderer":{
 				"navigationEndpoint":{"browseEndpoint":{"browseId":"UCrowartist"}},
@@ -830,7 +830,7 @@ const searchMixedResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":
 				"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPLrow"}},
 				"flexColumns":[
 					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Row Playlist"}]}}},
-					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Playlist"},{"text":" • "},{"text":"Someone"}]}}}
+					{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Playlist"},{"text":" • "},{"text":"Someone","navigationEndpoint":{"browseEndpoint":{"browseId":"UCsomeone"}}}]}}}
 				]}},
 			{"musicResponsiveListItemRenderer":{
 				"playlistItemData":{"videoId":"vid-row"},
