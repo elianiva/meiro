@@ -20,6 +20,8 @@ import (
 	"net/url"
 	"regexp"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,6 +47,9 @@ type Crash struct {
 	// Details is the report the crash dialog offers to copy, with the
 	// versions, the panic and its stack.
 	Details string
+	// Stack is the goroutine dump debug.Stack returned, parsed into the
+	// frames Sentry groups by.
+	Stack string
 	// Release is the app's version, empty for a development build.
 	Release string
 }
@@ -56,16 +61,41 @@ type wireMessage struct {
 
 // event is the Sentry event an envelope carries.
 type event struct {
-	EventID   string                       `json:"event_id"`
-	Timestamp string                       `json:"timestamp"`
-	Platform  string                       `json:"platform"`
-	Level     string                       `json:"level"`
-	Release   string                       `json:"release,omitempty"`
-	Message   wireMessage                  `json:"message"`
-	Tags      map[string]string            `json:"tags"`
-	Extra     map[string]string            `json:"extra"`
-	Contexts  map[string]map[string]string `json:"contexts"`
-	SDK       map[string]string            `json:"sdk"`
+	EventID     string                       `json:"event_id"`
+	Timestamp   string                       `json:"timestamp"`
+	Platform    string                       `json:"platform"`
+	Level       string                       `json:"level"`
+	Release     string                       `json:"release,omitempty"`
+	Environment string                       `json:"environment,omitempty"`
+	Message     wireMessage                  `json:"message"`
+	Exception   *exception                   `json:"exception,omitempty"`
+	Tags        map[string]string            `json:"tags"`
+	Extra       map[string]string            `json:"extra"`
+	Contexts    map[string]map[string]string `json:"contexts"`
+	SDK         map[string]string            `json:"sdk"`
+}
+
+// exception is the panic Sentry shows and groups by.
+type exception struct {
+	Values []exceptionValue `json:"values"`
+}
+
+type exceptionValue struct {
+	Type       string         `json:"type"`
+	Value      string         `json:"value"`
+	Mechanism  map[string]any `json:"mechanism"`
+	Stacktrace *stacktrace    `json:"stacktrace,omitempty"`
+}
+
+type stacktrace struct {
+	Frames []frame `json:"frames"`
+}
+
+type frame struct {
+	Filename string `json:"filename"`
+	Function string `json:"function"`
+	Lineno   int    `json:"lineno"`
+	InApp    bool   `json:"in_app"`
 }
 
 // Capture sends one crash report.
@@ -87,15 +117,29 @@ func (c *Client) Capture(crash Crash) error {
 	}
 	message := applog.Redact(Redact(crash.Message))
 	details := applog.Redact(Redact(crash.Details))
+	environment := "development"
+	if release != "" {
+		environment = "production"
+	}
+	panicValue := exceptionValue{
+		Type:      "panic",
+		Value:     message,
+		Mechanism: map[string]any{"type": "panic", "handled": false},
+	}
+	if frames := parseFrames(crash.Stack); len(frames) > 0 {
+		panicValue.Stacktrace = &stacktrace{Frames: frames}
+	}
 	payload, err := json.Marshal(event{
-		EventID:   id,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Platform:  "go",
-		Level:     "fatal",
-		Release:   release,
-		Message:   wireMessage{Formatted: "Panic while " + crash.Where + ": " + message},
-		Tags:      map[string]string{"where": crash.Where, "os": runtime.GOOS, "arch": runtime.GOARCH},
-		Extra:     map[string]string{"details": details},
+		EventID:     id,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Platform:    "go",
+		Level:       "fatal",
+		Release:     release,
+		Environment: environment,
+		Message:     wireMessage{Formatted: "Panic while " + crash.Where + ": " + message},
+		Exception:   &exception{Values: []exceptionValue{panicValue}},
+		Tags:        map[string]string{"where": crash.Where, "os": runtime.GOOS, "arch": runtime.GOARCH},
+		Extra:       map[string]string{"details": details},
 		Contexts: map[string]map[string]string{
 			"os":      {"name": runtime.GOOS, "arch": runtime.GOARCH},
 			"runtime": {"name": "go", "version": runtime.Version()},
@@ -169,6 +213,66 @@ func envelopeURL(dsn string) (string, error) {
 // addressPattern matches a web address, which can name a video or carry a
 // token.
 var addressPattern = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+`)
+
+// parseFrames turns the goroutine dump debug.Stack returns into Sentry
+// frames, oldest first. It reads the goroutine that panicked, which is the
+// first block, and stops at the blank line before the others.
+func parseFrames(stack string) []frame {
+	var frames []frame
+	lines := strings.Split(stack, "\n")
+	for i := 0; i < len(lines); i++ {
+		function := strings.TrimSpace(lines[i])
+		if function == "" && len(frames) > 0 {
+			break
+		}
+		if function == "" || strings.HasPrefix(lines[i], "\t") ||
+			strings.HasPrefix(function, "goroutine ") || strings.HasPrefix(function, "...") {
+			continue
+		}
+		if i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "\t") {
+			continue
+		}
+		file, line := location(strings.TrimSpace(lines[i+1]))
+		if file == "" || line == 0 {
+			continue
+		}
+		frames = append(frames, frame{
+			Filename: file,
+			Function: functionName(function),
+			Lineno:   line,
+			InApp:    strings.Contains(function, "github.com/elianiva/meiro") || strings.HasPrefix(function, "main."),
+		})
+		i++
+	}
+	slices.Reverse(frames)
+	return frames
+}
+
+// location reads the file and line from a stack frame's "path:line +0x1d".
+func location(line string) (string, int) {
+	if i := strings.Index(line, " +0x"); i >= 0 {
+		line = line[:i]
+	}
+	colon := strings.LastIndex(line, ":")
+	if colon <= 0 {
+		return "", 0
+	}
+	number, err := strconv.Atoi(line[colon+1:])
+	if err != nil || number <= 0 {
+		return "", 0
+	}
+	return line[:colon], number
+}
+
+// functionName drops the argument list Go prints after a function.
+func functionName(line string) string {
+	if strings.HasSuffix(line, ")") {
+		if i := strings.LastIndex(line, "("); i > 0 {
+			return line[:i]
+		}
+	}
+	return line
+}
 
 // sdkVersion is what the report says made it: the app's version, or that it
 // came from a build without one.
