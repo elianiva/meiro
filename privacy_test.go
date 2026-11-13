@@ -47,7 +47,7 @@ func TestFirstRunAsksBeforeTheInstallPing(t *testing.T) {
 
 	tt := ui.NewTester(a.view, 1000, 900)
 	tt.Frame()
-	for _, want := range []string{"Send one anonymous ping?", "No thanks", "Send once", "What is sent"} {
+	for _, want := range []string{"Send one anonymous ping?", "No thanks", "Just ping", "Send details", "What is sent"} {
 		if !tt.HasText(want) {
 			t.Errorf("the notice does not show %q: %q", want, tt.Texts())
 		}
@@ -56,17 +56,19 @@ func TestFirstRunAsksBeforeTheInstallPing(t *testing.T) {
 		t.Fatalf("the ping went out before the answer: %v", r.events)
 	}
 
-	if err := tt.Click("Send once"); err != nil {
+	if err := tt.Click("Send details"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	if len(r.events) != 1 || r.events[0] != "install" {
 		t.Fatalf("sent %v, want one install ping", r.events)
 	}
-	if len(r.props[0]) != 0 {
-		t.Errorf("the install ping carries %v, want nothing", r.props[0])
+	for _, key := range []string{"os", "arch", "version"} {
+		if r.props[0][key] == nil {
+			t.Errorf("the install ping lacks %q: %v", key, r.props[0])
+		}
 	}
-	if a.settings.UsagePing == nil || !*a.settings.UsagePing || !a.settings.UsagePingSent {
+	if a.settings.UsagePing == nil || !*a.settings.UsagePing || !a.settings.UsagePingDetails || !a.settings.UsagePingSent {
 		t.Errorf("the answer came back as %+v", a.settings)
 	}
 	if a.privacy.ask {
@@ -81,6 +83,29 @@ func TestFirstRunAsksBeforeTheInstallPing(t *testing.T) {
 	next.startPrivacy()
 	if next.privacy.ask || len(r.events) != 1 {
 		t.Errorf("the next launch asked again (%v) or sent again (%v)", next.privacy.ask, r.events)
+	}
+}
+
+// The fallback sends the one message with nothing but its event name.
+func TestJustPingSendsNoDetails(t *testing.T) {
+	a := newTestApp(t)
+	r := &pingRecorder{}
+	a.capture = r.capture
+	a.startPrivacy()
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Just ping"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(r.events) != 1 || r.events[0] != "install" {
+		t.Fatalf("sent %v, want one install ping", r.events)
+	}
+	if len(r.props[0]) != 0 {
+		t.Errorf("the fallback carries %v, want nothing", r.props[0])
+	}
+	if a.settings.UsagePingDetails || a.settings.UsagePing == nil || !*a.settings.UsagePing {
+		t.Errorf("the answer came back as %+v", a.settings)
 	}
 }
 
@@ -100,7 +125,7 @@ func TestDecliningTheInstallPingSendsNothing(t *testing.T) {
 	if len(r.events) != 0 {
 		t.Fatalf("a no sent %v", r.events)
 	}
-	if a.settings.UsagePing == nil || *a.settings.UsagePing || a.settings.UsagePingSent {
+	if a.settings.UsagePing == nil || *a.settings.UsagePing || a.settings.UsagePingDetails || a.settings.UsagePingSent {
 		t.Errorf("the answer came back as %+v", a.settings)
 	}
 	a.saver.Wait()
@@ -172,8 +197,11 @@ func TestPrivacyCardControlsBothMessages(t *testing.T) {
 	if len(pings.events) != 1 || pings.events[0] != "install" || !a.settings.UsagePingSent {
 		t.Fatalf("turning the ping on sent %v (sent %v)", pings.events, a.settings.UsagePingSent)
 	}
-	if !tt.HasText("Sent") {
+	if !tt.HasText("Sent") || !tt.HasText("ping only") {
 		t.Errorf("the card does not show the ping went out: %q", tt.Texts())
+	}
+	if a.settings.UsagePingDetails {
+		t.Error("turning the switch on sent the system details without asking for them")
 	}
 
 	if err := tt.Click("Send crash reports"); err != nil {

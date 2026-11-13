@@ -426,14 +426,17 @@ versions. You can turn this off in Settings under Updates.
 
 ### The install count
 
-Meiro asks once, on first run, before it sends anything. The message says the
-app is running, which is how I count installs. Closing the notice counts as
-no, and nothing is sent until you pick one.
+Meiro asks once, on first run, before it sends anything. The notice offers
+three answers. **Send details** adds the OS, architecture and Meiro version, so
+I can see which builds people run. **Just ping** sends the message with nothing
+but an event name and a random ID. **No thanks**, or closing the notice, sends
+nothing.
 
-The message goes to PostHog. It holds an event name, a random ID made for that
-one send, and nothing else. The ID is not saved, and Meiro tells PostHog not to
-look up a location from the connection or make a person of it. No account, no
-device name, no version, no listening history.
+Either message goes to PostHog. The random ID is made for that one send and
+never saved, and Meiro tells PostHog not to look up a location from the
+connection or make a person of it. Neither message has an account, a device
+name or listening history. The details answer adds only the system and the
+version.
 
 Settings under **Privacy** keeps your answer, and can send the message later if
 you change your mind. A message that already went out cannot be taken back.

@@ -6,8 +6,9 @@ and a separate switch for crash reports, which is off by default.
 
 ## Sub-features
 
-- `privacy-first-run` shows the notice once, sends one `install` event only
-  on yes, and never asks again, whether the answer was yes or no.
+- `privacy-first-run` shows the notice once, sends one `install` event with
+  the OS, architecture and version, or without them, and never asks again,
+  whichever answer was picked.
 - `privacy-settings` shows the answer under Settings, sends the ping when a
   declined answer is turned on later, and turns crash reports on and off.
 - `privacy-crash-report` sends the crash dialog's redacted details to Sentry
@@ -34,7 +35,7 @@ no card, so a recorder doubles as the key.
 - **Settings card.** Push `/settings`, click `Search settings`, type
   `telemetry`. Click `Anonymous install ping` to send a declined ping, and
   `Send crash reports` to toggle reports. The card shows `Sent` once the ping
-  arrived.
+  arrived, and the details switch while a ping is still waiting to go out.
 - **Crash report.** With `a.settings.CrashReports = true`, call
   `a.crashed("loading a thing", "boom", stack, false)`; the `sendCrash`
   recorder gets one report, and the dialog says the details went to Sentry.
@@ -43,9 +44,12 @@ no card, so a recorder doubles as the key.
 
 - The ping is a single message. `UsagePingSent` is kept only once the message
   arrived, so a failed send is retried on the next launch, which asks nothing.
+  `UsagePingDetails` says whether that retry carries the system details.
 - Closing the notice with Escape or the scrim counts as `No thanks`.
 - The ping row only exists while `a.capture` is set, and the crash row while
   `a.sendCrash` is. A release bakes the PostHog key and Sentry DSN in from
   `MEIRO_POSTHOG_KEY` and `MEIRO_SENTRY_DSN`; see `tools/dist.sh`.
 - The Sentry project must have Prevent Storing of IP Addresses on (Settings,
-  Security and Privacy). The app cannot set it, and the README says it is on.
+  Security and Privacy). The app cannot set it. Sentry still derives a coarse
+  location from the request address; an organization can turn on Enhanced
+  Privacy to drop both.
