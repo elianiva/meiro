@@ -1304,6 +1304,21 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	}
 	tt.RightClickAt(rowB.X+rowB.W/2, rowB.Y+rowB.H/2)
 	tt.Frame()
+	// The queue's own actions are as tall as the song's, so every gap in the
+	// menu matches.
+	var heights []float32
+	for _, label := range []string{"Move up", "Move down", "Remove from queue", "Start radio", "Add to playlist", "Copy"} {
+		e, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no %q entry: %q", label, tt.Texts())
+		}
+		heights = append(heights, e.H)
+	}
+	for _, h := range heights {
+		if h != heights[0] {
+			t.Fatalf("the menu's entries have different heights: %v", heights)
+		}
+	}
 	if err := tt.Click("Remove from queue"); err != nil {
 		t.Fatal(err)
 	}

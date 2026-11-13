@@ -61,7 +61,7 @@ Preconditions:
   check the slider closes. At 1280 pixels wide, `Volume` is horizontal and
   visible without hovering.
 - **Next.** `p.click("Next", "next")`. The seeded album has one track, so Next stays on `vid-3`. Use a longer queue to see it move, and assert `a.current.VideoID`.
-- **Queue panel.** `p.click("Up next", "bar")`, then check `a.nowPlaying.open`. The panel draws in its own view. Make a second window with `panel := newProof(t, ui.NewTester(a.nowPlayingView, 1000, 700))` and call `panel.step`. It shows `Lyrics`, `Related` and `Clear queue`. The header reads `Playing from` and the playlist on one line, and the source, `Auto-play` and the count sit the same distance apart. To edit, right-click a row (`tt.RightClickAt` its middle) and choose `Remove from queue`, or click `Clear queue`, as `TestEditingTheQueueFromItsPanel` does.
+- **Queue panel.** `p.click("Up next", "bar")`, then check `a.nowPlaying.open`. The panel draws in its own view. Make a second window with `panel := newProof(t, ui.NewTester(a.nowPlayingView, 1000, 700))` and call `panel.step`. It shows `Lyrics`, `Related` and `Clear queue`. The header reads `Playing from` and the playlist on one line, and the source, `Auto-play` and the count sit the same distance apart. To edit, right-click a row (`tt.RightClickAt` its middle) and choose `Remove from queue`, or click `Clear queue`, as `TestEditingTheQueueFromItsPanel` does. The queue's own rows and the song's actions share one height, so the menu's gaps match.
 - **Pointer queue edits.** Hover a row with `tt.Move` and click `Add <title> to
   queue`, or `Remove <title> from queue` in the queue. For the swipe, set
   `a.swipeMods = 0` (the tester sends no modifiers with the pointer), then
