@@ -131,6 +131,10 @@ type Settings struct {
 	// send on first run, so the project knows how many people use it. nil
 	// until the first-run notice is answered.
 	UsagePing *bool `json:"usagePing,omitempty"`
+	// UsagePingDetails adds the OS, architecture and Meiro version to that
+	// message, so the project can see which builds people run. Only
+	// meaningful while UsagePing is true.
+	UsagePingDetails bool `json:"usagePingDetails,omitempty"`
 	// UsagePingSent is set once that message has gone out, so it never
 	// repeats.
 	UsagePingSent bool `json:"usagePingSent,omitempty"`

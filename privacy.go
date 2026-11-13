@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"os"
+	"runtime"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/sentry"
@@ -74,30 +76,56 @@ func (a *app) usagePingOn() bool {
 	return a.settings.UsagePing != nil && *a.settings.UsagePing
 }
 
-// setUsagePing records the user's answer and keeps it. A yes sends the ping
-// now, unless it went out already.
+// answerUsagePing records the user's answer. details says whether the ping
+// carries the OS, architecture and Meiro version; without it the message
+// holds only its event name and a random ID.
+func (a *app) answerUsagePing(details bool) {
+	on := true
+	a.settings.UsagePing, a.settings.UsagePingDetails = &on, details
+	a.saveSettings()
+	a.sendUsagePing()
+}
+
+// declineUsagePing records a no, which sends nothing now or later.
+func (a *app) declineUsagePing() {
+	off := false
+	a.settings.UsagePing, a.settings.UsagePingDetails = &off, false
+	a.saveSettings()
+}
+
+// setUsagePing is the Settings switch. Turning it on keeps the details
+// choice already made, and sends the ping now unless it went out already.
 func (a *app) setUsagePing(on bool) {
 	a.settings.UsagePing = &on
+	if !on {
+		a.settings.UsagePingDetails = false
+	}
 	a.saveSettings()
 	if on {
 		a.sendUsagePing()
 	}
 }
 
-// sendUsagePing sends the one anonymous install ping. It carries nothing but
-// its own event name; the collector learns that this copy of Meiro ran, and
-// nothing about who ran it.
+// sendUsagePing sends the one anonymous install ping. With the system details
+// chosen it carries the OS, architecture and app version, so the project can
+// see which builds people run; otherwise it holds only its event name. The
+// random ID is made by the collector client and never saved, so neither
+// message says who ran it.
 func (a *app) sendUsagePing() {
 	capture := a.capture
 	if capture == nil || a.settings.UsagePingSent || a.privacy.sending || !a.usagePingOn() {
 		return
+	}
+	var properties map[string]any
+	if a.settings.UsagePingDetails {
+		properties = map[string]any{"os": runtime.GOOS, "arch": runtime.GOARCH, "version": appVersion()}
 	}
 	// The answer is kept, so a failure leaves the ping for the next launch,
 	// which asks nothing again. Sent is kept only once it arrived, so a quit
 	// in the middle sends it again rather than losing it.
 	a.privacy.sending = true
 	spawn(a, func() error {
-		return capture("install", nil)
+		return capture("install", properties)
 	}, func(err error) {
 		a.privacy.sending = false
 		if err != nil {
@@ -107,6 +135,15 @@ func (a *app) sendUsagePing() {
 		a.settings.UsagePingSent = true
 		a.saveSettings()
 	})
+}
+
+// appVersion is the release's version, or "development" for a build without
+// one. The install ping and a crash report both name it.
+func appVersion() string {
+	if version := mygo.App.Version(); version != "" {
+		return version
+	}
+	return "development"
 }
 
 // reportCrash sends a crash report when the user turned them on, and reports
@@ -134,26 +171,30 @@ func (a *app) privacyDialog(c *ui.Context) {
 	open := a.privacy.ask
 	m3.Dialog(c, &open, 520, func() {
 		m3.EmphasizedText(c, m3.HeadlineSmall, "Send one anonymous ping?")
-		m3.Text(c, m3.BodyMedium, "The first time Meiro runs, it can send one message so I know how many people use it. It carries a random ID made for that send. No account, no device name, no version, no listening history.").TextColor(sc.OnSurfaceVariant)
-		m3.Text(c, m3.BodyMedium, "Say no and Meiro works the same. You can change your answer in Settings, under Privacy.").TextColor(sc.OnSurfaceVariant)
+		m3.Text(c, m3.BodyMedium, "The first time Meiro runs, it can send one message so I know how many people use it. Nothing is sent unless you pick one.").TextColor(sc.OnSurfaceVariant)
+		m3.Text(c, m3.BodyMedium, "Send details adds your OS, architecture and the Meiro version, so I can see which builds people run. Just ping sends only a random ID. No thanks sends nothing.").TextColor(sc.OnSurfaceVariant)
 		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
 			if m3.Button(c, m3.ButtonSpec{Label: "What is sent", Kind: m3.TextOnly, Key: "privacy-learn"}).Clicked() {
 				a.openPrivacy()
 			}
 			if m3.Button(c, m3.ButtonSpec{Label: "No thanks", Kind: m3.TextOnly, Key: "decline-usage-ping"}).Clicked() {
 				a.privacy.ask = false
-				a.setUsagePing(false)
+				a.declineUsagePing()
 			}
-			if m3.Button(c, m3.ButtonSpec{Label: "Send once", Key: "agree-usage-ping"}).Clicked() {
+			if m3.Button(c, m3.ButtonSpec{Label: "Just ping", Kind: m3.TextOnly, Key: "ping-without-details"}).Clicked() {
 				a.privacy.ask = false
-				a.setUsagePing(true)
+				a.answerUsagePing(false)
+			}
+			if m3.Button(c, m3.ButtonSpec{Label: "Send details", Key: "ping-with-details"}).Clicked() {
+				a.privacy.ask = false
+				a.answerUsagePing(true)
 			}
 		})
 	})
 	// The scrim and the Escape key close it without an answer, which is a no.
 	if !open && a.privacy.ask {
 		a.privacy.ask = false
-		a.setUsagePing(false)
+		a.declineUsagePing()
 	}
 }
 
@@ -169,7 +210,10 @@ func (a *app) privacyCard(c *ui.Context) {
 			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 				body := "One message on first run, so I know how many people use Meiro. It carries a random ID and nothing about you."
 				if a.settings.UsagePingSent {
-					body = "Sent. It carried a random ID and nothing about you. There is nothing else to send."
+					body = "Sent, ping only. It carried a random ID and nothing about you."
+					if a.settings.UsagePingDetails {
+						body = "Sent with the OS, architecture and Meiro version. It carried nothing else."
+					}
 				}
 				settingLabel(c, "Anonymous ping", body).Grow(1)
 				if a.settings.UsagePingSent {
@@ -184,6 +228,16 @@ func (a *app) privacyCard(c *ui.Context) {
 					a.setUsagePing(on)
 				}
 			})
+			if a.usagePingOn() && !a.settings.UsagePingSent {
+				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+					settingLabel(c, "System details", "Include the OS, architecture and Meiro version with the ping, so I can see which builds people run.").Grow(1)
+					on := a.settings.UsagePingDetails
+					if m3.Switch(c, &on, "Include system details").Changed() {
+						a.settings.UsagePingDetails = on
+						a.saveSettings()
+					}
+				})
+			}
 		}
 		if a.sendCrash != nil {
 			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
