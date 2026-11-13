@@ -115,7 +115,12 @@ if [[ -n "${MEIRO_SENTRY_DSN:-}" ]]; then
 		exit 2
 		;;
 	esac
-	printf 'package main\n\nfunc init() { sentryProjectDSN = "%s" }\n' "$MEIRO_SENTRY_DSN" >>"$privacy_keys"
+	# A release sets both, so the DSN joins the PostHog key's file, which
+	# already has the one package clause a Go file takes.
+	if [[ ! -f "$privacy_keys" ]]; then
+		printf 'package main\n' >"$privacy_keys"
+	fi
+	printf '\nfunc init() { sentryProjectDSN = "%s" }\n' "$MEIRO_SENTRY_DSN" >>"$privacy_keys"
 fi
 build=(build -platform "${platform/-//}")
 if [[ -n "$out" ]]; then
