@@ -394,10 +394,13 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 					menuButton.Opacity(0).PassThrough()
 				}
 			}
-			if kind == youtube.TargetTrack || kind == youtube.TargetAlbum || kind == youtube.TargetPlaylist {
+			if kind == youtube.TargetTrack || kind == youtube.TargetAlbum || kind == youtube.TargetPlaylist || kind == youtube.TargetArtist {
 				fab := m3.FAB(c, m3.FABSpec{Icon: m3.IconPlay, Size: m3.FABSmall, Tone: m3.FABPrimary, Radius: 16, Key: "play"}).
 					Attach(ui.AnchorBottomRight, ui.AnchorBottomRight).Right(12).Bottom(12)
 				fab.Label("Play " + item.Title)
+				if kind == youtube.TargetArtist {
+					fab.Label("Shuffle play " + item.Title)
+				}
 				if !hovered && !card.FocusWithin() {
 					fab.Opacity(0).PassThrough()
 				}
@@ -432,7 +435,8 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		// The card's button also receives this pointer event. Opening its menu
 		// must not activate the card underneath it.
 	case played:
-		a.playCollection(item, key, false)
+		// An artist's button shuffles all their songs, as YouTube Music's does.
+		a.playCollection(item, key, kind == youtube.TargetArtist)
 	case card.Clicked() && isNewPlaylist(item):
 		a.openNewPlaylist(youtube.MusicItem{})
 	case card.Clicked():

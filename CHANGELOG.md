@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The Linux packages recommend a CJK font.** A fresh install can have no font for Korean, Chinese or Japanese text, which then drew as nothing. The `.deb` and `.rpm` packages now recommend Noto CJK, which covers all three.
 
+### Fixed
+
+- **Playing an artist plays all of their songs.** The Play and Shuffle buttons on an artist's page, and on the artist's card and search result, queued only the handful of songs the page lists and then moved on to recommendations. They now play the artist's whole Songs list, as YouTube Music does, and an artist's card has a button that shuffles it.
+
 ## [0.6.2] - 2026-11-11
 
 ### Added
