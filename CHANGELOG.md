@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-13
+
 ### Added
 
 - **Meiro asks before it counts an install.** The first run lets you send one anonymous message with your OS, architecture and the Meiro version, send it as a bare ping, or send nothing. A sent message holds a random ID and nothing about you. Crash reports are a second switch, off by default, which sends a crash to Sentry with secrets and web addresses removed.
@@ -26,8 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Shift and a sideways drag swipe a row.** Dragging a song row to either side with Shift held adds it to the queue, and dragging a queue row that way takes it out; the row slides aside and uncovers the action as it moves. A drag without Shift leaves the rows as they are, and a drag short of the mark springs back.
 - **Playing an artist plays all of their songs.** The Play and Shuffle buttons on an artist's page, and on the artist's card and search result, queued only the handful of songs the page lists and then moved on to recommendations. They now play the artist's whole Songs list, as YouTube Music does, and an artist's card has a button that shuffles it.
 - **The queue's menu has even gaps.** Move up, Move down and Remove from queue were taller than the song's other actions, so the space around them looked wider. Every row is now the same height.
-
-### Fixed
+- **Logging out keeps your place.** When macOS or Windows logs out or shuts down with Meiro open, Meiro now saves the queue, your place in the track, your settings and the listening history before it exits.
 
 ## [0.6.2] - 2026-11-11
 
