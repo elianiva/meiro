@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -32,16 +31,9 @@ type desktop struct {
 	// trayIcon is the resource name last applied to the tray.
 	trayIcon string
 	// mini is the tray's mini player while it is open.
-	mini  mini
-	notch notchWindow
-	// notificationTray is the temporary full-colour icon used to show a
-	// notification's cover when the user has hidden the persistent tray.
-	notificationTray  *mygo.Tray
-	notificationTimer *time.Timer
-	notification      *mygo.Notification
-	// notificationIcon is the native icon currently attached to a track
-	// notification; zero on platforms without custom notification artwork.
-	notificationIcon uintptr
+	mini         mini
+	notch        notchWindow
+	notification *mygo.Notification
 	// trayShown is what the tray last showed, to skip identical updates.
 	trayShown trayState
 	// titleShown is the window title last set, to skip identical updates.
@@ -149,8 +141,7 @@ type trackNotices interface {
 // for the foreground window, which the mini player counts as too.
 func (d *desktop) appActive() bool { return d != nil && mygo.App.IsActive() }
 
-// dismissNotification removes the track notification shown last, the
-// temporary tray icon that showed its cover and the cover's native icon.
+// dismissNotification removes the track notification shown last.
 func (d *desktop) dismissNotification() {
 	if d == nil {
 		return
@@ -159,8 +150,6 @@ func (d *desktop) dismissNotification() {
 		d.notification.Close()
 		d.notification = nil
 	}
-	d.clearNotificationTray()
-	d.clearNotificationArtwork()
 }
 
 // notify announces a track with its cover when the platform supports it, and
@@ -173,22 +162,18 @@ func (d *desktop) notify(item youtube.MusicItem, icon []byte) {
 		d.notification.Close()
 		d.notification = nil
 	}
-	if err := prepareNotificationArtwork(d, icon); err != nil {
-		log.Printf("preparing notification artwork: %v", err)
-	}
 	n := mygo.NewNotification(mygo.NotificationOptions{
 		ID:    "now-playing",
 		Title: item.Title,
 		Body:  item.Subtitle,
 		Group: "now-playing",
+		Image: icon,
 	})
 	n.OnClick(func() {
 		d.update(func() {
 			d.bringToFront()
 			if d.notification == n {
-				d.clearNotificationTray()
 				d.notification = nil
-				d.clearNotificationArtwork()
 			}
 		})
 		n.Close()
@@ -197,36 +182,7 @@ func (d *desktop) notify(item youtube.MusicItem, icon []byte) {
 	if err := n.Show(); err != nil {
 		log.Printf("showing track notification: %v", err)
 		d.notification = nil
-		d.clearNotificationTray()
-		d.clearNotificationArtwork()
-		return
 	}
-	if err := applyNotificationArtwork(d, item.Title, item.Subtitle, icon); err != nil {
-		log.Printf("setting notification artwork: %v", err)
-	}
-}
-
-// clearNotificationTray removes the temporary tray icon used only when a
-// notification has a cover and the persistent tray is hidden.
-func (d *desktop) clearNotificationTray() {
-	if d.notificationTimer != nil {
-		d.notificationTimer.Stop()
-		d.notificationTimer = nil
-	}
-	if d.notificationTray != nil {
-		d.notificationTray.Destroy()
-		d.notificationTray = nil
-	}
-}
-
-// clearNotificationArtwork releases the native icon attached to a track
-// notification, when this platform creates one.
-func (d *desktop) clearNotificationArtwork() {
-	if d == nil || d.notificationIcon == 0 {
-		return
-	}
-	destroyNotificationIcon(d.notificationIcon)
-	d.notificationIcon = 0
 }
 
 // toggleShortcut is the global shortcut that plays or pauses from anywhere.
@@ -284,7 +240,6 @@ func (d *desktop) setTray(on bool, mark settings.TrayMark, state trayState, mini
 		if d.tray != nil {
 			d.closeMini()
 			d.tray.Destroy()
-			d.clearNotificationArtwork()
 			d.tray, d.trayIcon, d.trayShown = nil, "", trayState{}
 		}
 		d.trayFailed = false
@@ -515,8 +470,6 @@ func (d *desktop) close() {
 		d.tray.Destroy()
 		d.tray = nil
 	}
-	d.clearNotificationTray()
-	d.clearNotificationArtwork()
 }
 
 // appScheme is the deep link scheme Meiro answers to, as
@@ -561,9 +514,7 @@ func (a *app) setupDesktop() {
 		notification := a.desktop.notification
 		a.update(func() {
 			if a.desktop.notification == notification {
-				a.desktop.clearNotificationTray()
 				a.desktop.notification = nil
-				a.desktop.clearNotificationArtwork()
 			}
 		})
 	})

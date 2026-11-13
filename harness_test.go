@@ -368,6 +368,8 @@ func newTestApp(t testing.TB) *app {
 	a.collectInfo = func(_ context.Context, version string) report.Info {
 		return report.Info{App: version, OS: runtime.GOOS, Arch: runtime.GOARCH, YtDlp: "2026.01.01", FFmpeg: "7.1"}
 	}
+	// MyGo's answer needs its event loop, which a tester does not run.
+	a.notifications = func() bool { return true }
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) { return nil, nil }
 	a.betterLyrics = func(context.Context, betterlyrics.Query) ([]lyrics.Line, error) { return nil, nil }
 	a.account.newClient = newFakeClient

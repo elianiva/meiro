@@ -137,8 +137,6 @@ go_library(
         "collections.go",
         "crash.go",
         "desktop.go",
-        "desktop_notify_other.go",
-        "desktop_notify_windows.go",
         "downloads.go",
         "episodes.go",
         "eq.go",
@@ -231,14 +229,6 @@ go_library(
         ],
         "@rules_go//go/platform:ios": [
             "@com_github_go_macos_objc//:objc",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "@rules_go//go/platform:windows_amd64": [
-            "@org_golang_x_sys//windows",
-        ],
-        "@rules_go//go/platform:windows_arm64": [
-            "@org_golang_x_sys//windows",
         ],
         "//conditions:default": [],
     }),

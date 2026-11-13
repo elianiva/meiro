@@ -58,7 +58,7 @@ type playback struct {
 	stream  task
 	aiCheck task
 	// notificationArtwork loads the current cover before showing its track
-	// notification on Windows.
+	// notification.
 	notificationArtwork task
 	// notices shows track notifications in place of the desktop, for tests.
 	notices trackNotices
@@ -98,6 +98,14 @@ type playback struct {
 	// episodeProgress is the authenticated YouTube watch-time session for the
 	// episode playing. It is nil while signed out or between episodes.
 	episodeProgress *episodeProgressSync
+}
+
+// notificationArtworkNeeded reports whether a track notification can show a
+// cover: every platform with notifications except macOS, which presents
+// playback in the notch or the menu bar instead. Tests answer for a system
+// that shows them.
+func (a *app) notificationArtworkNeeded() bool {
+	return runtime.GOOS != "darwin" && a.notifications()
 }
 
 func newPlayback(streams *audio.URLs, volume float64) playback {
@@ -279,7 +287,7 @@ func (a *app) notifyTrack(item youtube.MusicItem) {
 		}
 		notices.notify(item, icon)
 	}
-	if !notificationArtworkNeeded() || a.thumbs == nil {
+	if !a.notificationArtworkNeeded() || a.thumbs == nil {
 		a.notificationArtwork.stop()
 		show(nil)
 		return

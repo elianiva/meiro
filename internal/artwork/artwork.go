@@ -484,9 +484,9 @@ func (t *Cache) downloadContext(ctx context.Context, url string) ([]byte, error)
 	return bytes.Clone(data), nil
 }
 
-// NotificationIcon fetches a fresh, opaque PNG for a Windows track
-// notification. Notifications use the supplied image rather than the app's
-// tray template, so the shell cannot tint the cover into a white square.
+// NotificationIcon fetches a fresh, opaque PNG for a track notification. The
+// solid background keeps a clear edge for covers that are transparent, and
+// stops a shell that tints template images from washing the cover out.
 func (t *Cache) NotificationIcon(ctx context.Context, url string) ([]byte, error) {
 	if url == "" {
 		return nil, errors.New("track has no artwork URL")
@@ -500,8 +500,8 @@ func (t *Cache) NotificationIcon(ctx context.Context, url string) ([]byte, error
 
 const notificationIconSize = 96
 
-// notificationIconPNG makes a square, opaque Windows icon from a downloaded
-// cover. The solid background preserves a clear edge for transparent sources.
+// notificationIconPNG makes a square, opaque icon from a downloaded cover.
+// The solid background preserves a clear edge for transparent sources.
 func notificationIconPNG(data []byte) ([]byte, error) {
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
