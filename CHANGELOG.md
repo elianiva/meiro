@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Track notifications show the cover on Linux.** They now pass the cover to MyGo's own notification image, which also replaces the temporary tray icon Windows used to show it.
 - **The Linux packages recommend a CJK font.** A fresh install can have no font for Korean, Chinese or Japanese text, which then drew as nothing. The `.deb` and `.rpm` packages now recommend Noto CJK, which covers all three.
 - **Rows name the artist, not the kind of thing it is.** A song in search results read "Song • Ariana Grande & The Weeknd"; it now reads "Ariana Grande & The Weeknd". Album and playlist rows lose their label the same way, so an album in search results reads "Someone • 2019". A line that links no artist keeps YouTube's own wording.
 
