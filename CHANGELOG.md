@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Meiro asks before it counts an install.** The first run shows a notice that explains the one anonymous message and lets you say no. It holds a random ID made for that send and nothing about you. Crash reports are a second switch, off by default, which sends a crash to Sentry with secrets and web addresses removed.
 - **Meiro starts from a terminal on Linux.** The Debian and Arch packages, and the tarball's `install.sh`, add a `meiro` command, so `meiro` in a terminal opens the app.
 - **The media controls show the album.** The media controls on Linux, the status bars, lock screens and desktop widgets that read them, and the macOS Now Playing panel now get the album along with the title, artist and cover. Windows already did.
 

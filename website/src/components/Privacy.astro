@@ -1,0 +1,31 @@
+---
+import Section from "./Section.astro";
+import SectionHead from "./SectionHead.astro";
+import Panel from "./Panel.astro";
+
+const privacy = "https://github.com/elianiva/meiro#privacy";
+---
+
+<Section id="privacy">
+  <div class="wrap">
+    <SectionHead
+      title="Nothing is sent without asking."
+      lead="The install count is one message, sent only after you agree. Crash reports are a separate switch, off by default. Both are in Settings, under Privacy."
+    />
+    <div class="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[clamp(16px,2vw,28px)] max-lg:grid-cols-[1fr]">
+      <Panel
+        title="The install count"
+        text="Meiro asks once, on first run, before it sends anything. The message holds a random ID made for that send, and no account, device name, version or listening history. Say no and nothing is sent."
+      />
+      <Panel
+        title="Crash reports"
+        text="Off until you turn them on. When Meiro crashes, it sends the version, the system, what the app was doing and the stack trace to Sentry, with secrets and web addresses removed first."
+        class="[--d:1]"
+      />
+    </div>
+    <p class="reveal mt-8 max-w-[58ch] text-small text-muted [--d:2]">
+      Every message is listed in the <a href={privacy}>privacy section of the repository</a
+      >, next to what Meiro keeps on your device and how to remove it.
+    </p>
+  </div>
+</Section>

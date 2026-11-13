@@ -417,12 +417,38 @@ See the [open issues](https://github.com/elianiva/meiro/issues) for the rest.
 
 ## Privacy
 
-Meiro does not run its own account service, analytics, telemetry or servers.
-It connects to YouTube and Google for YouTube Music, streams and artwork, and
-uses yt-dlp to find streams. If you connect Last.fm in Settings, Meiro also
-sends your listening there. When automatic updates are enabled, Meiro contacts
-its update server to check for new versions. You can turn this off in Settings
-under Updates.
+Meiro runs no account service and no server of its own, and it collects
+nothing unless you say so. It connects to YouTube and Google for YouTube
+Music, streams and artwork, and uses yt-dlp to find streams. If you connect
+Last.fm in Settings, Meiro also sends your listening there. When automatic
+updates are enabled, Meiro contacts its update server to check for new
+versions. You can turn this off in Settings under Updates.
+
+### The install count
+
+Meiro asks once, on first run, before it sends anything. The message says the
+app is running, which is how I count installs. Closing the notice counts as
+no, and nothing is sent until you pick one.
+
+The message goes to PostHog. It holds an event name, a random ID made for that
+one send, and nothing else. The ID is not saved, and Meiro tells PostHog not to
+look up a location from the connection or make a person of it. No account, no
+device name, no version, no listening history.
+
+Settings under **Privacy** keeps your answer, and can send the message later if
+you change your mind. A message that already went out cannot be taken back.
+Meiro keeps nothing to find it by.
+
+### Crash reports
+
+Crash reports are off by default. Turn them on in Settings under **Privacy**,
+and Meiro sends the report the crash dialog shows to Sentry: the Meiro version,
+the system, what the app was doing, and the stack trace. Cookies, session keys,
+passwords and web addresses are removed before the report leaves the app, so it
+cannot say what you were playing.
+
+Sentry sees the address a request comes from, as any server does. The project
+is set not to store it.
 
 What Meiro keeps on your device:
 - **Settings**, **listening history** (the latest plays, used for the stats),

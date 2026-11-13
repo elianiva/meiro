@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/applog"
+	"github.com/elianiva/meiro/internal/sentry"
 	"github.com/elianiva/meiro/m3"
 )
 
@@ -22,6 +23,9 @@ type crashState struct {
 	// details is the report the user can copy: versions, where, the panic
 	// and its stack, with secrets redacted.
 	details string
+	// reported is set when the report went to the developer, because the
+	// user turned crash reports on.
+	reported bool
 	// inView is set when drawing the window is what panicked. The window is
 	// then drawn as the dialog alone until it is dismissed, so a page that
 	// cannot be drawn does not bring the dialog down with it.
@@ -85,6 +89,7 @@ func (a *app) crashed(where string, v any, stack []byte, inView bool) {
 	a.crash = &crashState{
 		open: true, where: where, inView: inView,
 		message: applog.Redact(message), details: details,
+		reported: a.reportCrash(sentry.Crash{Where: where, Message: message, Details: details, Release: mygo.App.Version()}),
 	}
 }
 
@@ -113,6 +118,9 @@ func (a *app) crashDialog(c *ui.Context) {
 		m3.EmphasizedText(c, m3.HeadlineSmall, "Meiro hit a problem")
 		m3.Text(c, m3.BodyMedium, "Something went wrong while "+d.where+". The details are in the log. Copying them helps when you report the problem.").
 			TextColor(sc.OnSurfaceVariant)
+		if d.reported {
+			m3.Text(c, m3.BodyMedium, "Crash reports are on, so Meiro sent this report to Sentry.").TextColor(sc.OnSurfaceVariant)
+		}
 		ui.Column(c).Padding(12, 16).Radius(m3.Large).Background(sc.SurfaceContainerHighest).Children(func() {
 			m3.Text(c, m3.BodyMedium, d.message).TextColor(sc.OnSurface).MaxLines(4)
 		})

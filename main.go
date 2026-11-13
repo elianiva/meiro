@@ -92,6 +92,7 @@ func main() {
 		a.restoreAccount()
 		a.loadScrobbleSession()
 		a.loadHistory()
+		a.startPrivacy()
 		a.startTicker()
 		a.every(persistInterval, func() { a.update(a.persistPlayback) })
 		// Browsing decodes and drops pictures in bursts, and the runtime

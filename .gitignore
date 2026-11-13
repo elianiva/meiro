@@ -10,6 +10,7 @@ mygo_windows_*.syso
 /resources/windows-*/
 /meiro
 /lastfmkeys_gen.go
+/privacykeys_gen.go
 /bazel-*
 /zz_proof*_test.go
 

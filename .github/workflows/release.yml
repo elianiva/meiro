@@ -26,10 +26,10 @@ jobs:
   # Only the repository owner starts this workflow. Write access is enough to
   # push a desktop-v tag or to dispatch a manual run, and either one would
   # build and publish with this repository's secrets: the updater signing key,
-  # the Last.fm key, and TAP_TOKEN. Every other job waits on this one, so one
-  # check covers them all. A fork carries this file but not the owner, so it
-  # refuses there too. triggering_actor is the user who re-ran the workflow,
-  # which actor alone would still report as the owner.
+  # the Last.fm key, the analytics keys, and TAP_TOKEN. Every other job waits on
+  # this one, so one check covers them all. A fork carries this file but not
+  # the owner, so it refuses there too. triggering_actor is the user who
+  # re-ran the workflow, which actor alone would still report as the owner.
   gate:
     if: >-
       github.repository_owner == 'elianiva' &&
@@ -281,6 +281,21 @@ jobs:
             exit 1
           fi
 
+      - name: Check the PostHog key and the Sentry DSN
+        if: needs.gate.outputs.tag != ''
+        env:
+          MEIRO_POSTHOG_KEY: ${{ secrets.MEIRO_POSTHOG_KEY }}
+          MEIRO_SENTRY_DSN: ${{ secrets.MEIRO_SENTRY_DSN }}
+        run: |
+          test -n "$MEIRO_POSTHOG_KEY" || {
+            echo "The MEIRO_POSTHOG_KEY secret is not set; refusing to release an app that cannot count installs."
+            exit 1
+          }
+          test -n "$MEIRO_SENTRY_DSN" || {
+            echo "The MEIRO_SENTRY_DSN secret is not set; refusing to release an app that cannot report crashes."
+            exit 1
+          }
+
       # A universal macOS app is combined from both architecture directories,
       # so it takes both halves of the ffmpeg build.
       - uses: actions/download-artifact@v8
@@ -317,6 +332,8 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           MEIRO_LASTFM_API_KEY: ${{ secrets.MEIRO_LASTFM_API_KEY }}
           MEIRO_LASTFM_SECRET: ${{ secrets.MEIRO_LASTFM_SECRET }}
+          MEIRO_POSTHOG_KEY: ${{ secrets.MEIRO_POSTHOG_KEY }}
+          MEIRO_SENTRY_DSN: ${{ secrets.MEIRO_SENTRY_DSN }}
           GH_TOKEN: ${{ github.token }}
         run: bazel run //:dist -- --out dist "${{ matrix.platform }}"
 
@@ -326,6 +343,8 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           MEIRO_LASTFM_API_KEY: ${{ secrets.MEIRO_LASTFM_API_KEY }}
           MEIRO_LASTFM_SECRET: ${{ secrets.MEIRO_LASTFM_SECRET }}
+          MEIRO_POSTHOG_KEY: ${{ secrets.MEIRO_POSTHOG_KEY }}
+          MEIRO_SENTRY_DSN: ${{ secrets.MEIRO_SENTRY_DSN }}
           GH_TOKEN: ${{ github.token }}
         run: bazel run //:dist -- --out dist --minimal "${{ matrix.platform }}"
 

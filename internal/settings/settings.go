@@ -127,6 +127,16 @@ type Settings struct {
 	// everything else does, 1 or 0 for their own pace.
 	PodcastSpeed float64 `json:"podcastSpeed,omitempty"`
 	MusicSpeed   float64 `json:"musicSpeed,omitempty"`
+	// UsagePing is the user's answer to the one anonymous message Meiro can
+	// send on first run, so the project knows how many people use it. nil
+	// until the first-run notice is answered.
+	UsagePing *bool `json:"usagePing,omitempty"`
+	// UsagePingSent is set once that message has gone out, so it never
+	// repeats.
+	UsagePingSent bool `json:"usagePingSent,omitempty"`
+	// CrashReports sends the details of a crash to the developer when Meiro
+	// hits one. Off unless the user turns it on.
+	CrashReports bool `json:"crashReports,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.

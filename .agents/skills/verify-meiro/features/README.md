@@ -38,6 +38,7 @@ This directory is the maintained source for verifying what a Meiro user can do. 
 - [Downloads](./downloads.md) covers downloading songs, albums and playlists, the Downloads page, and playing offline.
 - [Account and library](./account-library.md) covers sign-in, like, subscribe, saving, and playlists.
 - [Settings and shortcuts](./settings-shortcuts.md) covers theme, equaliser, shortcuts, history, and Last.fm.
+- [Privacy and telemetry](./privacy.md) covers the first-run notice, the Settings card, the install ping, and crash reports.
 - [Discord Rich Presence](./discord-presence.md) covers the settings, track activity, elapsed time, and clearing presence.
 - [Page states](./page-states.md) covers loading, empty, failed and offline pages, and Retry.
 - [Native-only behavior](./native-only.md) lists what no headless proof can show.
