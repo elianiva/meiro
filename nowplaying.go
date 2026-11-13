@@ -529,6 +529,11 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 	// Rows drag to a new place in the queue; the divider between chosen and
 	// generated tracks is not draggable itself.
 	list.Reorder = a.moveQueue
+	// Shift turns a drag on a row into a swipe that takes it out, so while it
+	// is held the list must not read the same drag as a move.
+	if a.swipeAllowed(c) {
+		list.Reorder = nil
+	}
 	if a.nowPlaying.queueFollow != a.current.VideoID {
 		a.nowPlaying.queueFollow = a.current.VideoID
 		list.ScrollTo(q.rowOf(q.index), ui.Start)

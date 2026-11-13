@@ -13,11 +13,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **The Linux packages recommend a CJK font.** A fresh install can have no font for Korean, Chinese or Japanese text, which then drew as nothing. The `.deb` and `.rpm` packages now recommend Noto CJK, which covers all three.
 - **Rows name the artist, not the kind of thing it is.** A song in search results read "Song • Ariana Grande & The Weeknd"; it now reads "Ariana Grande & The Weeknd". Album and playlist rows lose their label the same way, so an album in search results reads "Someone • 2019". A line that links no artist keeps YouTube's own wording.
 
 ### Fixed
 
 - **The media controls and the listening history name the artist.** Both took the row's whole byline as the artist, so the media controls read "Song • Ariana Grande & The Weeknd", and a song played from an album was filed in the stats under "Ariana Grande & The Weeknd • My Everything • 2014". They now name the artists the song credits.
+- **A row adds its track to the queue under the pointer.** Hovering a song in a playlist, album, artist, search result or the player's related list shows an add-to-queue button beside its length, and hovering a row of the queue shows a cross that takes it out. The track playing stays in the queue and offers no cross. The same actions remain in the row's menu for the keyboard.
+- **Shift and a sideways drag swipe a row.** Dragging a song row to either side with Shift held adds it to the queue, and dragging a queue row that way takes it out; the row slides aside and uncovers the action as it moves. A drag without Shift leaves the rows as they are, and a drag short of the mark springs back.
+- **Playing an artist plays all of their songs.** The Play and Shuffle buttons on an artist's page, and on the artist's card and search result, queued only the handful of songs the page lists and then moved on to recommendations. They now play the artist's whole Songs list, as YouTube Music does, and an artist's card has a button that shuffles it.
+
+### Fixed
 
 ## [0.6.2] - 2026-11-11
 

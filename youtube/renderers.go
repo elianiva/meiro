@@ -54,6 +54,7 @@ func browseParts(root any, search bool) ([]MusicItem, []MusicSection, MusicItem)
 						sections = append(sections, MusicSection{
 							Title: rendererTitle(renderer), Kind: member.key,
 							Items: current.items, ContinuationToken: continuationToken(renderer),
+							MoreID: sectionMoreID(member.key, renderer),
 						})
 						continue
 					}
@@ -612,4 +613,17 @@ func rendererThumbnail(value any) string {
 	}
 	walk(value)
 	return result
+}
+
+// sectionMoreID reads the playlist a shelf's title opens: the full list behind
+// the few songs the shelf shows. Only a list shelf names one this way.
+func sectionMoreID(kind string, renderer *jsonObject) string {
+	if kind != "musicShelfRenderer" {
+		return ""
+	}
+	id := navigationID(renderer.get("title"))
+	if !strings.HasPrefix(id, "VL") {
+		return ""
+	}
+	return id
 }

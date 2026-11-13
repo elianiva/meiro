@@ -82,6 +82,9 @@ type MusicSection struct {
 	Kind              string      `json:"kind"`
 	Items             []MusicItem `json:"items"`
 	ContinuationToken string      `json:"continuationToken,omitempty"`
+	// MoreID is the playlist the shelf's title opens, when it opens one: an
+	// artist's Songs shelf shows a few songs, and its title opens all of them.
+	MoreID string `json:"moreId,omitempty"`
 }
 
 func (c *Client) GetHomeFeed(ctx context.Context) (*BrowseResult, error) {

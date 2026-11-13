@@ -48,6 +48,11 @@ trap 'rm -rf "$tmp"' EXIT
 # dpkg reads it.
 deb_root="$tmp/deb-root"
 dpkg-deb --raw-extract "$deb" "$deb_root"
+# Korean, Chinese and Japanese text needs a font, and a fresh install may have
+# none. Noto CJK covers all three, and a recommendation keeps it out of the
+# installs that pass --no-install-recommends.
+control="$deb_root/DEBIAN/control"
+grep -qi '^Recommends:' "$control" || printf 'Recommends: fonts-noto-cjk\n' >>"$control"
 dpkg-deb --root-owner-group -Zxz -Sextreme --build "$deb_root" "$artifacts/$(basename "$deb")"
 cp "$archive" "$artifacts/"
 
@@ -68,6 +73,8 @@ depends:
   - gtk3
   - webkit2gtk4.1
   - libayatana-appindicator-gtk3
+recommends:
+  - google-noto-sans-cjk-fonts
 rpm:
   compression: xz
 contents:
