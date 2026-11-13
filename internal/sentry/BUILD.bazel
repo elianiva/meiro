@@ -5,5 +5,8 @@ go_library(
     srcs = ["sentry.go"],
     importpath = "github.com/elianiva/meiro/internal/sentry",
     visibility = ["//:__subpackages__"],
-    deps = ["//internal/applog"],
+    deps = [
+        "//internal/applog",
+        "@com_github_getsentry_sentry_go//:sentry-go",
+    ],
 )

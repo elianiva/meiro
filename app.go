@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -270,8 +271,12 @@ func newApp() *app {
 	// A build with no DSN has nowhere to send crash reports, so it offers
 	// none.
 	if dsn := sentryDSN(); dsn != "" {
-		client := &sentry.Client{DSN: dsn}
-		a.sendCrash = client.Capture
+		client, err := sentry.New(dsn, mygo.App.Version())
+		if err != nil {
+			log.Printf("setting up crash reports: %v", err)
+		} else {
+			a.sendCrash = client.Capture
+		}
 	}
 	a.hasPremium = ytdlp.HasPremium
 	a.openPath = func(path string) error { return a.desktop.openPath(path) }

@@ -1,29 +1,20 @@
-// Package sentry sends the crash report the user agreed to: the details the
-// crash dialog shows, and nothing that could name a person. The event is one
-// Sentry envelope, posted to the project its DSN names.
+// Package sentry turns a crash into a Sentry event with the official
+// sentry-go SDK. It sends only what the user agreed to: the details the crash
+// dialog shows, and nothing that could name a person.
 //
 // Secrets and web addresses are removed here, at the boundary, so a caller
-// cannot send them by accident. A report that fails to arrive is the
-// caller's to retry: this package keeps no state.
+// cannot send them by accident.
 package sentry
 
 import (
-	"bytes"
-	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"regexp"
-	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	sentrygo "github.com/getsentry/sentry-go"
 
 	"github.com/elianiva/meiro/internal/applog"
 )
@@ -33,11 +24,29 @@ const Timeout = 10 * time.Second
 
 // Client sends crash reports to one project.
 type Client struct {
-	// DSN is the project's, as https://key@host/project. Without one,
-	// Capture sends nothing.
-	DSN string
-	// HTTP sends the requests; nil uses the default client.
-	HTTP *http.Client
+	sdk *sentrygo.Client
+}
+
+// New makes a client for the project the DSN names. release is the app's
+// version, empty for a development build.
+func New(dsn, release string) (*Client, error) {
+	tag := ""
+	environment := "development"
+	if release != "" {
+		tag, environment = "meiro@"+release, "production"
+	}
+	sdk, err := sentrygo.NewClient(sentrygo.ClientOptions{
+		Dsn:              dsn,
+		Release:          tag,
+		Environment:      environment,
+		ServerName:       "meiro",
+		AttachStacktrace: false,
+		EnableTracing:    false,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sentry: %w", err)
+	}
+	return &Client{sdk: sdk}, nil
 }
 
 // Crash is one panic to report.
@@ -50,175 +59,43 @@ type Crash struct {
 	// Stack is the goroutine dump debug.Stack returned, parsed into the
 	// frames Sentry groups by.
 	Stack string
-	// Release is the app's version, empty for a development build.
-	Release string
 }
 
-// wireMessage is Sentry's message field.
-type wireMessage struct {
-	Formatted string `json:"formatted"`
-}
-
-// event is the Sentry event an envelope carries.
-type event struct {
-	EventID     string                       `json:"event_id"`
-	Timestamp   string                       `json:"timestamp"`
-	Platform    string                       `json:"platform"`
-	Level       string                       `json:"level"`
-	Release     string                       `json:"release,omitempty"`
-	Environment string                       `json:"environment,omitempty"`
-	Message     wireMessage                  `json:"message"`
-	Exception   *exception                   `json:"exception,omitempty"`
-	Tags        map[string]string            `json:"tags"`
-	Extra       map[string]string            `json:"extra"`
-	Contexts    map[string]map[string]string `json:"contexts"`
-	SDK         map[string]string            `json:"sdk"`
-}
-
-// exception is the panic Sentry shows and groups by.
-type exception struct {
-	Values []exceptionValue `json:"values"`
-}
-
-type exceptionValue struct {
-	Type       string         `json:"type"`
-	Value      string         `json:"value"`
-	Mechanism  map[string]any `json:"mechanism"`
-	Stacktrace *stacktrace    `json:"stacktrace,omitempty"`
-}
-
-type stacktrace struct {
-	Frames []frame `json:"frames"`
-}
-
-type frame struct {
-	Filename string `json:"filename"`
-	Function string `json:"function"`
-	Lineno   int    `json:"lineno"`
-	InApp    bool   `json:"in_app"`
-}
-
-// Capture sends one crash report.
+// Capture sends one crash report. It waits for the SDK to hand the event to
+// its transport, so a failure can be logged while the app is still up.
 func (c *Client) Capture(crash Crash) error {
-	if c.DSN == "" {
-		return errors.New("sentry: no DSN")
-	}
-	endpoint, err := envelopeURL(c.DSN)
-	if err != nil {
-		return err
-	}
-	id, err := eventID()
-	if err != nil {
-		return err
-	}
-	release := ""
-	if crash.Release != "" {
-		release = "meiro@" + crash.Release
+	if c == nil || c.sdk == nil {
+		return errors.New("sentry: no client")
 	}
 	message := applog.Redact(Redact(crash.Message))
-	details := applog.Redact(Redact(crash.Details))
-	environment := "development"
-	if release != "" {
-		environment = "production"
-	}
-	panicValue := exceptionValue{
+	handled := false
+	event := sentrygo.NewEvent()
+	event.Platform = "go"
+	event.Timestamp = time.Now()
+	event.Level = sentrygo.LevelFatal
+	event.Message = "Panic while " + crash.Where + ": " + message
+	event.Tags = map[string]string{"where": crash.Where}
+	event.Contexts["crash"] = map[string]any{"details": applog.Redact(Redact(crash.Details))}
+	event.Exception = []sentrygo.Exception{{
 		Type:      "panic",
 		Value:     message,
-		Mechanism: map[string]any{"type": "panic", "handled": false},
-	}
+		Mechanism: &sentrygo.Mechanism{Type: "panic", Handled: &handled},
+	}}
 	if frames := parseFrames(crash.Stack); len(frames) > 0 {
-		panicValue.Stacktrace = &stacktrace{Frames: frames}
+		event.Exception[0].Stacktrace = &sentrygo.Stacktrace{Frames: frames}
 	}
-	payload, err := json.Marshal(event{
-		EventID:     id,
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
-		Platform:    "go",
-		Level:       "fatal",
-		Release:     release,
-		Environment: environment,
-		Message:     wireMessage{Formatted: "Panic while " + crash.Where + ": " + message},
-		Exception:   &exception{Values: []exceptionValue{panicValue}},
-		Tags:        map[string]string{"where": crash.Where, "os": runtime.GOOS, "arch": runtime.GOARCH},
-		Extra:       map[string]string{"details": details},
-		Contexts: map[string]map[string]string{
-			"os":      {"name": runtime.GOOS, "arch": runtime.GOARCH},
-			"runtime": {"name": "go", "version": runtime.Version()},
-		},
-		SDK: map[string]string{"name": "meiro", "version": sdkVersion(crash.Release)},
-	})
-	if err != nil {
-		return err
+	c.sdk.CaptureEvent(event, nil, nil)
+	if !c.sdk.Flush(Timeout) {
+		return errors.New("sentry: the report did not leave in time")
 	}
-	// An envelope is a header line, then one line for each item's header and
-	// its body.
-	header, err := json.Marshal(map[string]string{
-		"event_id": id,
-		"sent_at":  time.Now().UTC().Format(time.RFC3339),
-	})
-	if err != nil {
-		return err
-	}
-	item, err := json.Marshal(map[string]any{
-		"type": "event", "content_type": "application/json", "length": len(payload),
-	})
-	if err != nil {
-		return err
-	}
-	body := bytes.Join([][]byte{header, item, payload}, []byte("\n"))
-	body = append(body, '\n')
-
-	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Content-Type", "application/x-sentry-envelope")
-	client := c.HTTP
-	if client == nil {
-		client = http.DefaultClient
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		reply, _ := io.ReadAll(io.LimitReader(response.Body, 512))
-		return fmt.Errorf("sentry: the report was refused with %s: %s", response.Status, strings.TrimSpace(string(reply)))
-	}
-	_, _ = io.Copy(io.Discard, response.Body)
 	return nil
 }
-
-// envelopeURL is where a DSN's project takes envelopes.
-func envelopeURL(dsn string) (string, error) {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		return "", fmt.Errorf("sentry: the DSN is not a web address: %w", err)
-	}
-	key := ""
-	if u.User != nil {
-		key = u.User.Username()
-	}
-	project := strings.Trim(u.Path, "/")
-	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || key == "" ||
-		project == "" || strings.Contains(project, "/") {
-		return "", errors.New("sentry: the DSN must look like https://key@host/project")
-	}
-	return fmt.Sprintf("%s://%s/api/%s/envelope/?sentry_key=%s&sentry_version=7",
-		u.Scheme, u.Host, project, url.QueryEscape(key)), nil
-}
-
-// addressPattern matches a web address, which can name a video or carry a
-// token.
-var addressPattern = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+`)
 
 // parseFrames turns the goroutine dump debug.Stack returns into Sentry
 // frames, oldest first. It reads the goroutine that panicked, which is the
 // first block, and stops at the blank line before the others.
-func parseFrames(stack string) []frame {
-	var frames []frame
+func parseFrames(stack string) []sentrygo.Frame {
+	var frames []sentrygo.Frame
 	lines := strings.Split(stack, "\n")
 	for i := 0; i < len(lines); i++ {
 		function := strings.TrimSpace(lines[i])
@@ -236,7 +113,7 @@ func parseFrames(stack string) []frame {
 		if file == "" || line == 0 {
 			continue
 		}
-		frames = append(frames, frame{
+		frames = append(frames, sentrygo.Frame{
 			Filename: file,
 			Function: functionName(function),
 			Lineno:   line,
@@ -244,7 +121,10 @@ func parseFrames(stack string) []frame {
 		})
 		i++
 	}
-	slices.Reverse(frames)
+	// Sentry shows the newest frame last.
+	for left, right := 0, len(frames)-1; left < right; left, right = left+1, right-1 {
+		frames[left], frames[right] = frames[right], frames[left]
+	}
 	return frames
 }
 
@@ -274,25 +154,11 @@ func functionName(line string) string {
 	return line
 }
 
-// sdkVersion is what the report says made it: the app's version, or that it
-// came from a build without one.
-func sdkVersion(release string) string {
-	if release == "" {
-		return "development"
-	}
-	return release
-}
+// addressPattern matches a web address, which can name a video or carry a
+// token.
+var addressPattern = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+`)
 
 // Redact replaces web addresses with a placeholder.
 func Redact(s string) string {
 	return addressPattern.ReplaceAllString(s, "<url>")
-}
-
-// eventID is a Sentry event ID: 16 random bytes, as hex.
-func eventID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b[:]), nil
 }
