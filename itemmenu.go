@@ -262,6 +262,10 @@ func (a *app) queueMenuItems(index int, entry func(string, *ui.SVG) ui.Element, 
 	if index == q.index || index >= q.len() {
 		return
 	}
+	entry("Play next", m3.IconNext).OnClick(func() {
+		a.playNextInQueue(index)
+		close()
+	})
 	if index > 0 {
 		entry("Move up", m3.IconExpandLess).OnClick(func() {
 			a.shiftInQueue(index, -1)

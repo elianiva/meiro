@@ -1307,7 +1307,7 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	// The queue's own actions are as tall as the song's, so every gap in the
 	// menu matches.
 	var heights []float32
-	for _, label := range []string{"Move up", "Move down", "Remove from queue", "Start radio", "Add to playlist", "Copy"} {
+	for _, label := range []string{"Play next", "Move up", "Move down", "Remove from queue", "Start radio", "Add to playlist", "Copy"} {
 		e, ok := tt.Find(label)
 		if !ok {
 			t.Fatalf("no %q entry: %q", label, tt.Texts())
@@ -1362,6 +1362,54 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	}
 	if got := ids(a.queue.items); !slices.Equal(got, []string{"a"}) || a.current.VideoID != "a" {
 		t.Errorf("after clear: %v, playing %q", got, a.current.VideoID)
+	}
+}
+
+// A queued song's menu offers Play next, which adds a copy of it directly
+// after the track playing and leaves its row where it is. The queue can hold
+// the same song twice, so the entry stays on a song that already plays next.
+func TestPlayingAQueuedTrackNext(t *testing.T) {
+	a, _ := playbackApp(t)
+	q := tracks("a", "b", "c", "d")
+	a.play(q[0], q)
+	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
+	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
+
+	rowD, ok := tt.Find("Track d")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.RightClickAt(rowD.X+rowD.W/2, rowD.Y+rowD.H/2)
+	tt.Frame()
+	if err := tt.Click("Play next"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "d", "b", "c", "d"}) {
+		t.Fatalf("after Play next: %v", got)
+	}
+	if a.menu.open {
+		t.Error("the menu stayed open after Play next")
+	}
+	if a.current.VideoID != "a" || a.queue.index != 0 {
+		t.Errorf("Play next changed the track playing: %q at %d", a.current.VideoID, a.queue.index)
+	}
+
+	// The copy already plays next, and its menu offers Play next again: the
+	// entry adds another copy rather than moving the row.
+	rowD, ok = tt.Find("Track d")
+	if !ok {
+		t.Fatalf("the copied row is missing: %q", tt.Texts())
+	}
+	tt.RightClickAt(rowD.X+rowD.W/2, rowD.Y+rowD.H/2)
+	tt.Frame()
+	if !tt.HasText("Play next") {
+		t.Errorf("the song that plays next offers no Play next: %q", tt.Texts())
+	}
+	a.menu.close()
+	tt.Frame()
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "d", "b", "c", "d"}) {
+		t.Errorf("opening the menu changed the queue: %v", got)
 	}
 }
 

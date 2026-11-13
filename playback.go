@@ -401,6 +401,16 @@ func (a *app) shiftInQueue(index, delta int) {
 	}
 }
 
+// playNextInQueue queues the track at a place in the queue to play after the
+// track playing, leaving its row where it is. The queue can hold the song
+// twice.
+func (a *app) playNextInQueue(index int) {
+	if index < 0 || index >= a.queue.len() {
+		return
+	}
+	a.enqueue(a.queue.at(index), true)
+}
+
 // clearUpcoming empties the queue after the track playing.
 func (a *app) clearUpcoming() {
 	a.queueRest.stop()
