@@ -230,6 +230,9 @@ type app struct {
 	// stop ends the periodic work; stopOnce closes it once.
 	stop     chan struct{}
 	stopOnce sync.Once
+	// shutdownOnce lets both the OS ending the session and the normal exit
+	// run shutdown, without closing twice.
+	shutdownOnce sync.Once
 }
 
 // newApp builds the app with no window. setup gives it one.
