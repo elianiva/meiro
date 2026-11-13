@@ -171,24 +171,23 @@ func (a *app) privacyDialog(c *ui.Context) {
 	open := a.privacy.ask
 	m3.Dialog(c, &open, 520, func() {
 		m3.EmphasizedText(c, m3.HeadlineSmall, "Send one anonymous ping?")
-		m3.Text(c, m3.BodyMedium, "The first time Meiro runs, it can send one message so I know how many people use it. Nothing is sent unless you pick one.").TextColor(sc.OnSurfaceVariant)
-		m3.Text(c, m3.BodyMedium, "Send details adds your OS, architecture and the Meiro version, so I can see which builds people run. Just ping sends only a random ID. No thanks sends nothing.").TextColor(sc.OnSurfaceVariant)
-		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-			if m3.Button(c, m3.ButtonSpec{Label: "What is sent", Kind: m3.TextOnly, Key: "privacy-learn"}).Clicked() {
-				a.openPrivacy()
-			}
+		m3.Text(c, m3.BodyMedium, "One message, so I know how many people use Meiro. Nothing is sent unless you choose.").TextColor(sc.OnSurfaceVariant)
+		m3.Text(c, m3.BodyMedium, "Send details adds your OS, architecture and the Meiro version. Just ping sends only a random ID.").TextColor(sc.OnSurfaceVariant)
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			if m3.Button(c, m3.ButtonSpec{Label: "No thanks", Kind: m3.TextOnly, Key: "decline-usage-ping"}).Clicked() {
 				a.privacy.ask = false
 				a.declineUsagePing()
 			}
-			if m3.Button(c, m3.ButtonSpec{Label: "Just ping", Kind: m3.TextOnly, Key: "ping-without-details"}).Clicked() {
-				a.privacy.ask = false
-				a.answerUsagePing(false)
-			}
-			if m3.Button(c, m3.ButtonSpec{Label: "Send details", Key: "ping-with-details"}).Clicked() {
-				a.privacy.ask = false
-				a.answerUsagePing(true)
-			}
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if m3.Button(c, m3.ButtonSpec{Label: "Just ping", Kind: m3.TextOnly, Key: "ping-without-details"}).Clicked() {
+					a.privacy.ask = false
+					a.answerUsagePing(false)
+				}
+				if m3.Button(c, m3.ButtonSpec{Label: "Send details", Key: "ping-with-details"}).Clicked() {
+					a.privacy.ask = false
+					a.answerUsagePing(true)
+				}
+			})
 		})
 	})
 	// The scrim and the Escape key close it without an answer, which is a no.
