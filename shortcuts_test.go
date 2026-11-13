@@ -278,9 +278,10 @@ func TestKeyboardPlayerTabsAndQueue(t *testing.T) {
 	tt.Key(0, ui.KeyHome)
 	tt.Key(0, ui.KeyDown)
 	tt.Key(ui.Shift, ui.KeyF10)
-	if !tt.Focused("Move up") {
+	if !tt.Focused("Play next") {
 		t.Fatal("the selected queue track's menu did not take focus")
 	}
+	tt.Key(0, ui.KeyDown)
 	tt.Key(0, ui.KeyDown)
 	tt.Key(0, ui.KeyDown)
 	if !tt.Focused("Remove from queue") {
