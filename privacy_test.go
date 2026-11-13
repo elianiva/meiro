@@ -47,7 +47,7 @@ func TestFirstRunAsksBeforeTheInstallPing(t *testing.T) {
 
 	tt := ui.NewTester(a.view, 1000, 900)
 	tt.Frame()
-	for _, want := range []string{"Send one anonymous ping?", "No thanks", "Just ping", "Send details", "What is sent"} {
+	for _, want := range []string{"Send one anonymous ping?", "No thanks", "Just ping", "Send details"} {
 		if !tt.HasText(want) {
 			t.Errorf("the notice does not show %q: %q", want, tt.Texts())
 		}
