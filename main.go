@@ -102,6 +102,10 @@ func main() {
 		a.watchSession()
 		a.every(flushInterval, func() { a.update(a.flushScrobbles) })
 		a.desktop.win.OnClosed(a.stopTicking)
+		// The OS can end the session while the app runs, on macOS and
+		// Windows. OnQuit is the last hook then, so the state is saved before
+		// the process may end; the call after Run is the normal path.
+		mygo.App.OnQuit(a.shutdown)
 	})
 	err := mygo.App.Run()
 	a.stopTicking()
@@ -264,30 +268,34 @@ func (a *app) openAudioCache() {
 	a.replaceAudioCache(cache)
 }
 
-// shutdown flushes the settings, then closes what belongs to the app.
+// shutdown flushes the settings, then closes what belongs to the app. It is
+// called when the event loop stops, and again by the normal exit; it runs
+// once.
 func (a *app) shutdown() {
-	a.aiCheck.stop()
-	a.notificationArtwork.stop()
-	a.finishEpisodeProgress(true)
-	a.savePlayback(0)
-	a.saver.Wait()
-	a.historyWriter.Wait()
-	a.downloads.writer.Wait()
-	a.playSave.writer.Wait()
-	a.scrobble.outbox.Wait()
-	a.scrobble.credits.Wait()
-	a.desktop.close()
-	if a.discord != nil {
-		a.discord.Close()
-		a.discord = nil
-	}
-	if a.media != nil {
-		if err := a.media.Close(); err != nil {
-			log.Printf("close system media controls: %v", err)
+	a.shutdownOnce.Do(func() {
+		a.aiCheck.stop()
+		a.notificationArtwork.stop()
+		a.finishEpisodeProgress(true)
+		a.savePlayback(0)
+		a.saver.Wait()
+		a.historyWriter.Wait()
+		a.downloads.writer.Wait()
+		a.playSave.writer.Wait()
+		a.scrobble.outbox.Wait()
+		a.scrobble.credits.Wait()
+		a.desktop.close()
+		if a.discord != nil {
+			a.discord.Close()
+			a.discord = nil
 		}
-	}
-	a.player.Stop()
-	a.closeAudioCaches()
+		if a.media != nil {
+			if err := a.media.Close(); err != nil {
+				log.Printf("close system media controls: %v", err)
+			}
+		}
+		a.player.Stop()
+		a.closeAudioCaches()
+	})
 }
 
 // stopTicking ends the periodic work. The window closing and the app exiting
