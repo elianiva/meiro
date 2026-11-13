@@ -71,6 +71,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-data", heading: "Storage and privacy"},
 	{key: "cache", search: "storage cache playback downloads", card: (*app).playbackCacheCard},
+	{key: "privacy", search: "privacy telemetry analytics ping anonymous crash reports data sentry posthog", card: (*app).privacyCard},
 	{key: "history", search: "privacy history listening plays", card: (*app).historyCard},
 
 	{key: "h-about", heading: "About and support"},

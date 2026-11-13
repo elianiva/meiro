@@ -85,7 +85,12 @@ done
 # sets them instead, and goes when the build is done. Without them the app
 # builds, and its Settings say Last.fm cannot be connected.
 lastfm_keys=lastfmkeys_gen.go
-trap 'rm -f "$lastfm_keys"' EXIT
+# The PostHog project key and the Sentry DSN are baked in the same way, for
+# the install ping and crash reports. Without them the app builds and sends
+# nothing: a build with no key never asks, and one with no DSN offers no
+# crash reports.
+privacy_keys=privacykeys_gen.go
+trap 'rm -f "$lastfm_keys" "$privacy_keys"' EXIT
 if [[ -n "${MEIRO_LASTFM_API_KEY:-}" || -n "${MEIRO_LASTFM_SECRET:-}" ]]; then
 	for value in "${MEIRO_LASTFM_API_KEY:-}" "${MEIRO_LASTFM_SECRET:-}"; do
 		if [[ ! "$value" =~ ^[A-Za-z0-9]+$ ]]; then
@@ -96,7 +101,22 @@ if [[ -n "${MEIRO_LASTFM_API_KEY:-}" || -n "${MEIRO_LASTFM_SECRET:-}" ]]; then
 	printf 'package main\n\nfunc init() { lastFMAPIKey, lastFMSecret = "%s", "%s" }\n' \
 		"$MEIRO_LASTFM_API_KEY" "$MEIRO_LASTFM_SECRET" >"$lastfm_keys"
 fi
-
+if [[ -n "${MEIRO_POSTHOG_KEY:-}" ]]; then
+	if [[ ! "$MEIRO_POSTHOG_KEY" =~ ^[A-Za-z0-9_-]+$ ]]; then
+		echo "MEIRO_POSTHOG_KEY must be set, to letters, digits, underscores and dashes only" >&2
+		exit 2
+	fi
+	printf 'package main\n\nfunc init() { posthogProjectKey = "%s" }\n' "$MEIRO_POSTHOG_KEY" >"$privacy_keys"
+fi
+if [[ -n "${MEIRO_SENTRY_DSN:-}" ]]; then
+	case "$MEIRO_SENTRY_DSN" in
+	*[[:space:]\"\']*)
+		echo "MEIRO_SENTRY_DSN must be a DSN with no spaces, quotes or backslashes" >&2
+		exit 2
+		;;
+	esac
+	printf 'package main\n\nfunc init() { sentryProjectDSN = "%s" }\n' "$MEIRO_SENTRY_DSN" >>"$privacy_keys"
+fi
 build=(build -platform "${platform/-//}")
 if [[ -n "$out" ]]; then
 	build+=(-o "$out")

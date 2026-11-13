@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "posthog",
+    srcs = ["posthog.go"],
+    importpath = "github.com/elianiva/meiro/internal/posthog",
+    visibility = ["//:__subpackages__"],
+)

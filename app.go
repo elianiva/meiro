@@ -19,8 +19,10 @@ import (
 	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lru"
 	"github.com/elianiva/meiro/internal/lyrics"
+	"github.com/elianiva/meiro/internal/posthog"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
+	"github.com/elianiva/meiro/internal/sentry"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/internal/ytdlp"
 	"github.com/elianiva/meiro/m3"
@@ -55,6 +57,12 @@ type app struct {
 	sleep func(ctx context.Context, delay time.Duration) error
 	// openURL opens a link in the default browser. Tests record it.
 	openURL func(url string) error
+	// capture sends the install ping to PostHog. It is nil when the build
+	// has no project key, and tests replace it to record what would be sent.
+	capture func(event string, properties map[string]any) error
+	// sendCrash sends a crash report to Sentry. It is nil when the build has
+	// no DSN, and tests replace it to record what would be sent.
+	sendCrash func(crash sentry.Crash) error
 	// bundled reports whether a helper program is the one inside the app.
 	// Tests replace it.
 	bundled func(name string) bool
@@ -148,6 +156,9 @@ type app struct {
 	newPlaylist    *newPlaylistState
 	deletePlaylist *deletePlaylistState
 	addToPlaylist  *addToPlaylistState
+	// privacy is the first-run notice about the install ping.
+	privacy privacyState
+
 	// knownPlaylists are the playlists the library last showed, offered at
 	// once by the playlist picker.
 	knownPlaylists knownPlaylists
@@ -251,6 +262,17 @@ func newApp() *app {
 		}()
 	}
 	a.sleep = sleep
+	// A build with no key sends nothing, and never asks.
+	if key := posthogKey(); key != "" {
+		client := &posthog.Client{Key: key}
+		a.capture = client.Capture
+	}
+	// A build with no DSN has nowhere to send crash reports, so it offers
+	// none.
+	if dsn := sentryDSN(); dsn != "" {
+		client := &sentry.Client{DSN: dsn}
+		a.sendCrash = client.Capture
+	}
 	a.hasPremium = ytdlp.HasPremium
 	a.openPath = func(path string) error { return a.desktop.openPath(path) }
 	a.account = newAccountState(func(auth *youtube.CookieAuth) *youtube.Client {

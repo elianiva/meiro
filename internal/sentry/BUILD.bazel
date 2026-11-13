@@ -1,0 +1,9 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "sentry",
+    srcs = ["sentry.go"],
+    importpath = "github.com/elianiva/meiro/internal/sentry",
+    visibility = ["//:__subpackages__"],
+    deps = ["//internal/applog"],
+)
