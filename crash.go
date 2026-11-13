@@ -89,7 +89,7 @@ func (a *app) crashed(where string, v any, stack []byte, inView bool) {
 	a.crash = &crashState{
 		open: true, where: where, inView: inView,
 		message: applog.Redact(message), details: details,
-		reported: a.reportCrash(sentry.Crash{Where: where, Message: message, Details: details, Stack: string(stack), Release: mygo.App.Version()}),
+		reported: a.reportCrash(sentry.Crash{Where: where, Message: message, Details: details, Stack: string(stack)}),
 	}
 }
 
