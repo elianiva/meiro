@@ -11,6 +11,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.4.4",
+    "posthog-js": "^1.449.1",
     "tailwindcss": "^4.3.3",
     "wrangler": "^4"
   }

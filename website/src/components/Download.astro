@@ -19,6 +19,9 @@ const platforms = [
           <a
             class="group/os grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1.5 rounded-card bg-bg-soft px-7.5 py-6.5 no-underline [transition:background-color_0.3s_ease,translate_0.2s_var(--ease-glide)] hover:translate-x-1.5 hover:bg-field [&.recommended]:-order-1 [&.recommended]:bg-field [&.recommended]:text-field-ink max-sm:grid-cols-[minmax(0,1fr)] max-sm:p-5.5"
             data-os={os}
+            data-ph="download_click"
+            data-ph-platform={os}
+            data-ph-placement="download"
             href={releases}
           >
             <span class="text-h3 leading-[1.05] tracking-[-0.04em]">{name}</span>

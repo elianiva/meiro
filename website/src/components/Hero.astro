@@ -16,7 +16,13 @@ import NowPlaying from "./NowPlaying.astro";
     </div>
     <div class="grid justify-items-center">
       <div class="mt-8 flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
-        <Button href="#download" size="lg" id="hero-download">
+        <Button
+          href="#download"
+          size="lg"
+          id="hero-download"
+          data-ph="download_cta_click"
+          data-ph-placement="hero"
+        >
           <svg class="size-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 20h16"></path></svg>
           <span>Download Meiro</span>
         </Button>

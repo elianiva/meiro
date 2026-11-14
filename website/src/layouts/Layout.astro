@@ -54,6 +54,9 @@ const jsonLd = {
     <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script>
+      import "../scripts/analytics";
+    </script>
     <link rel="preload" href="/assets/fonts/GoogleSans.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline define:vars={{ h: songs[0].h, c: songs[0].c }}>
       (function () {

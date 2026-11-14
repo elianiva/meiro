@@ -33,7 +33,18 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
       - run: npm ci
+      - name: Check the PostHog key
+        # The key is the app's, so the site reports into the same project.
+        # A deploy without it would ship a site that counts nothing.
+        env:
+          PUBLIC_POSTHOG_KEY: ${{ secrets.MEIRO_POSTHOG_KEY }}
+        run: |
+          test -n "$PUBLIC_POSTHOG_KEY" || {
+            echo "The MEIRO_POSTHOG_KEY secret is not set; refusing to deploy a site that cannot count visits."
+            exit 1
+          }
       - run: npm run deploy
         env:
+          PUBLIC_POSTHOG_KEY: ${{ secrets.MEIRO_POSTHOG_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
