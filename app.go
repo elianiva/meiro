@@ -58,6 +58,9 @@ type app struct {
 	sleep func(ctx context.Context, delay time.Duration) error
 	// openURL opens a link in the default browser. Tests record it.
 	openURL func(url string) error
+	// keepRunning keeps the app at full speed while none of its windows
+	// shows, as a download does in the menu bar. Tests record it.
+	keepRunning func(reason string) func()
 	// capture sends the install ping to PostHog. It is nil when the build
 	// has no project key, and tests replace it to record what would be sent.
 	capture func(event string, properties map[string]any) error
@@ -159,7 +162,9 @@ type app struct {
 	// cover is the card whose cover opened the page showing, so that the
 	// page's hero can take the picture from it as MyGo flies one into the
 	// other.
-	cover cardCover
+	cover       cardCover
+	playerCover coverState
+	miniCover   coverState
 
 	// Dialogs.
 	crash          *crashState
@@ -248,22 +253,23 @@ type app struct {
 // newApp builds the app with no window. setup gives it one.
 func newApp() *app {
 	a := &app{
-		router:     ui.NewRouter(routeByID(routeHome).path("")),
-		player:     player.New(playerOptions()...),
-		settings:   settings.Defaults(),
-		openURL:    mygo.Shell.OpenExternal,
-		bundled:    proc.Bundled,
-		nowPlaying: nowPlayingState{queueSelectionAnchor: -1, queueSelectionCursor: -1},
-		page:       &pageData{scroll: &ui.ScrollState{}},
-		list:       &ui.ListState{},
-		pages:      lru.New[string, *pageData](pageCacheLimit),
-		details:    lru.New[string, detail](pageCacheLimit),
-		carousels:  lru.New[string, *m3.CarouselState](pageCacheLimit * 4),
-		writing:    make(map[string]bool),
-		stop:       make(chan struct{}),
-		statsRange: 14,
-		swipeMods:  ui.Shift,
-		keyboard:   keyboardState{hintDelay: hintDelay},
+		router:      ui.NewRouter(routeByID(routeHome).path("")),
+		player:      player.New(playerOptions()...),
+		settings:    settings.Defaults(),
+		openURL:     mygo.Shell.OpenExternal,
+		keepRunning: mygo.Power.KeepRunning,
+		bundled:     proc.Bundled,
+		nowPlaying:  nowPlayingState{queueSelectionAnchor: -1, queueSelectionCursor: -1},
+		page:        &pageData{scroll: &ui.ScrollState{}},
+		list:        &ui.ListState{},
+		pages:       lru.New[string, *pageData](pageCacheLimit),
+		details:     lru.New[string, detail](pageCacheLimit),
+		carousels:   lru.New[string, *m3.CarouselState](pageCacheLimit * 4),
+		writing:     make(map[string]bool),
+		stop:        make(chan struct{}),
+		statsRange:  14,
+		swipeMods:   ui.Shift,
+		keyboard:    keyboardState{hintDelay: hintDelay},
 	}
 	a.scrobble = newScrobbler()
 	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}), &a.audioAuth, &a.traces)), a.settings.Volume)

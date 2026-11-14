@@ -50,6 +50,7 @@ type nowPlayingState struct {
 	queueSelectionCursor int
 	// queueFollow is the track the queue's list last scrolled to.
 	queueFollow  string
+	cover        coverState
 	volumeHeld   bool
 	volumePopup  bool
 	lyrics       lyricsState
@@ -279,7 +280,7 @@ func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius float32) {
 	key := itemKey("now-playing-menu", a.current)
 	var menuButton ui.Element
-	artwork := a.art(c, a.current.Thumbnail, imageSize, artSize, radius, func() {
+	artwork := a.playerArtwork(&a.nowPlaying.cover, c, a.current.Thumbnail, imageSize, artSize, radius, func() {
 		if a.current.IsVideo() {
 			m3.VideoBadge(c, artSize)
 		}

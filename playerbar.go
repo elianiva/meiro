@@ -295,7 +295,7 @@ func (a *app) speedChoices(c *ui.Context, key string, speed float64, open *bool)
 func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.Element {
 	sc := m3.Of(c).Scheme
 	return ui.Column(c).Gap(1).MinWidth(0).Children(func() {
-		m3.EmphasizedText(c, title, a.current.Title).SingleLine().TextColor(sc.OnSurface)
+		m3.EmphasizedText(c, title, a.current.Title).SingleLine().TextColor(sc.OnSurface).ContentTransition(ui.ContentTransition{})
 		line, colour := a.current.Subtitle, sc.OnSurfaceVariant
 		if a.playErr != "" {
 			line, colour = firstLine(a.playErr), sc.Error
@@ -321,7 +321,7 @@ func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.E
 			})
 			return
 		}
-		m3.Text(c, subtitle, line).SingleLine().TextColor(colour)
+		m3.Text(c, subtitle, line).SingleLine().TextColor(colour).ContentTransition(ui.ContentTransition{})
 	})
 }
 
@@ -357,7 +357,7 @@ func (a *app) playerBar(c *ui.Context) {
 			Cursor(ui.CursorPointer).Label("Open the player").
 			Background(m3.StateFill(ui.Transparent, sc.OnSurface, info.Hovered(), info.Pressed(), info.FocusVisible()))
 		info.Children(func() {
-			a.art(c, a.current.Thumbnail, playerArt, 64, m3.Large, func() {
+			a.playerArtwork(&a.playerCover, c, a.current.Thumbnail, playerArt, 64, m3.Large, func() {
 				if a.current.IsVideo() {
 					m3.VideoBadge(c, 64)
 				}

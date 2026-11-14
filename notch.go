@@ -35,6 +35,11 @@ type notchState struct {
 	scrub         float64
 	scrubbing     bool
 	collapseAt    time.Time
+	// cover is the picture the notch showed last, kept while the next one
+	// loads. coverSmall is the same for its compact header, which asks for
+	// another size.
+	cover      coverState
+	coverSmall coverState
 	// interacting is rebuilt from the current pass's controls, never UI handles.
 	interacting bool
 }
@@ -274,7 +279,7 @@ func (a *app) notchView(c *ui.Context) {
 			cover.Children(func() {
 				small := min(float32(26), headerHeight-10)
 				ui.Box(c.Key("small-cover")).Absolute().Size(small, small).Left((notchWing - small) / 2).Top((headerHeight - small) / 2).Opacity(1 - headerOpacity).Children(func() {
-					a.art(c, a.current.Thumbnail, 96, small, 6)
+					a.playerArtwork(&n.coverSmall, c, a.current.Thumbnail, 96, small, 6)
 				})
 				ui.Box(c.Key("collapse-arrow")).Absolute().Size(18, 18).Left((notchWing - 18) / 2).Top((headerHeight - 18) / 2).Opacity(headerOpacity).Children(func() {
 					ui.Icon(c, m3.IconExpandLess).FontSize(18).TextColor(white.Alpha(0.5))
@@ -308,7 +313,7 @@ func (a *app) notchView(c *ui.Context) {
 					Disabled(!open || opacity < 1)
 				n.trackInteraction(cover)
 				cover.Children(func() {
-					a.art(c, a.current.Thumbnail, 192, 76, 12, func() {
+					a.playerArtwork(&n.cover, c, a.current.Thumbnail, 192, 76, 12, func() {
 						state := ui.Box(c.Key("cover-state")).Absolute().Top(0).Left(0).Size(76, 76).Radius(12).PassThrough().
 							Background(m3.StateFill(ui.Transparent, white, cover.Hovered(), cover.Pressed(), cover.FocusVisible()))
 						if cover.FocusVisible() {

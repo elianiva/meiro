@@ -203,8 +203,12 @@ func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()
 			ui.Box(c).Fill().Center().Children(func() {
 				ui.Icon(c, IconMusicNote).FontSize(max(size*0.4, 18)).TextColor(sc.OnSurfaceVariant.Alpha(0.6))
 			})
-		} else {
-			ui.Image(c, art).Fit(ui.Cover).Fill().Radius(radius)
+		}
+		// The picture keeps its element as covers change, so MyGo crossfades
+		// from the one before to the next. A nil picture paints nothing.
+		picture := ui.Image(c, art).Key("art").Fill().Radius(radius).ContentTransition(ui.ContentTransition{})
+		if art != nil {
+			picture.Fit(ui.Cover)
 		}
 		for _, overlay := range overlays {
 			overlay()

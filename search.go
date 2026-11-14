@@ -203,8 +203,9 @@ func searchTint(c *ui.Context) ui.Color {
 
 // searchBar is the field every page searches from, in the top bar. Submitting
 // it shows the search page; typing asks YouTube Music for what it offers,
-// which the panel under the bar shows.
-func (a *app) searchBar(c *ui.Context) ui.Element {
+// which the panel under the bar shows. field is the text field itself, for the
+// panel to point at the option the arrows are on.
+func (a *app) searchBar(c *ui.Context) (bar, field ui.Element) {
 	trailingPadding := float32(0)
 	if a.keyboard.hints {
 		trailingPadding = 40
@@ -214,11 +215,14 @@ func (a *app) searchBar(c *ui.Context) ui.Element {
 		Placeholder:     searchPlaceholder,
 		Key:             "search",
 		Focus:           &a.searchField,
+		Field:           &field,
 		Height:          48,
 		MaxWidth:        520,
 		Container:       searchTint(c),
 		TrailingPadding: trailingPadding,
 	})
+	// The panel under the bar lists what completes the text being typed.
+	field.AutoComplete(ui.AutoCompleteList)
 	queries, items := a.shownSuggestions()
 	n := len(queries) + len(items)
 	if a.search.highlight > n {
@@ -243,13 +247,14 @@ func (a *app) searchBar(c *ui.Context) ui.Element {
 	case result.Changed:
 		a.suggestSearches(a.search.query)
 	}
-	return bar
+	return bar, field
 }
 
 // searchSuggestions shows under the bar what YouTube Music offers for the text
 // being typed: the completed queries, and the items it already matches.
-// Choosing either searches what it names.
-func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
+// Choosing either searches what it names. The panel reads as a list of options
+// to assistive technology, and field points at the one the arrows are on.
+func (a *app) searchSuggestions(c *ui.Context, bar, field ui.Element) {
 	s := &a.search
 	queries, items := a.shownSuggestions()
 	if len(queries) == 0 && len(items) == 0 {
@@ -262,23 +267,33 @@ func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
 	if width < 320 {
 		width = 320
 	}
+	n := len(queries) + len(items)
 	ui.PopoverBase(c, bar, &s.suggestOpen, func(panel ui.Element) {
 		sc := m3.Of(c).Scheme
 		panel.Key("search-suggestions").Width(width).Padding(8).Gap(2).Radius(m3.Large).Margin(8, 0, 0, 0).
-			Background(sc.SurfaceContainerHigh).TextColor(sc.OnSurface)
+			Background(sc.SurfaceContainerHigh).TextColor(sc.OnSurface).Role(ui.RoleListBox).Label("Search suggestions")
 		m3.Elevation(c, panel, 3)
 		panel.Children(func() {
 			for i, query := range queries {
-				if a.suggestionRow(c, query, s.highlight == i+1) {
+				row, chosen := a.suggestionRow(c, query, i+1, n, s.highlight == i+1)
+				if s.highlight == i+1 {
+					field.ActiveDescendant(row)
+				}
+				if chosen {
 					a.chooseSuggestion(i, queries, items)
 				}
 			}
 			if len(queries) > 0 && len(items) > 0 {
-				ui.Box(c).Height(1).FillWidth().Margin(8, 8).Background(sc.OutlineVariant)
+				ui.Box(c).Height(1).FillWidth().Margin(8, 8).Background(sc.OutlineVariant).AccessHidden(true)
 			}
 			for i, item := range items {
-				if a.suggestionItem(c, item, i, s.highlight == len(queries)+i+1) {
-					a.chooseSuggestion(len(queries)+i, queries, items)
+				slot := len(queries) + i + 1
+				row, chosen := a.suggestionItem(c, item, i, slot, n, s.highlight == slot)
+				if s.highlight == slot {
+					field.ActiveDescendant(row)
+				}
+				if chosen {
+					a.chooseSuggestion(slot-1, queries, items)
 				}
 			}
 		})
@@ -286,31 +301,33 @@ func (a *app) searchSuggestions(c *ui.Context, bar ui.Element) {
 }
 
 // suggestionRow is one completed query of the panel under the search bar,
-// filled as focused while the arrow keys are on it. It reports a click.
-func (a *app) suggestionRow(c *ui.Context, query string, highlighted bool) bool {
+// filled as focused while the arrow keys are on it. It is an option of the
+// panel's list, at slot of total. It reports a click.
+func (a *app) suggestionRow(c *ui.Context, query string, slot, total int, highlighted bool) (ui.Element, bool) {
 	sc := m3.Of(c).Scheme
 	row := ui.ButtonBase(c.Key("suggestion-" + query))
 	row.Height(m3.MinTarget).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).
-		Cursor(ui.CursorPointer).Label(query).
+		Cursor(ui.CursorPointer).Label(query).Role(ui.RoleOption).AccessSelected(highlighted).PositionInSet(slot, total).
 		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), highlighted || row.FocusVisible()))
 	row.Children(func() {
 		ui.Icon(c, m3.IconSearch).FontSize(20).TextColor(sc.OnSurfaceVariant)
 		m3.Text(c, m3.BodyLarge, query).Grow(1).MinWidth(0).SingleLine().TextColor(sc.OnSurface)
 	})
-	return row.Clicked()
+	return row, row.Clicked()
 }
 
 // suggestionItem is one item of the panel under the search bar: what YouTube
 // Music already matches the text being typed with, filled as focused while
-// the arrow keys are on it. It reports a click, which opens what it names; a
-// right click offers the menu the item offers wherever else it appears, as a
-// song row or a card does.
-func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, position int, highlighted bool) bool {
+// the arrow keys are on it. position keys the row in the panel, slot places it
+// among the panel's total options. It reports a click, which opens what it
+// names; a right click offers the menu the item offers wherever else it
+// appears, as a song row or a card does.
+func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, position, slot, total int, highlighted bool) (ui.Element, bool) {
 	sc := m3.Of(c).Scheme
 	key := suggestionKey(position)
 	row := ui.ButtonBase(c.Key(key))
 	row.Height(56).Padding(8, 8).Gap(12).Radius(m3.Medium).AlignItems(ui.Center).
-		Cursor(ui.CursorPointer).Label(item.Title).
+		Cursor(ui.CursorPointer).Label(item.Title).Role(ui.RoleOption).AccessSelected(highlighted).PositionInSet(slot, total).
 		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), highlighted || row.FocusVisible()))
 	var menuAnchor ui.Element
 	hasAnchor := false
@@ -343,7 +360,7 @@ func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, position int
 		}
 		a.cardMenu(c, anchor, key, item, nil)
 	}
-	return row.Clicked()
+	return row, row.Clicked()
 }
 
 // openSuggestion closes the panel under the search bar and opens an item

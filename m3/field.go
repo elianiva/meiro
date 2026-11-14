@@ -13,6 +13,10 @@ type SearchSpec struct {
 	// Focus binds the field to a handle, so that Focus on it moves the
 	// keyboard to the field, waiting while the bar is hidden.
 	Focus *ui.Handle
+	// Field, when set, receives the text field, so that the caller can give
+	// it what assistive technology reads of the panel below: the kind of
+	// completion, and the option the arrows are on.
+	Field *ui.Element
 	// Height is 56 by default, the Material search bar; 48 suits a toolbar.
 	Height float32
 	// MaxWidth keeps a wide bar from stretching across the window.
@@ -105,6 +109,9 @@ func SearchBar(c *ui.Context, spec SearchSpec) (SearchResult, ui.Element) {
 			Grow(1).MinWidth(0).FontSize(16).TextColor(sc.OnSurface).Padding(0, spec.TrailingPadding, 0, 0).FocusRing(false)
 		if spec.Focus != nil {
 			input.Bind(spec.Focus)
+		}
+		if spec.Field != nil {
+			*spec.Field = input
 		}
 		if input.Submitted() {
 			result.Submitted = true

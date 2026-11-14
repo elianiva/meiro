@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **A card's cover flies into the page it opens.** Opening an album, playlist, artist or show from a card, or from the card's menu, carries its artwork across the window into the page's larger picture, growing and turning into the corner it takes there, instead of the page arriving with the cover already in place.
+- **A new track fades in.** The player's title, artist and cover crossfade to the next song instead of cutting. A cover stays on screen while the next one loads, so the player never flashes a placeholder between tracks.
+- **The search suggestions read as a list.** Screen readers announce the panel as a list of options, say which one the arrow keys are on, and hear that the search field completes what is typed.
+
+### Fixed
+
+- **Downloads keep their speed in the background.** Hiding Meiro in the menu bar while songs download no longer lets macOS slow the work: Meiro holds the app at full speed until the last queued track finishes.
 
 ## [0.7.0] - 2026-11-13
 

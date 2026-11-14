@@ -1340,6 +1340,53 @@ func TestAnAlbumCoverFliesFromItsCard(t *testing.T) {
 	}
 }
 
+// The suggestions under the search bar read as a list of options, and the
+// option the arrows are on is the field's active descendant.
+func TestSearchSuggestionsReadAsAList(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if err := tt.Click(searchPlaceholder); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("yor")
+	tt.Frame()
+
+	field, ok := tt.Access(searchPlaceholder)
+	if !ok || field.AutoComplete != ui.AutoCompleteList {
+		t.Fatalf("the search field completes with %v, found %v: %q", field.AutoComplete, ok, tt.Texts())
+	}
+	if _, ok := tt.AccessByRole(ui.RoleListBox, "Search suggestions"); !ok {
+		t.Fatalf("the suggestions are not a list: %q", tt.Texts())
+	}
+	first, ok := tt.AccessByRole(ui.RoleOption, "Yorushika")
+	if !ok {
+		t.Fatalf("the first suggestion is not an option: %q", tt.Texts())
+	}
+	if first.PosInSet != 1 || first.SetSize != 4 {
+		t.Fatalf("the first suggestion is %d of %d, want 1 of 4", first.PosInSet, first.SetSize)
+	}
+	if first.Focused {
+		t.Fatal("an option is focused before the arrows move")
+	}
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	first, _ = tt.AccessByRole(ui.RoleOption, "Yorushika")
+	if !first.Focused {
+		t.Fatalf("the first option is not the active descendant after Down: %+v", first)
+	}
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	second, ok := tt.AccessByRole(ui.RoleOption, "Yorushika songs")
+	if !ok || !second.Focused || second.PosInSet != 2 {
+		t.Fatalf("the second option is %+v after another Down", second)
+	}
+	if first, _ := tt.AccessByRole(ui.RoleOption, "Yorushika"); first.Focused {
+		t.Fatal("the first option stayed active after the arrows moved")
+	}
+}
+
 func TestSettingsPersistAcrossRestarts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp(t)

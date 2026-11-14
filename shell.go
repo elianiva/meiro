@@ -296,9 +296,9 @@ func (a *app) topBar(c *ui.Context) {
 			}
 			return
 		}
-		var bar ui.Element
-		a.hinted(c, func() { bar = a.searchBar(c) }, keymap.Search).Width(520).Shrink(1).MinWidth(0)
-		a.searchSuggestions(c, bar)
+		var bar, field ui.Element
+		a.hinted(c, func() { bar, field = a.searchBar(c) }, keymap.Search).Width(520).Shrink(1).MinWidth(0)
+		a.searchSuggestions(c, bar, field)
 		a.accountButton(c)
 	})
 }

@@ -58,6 +58,37 @@ func audioFiles(t *testing.T, dir string) []string {
 	return names
 }
 
+// A download holds the app at full speed while it runs, once for the whole
+// queue, and lets go when the last track is done.
+func TestDownloadsKeepTheAppRunning(t *testing.T) {
+	mediaURL := downloadTone(t)
+	a, r := playbackApp(t)
+	a.openDownloads(filepath.Join(t.TempDir(), "Downloads"))
+	r.url = func(string, int) (string, error) { return mediaURL, nil }
+	held, released := 0, 0
+	a.keepRunning = func(reason string) func() {
+		held++
+		if reason != "Downloading songs" {
+			t.Errorf("the app was kept running for %q", reason)
+		}
+		return func() { released++ }
+	}
+
+	a.queueDownloads([]youtube.MusicItem{
+		{VideoID: "dl-one", Title: "Download One", Kind: youtube.KindTrack},
+		{VideoID: "dl-two", Title: "Download Two", Kind: youtube.KindTrack},
+	}, true)
+	if held != 1 || released != 1 {
+		t.Fatalf("two downloads held the app %d times and let go %d times, want once each", held, released)
+	}
+	if a.downloading("dl-one") || a.downloading("dl-two") {
+		t.Fatal("the downloads did not finish")
+	}
+	if a.downloads.release != nil {
+		t.Fatal("the power hold stayed after the queue drained")
+	}
+}
+
 // An album downloaded from its page opens, lists and plays with no network,
 // and removing the download deletes its audio.
 func TestADownloadedAlbumPlaysOffline(t *testing.T) {

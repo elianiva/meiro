@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -341,6 +342,37 @@ func artRadius(item youtube.MusicItem, square float32) float32 {
 // corners. The picture is asked for at pixels across; MyGo rounds it as drawn.
 func (a *app) art(c *ui.Context, url string, pixels int, size, radius float32, overlays ...func()) ui.Element {
 	return m3.Art(c, a.thumbs.Bitmap(url, a.artPixels(pixels, size)), size, radius, overlays...)
+}
+
+// coverGrace is how long a player surface keeps the cover of the track before
+// while the next one loads, before it falls back to the placeholder.
+const coverGrace = 2 * time.Second
+
+// coverState is the cover a player surface shows: the last picture it had,
+// kept while the next one loads, so a track change crossfades from it.
+type coverState struct {
+	art    *ui.Bitmap
+	forURL string
+	at     time.Time
+}
+
+// playerArtwork shows the artwork of the track playing at size, on a player
+// surface that keeps st. While the next picture loads, the surface keeps the
+// one before it, so the change fades rather than flashing a placeholder.
+func (a *app) playerArtwork(st *coverState, c *ui.Context, url string, pixels int, size, radius float32, overlays ...func()) ui.Element {
+	if url == "" {
+		*st = coverState{}
+		return m3.Art(c, nil, size, radius, overlays...)
+	}
+	if st.forURL != url {
+		st.forURL, st.at = url, c.Now()
+	}
+	if art := a.thumbs.Bitmap(url, a.artPixels(pixels, size)); art != nil {
+		st.art = art
+	} else if st.art != nil && c.Now().Sub(st.at) > coverGrace {
+		st.art = nil
+	}
+	return m3.Art(c, st.art, size, radius, overlays...)
 }
 
 // avatar is a person's picture on a disc of size points, rounded like art.

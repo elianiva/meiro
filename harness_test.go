@@ -353,6 +353,8 @@ func newTestApp(t testing.TB) *app {
 	a.player = player.New(options...)
 	a.player.SetVolume(a.volume / 100)
 	a.run = func(work func()) { work() }
+	// MyGo's power service needs its event loop, which a tester does not run.
+	a.keepRunning = func(string) func() { return func() {} }
 	// Delayed work runs at once, so a frame sees the suggestion request's
 	// answer without waiting.
 	a.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }

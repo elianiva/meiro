@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"math"
 	"net/http"
@@ -1999,4 +2003,88 @@ func TestClickingThePlayingQueueRowTogglesPlayback(t *testing.T) {
 		t.Fatal(err)
 	}
 	pollUntil(t, a, "b to play", func() bool { return a.current.VideoID == "b" && a.player.Playing() })
+}
+
+// twoCovers answers a solid red picture for a red cover and a solid blue one
+// for a blue cover, so a crossfade between them shows both at once.
+type twoCovers struct{}
+
+func (twoCovers) RoundTrip(request *http.Request) (*http.Response, error) {
+	fill := color.RGBA{R: 220, A: 255}
+	if strings.HasSuffix(request.URL.Path, "blue") {
+		fill = color.RGBA{B: 220, A: 255}
+	}
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = fill.R, fill.G, fill.B, fill.A
+	}
+	var body bytes.Buffer
+	if err := png.Encode(&body, img); err != nil {
+		return nil, err
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"image/png"}},
+		Body:       io.NopCloser(&body),
+		Request:    request,
+	}, nil
+}
+
+// The player's cover crossfades from one track to the next, rather than cutting
+// or flashing the placeholder while the new picture loads.
+func TestThePlayerCoverCrossfadesBetweenTracks(t *testing.T) {
+	a := newTestApp(t)
+	a.thumbs.Close()
+	a.thumbs = artwork.New(&http.Client{Transport: twoCovers{}}, func() {})
+	t.Cleanup(a.thumbs.Close)
+	red, blue := "https://img.test/red", "https://img.test/blue"
+	a.queue.restore(playstate.State{Items: []youtube.MusicItem{
+		{VideoID: "fade-a", Title: "Fade A", Thumbnail: red, Kind: youtube.KindTrack},
+		{VideoID: "fade-b", Title: "Fade B", Thumbnail: blue, Kind: youtube.KindTrack},
+	}, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1000, 700)
+	for range 20 {
+		tt.Frame()
+	}
+	info, ok := tt.Access("Open the player")
+	if !ok {
+		t.Fatalf("no player bar: %q", tt.Texts())
+	}
+	pixel := func() color.RGBA {
+		return tt.Image().RGBAAt(int(info.Bounds.X+30), int(info.Bounds.Y+info.Bounds.H/2))
+	}
+	if c := pixel(); c.R < 200 || c.B > 20 {
+		t.Fatalf("the first cover is %v, want red", c)
+	}
+	// The next cover is already in the cache, as one on a queue row would be.
+	for range 20 {
+		a.thumbs.Bitmap(blue, 160)
+		tt.Frame()
+	}
+	if a.thumbs.Bitmap(blue, 160) == nil {
+		t.Fatal("the next cover did not load")
+	}
+	if err := tt.Click("Next"); err != nil {
+		t.Fatal(err)
+	}
+	faded := false
+	for range 20 {
+		tt.Advance(25 * time.Millisecond)
+		tt.Frame()
+		if c := pixel(); c.R > 20 && c.B > 20 {
+			faded = true // both pictures show at once
+		}
+	}
+	if !faded {
+		t.Fatal("the cover cut to the next track instead of fading")
+	}
+	tt.Advance(time.Second)
+	for range 5 {
+		tt.Frame()
+	}
+	if c := pixel(); c.R > 20 || c.B < 200 {
+		t.Fatalf("the next cover is %v, want blue", c)
+	}
 }

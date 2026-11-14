@@ -33,6 +33,9 @@ type downloads struct {
 	queue  []pendingSong
 	active pendingSong
 	job    task
+	// release lets the app run at full speed again once the queue drains.
+	// It is set while a download is queued or running, and nil otherwise.
+	release func()
 	// version counts the changes to the library, so the Downloads page
 	// knows when to read it again.
 	version int
@@ -203,15 +206,34 @@ func (a *app) queueDownloads(items []youtube.MusicItem, single bool) {
 	a.nextDownload()
 }
 
+// holdDownloadPower keeps the app at full speed while a download is queued or
+// running, even with no window shown: macOS would otherwise slow a hidden
+// app's downloads through App Nap. It lets go when the queue drains.
+func (a *app) holdDownloadPower() {
+	d := &a.downloads
+	running := d.job.busy() || d.active.item.VideoID != "" || len(d.queue) > 0
+	switch {
+	case running && d.release == nil:
+		d.release = a.keepRunning("Downloading songs")
+	case !running && d.release != nil:
+		d.release()
+		d.release = nil
+	}
+}
+
 // nextDownload starts the download of the track first in the queue, unless
 // one is under way.
 func (a *app) nextDownload() {
 	d := &a.downloads
 	if d.job.busy() || len(d.queue) == 0 {
+		a.holdDownloadPower()
 		return
 	}
 	d.active = d.queue[0]
 	d.queue = slices.Delete(d.queue, 0, 1)
+	// The hold starts before the work does: a download that finishes at once,
+	// as a test's does, must still hold it while it runs.
+	a.holdDownloadPower()
 	item, dir, streams := d.active.item, d.dir, a.streams
 	startTask(a, &d.job, downloadTimeout, func(ctx context.Context) (string, error) {
 		url, _, err := streams.Get(ctx, item.VideoID)
@@ -253,6 +275,7 @@ func (a *app) removeDownload(videoID string) {
 		a.deleteDownloadFiles([]string{file})
 		a.saveDownloads()
 	}
+	a.nextDownload()
 }
 
 // removeCollectionDownload deletes a downloaded album or playlist, with the
@@ -276,6 +299,7 @@ func (a *app) removeCollectionDownload(id string) {
 	}
 	a.deleteDownloadFiles(files)
 	a.saveDownloads()
+	a.nextDownload()
 }
 
 // collectionDownload says how much of a collection's tracks are downloaded,
