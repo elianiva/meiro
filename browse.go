@@ -43,7 +43,7 @@ func (a *app) pageList(c *ui.Context) {
 			return ""
 		}
 		if r := rows[i]; r.kind == rowTrack {
-			return r.item.Title
+			return r.title
 		}
 		return rows[i].title
 	}
@@ -77,7 +77,9 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 	case rowHero:
 		a.hero(c)
 	case rowTopResult:
-		a.topResult(c, r.item)
+		if len(r.items) > 0 {
+			a.topResult(c, r.items[0])
+		}
 	case rowHeading:
 		next := i+1 < len(rows) && (rows[i+1].kind == rowCards || rows[i+1].kind == rowColumns)
 		if r.shelf == "playlist-sort-header" {
@@ -104,7 +106,9 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 		if queue == nil {
 			queue = a.page.playable
 		}
-		a.songRow(c, r.item, queue, songOptions{number: r.number(), list: r.shelf, position: r.position, track: r.track, inset: true, calls: r.calls, callsSet: true})
+		if item, ok := r.trackItem(queue); ok {
+			a.songRow(c, item, queue, songOptions{number: r.number(), list: r.shelf, position: r.position, track: r.track, inset: true, calls: r.calls, callsSet: true})
+		}
 	case rowSimilar:
 		sc := m3.Of(c).Scheme
 		ui.Column(c).Padding(24, pageGutter, 4, pageGutter).Children(func() {
@@ -365,10 +369,39 @@ func artRadius(item youtube.MusicItem, square float32) float32 {
 	return square
 }
 
+// artKey names a picture at one size, as the frame's artwork memo knows it.
+type artKey struct {
+	url    string
+	pixels int
+}
+
+// artBitmap returns the picture at url at pixels across, asking the artwork
+// cache once for each in a frame: the player and a row can show the same
+// cover, and a shelf can show a picture more than once.
+func (a *app) artBitmap(url string, pixels int) *ui.Bitmap {
+	if url == "" {
+		return nil
+	}
+	key := artKey{url, pixels}
+	if art, ok := a.artMemo[key]; ok {
+		return art
+	}
+	art := a.thumbs.Bitmap(url, pixels)
+	if a.artMemo == nil {
+		a.artMemo = make(map[artKey]*ui.Bitmap, 32)
+	}
+	a.artMemo[key] = art
+	return art
+}
+
+// beginArtFrame clears the artwork the last build asked for, so it is asked
+// again only as this one draws.
+func (a *app) beginArtFrame() { clear(a.artMemo) }
+
 // art shows the artwork at url in a square of size points with rounded
 // corners. The picture is asked for at pixels across; MyGo rounds it as drawn.
 func (a *app) art(c *ui.Context, url string, pixels int, size, radius float32, overlays ...func()) ui.Element {
-	return m3.Art(c, a.thumbs.Bitmap(url, a.artPixels(pixels, size)), size, radius, overlays...)
+	return m3.Art(c, a.artBitmap(url, a.artPixels(pixels, size)), size, radius, overlays...)
 }
 
 // coverGrace is how long a player surface keeps the cover of the track before
@@ -394,7 +427,7 @@ func (a *app) playerArtwork(st *coverState, c *ui.Context, url string, pixels in
 	if st.forURL != url {
 		st.forURL, st.at = url, c.Now()
 	}
-	if art := a.thumbs.Bitmap(url, a.artPixels(pixels, size)); art != nil {
+	if art := a.artBitmap(url, a.artPixels(pixels, size)); art != nil {
 		st.art = art
 	} else if st.art != nil && c.Now().Sub(st.at) > coverGrace {
 		st.art = nil

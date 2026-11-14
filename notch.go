@@ -194,6 +194,7 @@ func (a *app) setNotchExpanded(open bool) {
 }
 
 func (a *app) notchView(c *ui.Context) {
+	a.beginArtFrame()
 	c.Root().Background(ui.Transparent)
 	if a.current.VideoID == "" || !a.notchEnabled() {
 		return

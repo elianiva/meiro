@@ -169,6 +169,9 @@ type app struct {
 	// the player asks for every frame.
 	bylineFor   bylineKey
 	bylineParts []youtube.BylinePart
+	// artMemo is this frame's artwork lookups, so a picture shown twice in a
+	// frame asks the cache once. A build clears it before drawing.
+	artMemo map[artKey]*ui.Bitmap
 
 	// Dialogs.
 	crash          *crashState

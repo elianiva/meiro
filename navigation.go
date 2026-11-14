@@ -53,6 +53,11 @@ type pageState struct {
 	similar      []youtube.MusicItem
 	similarShown int
 	similarMore  string
+	// shape is the hash of sections the rows were last keyed by, and shaped
+	// says it is current. A page computes it after a change, not every
+	// frame: folding every section of a long page costs its length.
+	shape  uint64
+	shaped bool
 }
 
 // pageData is everything the app holds for a page: what it loaded, its
@@ -143,7 +148,7 @@ func (a *app) onNavigate() {
 	a.pageLoad.stop()
 	a.pageMore.stop()
 	a.nowPlaying.open, a.nowPlaying.closing = false, false
-	a.nowPlaying.navigateTo = nil
+	a.nowPlaying.navigateToSet = false
 	// A pull to refresh belongs to the visit of the page it pulls.
 	a.pull = pullState{}
 	location := a.router.Location()

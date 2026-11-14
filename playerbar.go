@@ -123,10 +123,10 @@ func (a *app) muteButton(c *ui.Context) ui.Element {
 // volumeSlider is the volume setting, horizontal in the player bar and
 // vertical in the narrow bar's hover panel.
 func (a *app) volumeSlider(c *ui.Context, vertical bool) ui.Element {
-	v := a.volume
-	slider := m3.Slider(c, &v, 0, 100, m3.SliderSpec{Label: "Volume", Key: "volume", Vertical: vertical})
+	a.nowPlaying.volumeDraft = a.volume
+	slider := m3.Slider(c, &a.nowPlaying.volumeDraft, 0, 100, m3.SliderSpec{Label: "Volume", Key: "volume", Vertical: vertical})
 	if slider.Changed() {
-		a.setVolume(v)
+		a.setVolume(a.nowPlaying.volumeDraft)
 	}
 	// Save after a pointer drag, or after each keyboard edit.
 	switch {
@@ -347,7 +347,8 @@ func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.E
 // its closing animation before navigating; the bar opens the page directly.
 func (a *app) openPlayerLink(part youtube.BylinePart) {
 	if a.nowPlaying.open {
-		a.nowPlaying.navigateTo = &part
+		a.nowPlaying.navigateTo = part
+		a.nowPlaying.navigateToSet = true
 		a.nowPlaying.closing = true
 		return
 	}

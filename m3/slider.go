@@ -71,14 +71,18 @@ type SliderSpec struct {
 // part around a slim handle, which narrows as it is held. It reports changes
 // and presses through the returned element.
 func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.Element {
-	sc := Of(c).Scheme
+	// The scheme is read through the theme's pointer, not copied into the draw
+	// closure, which would put a whole scheme on the heap every frame.
+	sc := &Of(c).Scheme
 	thick := spec.Thickness
 	if thick == 0 {
 		thick = 4
 	}
 	key := spec.Key
 	if key == nil {
-		key = "slider-" + spec.Label
+		// The label is unique among the controls of a row, and a key of its
+		// own: building "slider-" + label here would allocate every frame.
+		key = spec.Label
 	}
 	const pad float32 = 10
 	handleH := max(thick+16, 24)

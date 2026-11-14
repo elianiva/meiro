@@ -37,8 +37,10 @@ type nowPlayingState struct {
 	// closing is set while the player sinks away, before open is cleared.
 	closing bool
 	// navigateTo is a metadata destination waiting for the close animation.
-	navigateTo *youtube.BylinePart
-	tab        panelTab
+	navigateTo    youtube.BylinePart
+	navigateToSet bool
+	tab           panelTab
+	tabDraft      int
 	// playerShown says the player has been built, so its rise starts on its
 	// first frame only.
 	playerShown bool
@@ -49,15 +51,21 @@ type nowPlayingState struct {
 	queueSelectionAnchor int
 	queueSelectionCursor int
 	// queueFollow is the track the queue's list last scrolled to.
-	queueFollow  string
-	cover        coverState
-	volumeHeld   bool
-	volumePopup  bool
-	lyrics       lyricsState
-	lyricsScroll ui.ScrollState
-	details      detailsState
-	related      relatedState
-	relatedList  ui.ListState
+	queueFollow string
+	// queueViews keeps the strings of the queue rows drawn lately, so a
+	// frame reads them while the same rows stay in view. It is bounded, and
+	// starts over when it fills.
+	queueViews    map[queueCallKey]queueRowView
+	cover         coverState
+	volumeDraft   float64
+	volumeHeld    bool
+	volumePopup   bool
+	lyrics        lyricsState
+	lyricsScroll  ui.ScrollState
+	details       detailsState
+	related       relatedState
+	relatedList   ui.ListState
+	autoPlayDraft bool
 	// miniOpen is whether the tray's mini player shows. Its side panel then
 	// loads what its tab shows, as the full-screen player's does.
 	miniOpen bool
@@ -91,7 +99,7 @@ type detailsState struct {
 
 // openPlayer opens the full-screen player on a tab.
 func (a *app) openPlayer(tab panelTab, queueOnly bool) {
-	a.nowPlaying.navigateTo = nil
+	a.nowPlaying.navigateToSet = false
 	a.nowPlaying.open, a.nowPlaying.closing = true, false
 	a.nowPlaying.tab, a.nowPlaying.queueOnly = tab, queueOnly
 	a.loadPanel()
@@ -210,8 +218,9 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	// the player when its slide reaches the end.
 	if a.nowPlaying.closing && lift >= riseDistance-0.5 {
 		a.nowPlaying.open, a.nowPlaying.closing = false, false
-		if part := a.nowPlaying.navigateTo; part != nil {
-			a.nowPlaying.navigateTo = nil
+		if a.nowPlaying.navigateToSet {
+			part := a.nowPlaying.navigateTo
+			a.nowPlaying.navigateToSet = false
 			a.openTarget(part.Target(), detail{title: part.Text})
 		}
 		return
@@ -340,8 +349,9 @@ func (a *app) sidePanel(c *ui.Context, wide, compactQueue bool) {
 
 func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 	sc := m3.Of(c).Scheme
-	selectedTab := int(a.nowPlaying.tab)
-	group := ui.TabsBase(c.Key("np-tabs"), &selectedTab, len(panelTabs))
+	a.nowPlaying.tabDraft = int(a.nowPlaying.tab)
+	selectedTab := &a.nowPlaying.tabDraft
+	group := ui.TabsBase(c.Key("np-tabs"), selectedTab, len(panelTabs))
 	tabs := group.List
 	if compact {
 		tabs.Padding(4, 8, 0)
@@ -353,7 +363,7 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 	tabs.Gap(4).Children(func() {
 		for i, t := range panelTabs {
 			button := group.Tab(i)
-			selected := selectedTab == i
+			selected := *selectedTab == i
 			container, content := ui.Transparent, sc.OnSurfaceVariant
 			if selected {
 				container, content = sc.SecondaryContainer, sc.OnSecondaryContainer
@@ -387,7 +397,7 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 		}
 	})
 	if tabs.Changed() {
-		a.nowPlaying.tab = panelTabs[selectedTab].tab
+		a.nowPlaying.tab = panelTabs[*selectedTab].tab
 		a.loadPanel()
 	}
 }
@@ -451,7 +461,9 @@ func (a *app) selectQueueRow(index int, mods ui.Modifiers) {
 
 // queueView lists the tracks of the queue, with the current one picked out.
 func (a *app) queueView(c *ui.Context, compact bool) {
-	sc := m3.Of(c).Scheme
+	// The scheme is read through the theme's pointer, not copied into a
+	// closure that outlives the build.
+	sc := &m3.Of(c).Scheme
 	q := &a.queue
 	// One rhythm down the panel: the source, the switch and the count sit the
 	// same distance apart, measured to their text, and the list follows at
@@ -477,13 +489,14 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 					m3.Text(c, m3.BodySmall, "Add similar music when this queue ends.").TextColor(sc.OnSurfaceVariant).SingleLine()
 				}
 			})
-			on := a.settings.AutoPlay
+			a.nowPlaying.autoPlayDraft = a.settings.AutoPlay
+			on := &a.nowPlaying.autoPlayDraft
 			switchControl := m3.Switch
 			if compact {
 				switchControl = m3.CompactSwitch
 			}
-			if switchControl(c, &on, "Toggle auto-play").Changed() {
-				a.setAutoPlay(on)
+			if switchControl(c, on, "Toggle auto-play").Changed() {
+				a.setAutoPlay(*on)
 			}
 		})
 		if a.upNext.err != "" {
@@ -558,7 +571,10 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 			})
 			return
 		}
-		a.songRow(c, q.at(index), q.items, songOptions{directQueue: true, source: q.source, list: "queue", position: index, compact: compact})
+		o := songOptions{directQueue: true, source: q.source, list: "queue", position: index, row: row, compact: compact}
+		o.calls, o.rowKey = a.queueRowCalls(q.at(index), o, row)
+		o.callsSet = true
+		a.songRow(c, q.at(index), q.items, o)
 	}).Grow(1).Padding(0, 8, listBottomPadding).FocusRing(false)
 	if index, ok := q.trackAt(a.nowPlaying.queueSelectionCursor); ok {
 		if view.Submitted() {
