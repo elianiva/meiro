@@ -8,6 +8,15 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
+// rowActionGap is the gap between a row's action buttons and its length. A 40
+// DIP icon button draws a 20 DIP icon, so its box leaves 10 DIP on each side;
+// a gap one DIP under that lands the drawn glyphs as far from the digits as
+// the menu button's dots sit on the other side.
+const rowActionGap float32 = 9
+
+// rowEdgeGap is the gap between the length and the row's menu button.
+const rowEdgeGap float32 = 4
+
 // songOptions shape a row of a song.
 type songOptions struct {
 	// number shows a place in the list where the artwork would be.
@@ -165,7 +174,10 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	}
 	row := ui.Row(c.Key(key))
 	// Clipping keeps a swiped row's content within the row as it slides.
-	row.Height(height).Shrink(0).Padding(padding, 8).Gap(4).AlignItems(ui.Center).Radius(radius).Clip()
+	// The menu button keeps the same distance from the row's content as the
+	// buttons inside it keep from the length (rowActionGap), and their 40 DIP
+	// boxes leave the same 10 DIP around each 20 DIP icon.
+	row.Height(height).Shrink(0).Padding(padding, 8).Gap(rowEdgeGap).AlignItems(ui.Center).Radius(radius).Clip()
 	if o.inset {
 		row.Margin(0, pageGutter-8)
 	}
@@ -173,7 +185,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	if playing {
 		container = sc.SecondaryContainer
 	}
-	var main, menuButton, menuAnchor, queueButton ui.Element
+	var main, menuButton, menuAnchor, queueButton, playNextButton, actions ui.Element
 	hasAnchor := false
 	row.Children(func() {
 		main = ui.ButtonBase(c.Key(key)).FocusRing(false)
@@ -248,32 +260,44 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			if isSong && o.list != "queue" && a.isDownloaded(item.VideoID) {
 				ui.Icon(c, m3.IconDownloadDone).FontSize(18).TextColor(subColour).Label("Downloaded")
 			}
-			// The button shows under the pointer only: the row's menu offers
-			// the same actions to the keyboard, and a button that Tab reached
-			// while it was hidden would ring nothing. Its slot keeps its
-			// width, so nothing beside it moves as the pointer comes. The
-			// queue puts it after the length, against the digits.
-			action := func() {
-				if isSong && !o.compact && !playingQueueRow {
-					ui.Row(c).Width(40).Shrink(0).Children(func() {
-						if hovered {
-							queueButton = a.queueRowButton(c, calls, o.list == "queue", item)
-						}
-					})
-				}
-			}
-			if o.list != "queue" {
-				action()
-			}
+			buttons := isSong && !o.compact && !playingQueueRow
 			switch {
-			case item.Duration != "":
-				m3.Text(c, m3.BodyMedium, item.Duration).SingleLine().Width(48).TextAlign(ui.End).
-					TextColor(subColour).Shrink(0).FontFeatures("tnum")
+			case item.Duration != "" || buttons:
+				// The length sits between the row's actions and the menu, the
+				// same distance from each: the gap here and the row's own
+				// gap, with a 40 DIP button's 10 DIP of padding on both
+				// sides.
+				ui.Row(c).Shrink(0).Gap(rowActionGap).AlignItems(ui.Center).Children(func() {
+					// The buttons show under the pointer only: the row's menu
+					// offers the same actions to the keyboard, and a button
+					// that Tab reached while it was hidden would ring
+					// nothing. Their slots keep their width, so nothing
+					// beside them moves as the pointer comes. A queue row has
+					// the cross only; a list row adds a song next, beside the
+					// button that adds it to the end.
+					if buttons {
+						actions = ui.Row(c).Shrink(0).Gap(-5).Children(func() {
+							if o.list != "queue" {
+								ui.Row(c).Width(40).Shrink(0).Children(func() {
+									if hovered {
+										playNextButton = a.playNextRowButton(c, calls, item)
+									}
+								})
+							}
+							ui.Row(c).Width(40).Shrink(0).Children(func() {
+								if hovered {
+									queueButton = a.queueRowButton(c, calls, o.list == "queue", item)
+								}
+							})
+						})
+					}
+					if item.Duration != "" {
+						m3.Text(c, m3.BodyMedium, item.Duration).SingleLine().
+							TextColor(subColour).Shrink(0).FontFeatures("tnum")
+					}
+				})
 			case !isSong:
 				ui.Icon(c, m3.IconChevronRight).FontSize(24).TextColor(sc.OnSurfaceVariant)
-			}
-			if o.list == "queue" {
-				action()
 			}
 			// A menu the pointer opened points at the pointer; one the menu
 			// button opened points at the button.
@@ -287,7 +311,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		}
 		menuButton = m3.IconButton(c, m3.IconButtonSpec{
 			Icon: m3.IconMore, Label: calls.menuLabel, Key: calls.menu,
-			Container: menuContainer,
+			Container: menuContainer, Size: m3.Small40,
 		})
 		if !main.FocusVisible() && !menuButton.FocusVisible() && !a.menu.opened(key) && !hovered {
 			menuButton.Opacity(0).PassThrough()
@@ -296,7 +320,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	// A song row swipes sideways with Shift held: a row of a list adds its
 	// track to the queue, and a row of the queue takes it out.
 	if isSong && !o.compact && !playingQueueRow {
-		a.swipeRow(c, row, main, menuButton, queueButton, swipeRowOptions{key: key, remove: o.list == "queue", padding: 8, radius: radius}, func() { a.queueRowAction(item, o) })
+		a.swipeRow(c, row, main, menuButton, actions, swipeRowOptions{key: key, remove: o.list == "queue", padding: 8, radius: radius}, func() { a.queueRowAction(item, o) })
 	}
 	pointer := main.RightClicked() || menuButton.RightClicked()
 	if menuButton.Clicked() || pointer || main.Shortcut(ui.Shift, ui.KeyF10) {
@@ -314,6 +338,10 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			// offers what that card's menu does.
 			a.cardMenu(c, anchor, key, item, queue)
 		}
+	}
+	if playNextButton.Clicked() {
+		a.enqueue(item, true)
+		return
 	}
 	if queueButton.Clicked() {
 		a.queueRowAction(item, o)
@@ -359,6 +387,16 @@ func (a *app) queueRowAction(item youtube.MusicItem, o songOptions) {
 		return
 	}
 	a.enqueue(item, false)
+}
+
+// playNextRowButton is the button a list row shows under the pointer beside
+// the one that adds the track to the queue: it queues the track to play after
+// the one playing.
+func (a *app) playNextRowButton(c *ui.Context, calls rowCalls, item youtube.MusicItem) ui.Element {
+	return m3.IconButton(c, m3.IconButtonSpec{
+		Icon: m3.IconNext, Label: "Play " + item.Title + " next", Key: calls.key + "-play-next",
+		Size: m3.Small40,
+	})
 }
 
 // queueRowButton is the button a row shows under the pointer: it adds the

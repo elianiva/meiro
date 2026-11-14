@@ -1450,8 +1450,18 @@ func TestAQueueRowShowsItsActionsUnderThePointer(t *testing.T) {
 	if !ok {
 		t.Fatalf("no cross: %q", tt.Texts())
 	}
-	if cross.X < length.X+length.W {
-		t.Errorf("the cross starts at %.0f, inside the length that ends at %.0f", cross.X, length.X+length.W)
+	if cross.X+cross.W > length.X {
+		t.Errorf("the cross ends at %.0f, inside the length that starts at %.0f", cross.X+cross.W, length.X)
+	}
+	if gap := length.X - (cross.X + cross.W); gap > 24 {
+		t.Errorf("the cross sits %.0f from the length, too far to read as part of it", gap)
+	}
+	menu, ok := tt.Find("More options for Track b")
+	if !ok {
+		t.Fatalf("no menu button: %q", tt.Texts())
+	}
+	if !(cross.X < length.X && length.X < menu.X) {
+		t.Errorf("the row reads cross at %.0f, length at %.0f, menu at %.0f", cross.X, length.X, menu.X)
 	}
 	if err := tt.Click("More options for Track b"); err != nil {
 		t.Fatal(err)
@@ -1461,6 +1471,82 @@ func TestAQueueRowShowsItsActionsUnderThePointer(t *testing.T) {
 		t.Errorf("the menu button did not open the row's menu: open %v, %q", a.menu.open, tt.Texts())
 	}
 	a.menu.close()
+}
+
+// A music list row offers to play a song next, beside the button that adds it
+// to the end of the queue, and the song goes directly after the track playing.
+func TestAMusicListRowPlaysASongNext(t *testing.T) {
+	a, _ := playbackApp(t)
+	q := tracks("a", "b")
+	a.play(q[0], q)
+	a.router.Push("/playlist/VLPL_metadata")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+
+	row, ok := tt.Find("Linked Track")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	if !tt.HasText("Add Linked Track to queue") || !tt.HasText("Play Linked Track next") {
+		t.Fatalf("the row's hover buttons are missing: %q", tt.Texts())
+	}
+	if err := tt.Click("Play Linked Track next"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "linked-track", "b"}) {
+		t.Fatalf("after Play next: %v", got)
+	}
+	if a.current.VideoID != "a" || a.queue.index != 0 {
+		t.Errorf("Play next changed the track playing: %q at %d", a.current.VideoID, a.queue.index)
+	}
+}
+
+// A row's menu button shows under the pointer in a music list, as it does in
+// the queue, where it appears beside the cross.
+func TestAMenuButtonShowsOnHoverInEveryList(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/playlist/VLPL_metadata")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	row, ok := tt.Find("Linked Track")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	if err := tt.Click("More options for Linked Track"); err != nil {
+		t.Fatalf("the music list's menu button is not under the pointer: %v", err)
+	}
+	tt.Frame()
+	if !a.menu.open {
+		t.Error("the music list's menu button did not open the menu")
+	}
+	a.menu.close()
+	tt.Frame()
+
+	b, _ := playbackApp(t)
+	q := tracks("a", "b", "c")
+	b.play(q[0], q)
+	b.nowPlaying.open, b.nowPlaying.queueOnly, b.nowPlaying.playerShown = true, true, true
+	qt := ui.NewTester(b.nowPlayingView, 1000, 700)
+	qt.Frame()
+	row, ok = qt.Find("Track b")
+	if !ok {
+		t.Fatalf("no queue row: %q", qt.Texts())
+	}
+	qt.Move(row.X+row.W/2, row.Y+row.H/2)
+	qt.Frame()
+	if err := qt.Click("More options for Track b"); err != nil {
+		t.Fatalf("the queue's menu button is not under the pointer: %v", err)
+	}
+	qt.Frame()
+	if !b.menu.open {
+		t.Error("the queue's menu button did not open the menu")
+	}
+	b.menu.close()
 }
 
 // A downloaded song keeps its mark outside the queue, where the mark matters.
