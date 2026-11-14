@@ -37,11 +37,43 @@ func (s Spring) animation() ui.Animation {
 	}}
 }
 
+// The tokens' animations, resolved once: a transition holds its animation by
+// pointer, so sharing one per token keeps a frame from allocating one for
+// every element that moves.
+var (
+	spatialFastAnimation    = SpatialFast.animation()
+	spatialDefaultAnimation = SpatialDefault.animation()
+	spatialSlowAnimation    = SpatialSlow.animation()
+	effectsFastAnimation    = EffectsFast.animation()
+	effectsDefaultAnimation = EffectsDefault.animation()
+	effectsSlowAnimation    = EffectsSlow.animation()
+)
+
+// animationPointer returns the token's animation for a transition. A token
+// outside the set gets one of its own.
+func (s Spring) animationPointer() *ui.Animation {
+	switch s {
+	case SpatialFast:
+		return &spatialFastAnimation
+	case SpatialDefault:
+		return &spatialDefaultAnimation
+	case SpatialSlow:
+		return &spatialSlowAnimation
+	case EffectsFast:
+		return &effectsFastAnimation
+	case EffectsDefault:
+		return &effectsDefaultAnimation
+	case EffectsSlow:
+		return &effectsSlowAnimation
+	}
+	a := s.animation()
+	return &a
+}
+
 // Motion is the token as a transition: changes ride the token's spring and
 // keep their velocity when they are interrupted.
 func (s Spring) Motion() ui.ElementTransition {
-	a := s.animation()
-	return ui.ElementTransition{Animation: &a}
+	return ui.ElementTransition{Animation: s.animationPointer()}
 }
 
 // Animate eases a value of an element to its target along a spring,
@@ -52,8 +84,7 @@ func Animate(e ui.Element, key any, target float32, s Spring) float32 {
 
 // Fade is the transition of an element that only changes colour.
 func Fade(s Spring) ui.ElementTransition {
-	a := s.animation()
-	return ui.ElementTransition{Colors: true, Animation: &a}
+	return ui.ElementTransition{Colors: true, Animation: s.animationPointer()}
 }
 
 // Rise is how far below its place, in DIPs, an element is while it comes in

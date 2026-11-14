@@ -134,7 +134,10 @@ type app struct {
 	// them, since the tester sends no modifiers with the pointer.
 	swipe     swipeState
 	swipeMods ui.Modifiers
-	search    searchState
+	// railItems and railFooter reuse the rail's destination lists between
+	// frames, so that a frame does not allocate them again.
+	railItems, railFooter []m3.NavItem
+	search                searchState
 	// searchField and detailSearchField move the keyboard to the top bar's
 	// search and to the playlist page's, where Focus waits while one is hidden.
 	searchField, detailSearchField ui.Handle

@@ -108,7 +108,7 @@ func (a *app) navigate(id routeID) { a.router.Push(routeByID(id).path("")) }
 func navID(id routeID) string { return routeByID(id).path("") }
 
 func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
-	var items, footer []m3.NavItem
+	items, footer := a.railItems[:0], a.railFooter[:0]
 	for i := range routes {
 		r := &routes[i]
 		if r.rail == nil || r.rail.withAccount && !a.signedIn() {
@@ -124,6 +124,7 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 			items = append(items, item)
 		}
 	}
+	a.railItems, a.railFooter = items, footer
 	r, _ := a.route()
 	selected := ""
 	if r.nav != routeNotFound {

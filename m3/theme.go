@@ -67,6 +67,13 @@ type Theme struct {
 	Dark     bool
 	Palettes Palettes
 	Scheme   Scheme
+	// ui is the MyGo theme mapped from uiBase and uiScheme, kept between
+	// frames because Provide asks for it on every frame and the answer only
+	// changes with the scheme or the base.
+	ui       *ui.Theme
+	uiBase   ui.Theme
+	uiScheme Scheme
+	uiSet    bool
 }
 
 // New resolves a config. systemDark is the desktop's appearance, which only
@@ -121,6 +128,9 @@ func Of(c *ui.Context) *Theme {
 // UI maps the scheme onto MyGo's own theme, so its widgets match.
 func (t *Theme) UI(base *ui.Theme) *ui.Theme {
 	s := t.Scheme
+	if t.uiSet && t.uiScheme == s && t.uiBase == *base {
+		return t.ui
+	}
 	u := *base
 	u.Dark = t.Dark
 	u.Background = s.Surface
@@ -145,7 +155,8 @@ func (t *Theme) UI(base *ui.Theme) *ui.Theme {
 	u.Spacing = 4
 	u.FontSize = 14
 	u.Font = t.Font
-	return &u
+	t.ui, t.uiScheme, t.uiBase, t.uiSet = &u, s, *base, true
+	return t.ui
 }
 
 // State layer opacities: how far the content colour tints a surface while it

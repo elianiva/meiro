@@ -136,7 +136,7 @@ func railMenu(c *ui.Context, open float32, expanded bool) ui.Element {
 func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWidth float32) bool {
 	sc := Of(c).Scheme
 	open := min(max((railWidth-RailCollapsed)/(RailExpanded-RailCollapsed), 0), 1)
-	b := ui.ButtonBase(c.Key("nav-" + item.ID))
+	b := ui.ButtonBase(c.Key(item.ID))
 	icon := item.Icon
 	if selected && item.Selected != nil {
 		icon = item.Selected
@@ -174,13 +174,13 @@ func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWid
 		})
 		expandedLabelLeft := railInset + railIconInset + 24 + 8
 		if expanded {
-			label := ui.Box(c.Key("nav-label-" + item.ID)).Absolute().Top(18).Left(expandedLabelLeft).
+			label := ui.Box(c.Key(item.Label)).Absolute().Top(18).Left(expandedLabelLeft).
 				Width(railWidth - expandedLabelLeft).Height(LabelLarge.Line).Opacity(fade)
 			label.Children(func() {
 				LabelLarge.Style(ui.Text(c, item.Label), false).TextColor(labelColor).SingleLine()
 			})
 		} else {
-			label := ui.Box(c.Key("nav-label-" + item.ID)).Absolute().Top(42).Left(0).
+			label := ui.Box(c.Key(item.Label)).Absolute().Top(42).Left(0).
 				Width(RailCollapsed).Height(LabelMedium.Line).Opacity(fade)
 			label.Children(func() {
 				LabelMedium.Style(ui.Text(c, item.Label), selected).TextColor(labelColor).
