@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-14
+
 ### Changed
 
 - **A card's cover flies into the page it opens.** Opening an album, playlist, artist or show from a card, or from the card's menu, carries its artwork across the window into the page's larger picture, growing and turning into the corner it takes there, instead of the page arriving with the cover already in place.
