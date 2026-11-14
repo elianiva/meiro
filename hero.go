@@ -40,7 +40,9 @@ func (a *app) hero(c *ui.Context) {
 		})
 		// A card opened this page, so its cover flies into the hero.
 		if a.cover.match.card != "" && a.cover.kind == r.target && a.cover.id == id {
-			art.Transition(ui.ElementTransition{Animation: &ui.Snappy, Match: a.cover.match, Fly: true})
+			fly := m3.SpatialDefault.Motion()
+			fly.Match, fly.Fly = a.cover.match, true
+			art.Transition(fly)
 		}
 		m3.Elevation(c, art, 2)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
