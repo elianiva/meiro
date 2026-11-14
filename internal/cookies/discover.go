@@ -68,7 +68,7 @@ type candidate struct {
 // can be read.
 func findBrowser(ctx context.Context, canReadFirefox bool) (candidate, bool) {
 	id := defaultBrowserID(ctx)
-	for _, c := range preferring(browserCandidates(), id, browserKind(id)) {
+	for _, c := range preferring(browserCandidates(), id, defaultBrowserKind(ctx, id)) {
 		if !canReadFirefox && c.family == firefoxFamily {
 			continue
 		}
@@ -183,6 +183,18 @@ func browserKind(id string) string {
 	return ""
 }
 
+// defaultBrowserKind names the browser the user's default choice opens. On
+// Windows the identifier does not always name it: Firefox and the browsers
+// built on it, Zen among them, register under FirefoxURL-<id>, so the
+// command behind the ProgID decides which one it is.
+func defaultBrowserKind(ctx context.Context, id string) string {
+	kind := browserKind(id)
+	if runtime.GOOS != "windows" || kind != "firefox" {
+		return kind
+	}
+	return windowsDefaultKind(kind, windowsDefaultExecutable(ctx, id))
+}
+
 // defaultBrowserID asks the system which browser the user chose to open
 // links. It returns the lowercased identifier the system uses: the .desktop
 // file on Linux, the bundle ID on macOS, the ProgID on Windows, or "" when
@@ -222,6 +234,62 @@ func defaultBrowserID(ctx context.Context) string {
 		return strings.ToLower(fields[len(fields)-1])
 	}
 	return ""
+}
+
+// windowsDefaultKind names the browser a FirefoxURL ProgID runs. The ProgID
+// is shared by Firefox and its forks, so the executable tells them apart.
+func windowsDefaultKind(kind, executable string) string {
+	switch strings.ToLower(executableBase(executable)) {
+	case "zen.exe":
+		return "zen"
+	case "firefox.exe":
+		return "firefox"
+	}
+	return kind
+}
+
+// windowsDefaultExecutable is the program the default ProgID runs, from the
+// command Windows registered for it. It is "" when the registry cannot be
+// read.
+func windowsDefaultExecutable(ctx context.Context, id string) string {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	out, err := proc.Command(ctx, "reg", "query", `HKCR\`+id+`\shell\open\command`, "/ve").Output()
+	if err != nil {
+		return ""
+	}
+	return commandExecutable(string(out))
+}
+
+// commandExecutable is the program a registered command line starts. The
+// default value of a ProgID's command reads like
+// "    (Default)    REG_SZ    \"C:\Program Files\Zen Browser\zen.exe\" -osint -url \"%1\"".
+func commandExecutable(output string) string {
+	_, command, ok := strings.Cut(output, "REG_SZ")
+	if !ok {
+		return ""
+	}
+	command = strings.TrimSpace(command)
+	if strings.HasPrefix(command, `"`) {
+		end := strings.Index(command[1:], `"`)
+		if end < 0 {
+			return ""
+		}
+		return command[1 : end+1]
+	}
+	if end := strings.IndexAny(command, " \t\r\n"); end >= 0 {
+		return command[:end]
+	}
+	return command
+}
+
+// executableBase is the file name of a path with either separator, so a
+// Windows path reads the same when a test runs on another system.
+func executableBase(path string) string {
+	if i := strings.LastIndexAny(path, `\/`); i >= 0 {
+		return path[i+1:]
+	}
+	return path
 }
 
 // macHTTPSHandler is the bundle ID of the app that opens https links, from
@@ -327,6 +395,7 @@ func browserTable() []browserSpec {
 			flatpakID: zenFlatpak,
 			macApp:    "Zen",
 			macExec:   "zen",
+			winPaths:  []string{filepath.Join("Zen Browser", "zen.exe")},
 		},
 	}
 }

@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Downloads keep their speed in the background.** Hiding Meiro in the menu bar while songs download no longer lets macOS slow the work: Meiro holds the app at full speed until the last queued track finishes.
 - **Missing artwork centers its note.** A cover that has not loaded, or has no picture, centers the music note in its frame instead of setting it in the top half.
 - **Playback no longer closes the window on Windows and Linux.** The track notification check called a nil function. A track now plays, or skips with the sign-in message, without a crash.
+- **Signing in opens Zen on Windows.** Meiro could not find Zen's Windows install, and Windows reports a Zen default the same way it reports Firefox, so the sign-in opened Firefox instead. Meiro now finds Zen and opens it.
 
 ## [0.7.0] - 2026-11-13
 

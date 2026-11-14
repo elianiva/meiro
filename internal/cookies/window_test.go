@@ -883,6 +883,70 @@ func TestLinuxCandidatesUseXDGDataHome(t *testing.T) {
 	t.Errorf("no Flatpak candidate at %s", export)
 }
 
+// TestWindowsDefaultKindReadsTheBrowserFromTheCommand checks a FirefoxURL
+// ProgID is resolved to the browser its command starts: Windows registers
+// Zen under the same ProgID prefix as Firefox.
+func TestWindowsDefaultKindReadsTheBrowserFromTheCommand(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{
+			name:   "zen",
+			output: `    (Default)    REG_SZ    "C:\Program Files\Zen Browser\zen.exe" -osint -url "%1"`,
+			want:   "zen",
+		},
+		{
+			name:   "firefox",
+			output: `    (Default)    REG_SZ    "C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url "%1"`,
+			want:   "firefox",
+		},
+		{
+			name:   "another firefox fork",
+			output: `    (Default)    REG_SZ    "C:\Program Files\Waterfox\waterfox.exe" -osint -url "%1"`,
+			want:   "firefox",
+		},
+		{
+			name:   "unquoted command",
+			output: `    (Default)    REG_SZ    C:\Browsers\zen.exe -osint -url "%1"`,
+			want:   "zen",
+		},
+		{
+			name:   "no command",
+			output: "",
+			want:   "firefox",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := windowsDefaultKind("firefox", commandExecutable(tc.output)); got != tc.want {
+				t.Errorf("kind = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestWindowsCandidatesFindZen checks a Windows install of Zen is found where
+// its installer puts it, so the browser the user defaults to can open the
+// sign-in window.
+func TestWindowsCandidatesFindZen(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ProgramFiles", root)
+	t.Setenv("ProgramFiles(x86)", t.TempDir())
+	t.Setenv("LocalAppData", t.TempDir())
+	want := filepath.Join(root, "Zen Browser", "zen.exe")
+	for _, c := range windowsCandidates(browserTable()) {
+		if c.path != want {
+			continue
+		}
+		if c.kind != "zen" || c.family != firefoxFamily {
+			t.Errorf("candidate at %s is kind %s, family %v, want zen and firefoxFamily", want, c.kind, c.family)
+		}
+		return
+	}
+	t.Fatalf("no Zen candidate at %s", want)
+}
+
 // TestDarwinAndWindowsCandidatesKeepTheTableOrder checks the fallback order
 // the browserCandidates comment promises: the Chromium-based rows come first,
 // whatever install root a browser lives in.
