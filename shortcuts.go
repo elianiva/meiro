@@ -288,7 +288,7 @@ func (a *app) hintParts(actions ...keymap.Action) []m3.KeyPart {
 // control keeps its state when the keys come and go; it is returned for the
 // layout of the control to be set on it.
 func (a *app) hinted(c *ui.Context, build func(), actions ...keymap.Action) ui.Element {
-	return ui.Row(c.Key("hint-" + string(actions[0]))).Shrink(0).Children(func() {
+	return ui.Row(c.Key(actions[0])).Shrink(0).Children(func() {
 		build()
 		if a.keyboard.hints {
 			parts := a.hintParts(actions...)

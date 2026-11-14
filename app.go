@@ -165,6 +165,10 @@ type app struct {
 	cover       cardCover
 	playerCover coverState
 	miniCover   coverState
+	// bylineFor and bylineParts keep the byline of the track playing, which
+	// the player asks for every frame.
+	bylineFor   bylineKey
+	bylineParts []youtube.BylinePart
 
 	// Dialogs.
 	crash          *crashState

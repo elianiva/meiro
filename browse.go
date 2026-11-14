@@ -104,7 +104,7 @@ func (a *app) rowView(c *ui.Context, rows []row, i int) {
 		if queue == nil {
 			queue = a.page.playable
 		}
-		a.songRow(c, r.item, queue, songOptions{number: r.number(), list: r.shelf, position: r.position, track: r.track, inset: true})
+		a.songRow(c, r.item, queue, songOptions{number: r.number(), list: r.shelf, position: r.position, track: r.track, inset: true, calls: r.calls, callsSet: true})
 	case rowSimilar:
 		sc := m3.Of(c).Scheme
 		ui.Column(c).Padding(24, pageGutter, 4, pageGutter).Children(func() {
@@ -185,7 +185,7 @@ func (a *app) cardShelf(c *ui.Context, r row) {
 		m3.Carousel(c, st, r.shelf, gap, pageGutter-8, func() {
 			shelfSpacer(c, float32(first)*(cardWidth+gap)-gap)
 			for i := first; i < last; i++ {
-				a.card(c, r.items[i], r.queue, r.shelf, i)
+				a.card(c, r.items[i], r.cards[i], r.queue)
 			}
 			shelfSpacer(c, float32(len(r.items)-last)*(cardWidth+gap)-gap)
 		})
@@ -236,7 +236,7 @@ func (a *app) cardGrid(c *ui.Context, r row) {
 	gap := gridGap(width, a.page.rowsKey.columns)
 	ui.Row(c).Gap(gap).AlignItems(ui.Start).Padding(0, pageGutter-8, cardGap).Children(func() {
 		for i, item := range r.items {
-			a.card(c, item, r.queue, r.shelf, r.position+i)
+			a.card(c, item, r.cards[i], r.queue)
 		}
 	})
 }
@@ -296,6 +296,33 @@ func itemKey(prefix string, item youtube.MusicItem) string {
 
 func cardKey(item youtube.MusicItem, list string, position int) string {
 	return itemKey("card", item) + "\x00" + list + "#" + strconv.Itoa(position)
+}
+
+// cardView is what a card's controls call the item and the keys they use,
+// built with the card's row so that a frame does not build them again.
+type cardView struct {
+	key       string
+	menu      string
+	menuLabel string
+	playLabel string
+	kind      youtube.TargetKind
+}
+
+// newCardView builds the strings of the card at position in list.
+func newCardView(item youtube.MusicItem, list string, position int) cardView {
+	key := cardKey(item, list, position)
+	label := "Play " + item.Title
+	target := item.Target()
+	if target.Kind == youtube.TargetArtist {
+		label = "Shuffle play " + item.Title
+	}
+	return cardView{
+		key:       key,
+		menu:      key + "-menu",
+		menuLabel: "More options for " + item.Title,
+		playLabel: label,
+		kind:      target.Kind,
+	}
 }
 
 // coverMatch is the identity a card's cover shares with the hero of the page
@@ -403,10 +430,10 @@ func (a *app) artPixels(pixels int, size float32) int {
 
 // card shows an album, a playlist, an artist or a song as artwork over its
 // name. A play button rises over the artwork under the pointer.
-func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, list string, position int) {
+func (a *app) card(c *ui.Context, item youtube.MusicItem, view cardView, queue []youtube.MusicItem) {
 	sc := m3.Of(c).Scheme
-	kind := item.Target().Kind
-	key := cardKey(item, list, position)
+	kind := view.kind
+	key := view.key
 	card := ui.ButtonBase(c.Key(key))
 	hovered := card.Hovered()
 	card.Column().AlignItems(ui.Start).Width(cardWidth).Shrink(0).Padding(0, 0, 12, 0).Gap(10).Radius(m3.ExtraLarge).Cursor(ui.CursorPointer).
@@ -440,22 +467,19 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 			}
 			if kind != youtube.TargetNone {
 				menuButton = m3.IconButton(c, m3.IconButtonSpec{
-					Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
+					Icon: m3.IconMore, Label: view.menuLabel, Key: view.menu,
 					// On a picture the dots need a ground of their own.
 					Container: sc.SurfaceContainerHighest.Alpha(0.85),
 				}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(0).Right(0)
 				hasMenu = true
-				if !hovered && !card.FocusWithin() && !a.menu.opened(key+"-menu") {
+				if !hovered && !card.FocusWithin() && !a.menu.opened(view.menu) {
 					menuButton.Opacity(0).PassThrough()
 				}
 			}
 			if kind == youtube.TargetTrack || kind == youtube.TargetAlbum || kind == youtube.TargetPlaylist || kind == youtube.TargetArtist {
 				fab := m3.FAB(c, m3.FABSpec{Icon: m3.IconPlay, Size: m3.FABSmall, Tone: m3.FABPrimary, Radius: 16, Key: "play"}).
 					Attach(ui.AnchorBottomRight, ui.AnchorBottomRight).Right(12).Bottom(12)
-				fab.Label("Play " + item.Title)
-				if kind == youtube.TargetArtist {
-					fab.Label("Shuffle play " + item.Title)
-				}
+				fab.Label(view.playLabel)
 				if !hovered && !card.FocusWithin() {
 					fab.Opacity(0).PassThrough()
 				}
@@ -477,18 +501,18 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 		})
 		// A menu the pointer opened points at the pointer; one the menu
 		// button opened points at the button.
-		menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key+"-menu")
+		menuAnchor, hasAnchor = a.menu.pointerAnchor(c, view.menu)
 	})
 	if hasMenu {
 		pointer := card.RightClicked() || menuButton.RightClicked()
 		x, y, _ := card.PointerPosition()
 		if menuButton.Clicked() || pointer || card.Shortcut(ui.Shift, ui.KeyF10) {
-			a.menu.show(key+"-menu", pointer, x, y)
+			a.menu.show(view.menu, pointer, x, y)
 			menuClicked = true
 		}
 	}
-	if hasMenu && a.menu.owns(key+"-menu") {
-		a.cardMenu(c, a.menu.anchor(menuButton, menuAnchor, hasAnchor), key+"-menu", item, queue)
+	if hasMenu && a.menu.owns(view.menu) {
+		a.cardMenu(c, a.menu.anchor(menuButton, menuAnchor, hasAnchor), view.menu, item, queue)
 	}
 	switch {
 	case menuClicked:

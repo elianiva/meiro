@@ -553,7 +553,7 @@ func (a *app) playlistSearch(c *ui.Context) {
 	}
 	control.MaxWidth(detailSearchButton + (maxWidth-detailSearchButton)*min(max(grown, 0), 1))
 	control.Children(func() {
-		result, _ := m3.SearchBar(c, m3.SearchSpec{
+		result, _, _ := m3.SearchBar(c, m3.SearchSpec{
 			Value:       &a.detailFilter,
 			Placeholder: "Search in this playlist",
 			Key:         "playlist-search-bar",

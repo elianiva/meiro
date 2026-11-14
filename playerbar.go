@@ -290,6 +290,24 @@ func (a *app) speedChoices(c *ui.Context, key string, speed float64, open *bool)
 	}
 }
 
+// bylineKey identifies the byline of a track: the text and links it is built
+// from. The pointer is part of the key, since a byline once parsed never
+// changes.
+type bylineKey struct {
+	videoID, artist, subtitle string
+	byline                    *youtube.TrackByline
+}
+
+// playerByline returns the byline of the track playing, kept between frames:
+// the parts only change with the track or its credits, not every frame.
+func (a *app) playerByline() []youtube.BylinePart {
+	key := bylineKey{a.current.VideoID, a.current.Artist, a.current.Subtitle, a.current.Byline}
+	if key != a.bylineFor || a.bylineParts == nil {
+		a.bylineFor, a.bylineParts = key, a.current.PlayerByline()
+	}
+	return a.bylineParts
+}
+
 // trackLine is the name of the current track over who made it, or the
 // reason it does not play.
 func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.Element {
@@ -301,7 +319,7 @@ func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.E
 			line, colour = firstLine(a.playErr), sc.Error
 		}
 		if links && a.playErr == "" {
-			parts := a.current.PlayerByline()
+			parts := a.playerByline()
 			subtitle.Style(ui.RichText(c.Key(a.current.VideoID)), false).MaxLines(2).TextColor(colour).Children(func() {
 				for i, part := range parts {
 					if !part.Target().Opens() {

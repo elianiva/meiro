@@ -43,6 +43,12 @@ type row struct {
 	// track is the place of a song among the page's songs, or -1.
 	track    int
 	position int
+	// calls are the keys and names of the row's controls, built with the
+	// row so that a frame reads them rather than building the same strings
+	// for every row it draws.
+	calls rowCalls
+	// cards are the identities and labels of a shelf's cards, built with it.
+	cards []cardView
 	// offline says an error row is the network being out of reach.
 	offline bool
 }
@@ -52,6 +58,9 @@ type row struct {
 func (r row) key() any {
 	switch r.kind {
 	case rowTrack:
+		if r.calls.key != "" {
+			return r.calls.key
+		}
 		return itemKey("track", r.item) + "\x00" + r.shelf + "#" + strconv.Itoa(r.position)
 	case rowTopResult:
 		return itemKey("top", r.item)
@@ -62,6 +71,12 @@ func (r row) key() any {
 	case rowHero, rowMore, rowLoading, rowError, rowEmpty, rowStreaming, rowSimilar:
 	}
 	return strconv.Itoa(int(r.kind)) + ":" + r.title
+}
+
+// prepareTrackRow builds the keys and names of a song row once, so a frame
+// draws the row without building them again.
+func prepareTrackRow(r *row) {
+	r.calls = newRowCalls(r.item, songKey(r.item, songOptions{number: r.number(), list: r.shelf, position: r.position}), r.shelf)
 }
 
 // number is the place shown beside a song that has no artwork of its own.
@@ -292,6 +307,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 						rw.item = item
 					}
 				}
+				prepareTrackRow(&rw)
 				rows = append(rows, rw)
 			}
 			continue
@@ -323,11 +339,24 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			perLine := max(key.columns, 1)
 			for start := 0; start < len(items); start += perLine {
 				line := items[start:min(start+perLine, len(items))]
-				rows = append(rows, row{kind: rowGrid, shelf: shelf, items: line, queue: tracks, track: -1, position: start})
+				cards := make([]cardView, len(line))
+				for i := range line {
+					cards[i] = newCardView(line[i], shelf, start+i)
+				}
+				rows = append(rows, row{kind: rowGrid, shelf: shelf, items: line, cards: cards, queue: tracks, track: -1, position: start})
 			}
 			continue
 		}
-		rows = append(rows, row{kind: kind, shelf: shelf, items: items, queue: tracks, track: -1})
+		var cards []cardView
+		if kind == rowCards {
+			// Cards keep the strings their controls use, so a frame reads
+			// them instead of building them for every card it draws.
+			cards = make([]cardView, len(items))
+			for i := range items {
+				cards[i] = newCardView(items[i], shelf, i)
+			}
+		}
+		rows = append(rows, row{kind: kind, shelf: shelf, items: items, cards: cards, queue: tracks, track: -1})
 	}
 	if s.partial {
 		rows = append(rows, row{kind: rowStreaming, track: -1})
@@ -346,7 +375,9 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	if r.id == routePlaylist && len(similar) > 0 && key.filter == "" {
 		rows = append(rows, row{kind: rowSimilar, title: "Similar songs", track: -1})
 		for i, item := range similar[:min(s.similarShown, len(similar))] {
-			rows = append(rows, row{kind: rowTrack, item: item, queue: similar, track: i})
+			rw := row{kind: rowTrack, item: item, queue: similar, track: i}
+			prepareTrackRow(&rw)
+			rows = append(rows, rw)
 		}
 		if s.similarShown < len(similar) || s.similarMore != "" {
 			rows = append(rows, row{kind: rowMore, title: "Show more", shelf: "similar", track: -1})

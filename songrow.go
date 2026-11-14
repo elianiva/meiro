@@ -29,6 +29,40 @@ type songOptions struct {
 	source      string
 	// compact fits queue rows in the tray mini player.
 	compact bool
+	// calls, when callsSet, are the keys and names the row's controls
+	// already know from the page's rows, so that a frame does not build
+	// them again.
+	calls    rowCalls
+	callsSet bool
+}
+
+// rowCalls are the keys and names the controls of one song row use. A page
+// builds them with its rows; a row of the queue or the related list, which is
+// made fresh every frame, leaves them empty.
+type rowCalls struct {
+	key        string
+	menu       string
+	menuLabel  string
+	queue      string
+	queueLabel string
+	remove     bool
+}
+
+// newRowCalls builds the controls' strings for a song at key in list.
+func newRowCalls(item youtube.MusicItem, key, list string) rowCalls {
+	calls := rowCalls{
+		key:        key,
+		menu:       key + "-menu",
+		menuLabel:  "More options for " + item.Title,
+		queue:      key + "-queue",
+		queueLabel: "Add " + item.Title + " to queue",
+	}
+	if list == "queue" {
+		calls.remove = true
+		calls.queue = key + "-remove"
+		calls.queueLabel = "Remove " + item.Title + " from queue"
+	}
+	return calls
 }
 
 // songKey identifies a row of a song in its list, for the element tree and
@@ -59,7 +93,11 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	playing := a.playingRow(item, o)
 	selected := o.list == "queue" && a.nowPlaying.queueSelection.Has(queueRowKey(&a.queue, a.queue.rowOf(o.position)))
 	queueCursor := o.list == "queue" && a.nowPlaying.queueList.Focused(c) && a.nowPlaying.queueSelectionCursor == a.queue.rowOf(o.position)
-	key := songKey(item, o)
+	calls := o.calls
+	if !o.callsSet {
+		calls = newRowCalls(item, songKey(item, o), o.list)
+	}
+	key := calls.key
 	// The track playing is the queue's, and stays in it, so its row offers
 	// nothing to take it out.
 	playingQueueRow := o.list == "queue" && o.position == a.queue.index
@@ -92,7 +130,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	var main, menuButton, menuAnchor, queueButton ui.Element
 	hasAnchor := false
 	row.Children(func() {
-		main = ui.ButtonBase(c.Key(key + "-activate")).FocusRing(false)
+		main = ui.ButtonBase(c.Key(key)).FocusRing(false)
 		hovered := row.Hovered()
 		main.Grow(1).Basis(0).MinWidth(0).Height(height - 2*padding).Gap(gap).AlignItems(ui.Center).
 			Radius(radius).Cursor(ui.CursorPointer).Label(item.Title).Background(ui.Transparent)
@@ -169,7 +207,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			if isSong && !o.compact && !playingQueueRow {
 				ui.Row(c).Width(40).Shrink(0).Children(func() {
 					if hovered {
-						queueButton = a.queueRowButton(c, item, o, key)
+						queueButton = a.queueRowButton(c, calls)
 					}
 				})
 			}
@@ -191,7 +229,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			menuContainer = sc.SurfaceContainerHighest
 		}
 		menuButton = m3.IconButton(c, m3.IconButtonSpec{
-			Icon: m3.IconMore, Label: "More options for " + item.Title, Key: key + "-menu",
+			Icon: m3.IconMore, Label: calls.menuLabel, Key: calls.menu,
 			Container: menuContainer,
 		})
 		if !main.FocusVisible() && !menuButton.FocusVisible() && !a.menu.opened(key) && (!hovered || o.list == "queue") {
@@ -268,13 +306,13 @@ func (a *app) queueRowAction(item youtube.MusicItem, o songOptions) {
 
 // queueRowButton is the button a row shows under the pointer: it adds the
 // track to the queue, or takes it out when the row is a row of the queue.
-func (a *app) queueRowButton(c *ui.Context, item youtube.MusicItem, o songOptions, key string) ui.Element {
-	if o.list == "queue" {
+func (a *app) queueRowButton(c *ui.Context, calls rowCalls) ui.Element {
+	if calls.remove {
 		return m3.IconButton(c, m3.IconButtonSpec{
-			Icon: m3.IconClose, Label: "Remove " + item.Title + " from queue", Key: key + "-remove",
+			Icon: m3.IconClose, Label: calls.queueLabel, Key: calls.queue,
 		})
 	}
 	return m3.IconButton(c, m3.IconButtonSpec{
-		Icon: m3.IconQueue, Label: "Add " + item.Title + " to queue", Key: key + "-queue",
+		Icon: m3.IconQueue, Label: calls.queueLabel, Key: calls.queue,
 	})
 }

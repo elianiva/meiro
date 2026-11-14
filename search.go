@@ -210,12 +210,11 @@ func (a *app) searchBar(c *ui.Context) (bar, field ui.Element) {
 	if a.keyboard.hints {
 		trailingPadding = 40
 	}
-	result, bar := m3.SearchBar(c, m3.SearchSpec{
+	result, bar, field := m3.SearchBar(c, m3.SearchSpec{
 		Value:           &a.search.query,
 		Placeholder:     searchPlaceholder,
 		Key:             "search",
 		Focus:           &a.searchField,
-		Field:           &field,
 		Height:          48,
 		MaxWidth:        520,
 		Container:       searchTint(c),
