@@ -278,6 +278,9 @@ func newApp() *app {
 		swipeMods:   ui.Shift,
 		keyboard:    keyboardState{hintDelay: hintDelay},
 	}
+	// Notifications need MyGo's event loop, so the function is only called
+	// when a track starts.
+	a.notifications = mygo.NotificationsSupported
 	a.scrobble = newScrobbler()
 	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}), &a.audioAuth, &a.traces)), a.settings.Volume)
 	a.aiFilter = newAIFilter()
