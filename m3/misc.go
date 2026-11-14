@@ -200,15 +200,15 @@ func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()
 	}
 	box.Children(func() {
 		if art == nil {
+			// The note fills the frame alone. A nil image would still take a
+			// share of the layout, leaving the note centered in the top half.
 			ui.Box(c).Fill().Center().Children(func() {
 				ui.Icon(c, IconMusicNote).FontSize(max(size*0.4, 18)).TextColor(sc.OnSurfaceVariant.Alpha(0.6))
 			})
-		}
-		// The picture keeps its element as covers change, so MyGo crossfades
-		// from the one before to the next. A nil picture paints nothing.
-		picture := ui.Image(c, art).Key("art").Fill().Radius(radius).ContentTransition(ui.ContentTransition{})
-		if art != nil {
-			picture.Fit(ui.Cover)
+		} else {
+			// The picture keeps its element as covers change, so MyGo
+			// crossfades from the one before to the next.
+			ui.Image(c, art).Key("art").Fill().Radius(radius).ContentTransition(ui.ContentTransition{}).Fit(ui.Cover)
 		}
 		for _, overlay := range overlays {
 			overlay()
