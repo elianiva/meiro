@@ -23,6 +23,18 @@ func (a *app) artistSongs() (youtube.MusicItem, bool) {
 	return youtube.MusicItem{}, false
 }
 
+// playShelf plays the songs of a shelf from its first song.
+func (a *app) playShelf(r row) {
+	if len(r.queue) == 0 {
+		return
+	}
+	options, source := a.queueContext(0)
+	if r.title != "" {
+		source = r.title
+	}
+	a.playFrom(r.queue[0], r.queue, 0, options, source)
+}
+
 // playAll plays everything on the page shown. An artist's page plays all the
 // artist's songs, not only the few it lists.
 func (a *app) playAll() {

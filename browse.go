@@ -13,11 +13,13 @@ import (
 
 // The sizes of what a shelf holds, in DIPs.
 const (
-	cardWidth   = 160
-	cardArt     = cardWidth
-	cardGap     = 4
-	columnWidth = 392
-	rowHeight   = 64
+	cardWidth    = 160
+	cardArt      = cardWidth
+	cardGap      = 4
+	shelfGap     = 8
+	columnWidth  = 392
+	minTopColumn = 340
+	rowHeight    = 64
 )
 
 // pageList builds the rows of the page in a list that builds only those in
@@ -161,6 +163,11 @@ func (a *app) sectionHeading(c *ui.Context, r row, paged, first bool) {
 		if !paged {
 			return
 		}
+		if r.playAll && len(r.queue) > 0 {
+			if m3.Button(c, m3.ButtonSpec{Label: "Play all", Kind: m3.Outlined, Size: m3.Small40, Key: r.shelf + "-play-all"}).Clicked() {
+				a.playShelf(r)
+			}
+		}
 		st := a.carousel(r.shelf)
 		for _, step := range []struct {
 			dir   int
@@ -181,7 +188,7 @@ func (a *app) sectionHeading(c *ui.Context, r row, paged, first bool) {
 // are built; what is off view keeps its width as a spacer, so the shelf
 // scrolls exactly as it did when every card was built.
 func (a *app) cardShelf(c *ui.Context, r row) {
-	const gap = 16
+	const gap = shelfGap
 	st := a.carousel(r.shelf)
 	again := st.NeedsMeasurement()
 	first, last := st.VisibleRange(len(r.items), cardWidth, gap, pageGutter-8, 1)
@@ -257,30 +264,45 @@ func shelfSpacer(c *ui.Context, width float32) {
 // columnShelf is songs in columns of four, which scroll sideways: the shelf
 // of quick picks. As the card shelf, it builds only the columns in view.
 func (a *app) columnShelf(c *ui.Context, r row) {
-	const gap = 8
+	const gap = shelfGap
+	width := a.columnShelfWidth(r)
 	st := a.carousel(r.shelf)
 	again := st.NeedsMeasurement()
 	groups := (len(r.items) + 3) / 4
-	first, last := st.VisibleRange(groups, columnWidth, gap, pageGutter-8, 1)
+	first, last := st.VisibleRange(groups, width, gap, pageGutter-8, 1)
 	ui.Column(c).Children(func() {
 		m3.Carousel(c, st, r.shelf, gap, pageGutter-8, func() {
-			shelfSpacer(c, float32(first)*(columnWidth+gap)-gap)
+			shelfSpacer(c, float32(first)*(width+gap)-gap)
 			for g := first; g < last; g++ {
 				start := g * 4
 				group := r.items[start:min(start+4, len(r.items))]
-				ui.Column(c.Key(start)).Width(columnWidth).Shrink(0).Children(func() {
+				ui.Column(c.Key(start)).Width(width).Shrink(0).Children(func() {
 					for i, item := range group {
 						a.songRow(c, item, r.queue, songOptions{list: r.shelf, position: start + i})
 					}
 				})
 			}
-			shelfSpacer(c, float32(groups-last)*(columnWidth+gap)-gap)
+			shelfSpacer(c, float32(groups-last)*(width+gap)-gap)
 		})
 	})
 	if again {
 		// As the card shelf: plan again once the viewport is known.
 		c.Invalidate()
 	}
+}
+
+// columnShelfWidth is the width of a song column. The top shelf narrows its
+// columns enough for three of them to fit the page, as its reference does;
+// other shelves keep the roomier columns they always had.
+func (a *app) columnShelfWidth(r row) float32 {
+	if !r.playAll || a.listWidth <= 0 {
+		return columnWidth
+	}
+	inner := a.listWidth - 2*(pageGutter-8)
+	if inner < 3*minTopColumn+2*shelfGap {
+		return columnWidth
+	}
+	return min(columnWidth, (inner-2*shelfGap)/3)
 }
 
 // itemKey identifies an item, under a prefix that names where it is drawn.

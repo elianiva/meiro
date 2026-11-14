@@ -1340,6 +1340,61 @@ func TestAnAlbumCoverFliesFromItsCard(t *testing.T) {
 	}
 }
 
+// Home leads with its songs in columns of four, and a Play all button that
+// starts the shelf.
+func TestHomeLeadsWithSongColumns(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+	songs := make([]youtube.MusicItem, 12)
+	for i := range songs {
+		songs[i] = youtube.MusicItem{
+			Kind:    youtube.KindTrack,
+			VideoID: "top-" + strconv.Itoa(i),
+			Title:   "Top " + strconv.Itoa(i+1),
+			Artist:  "Someone",
+		}
+	}
+	a.page.feed.sections = []youtube.MusicSection{{Title: "Trending songs for you", Items: songs}}
+	a.page.rowsDirty = true
+	tt.Frame()
+	first, ok := tt.Find("Top 1")
+	if !ok {
+		t.Fatalf("the first song is not a row: %q", tt.Texts())
+	}
+	fifth, ok := tt.Find("Top 5")
+	if !ok {
+		t.Fatalf("the fifth song is not a row: %q", tt.Texts())
+	}
+	if fifth.X <= first.X+100 {
+		t.Fatalf("the fifth song starts at x=%.0f, not in a second column after x=%.0f", fifth.X, first.X)
+	}
+	ninth, ok := tt.Find("Top 9")
+	if !ok {
+		t.Fatalf("the ninth song is not a row: %q", tt.Texts())
+	}
+	if ninth.X <= fifth.X+100 {
+		t.Fatalf("the ninth song starts at x=%.0f, not in a third column after x=%.0f", ninth.X, fifth.X)
+	}
+	for i := 2; i <= 4; i++ {
+		row, ok := tt.Find("Top " + strconv.Itoa(i))
+		if !ok || row.X != first.X {
+			t.Fatalf("song %d starts at x=%.0f, not in the first column at x=%.0f", i, row.X, first.X)
+		}
+	}
+	if err := tt.Click("Play all"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.queue.source != "Trending songs for you" || a.queue.len() < len(songs) {
+		t.Fatalf("Play all queued %d songs from %q, want at least %d from the shelf", a.queue.len(), a.queue.source, len(songs))
+	}
+	if a.queue.items[0].Title != "Top 1" {
+		t.Fatalf("Play all started with %q, not the first song", a.queue.items[0].Title)
+	}
+}
+
 // The suggestions under the search bar read as a list of options, and the
 // option the arrows are on is the field's active descendant.
 func TestSearchSuggestionsReadAsAList(t *testing.T) {

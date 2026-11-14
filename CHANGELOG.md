@@ -9,12 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **A card's cover flies into the page it opens.** Opening an album, playlist, artist or show from a card, or from the card's menu, carries its artwork across the window into the page's larger picture, growing and turning into the corner it takes there, instead of the page arriving with the cover already in place.
+- **Home leads with its songs.** Quick picks lists four songs in each of three columns, with a Play all button and paging arrows, instead of a row of album cards. The columns narrow to fit the window.
+- **Card shelves sit closer together.** The cards of a shelf keep a smaller gap, so more of a row fits on screen.
 - **A new track fades in.** The player's title, artist and cover crossfade to the next song instead of cutting. A cover stays on screen while the next one loads, so the player never flashes a placeholder between tracks.
 - **The search suggestions read as a list.** Screen readers announce the panel as a list of options, say which one the arrow keys are on, and hear that the search field completes what is typed.
 
 ### Fixed
 
 - **Downloads keep their speed in the background.** Hiding Meiro in the menu bar while songs download no longer lets macOS slow the work: Meiro holds the app at full speed until the last queued track finishes.
+- **Missing artwork centers its note.** A cover that has not loaded, or has no picture, centers the music note in its frame instead of setting it in the top half.
+- **Playback no longer closes the window on Windows and Linux.** The track notification check called a nil function. A track now plays, or skips with the sign-in message, without a crash.
 
 ## [0.7.0] - 2026-11-13
 

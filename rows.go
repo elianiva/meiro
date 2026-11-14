@@ -58,6 +58,8 @@ type row struct {
 	numbered bool
 	// offline says an error row is the network being out of reach.
 	offline bool
+	// playAll says a shelf's heading leads with a Play all button.
+	playAll bool
 }
 
 // key identifies a row across frames, so the list keeps its place when the
@@ -291,12 +293,16 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 	// plays the playlist from that song's own place in it.
 	searching := r.id == routePlaylist && key.filter != ""
 	needle := strings.ToLower(strings.TrimSpace(key.filter))
-	// placed says whether the library has led with its tile yet.
+	// placed says whether the library has led with its tile yet. firstShelf
+	// says the section is the first one the page will show, which Home leads
+	// with as a column of songs.
 	placed := false
+	firstShelf := true
 	for index, section := range sections {
 		if len(section.Items) == 0 {
 			continue
 		}
+		topShelf := firstShelf
 		shelf := key.path + "#" + strconv.Itoa(index)
 		shown := section.Items
 		var places []int // where each shown song sits in playable, when searching
@@ -321,6 +327,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 				continue
 			}
 		}
+		firstShelf = false
 		songs := 0
 		for _, item := range shown {
 			if item.IsTrack() {
@@ -328,7 +335,9 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			}
 		}
 		mostlySongs := songs*10 >= len(shown)*6
+		heading := -1
 		if section.Title != "" {
+			heading = len(rows)
 			rows = append(rows, row{kind: rowHeading, title: section.Title, shelf: shelf, track: -1})
 		}
 		if vertical || (r.isDetail() && mostlySongs) {
@@ -365,6 +374,11 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		if mostlySongs && len(section.Items) >= 3 && section.Items[0].Duration != "" {
 			kind = rowColumns
 		}
+		// Home leads with a shelf of songs in columns, as YouTube Music's
+		// first shelf does, even when its songs carry no length.
+		if topShelf && r.id == routeHome && songs >= 3 && songs == len(shown) {
+			kind = rowColumns
+		}
 		items := section.Items
 		if r.grid && kind == rowCards {
 			kind = rowGrid
@@ -389,6 +403,11 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 				rows = append(rows, row{kind: rowGrid, shelf: shelf, items: line, cards: cards, queue: tracks, track: -1, position: start})
 			}
 			continue
+		}
+		if heading >= 0 && topShelf && kind == rowColumns {
+			// Home's first shelf carries Play all beside its title.
+			rows[heading].playAll = true
+			rows[heading].queue = tracks
 		}
 		var cards []cardView
 		if kind == rowCards {
