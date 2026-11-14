@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **A queue row keeps its actions beside its length.** The cross that takes a song out of the queue now sits against the length, the three-dot menu shows under the pointer as the cross does, and the download mark leaves the queue, where it said nothing about what plays next.
+- **A queue row keeps its actions beside its length.** The cross that takes a song out of the queue sits just left of the length, and the three-dot menu shows under the pointer as the cross does, with the download mark gone from queue rows.
+- **A music list row can play a song next.** Hovering a song in a playlist, album, artist or search result shows Play next beside Add to queue, which queues the song directly after the track playing.
 
 ## [0.7.1] - 2026-11-14
 
