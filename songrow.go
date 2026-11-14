@@ -243,19 +243,27 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 					m3.Text(c, subtitleRole, item.Subtitle).SingleLine().TextColor(subColour)
 				}
 			})
-			if isSong && a.isDownloaded(item.VideoID) {
+			// The download mark belongs to the library, not to the queue,
+			// whose rows show only what plays next.
+			if isSong && o.list != "queue" && a.isDownloaded(item.VideoID) {
 				ui.Icon(c, m3.IconDownloadDone).FontSize(18).TextColor(subColour).Label("Downloaded")
 			}
 			// The button shows under the pointer only: the row's menu offers
 			// the same actions to the keyboard, and a button that Tab reached
 			// while it was hidden would ring nothing. Its slot keeps its
-			// width, so nothing beside it moves as the pointer comes.
-			if isSong && !o.compact && !playingQueueRow {
-				ui.Row(c).Width(40).Shrink(0).Children(func() {
-					if hovered {
-						queueButton = a.queueRowButton(c, calls, o.list == "queue", item)
-					}
-				})
+			// width, so nothing beside it moves as the pointer comes. The
+			// queue puts it after the length, against the digits.
+			action := func() {
+				if isSong && !o.compact && !playingQueueRow {
+					ui.Row(c).Width(40).Shrink(0).Children(func() {
+						if hovered {
+							queueButton = a.queueRowButton(c, calls, o.list == "queue", item)
+						}
+					})
+				}
+			}
+			if o.list != "queue" {
+				action()
 			}
 			switch {
 			case item.Duration != "":
@@ -263,6 +271,9 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 					TextColor(subColour).Shrink(0).FontFeatures("tnum")
 			case !isSong:
 				ui.Icon(c, m3.IconChevronRight).FontSize(24).TextColor(sc.OnSurfaceVariant)
+			}
+			if o.list == "queue" {
+				action()
 			}
 			// A menu the pointer opened points at the pointer; one the menu
 			// button opened points at the button.
@@ -278,7 +289,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			Icon: m3.IconMore, Label: calls.menuLabel, Key: calls.menu,
 			Container: menuContainer,
 		})
-		if !main.FocusVisible() && !menuButton.FocusVisible() && !a.menu.opened(key) && (!hovered || o.list == "queue") {
+		if !main.FocusVisible() && !menuButton.FocusVisible() && !a.menu.opened(key) && !hovered {
 			menuButton.Opacity(0).PassThrough()
 		}
 	})
@@ -355,7 +366,7 @@ func (a *app) queueRowAction(item youtube.MusicItem, o songOptions) {
 func (a *app) queueRowButton(c *ui.Context, calls rowCalls, remove bool, item youtube.MusicItem) ui.Element {
 	if remove {
 		return m3.IconButton(c, m3.IconButtonSpec{
-			Icon: m3.IconClose, Label: calls.queueLabel, Key: calls.queue,
+			Icon: m3.IconClose, Label: calls.queueLabel, Key: calls.queue, Size: m3.Small40,
 		})
 	}
 	label, queueKey := calls.queueLabel, calls.queue
@@ -364,6 +375,6 @@ func (a *app) queueRowButton(c *ui.Context, calls rowCalls, remove bool, item yo
 		label, queueKey = "Add "+item.Title+" to queue", calls.key+"-queue"
 	}
 	return m3.IconButton(c, m3.IconButtonSpec{
-		Icon: m3.IconQueue, Label: label, Key: queueKey,
+		Icon: m3.IconQueue, Label: label, Key: queueKey, Size: m3.Small40,
 	})
 }

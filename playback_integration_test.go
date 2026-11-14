@@ -28,6 +28,7 @@ import (
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/history"
+	"github.com/elianiva/meiro/internal/offline"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/systemmedia"
 	"github.com/elianiva/meiro/youtube"
@@ -1414,6 +1415,63 @@ func TestPlayingAQueuedTrackNext(t *testing.T) {
 	tt.Frame()
 	if got := ids(a.queue.items); !slices.Equal(got, []string{"a", "d", "b", "c", "d"}) {
 		t.Errorf("opening the menu changed the queue: %v", got)
+	}
+}
+
+// A queue row shows its menu button under the pointer, as it shows the cross
+// that takes the song out, and keeps the cross beside the length. The
+// download mark belongs to the library, so a downloaded song has none here.
+func TestAQueueRowShowsItsActionsUnderThePointer(t *testing.T) {
+	a, _ := playbackApp(t)
+	q := tracks("a", "b", "c")
+	for i, duration := range []string{"3:42", "2:18", "4:05"} {
+		q[i].Duration = duration
+	}
+	a.downloads.lib.Add(offline.Song{Item: youtube.MusicItem{VideoID: "b", Title: "Track b"}})
+	a.play(q[0], q)
+	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
+	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
+	tt.Frame()
+
+	row, ok := tt.Find("Track b")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	if tt.HasText("Downloaded") {
+		t.Errorf("a queue row carries the download mark: %q", tt.Texts())
+	}
+	length, ok := tt.Find("2:18")
+	if !ok {
+		t.Fatalf("no length: %q", tt.Texts())
+	}
+	cross, ok := tt.Find("Remove Track b from queue")
+	if !ok {
+		t.Fatalf("no cross: %q", tt.Texts())
+	}
+	if cross.X < length.X+length.W {
+		t.Errorf("the cross starts at %.0f, inside the length that ends at %.0f", cross.X, length.X+length.W)
+	}
+	if err := tt.Click("More options for Track b"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.menu.open || !tt.HasText("Remove from queue") {
+		t.Errorf("the menu button did not open the row's menu: open %v, %q", a.menu.open, tt.Texts())
+	}
+	a.menu.close()
+}
+
+// A downloaded song keeps its mark outside the queue, where the mark matters.
+func TestADownloadedSongKeepsItsMarkOnAPage(t *testing.T) {
+	a := newTestApp(t)
+	a.downloads.lib.Add(offline.Song{Item: youtube.MusicItem{VideoID: "linked-track", Title: "Linked Track"}})
+	a.router.Push("/playlist/VLPL_metadata")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if !tt.HasText("Downloaded") {
+		t.Errorf("the playlist row lost its download mark: %q", tt.Texts())
 	}
 }
 
