@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/elianiva/meiro/m3"
@@ -71,6 +72,9 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 	if !a.menu.owns(key) {
 		return
 	}
+	// A page opened from a card's menu flies the card's cover too: the menu
+	// key names the card it belongs to.
+	a.rememberCover(strings.TrimSuffix(key, "-menu"), item)
 	target := item.Target()
 	if target.Kind == youtube.TargetTrack {
 		a.songMenu(c, anchor, key, item, songOptions{})

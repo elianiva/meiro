@@ -13,7 +13,7 @@ import (
 func (a *app) hero(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	d := a.page.detail
-	r, _ := a.route()
+	r, id := a.route()
 	artRadius := m3.ExtraLargeInc
 	if r.target == youtube.TargetArtist {
 		artRadius = m3.Full
@@ -38,6 +38,10 @@ func (a *app) hero(c *ui.Context) {
 				Radius(artRadius).Background(ui.Transparent).Label("More options for " + d.title)
 			menuAnchor, hasAnchor = a.menu.pointerAnchor(c, "hero")
 		})
+		// A card opened this page, so its cover flies into the hero.
+		if a.cover.match.card != "" && a.cover.kind == r.target && a.cover.id == id {
+			art.Transition(ui.ElementTransition{Animation: &ui.Snappy, Match: a.cover.match, Fly: true})
+		}
 		m3.Elevation(c, art, 2)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 			if label := heroLabel(r.target); label != "" {

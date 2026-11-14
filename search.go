@@ -455,7 +455,7 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 	var menuButton, menuAnchor ui.Element
 	hasMenu, hasAnchor := false, false
 	card.Children(func() {
-		a.art(c, item.Thumbnail, 256, 132, artRadius(item, m3.LargeIncreased), func() {
+		art := a.art(c, item.Thumbnail, 256, 132, artRadius(item, m3.LargeIncreased), func() {
 			if a.isOpening(key) {
 				// The scrim covers the artwork: attached, it leaves the flow
 				// the picture is laid out in.
@@ -478,6 +478,9 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 				}
 			}
 		})
+		if target.Opens() {
+			art.Transition(ui.ElementTransition{Animation: &ui.Snappy, Match: coverMatch{card: key}})
+		}
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 			m3.EmphasizedText(c, m3.HeadlineSmall, item.Title).MaxLines(2).TextColor(sc.OnSurface)
 			if item.Subtitle != "" {
@@ -528,6 +531,7 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 	case shuffled:
 		a.playCollection(item, key, true)
 	case card.Clicked():
+		a.rememberCover(key, item)
 		a.activate(item, a.page.playable)
 	}
 }

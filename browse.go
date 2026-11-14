@@ -297,6 +297,29 @@ func cardKey(item youtube.MusicItem, list string, position int) string {
 	return itemKey("card", item) + "\x00" + list + "#" + strconv.Itoa(position)
 }
 
+// coverMatch is the identity a card's cover shares with the hero of the page
+// it opens, so that MyGo flies one into the other. Each card has its own, so
+// that two cards of the same album on a page do not answer for each other.
+type coverMatch struct{ card string }
+
+// cardCover names the card that opened the page showing: the Match its cover
+// has, and the page it opens.
+type cardCover struct {
+	match coverMatch
+	kind  youtube.TargetKind
+	id    string
+}
+
+// rememberCover notes the cover of a card that opens a page, so the page's
+// hero flies it in. The card must keep the Match it was built with.
+func (a *app) rememberCover(card string, item youtube.MusicItem) {
+	target := item.Target()
+	if !target.Opens() || target.ID == "" {
+		return
+	}
+	a.cover = cardCover{match: coverMatch{card: card}, kind: target.Kind, id: target.ID}
+}
+
 // hoverOpacity is the state layer of something that may be under the pointer.
 func hoverOpacity(hovered bool) float32 {
 	if hovered {
@@ -363,7 +386,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 	card.Children(func() {
 		radius := artRadius(item, m3.ExtraLarge)
 		opening := a.isOpening(key)
-		a.art(c, item.Thumbnail, 256, cardArt, radius, func() {
+		art := a.art(c, item.Thumbnail, 256, cardArt, radius, func() {
 			if isNewPlaylist(item) {
 				// The tile has no artwork of its own: the plus covers the
 				// panel a missing one stands in with.
@@ -409,6 +432,11 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 				}
 			}
 		})
+		if item.Target().Opens() {
+			// The cover is the picture a page's hero flies from, when this
+			// card opens it. The card names the picture; the hero flies.
+			art.Transition(ui.ElementTransition{Animation: &ui.Snappy, Match: coverMatch{card: key}})
+		}
 		ui.Column(c).Width(cardWidth).Shrink(0).Padding(0, 16, 0, 16).Gap(2).Children(func() {
 			m3.EmphasizedText(c, m3.TitleSmall, item.Title).Width(cardWidth - 32).SingleLine().TextColor(sc.OnSurface)
 			if item.Subtitle != "" {
@@ -440,6 +468,7 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 	case card.Clicked() && isNewPlaylist(item):
 		a.openNewPlaylist(youtube.MusicItem{})
 	case card.Clicked():
+		a.rememberCover(key, item)
 		a.activate(item, queue)
 	}
 }

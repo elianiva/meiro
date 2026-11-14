@@ -1284,6 +1284,62 @@ func TestBrowsingFromHomeIntoAnAlbum(t *testing.T) {
 	}
 }
 
+// TestAnAlbumCoverFliesFromItsCard checks that the page's cover starts at the
+// card that opened it and lands in the hero, rather than appearing there.
+func TestAnAlbumCoverFliesFromItsCard(t *testing.T) {
+	a := newTestApp(t)
+	// Pages do not move in this test, so the cover's box is the flight's.
+	a.router.Transition = ui.TransitionNone
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	card, ok := tt.Find("Deep Focus")
+	if !ok {
+		t.Fatalf("no album card: %q", tt.Texts())
+	}
+	// Learn where the hero puts the cover: the first opening tells, and the
+	// second one is measured against it.
+	if err := tt.Click("Deep Focus"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(2 * time.Second)
+	for range 5 {
+		tt.Frame()
+	}
+	rest, ok := tt.Find("More options for Deep Focus")
+	if !ok {
+		t.Fatalf("no hero cover: %q", tt.Texts())
+	}
+	a.router.Back()
+	tt.Advance(2 * time.Second)
+	for range 5 {
+		tt.Frame()
+	}
+
+	if err := tt.Click("Deep Focus"); err != nil {
+		t.Fatal(err)
+	}
+	flying, ok := tt.Find("More options for Deep Focus")
+	if !ok {
+		t.Fatalf("no cover while the page opens: %q", tt.Texts())
+	}
+	// The cover is still where the card was, not in the hero's place.
+	if flying.X < card.X-30 || flying.X > card.X+30 {
+		t.Fatalf("the cover started at x=%.0f, not at its card's x=%.0f: the hero did not fly it in", flying.X, card.X)
+	}
+	tt.Advance(2 * time.Second)
+	for range 5 {
+		tt.Frame()
+	}
+	landed, ok := tt.Find("More options for Deep Focus")
+	if !ok {
+		t.Fatalf("the cover left: %q", tt.Texts())
+	}
+	if dx, dy := landed.X-rest.X, landed.Y-rest.Y; dx < -2 || dx > 2 || dy < -2 || dy > 2 {
+		t.Fatalf("the cover landed at %.0f,%.0f, not in the hero at %.0f,%.0f", landed.X, landed.Y, rest.X, rest.Y)
+	}
+}
+
 func TestSettingsPersistAcrossRestarts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp(t)

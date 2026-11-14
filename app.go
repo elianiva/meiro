@@ -153,6 +153,10 @@ type app struct {
 	detailSort           playlistSort
 	detailSortOpen       bool
 	menu                 itemMenu
+	// cover is the card whose cover opened the page showing, so that the
+	// page's hero can take the picture from it as MyGo flies one into the
+	// other.
+	cover cardCover
 
 	// Dialogs.
 	crash          *crashState
