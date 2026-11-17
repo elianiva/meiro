@@ -81,6 +81,7 @@ func TestDownloadsKeepTheAppRunning(t *testing.T) {
 	if a.downloads.release != nil {
 		t.Fatal("the power hold stayed after the queue drained")
 	}
+	a.downloads.writer.Wait()
 }
 
 func TestADownloadedAlbumPlaysOffline(t *testing.T) {
