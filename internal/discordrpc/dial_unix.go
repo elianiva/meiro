@@ -21,10 +21,6 @@ func dialDiscord(ctx context.Context) (net.Conn, error) {
 	), dialUnix)
 }
 
-// discordSocketDirs lists the directories that can hold a discord-ipc-N
-// socket, in dial order. Flatpak's exported app paths and per-app runtime
-// directories, and Snap's per-app runtime directories, are discovered rather
-// than tied to a list of client application IDs.
 func discordSocketDirs(runtimeDir string, fallbacks []string) []string {
 	var dirs []string
 	add := func(dir string) {
@@ -33,7 +29,6 @@ func discordSocketDirs(runtimeDir string, fallbacks []string) []string {
 		}
 	}
 	if runtimeDir != "" {
-		// Try the standard socket first, then app-specific locations.
 		add(runtimeDir)
 		for _, appID := range directoryNames(filepath.Join(runtimeDir, "app")) {
 			add(filepath.Join(runtimeDir, "app", appID))
@@ -67,8 +62,6 @@ func directoryNames(path string) []string {
 	return names
 }
 
-// dialDiscordCandidates returns the first connection among the
-// discord-ipc-0..9 sockets of each directory.
 func dialDiscordCandidates(ctx context.Context, directories []string, dial socketDialFunc) (net.Conn, error) {
 	var lastErr error
 	for _, directory := range directories {

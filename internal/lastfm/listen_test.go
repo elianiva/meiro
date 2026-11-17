@@ -9,8 +9,6 @@ var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
 var song = Track{Artist: "A", Title: "T"}
 
-// player plays a track against a fake clock, sampling every 250 ms as the app
-// does, and records the events its samples made true.
 type player struct {
 	l        *Listen
 	total    time.Duration
@@ -29,7 +27,6 @@ func (p *player) sample() {
 	}
 }
 
-// play lets d of sound go by, sampled every 250 ms.
 func (p *player) play(d time.Duration) {
 	for end := p.now.Add(d); p.now.Before(end); {
 		p.now = p.now.Add(250 * time.Millisecond)
@@ -38,13 +35,11 @@ func (p *player) play(d time.Duration) {
 	}
 }
 
-// wait lets d of the clock go by with no sound and no samples: paused.
 func (p *player) wait(d time.Duration) {
 	p.now = p.now.Add(d)
 	p.l.Break()
 }
 
-// stall lets d go by sampled but silent: buffering with the position fixed.
 func (p *player) stall(d time.Duration) {
 	for end := p.now.Add(d); p.now.Before(end); {
 		p.now = p.now.Add(250 * time.Millisecond)
@@ -52,7 +47,6 @@ func (p *player) stall(d time.Duration) {
 	}
 }
 
-// seek moves the position, which the app marks with a break.
 func (p *player) seek(to time.Duration) {
 	p.position = to
 	p.l.Break()
@@ -74,7 +68,7 @@ func TestListenQualifiesAtHalf(t *testing.T) {
 	if len(p.events) != 1 || p.events[0] != Started {
 		t.Fatalf("events = %v, want just Started", p.events)
 	}
-	p.play(88 * time.Second) // 88 s listened in all, short of 90
+	p.play(88 * time.Second)
 	if count(p.events, Qualified) != 0 {
 		t.Fatalf("scrobbled at %s of 180 s: %v", p.l.Listened(), p.events)
 	}
@@ -129,7 +123,7 @@ func TestListenQualifiesOnceTheLengthIsKnown(t *testing.T) {
 func TestListenPausedTimeDoesNotCount(t *testing.T) {
 	p := newPlayer(3*time.Minute, song, true)
 	p.play(60 * time.Second)
-	p.wait(30 * time.Minute) // paused
+	p.wait(30 * time.Minute)
 	p.play(20 * time.Second)
 	if count(p.events, Qualified) != 0 {
 		t.Fatalf("scrobbled with 80 s listened: %v (%s)", p.events, p.l.Listened())
@@ -141,7 +135,6 @@ func TestListenPausedTimeDoesNotCount(t *testing.T) {
 }
 
 func TestListenPauseWithoutBreakStillDoesNotCount(t *testing.T) {
-	// A gap in the samples is a pause even when nobody said so.
 	p := newPlayer(3*time.Minute, song, true)
 	p.play(60 * time.Second)
 	p.now = p.now.Add(10 * time.Minute)
@@ -154,7 +147,7 @@ func TestListenPauseWithoutBreakStillDoesNotCount(t *testing.T) {
 func TestListenBufferingDoesNotCount(t *testing.T) {
 	p := newPlayer(3*time.Minute, song, true)
 	p.play(60 * time.Second)
-	p.stall(10 * time.Minute) // the clock runs, the position does not
+	p.stall(10 * time.Minute)
 	p.play(20 * time.Second)
 	if count(p.events, Qualified) != 0 {
 		t.Errorf("listened %s: scrobbled through buffering", p.l.Listened())
@@ -169,7 +162,6 @@ func TestListenSeekForwardDoesNotCount(t *testing.T) {
 	if count(p.events, Qualified) != 0 {
 		t.Fatalf("a seek past the half way point scrobbled: listened %s", p.l.Listened())
 	}
-	// A jump the app did not mark is caught by the position alone.
 	before := p.l.Listened()
 	p.position += 20 * time.Second
 	p.play(time.Second)

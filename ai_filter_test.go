@@ -76,8 +76,8 @@ func TestAIFilterWaitsForTheNextTrackBeforeHandlingAnotherEnd(t *testing.T) {
 	if a.queue.index != 1 || !a.loading() {
 		t.Errorf("pending lookup: index=%d loading=%v; want index 1 and loading", a.queue.index, a.loading())
 	}
-	drain() // finish the label lookup
-	drain() // start its audio
+	drain()
+	drain()
 	if a.current.VideoID != "song-two" || !r.asked("song-two") || r.asked("song-three") {
 		t.Errorf("after lookup: current=%s resolved=%v; want song-two", a.current.VideoID, r.ids)
 	}
@@ -92,7 +92,6 @@ func TestEnablingAIFilterCancelsAnExcludedPreload(t *testing.T) {
 			resetFakes()
 			a, _ := tonesApp(t, 30)
 			a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
-			// A previous playback learned the label while the filter was on.
 			a.rememberAIDisclosure("song-two", youtube.AIAlteredOrGenerated)
 			a.router.Push("/playlist/PL_songs")
 			tt := ui.NewTester(a.view, 1000, 900)

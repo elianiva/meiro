@@ -1,11 +1,3 @@
-// Package posthog sends the one message the install count needs: a ping when
-// the user agrees on first run. Crash reports go to package sentry instead.
-//
-// Nothing here identifies a person. The message carries an ID made for it
-// alone and never kept, and the collector is told neither to derive a
-// location from the connection nor to make a person of that ID. A message
-// that fails to arrive is the caller's to retry: this package keeps no
-// state, so it cannot resend what the user agreed to only once.
 package posthog
 
 import (
@@ -23,24 +15,21 @@ import (
 	"time"
 )
 
-// DefaultEndpoint is PostHog's single-event ingestion, where the project the
-// key belongs to collects.
 const DefaultEndpoint = "https://us.i.posthog.com/i/v0/e/"
 
-// Timeout bounds one message, so a slow network never holds up what sends it.
+const (
+	disableGeoIP        = true
+	createPersonProfile = false
+)
+
 const Timeout = 10 * time.Second
 
-// Client sends the events of one project to the collector.
 type Client struct {
-	// Key is the project's API key. Without one, Capture sends nothing.
-	Key string
-	// Endpoint is where events go; empty uses DefaultEndpoint.
+	Key      string
 	Endpoint string
-	// HTTP sends the requests; nil uses a client that times out.
-	HTTP *http.Client
+	HTTP     *http.Client
 }
 
-// capture is PostHog's single-event body.
 type capture struct {
 	APIKey     string         `json:"api_key"`
 	Event      string         `json:"event"`
@@ -48,10 +37,6 @@ type capture struct {
 	Properties map[string]any `json:"properties"`
 }
 
-// Capture sends one event with properties, which may be nil. The ID it goes
-// under is made here and goes nowhere else: it is never saved, so two
-// messages from one copy of the app do not look like one person. The whole
-// message is bounded by Timeout.
 func (c *Client) Capture(event string, properties map[string]any) error {
 	if c.Key == "" {
 		return errors.New("posthog: no project key")
@@ -63,12 +48,10 @@ func (c *Client) Capture(event string, properties map[string]any) error {
 	if err != nil {
 		return err
 	}
-	// The collector is asked to keep neither a location nor a person for the
-	// message. Callers add only what the message is for.
 	props := map[string]any{
 		"$lib":                    "meiro",
-		"$geoip_disable":          true,
-		"$process_person_profile": false,
+		"$geoip_disable":          disableGeoIP,
+		"$process_person_profile": createPersonProfile,
 	}
 	maps.Copy(props, properties)
 	body, err := json.Marshal(capture{APIKey: c.Key, Event: event, DistinctID: id, Properties: props})
@@ -103,7 +86,6 @@ func (c *Client) Capture(event string, properties map[string]any) error {
 	return nil
 }
 
-// randomID is an ID for one message: 16 random bytes, as hex.
 func randomID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {

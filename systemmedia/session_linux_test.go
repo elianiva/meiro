@@ -41,13 +41,6 @@ func TestMPRISArtworkURLRequestsLargeGoogleImages(t *testing.T) {
 	}
 }
 
-// The media session talks to the user's session bus, so these need one. Run
-// them under dbus-run-session, as CI does:
-//
-//	dbus-run-session -- go test ./systemmedia/
-//
-// Without a bus they skip rather than fail, so a plain `go test ./...` still
-// passes on a machine that has none.
 func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
 		t.Skip("run under dbus-run-session to exercise the MPRIS D-Bus service")
@@ -91,7 +84,6 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 	defer func() { _ = client.Close() }()
 	object := client.Object(linux.busName, objectPath)
 
-	// What a desktop reads is what the session published.
 	title, status := "", ""
 	var artists []string
 	var metadata map[string]dbus.Variant
@@ -104,8 +96,6 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 	if err := metadata["xesam:artist"].Store(&artists); err != nil || len(artists) != 1 || artists[0] != state.Artist {
 		t.Errorf("MPRIS artist = %v, err %v; want [%q]", artists, err, state.Artist)
 	}
-	// The album is its own field, so a widget that shows it can, and one that
-	// shows only the artist is not given it as part of the artist.
 	album := ""
 	if variant, ok := metadata["xesam:album"]; !ok || variant.Store(&album) != nil || album != state.Album {
 		t.Errorf("MPRIS album = %q, present %v; want %q", album, ok, state.Album)
@@ -129,7 +119,6 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 		t.Errorf("MPRIS volume = %v, want %v", volume, state.Volume)
 	}
 
-	// A command the desktop sends reaches the app.
 	if err := object.Call(playerInterface+".Next", 0).Err; err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +131,6 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 		t.Error("Next was not forwarded to the app")
 	}
 
-	// A seek is announced with the position it landed on.
 	signals := make(chan *dbus.Signal, 4)
 	client.Signal(signals)
 	if err := client.AddMatchSignal(
@@ -168,8 +156,6 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 		t.Error("no Seeked signal after a seek")
 	}
 
-	// Seek is relative to the current position, and both Seek and SetPosition
-	// stay within the track.
 	for _, test := range []struct {
 		name   string
 		offset time.Duration
@@ -201,13 +187,11 @@ func TestMPRISSessionPublishesStateAndForwardsCommands(t *testing.T) {
 			t.Errorf("SetPosition %s = %v, want %v", test.name, got, test.want)
 		}
 	}
-	// Positions outside the track are ignored, as the MPRIS spec says.
 	for _, position := range []time.Duration{-time.Second, 4 * time.Minute} {
 		if err := object.Call(playerInterface+".SetPosition", 0, trackID, int64(position/time.Microsecond)).Err; err != nil {
 			t.Fatal(err)
 		}
 	}
-	// Seek is a round trip behind these calls, so a forwarded seek would be queued by now.
 	if err := object.Call(playerInterface+".Seek", 0, int64(time.Second/time.Microsecond)).Err; err != nil {
 		t.Fatal(err)
 	}

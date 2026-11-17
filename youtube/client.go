@@ -1,6 +1,3 @@
-// Package youtube provides the read-only YouTube Music client Meiro browses
-// and plays with. It uses YouTube's InnerTube API and parses the responses
-// into the small convenience types the app needs.
 package youtube
 
 import (
@@ -26,39 +23,25 @@ const (
 	defaultMusicClientID = "67"
 )
 
-// maxResponseBytes is the most of an API response the client will read. The
-// biggest pages, a whole library, are a few megabytes.
 const maxResponseBytes = 64 << 20
 
-// defaultResponseHeaderTimeout bounds how long the default client waits for a
-// response's headers. The body is left to the request context, so a slow
-// stream is not cut off by a client-wide deadline.
 const defaultResponseHeaderTimeout = 30 * time.Second
 
-// browserUserAgent is sent with every request. YouTube serves the InnerTube API
-// to public clients, and a browser User-Agent keeps it from treating the
-// request as a script and returning a stub.
 const browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
-// Options configures a Music client. BaseURL is the YouTube InnerTube API host.
-// APIKey is optional: YouTube answers the supported endpoints without one, and
-// when it is set it is sent as the request's key.
 type Options struct {
-	HTTPClient       *http.Client
-	BaseURL          string
-	APIKey           string
-	ClientVersion    string
-	WebClientVersion string
-	VisitorData      string
-	Language         string
-	Country          string
-	CookieAuth       *CookieAuth
-	// AllowInsecureCookieAuth permits sending CookieAuth to a non-YouTube or
-	// non-HTTPS BaseURL. This is intended for trusted local test servers only.
+	HTTPClient              *http.Client
+	BaseURL                 string
+	APIKey                  string
+	ClientVersion           string
+	WebClientVersion        string
+	VisitorData             string
+	Language                string
+	Country                 string
+	CookieAuth              *CookieAuth
 	AllowInsecureCookieAuth bool
 }
 
-// Client issues read-only YouTube Music requests.
 type Client struct {
 	httpClient              *http.Client
 	baseURL                 string
@@ -73,12 +56,6 @@ type Client struct {
 	allowInsecureCookieAuth bool
 }
 
-// defaultHTTPClient is the HTTP client of every Client that is not given one.
-// It bounds only the wait for response headers: the request context governs
-// how long the body may take. The clients share it, and with it their open
-// connections, so a client made for a new session, or to check one, does not
-// pay for a handshake of its own. It holds no cookies: a client sends its own
-// with each request.
 var defaultHTTPClient = func() *http.Client {
 	base, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -89,8 +66,6 @@ var defaultHTTPClient = func() *http.Client {
 	return &http.Client{Transport: transport}
 }()
 
-// NewClient constructs a client. No network request is made until a method is
-// called.
 func NewClient(options Options) *Client {
 	if options.HTTPClient == nil {
 		options.HTTPClient = defaultHTTPClient
@@ -144,9 +119,6 @@ type clientUserContext struct {
 	OnBehalfOfUser string `json:"onBehalfOfUser,omitempty"`
 }
 
-// context builds the request context shared by every InnerTube client. The
-// client-specific name and version are set by executeAs, which knows
-// which client the request speaks as.
 func (c *Client) context() clientContext {
 	var ctx clientContext
 	ctx.Client.HL = c.language
@@ -185,20 +157,14 @@ func readBoundedBody(body io.Reader, limit int64, label string) ([]byte, error) 
 	return data, nil
 }
 
-// innerTubeClient is which of YouTube's clients a request speaks as.
 type innerTubeClient string
 
 const (
-	musicClient innerTubeClient = "YTMUSIC"
-	webClient   innerTubeClient = "WEB"
-	// androidMusicClient is the YouTube Music app for Android, the only one
-	// that is given a track's lyrics with the time each line is sung.
+	musicClient        innerTubeClient = "YTMUSIC"
+	webClient          innerTubeClient = "WEB"
 	androidMusicClient innerTubeClient = "ANDROID_MUSIC"
 )
 
-// visionOSClient is the YouTube app for Apple Vision Pro. Its player
-// response lists audio formats with direct URLs, which need neither a
-// signature nor YouTube's JavaScript challenge solved.
 const visionOSClient innerTubeClient = "VISIONOS"
 
 const (
@@ -211,14 +177,10 @@ const (
 	androidMusicUserAgent = "com.google.android.apps.youtube.music/" + androidMusicVersion + " (Linux; U; Android 14) gzip"
 )
 
-// execute sends a request as the YouTube Music web app, asking for songs
-// rather than music videos.
 func (c *Client) execute(ctx context.Context, endpoint string, payload map[string]any) (json.RawMessage, error) {
 	return c.executeAs(ctx, musicClient, true, endpoint, payload)
 }
 
-// executeAs sends a request as client. audioOnly asks YouTube Music for songs
-// rather than music videos.
 func (c *Client) executeAs(ctx context.Context, client innerTubeClient, audioOnly bool, endpoint string, payload map[string]any) (json.RawMessage, error) {
 	var clientName, clientID, clientVersion string
 	switch client {
@@ -297,8 +259,6 @@ func (c *Client) executeAs(ctx context.Context, client innerTubeClient, audioOnl
 	if err != nil {
 		return nil, err
 	}
-	// The body is the result as it came. Reading the visitor ID from it also
-	// checks that all of it is JSON, so it is scanned once here, not twice.
 	var responseMetadata struct {
 		ResponseContext struct {
 			VisitorData string `json:"visitorData"`
@@ -315,10 +275,7 @@ func (c *Client) executeAs(ctx context.Context, client innerTubeClient, audioOnl
 	return json.RawMessage(responseBody), nil
 }
 
-// setIdentity adds who is asking: the visitor of an anonymous visit, or the
-// signed-in account.
 func (c *Client) setIdentity(req *http.Request, visitorData string) {
-	// The visitor ID is an anonymous visit's; a signed-in session is its own.
 	if visitorData != "" && c.cookieAuth == nil {
 		req.Header.Set("X-Goog-Visitor-Id", visitorData)
 	}
@@ -341,13 +298,8 @@ func isYouTubeURL(endpoint *url.URL) bool {
 	return host == "youtube.com" || strings.HasSuffix(host, ".youtube.com")
 }
 
-// ErrUnreachable is a request that got no answer at all: no network, no DNS,
-// a refused connection. The cause is left out of the error, which would name
-// the URL asked; callers only need to tell it from YouTube answering badly.
 var ErrUnreachable = errors.New("could not reach YouTube Music")
 
-// ErrUnauthorized is YouTube refusing a request's credentials with HTTP 401 or
-// 403, as it does for a session it has stopped accepting.
 var ErrUnauthorized = errors.New("youtube: the session was rejected")
 
 const maxErrorDiagnosticBytes = 256

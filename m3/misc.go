@@ -8,7 +8,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// pick returns yes when b is true, else no: a choice without a map lookup.
 func pick[T any](b bool, yes, no T) T {
 	if b {
 		return yes
@@ -16,14 +15,10 @@ func pick[T any](b bool, yes, no T) T {
 	return no
 }
 
-// Switch builds a Material 3 switch: a pill track and a thumb that grows when
-// it is on, shrinks when it is off and swells while pressed, with a check
-// mark in the thumb when on. It toggles *on by itself.
 func Switch(c *ui.Context, on *bool, label string) ui.Element {
 	return switchWithTrack(c, on, label, 52, 32)
 }
 
-// CompactSwitch draws a smaller track while keeping the usual pointer target.
 func CompactSwitch(c *ui.Context, on *bool, label string) ui.Element {
 	return switchWithTrack(c, on, label, 48, 28)
 }
@@ -42,7 +37,6 @@ func switchWithTrack(c *ui.Context, on *bool, label string, trackWidth, trackHei
 		track, outline, thumb, glyph = sc.Primary, sc.Primary, sc.OnPrimary, sc.OnPrimaryContainer
 	}
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
-		// Center the track in the taller pointer target.
 		r = ui.Rect{X: r.X + (r.W-trackWidth)/2, Y: r.Y + (r.H-trackHeight)/2, W: trackWidth, H: trackHeight}
 		p.Fill(r, track, r.H/2)
 		if !v {
@@ -71,45 +65,35 @@ func switchWithTrack(c *ui.Context, on *bool, label string, trackWidth, trackHei
 	return s
 }
 
-// Dialog shows a Material dialog over a scrim while *open is true. build
-// fills the panel; a press on the scrim or Escape closes it. A panel taller
-// than the window scrolls, so its actions stay reachable.
+const (
+	dialogMaxWidthPercent = 92
+	dialogWindowMargin    = 48
+)
+
 func Dialog(c *ui.Context, open *bool, width float32, build func()) {
 	if !*open {
 		return
 	}
 	sc := Of(c).Scheme
 	_, windowHeight := c.Size()
-	// DialogBase's panel is a box without the scroll flag, so it cannot
-	// scroll. Built here, the panel is a scrolling column, so content past
-	// the window scrolls. The backdrop covers the window and centers the
-	// panel, as DialogBase's does.
 	ui.Overlay(c, func() {
 		back := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Center().
 			Background(sc.Scrim.Alpha(0.4)).Modal()
 		var panel ui.Element
 		back.Children(func() {
-			// A percentage of the panel's own content is the content, so it
-			// never caps the panel. The window's height does; leave a margin.
-			panel = ui.Scroll(c).Width(width).MaxWidthPercent(92).MaxHeight(windowHeight-48).
+			panel = ui.Scroll(c).Width(width).MaxWidthPercent(dialogMaxWidthPercent).MaxHeight(windowHeight-dialogWindowMargin).
 				Padding(24).Gap(16).Radius(ExtraLarge).Background(sc.SurfaceContainerHigh).
 				TextColor(sc.OnSurface).Role(ui.RoleDialog).Label("dialog-panel").
 				ScrollbarInsets(16, 6, 16, 0)
 			Elevation(c, panel, 3)
 			panel.Children(build)
 		})
-		// A press on the scrim closes the dialog; a press on the panel does
-		// not. Clicked reports a press on the panel too, since the panel
-		// does not take it, so only a press outside the panel counts.
 		if scrimPressed(back, panel) || back.OverlayShortcut(0, ui.KeyEscape) {
 			*open = false
 		}
 	})
 }
 
-// scrimPressed reports a press on the scrim that missed the panel. The panel
-// does not take presses, so the scrim's Clicked is true for a press on the
-// panel too; the pointer's place tells them apart.
 func scrimPressed(scrim, panel ui.Element) bool {
 	if !scrim.Clicked() {
 		return false
@@ -119,8 +103,6 @@ func scrimPressed(scrim, panel ui.Element) bool {
 	return x < 0 || y < 0 || x >= r.W || y >= r.H
 }
 
-// Snackbars shows the window's toasts as Material snackbars along the bottom
-// of the window, lifted by inset DIPs to clear a player.
 func Snackbars(c *ui.Context, inset float32) {
 	sc := Of(c).Scheme
 	ui.ToastViewportBase(c, func(viewport ui.Element, toasts []ui.Toast) {
@@ -153,7 +135,6 @@ func Snackbars(c *ui.Context, inset float32) {
 	})
 }
 
-// Menu opens a Material menu below anchor while *open is true.
 func Menu(c *ui.Context, anchor ui.Element, open *bool, width float32, build func()) {
 	sc := Of(c).Scheme
 	wasOpen := *open
@@ -161,18 +142,13 @@ func Menu(c *ui.Context, anchor ui.Element, open *bool, width float32, build fun
 		panel.Key(anchor.ID()).Width(width).Padding(8).Radius(Large).Margin(8, 0, 0, 0).Background(sc.SurfaceContainerHigh).
 			TextColor(sc.OnSurface)
 		Elevation(c, panel, 3)
-		// The popover's anchor scope belongs to the panel itself. Put the
-		// modal scope inside it so opening a menu moves focus to its actions.
 		ui.Column(c).Gap(2).Role(ui.RoleMenu).Modal().FocusGroup(ui.Vertical).Children(build)
 	})
 	if wasOpen && !*open {
-		// MyGo restores focus after painting this frame. Show the restored
-		// control's focus ring without waiting for another input event.
 		c.AnimationFrame()
 	}
 }
 
-// MenuItem is one entry of a menu.
 func MenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
 	sc := Of(c).Scheme
 	b := ui.ButtonBase(c.Key("menu-" + label))
@@ -187,11 +163,6 @@ func MenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
 	return b
 }
 
-// Art shows artwork in a rounded frame, or a tonal placeholder with a note
-// while the picture loads or has failed. A zero size leaves it to the layout.
-//
-// The picture is rounded as it is drawn. Overlays are built on top of it, so
-// one that covers the corners rounds itself.
 func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()) ui.Element {
 	sc := Of(c).Scheme
 	box := ui.Box(c).Radius(radius).Background(sc.SurfaceContainerHighest).Shrink(0)
@@ -200,14 +171,10 @@ func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()
 	}
 	box.Children(func() {
 		if art == nil {
-			// The note fills the frame alone. A nil image would still take a
-			// share of the layout, leaving the note centered in the top half.
 			ui.Box(c).Fill().Center().Children(func() {
 				ui.Icon(c, IconMusicNote).FontSize(max(size*0.4, 18)).TextColor(sc.OnSurfaceVariant.Alpha(0.6))
 			})
 		} else {
-			// The picture keeps its element as covers change, so MyGo
-			// crossfades from the one before to the next.
 			ui.Image(c, art).Key("art").Fill().Radius(radius).ContentTransition(ui.ContentTransition{}).Fit(ui.Cover)
 		}
 		for _, overlay := range overlays {
@@ -217,7 +184,6 @@ func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()
 	return box
 }
 
-// VideoBadge marks artwork for a video that is being played as audio.
 func VideoBadge(c *ui.Context, artSize float32) {
 	sc := Of(c).Scheme
 	inset := min(max(artSize*0.08, 6), 24)
@@ -233,8 +199,6 @@ func VideoBadge(c *ui.Context, artSize float32) {
 	})
 }
 
-// Avatar shows a person's picture, or the first letter of their name on a
-// tonal disc.
 func Avatar(c *ui.Context, name string, pic *ui.Bitmap, size float32) ui.Element {
 	sc := Of(c).Scheme
 	disc := ui.Box(c).Size(size, size).Radius(Full).Background(sc.PrimaryContainer).Shrink(0)
@@ -255,19 +219,14 @@ func Avatar(c *ui.Context, name string, pic *ui.Bitmap, size float32) ui.Element
 	return disc
 }
 
-// CarouselState is the scroll of a carousel, which can page by a spring-less
-// ease so that the arrows glide instead of jumping.
 type CarouselState struct {
 	ui.ScrollState
 	target  float32
 	gliding bool
 	view    float32
-	// asked records that a caller was told the carousel needs measuring, so
-	// it asks only once.
-	asked bool
+	asked   bool
 }
 
-// Page glides a carousel one page toward the end (1) or the start (-1).
 func (s *CarouselState) Page(direction int) {
 	from := s.X
 	if s.gliding {
@@ -277,7 +236,6 @@ func (s *CarouselState) Page(direction int) {
 	s.gliding = true
 }
 
-// CanPage reports whether there is more to scroll toward direction.
 func (s *CarouselState) CanPage(direction int) bool {
 	if direction < 0 {
 		return s.X > 1
@@ -285,10 +243,6 @@ func (s *CarouselState) CanPage(direction int) bool {
 	return s.X < s.MaxX-1
 }
 
-// NeedsMeasurement reports whether the carousel has not been laid out yet, so
-// a caller that planned its items from the viewport asks for the frame that
-// measures it. It answers true once, so a carousel that is never laid out
-// does not ask again every frame.
 func (s *CarouselState) NeedsMeasurement() bool {
 	if s.view > 0 || s.asked {
 		return false
@@ -297,10 +251,6 @@ func (s *CarouselState) NeedsMeasurement() bool {
 	return true
 }
 
-// VisibleRange returns the item indices to show or prefetch for a carousel.
-// The first index is inclusive and the last is exclusive. It uses the
-// viewport measured in the previous frame, with room for four items before
-// the first layout has measured it.
 func (s *CarouselState) VisibleRange(count int, itemWidth, gap, padding float32, prefetch int) (first, last int) {
 	if count <= 0 || itemWidth <= 0 || gap < 0 {
 		return 0, 0
@@ -309,7 +259,7 @@ func (s *CarouselState) VisibleRange(count int, itemWidth, gap, padding float32,
 	step := itemWidth + gap
 	view := s.view
 	if view <= 0 {
-		view = itemWidth*4 + gap*3
+		view = itemWidth*carouselUnmeasuredItems + gap*(carouselUnmeasuredItems-1)
 	}
 	first = int(math.Floor(float64((s.X-padding-itemWidth)/step))) + 1 - prefetch
 	last = int(math.Ceil(float64((s.X+view-padding)/step))) + prefetch
@@ -318,16 +268,10 @@ func (s *CarouselState) VisibleRange(count int, itemWidth, gap, padding float32,
 	return first, last
 }
 
-// carouselFoot is the room a shelf leaves under its cards, between them and
-// whatever follows.
+const carouselUnmeasuredItems = 4
+
 const carouselFoot float32 = 8
 
-// Carousel lays items out in one row that scrolls sideways, as a shelf of
-// cards does.
-//
-// A carousel shows where it is with the arrows of its own heading, so it
-// draws no scroll bar of MyGo's: the wheel, the touchpad and the arrows still
-// move it, and the bar only took room under the cards.
 func Carousel(c *ui.Context, s *CarouselState, key any, gap, padX float32, items func()) ui.Element {
 	if s.gliding {
 		delta := s.target - s.X
@@ -345,18 +289,11 @@ func Carousel(c *ui.Context, s *CarouselState, key any, gap, padX float32, items
 	return row
 }
 
-// KeyPart is one piece of a KeyBadge: a word or symbol, or an icon.
 type KeyPart struct {
 	Text string
 	Icon *ui.SVG
 }
 
-// KeyBadge is a small tile naming the key that does what the control beside
-// it does, for a view that shows its shortcuts while a modifier is held. It
-// is a tertiary container, so it reads as part of the interface and apart
-// from the primary and secondary controls it sits on, with the lift of a
-// level 1 surface and a fade in. The caller places it: it is an ordinary box,
-// so put it in an absolutely positioned one.
 func KeyBadge(c *ui.Context, parts ...KeyPart) ui.Element {
 	sc := Of(c).Scheme
 	badge := ui.Box(c).Row().Height(22).PaddingX(7).MinWidth(22).Gap(2).Shrink(0).Center().AlignItems(ui.Center).Radius(Full).

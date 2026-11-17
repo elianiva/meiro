@@ -19,8 +19,6 @@ func TestParseFFmpeg(t *testing.T) {
 	}
 }
 
-// The link round-trips the details, including characters that need escaping,
-// and says what is missing instead of leaving a blank.
 func TestURLFillsTheBugReportForm(t *testing.T) {
 	info := Info{App: "1.2.3", OS: "linux", Arch: "arm64", YtDlp: "2025.01.15", FFmpeg: ""}
 	raw := info.URL()

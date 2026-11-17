@@ -6,6 +6,7 @@ go_library(
         "artwork.go",
         "media.go",
         "nowplaying_windows.go",
+        "positiondrift.go",
         "session_darwin.go",
         "session_linux.go",
         "session_other.go",

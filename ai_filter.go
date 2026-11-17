@@ -12,19 +12,11 @@ import (
 )
 
 const (
-	// aiFilterCacheLimit bounds the labels remembered for this run.
 	aiFilterCacheLimit = 512
-	// aiLookupTimeout keeps a label that YouTube will not answer from holding
-	// a track for long. A failed lookup plays the track rather than stopping
-	// music the user chose.
-	aiLookupTimeout = 10 * time.Second
-	// maxAIRefills bounds new recommendation batches when none of their
-	// songs can play. Every track already in the queue is still checked.
-	maxAIRefills = 3
+	aiLookupTimeout    = 10 * time.Second
+	maxAIRefills       = 3
 )
 
-// aiFilterState remembers what YouTube said about each video. Background
-// lookup writes it and the main thread reads it while building playback.
 type aiFilterState struct {
 	mu      sync.Mutex
 	cache   *lru.Cache[string, youtube.AIDisclosure]
@@ -67,14 +59,10 @@ func (s *aiFilterState) generation() uint64 {
 	return s.version
 }
 
-// isMusicTrack reports whether item is a song or music video rather than an
-// album, playlist, artist, or podcast episode.
 func isMusicTrack(item youtube.MusicItem) bool {
 	return item.Target().Kind == youtube.TargetTrack && !item.IsEpisode()
 }
 
-// aiDisclosure returns the best label known for item: the one stored with it
-// or the one this run looked up.
 func (a *app) aiDisclosure(item youtube.MusicItem) youtube.AIDisclosure {
 	if item.AIDisclosure != youtube.AIUnknown {
 		return item.AIDisclosure
@@ -85,16 +73,11 @@ func (a *app) aiDisclosure(item youtube.MusicItem) youtube.AIDisclosure {
 	return youtube.AIUnknown
 }
 
-// excludesItem applies the user's choice to a track. Unknown labels are never
-// treated as human-made, but they also cannot be excluded reliably.
 func (a *app) excludesItem(item youtube.MusicItem) bool {
 	return a.settings.ExcludeAIGenerated && isMusicTrack(item) &&
 		a.aiDisclosure(item) == youtube.AIAlteredOrGenerated
 }
 
-// visibleItems drops tracks whose AI label has already been learned. YT Music's
-// browse and search responses do not carry the label, so this only removes
-// items learned through a player lookup.
 func (a *app) visibleItems(items []youtube.MusicItem) []youtube.MusicItem {
 	if !a.settings.ExcludeAIGenerated {
 		return items
@@ -108,8 +91,6 @@ func (a *app) visibleItems(items []youtube.MusicItem) []youtube.MusicItem {
 	return kept
 }
 
-// rememberAIDisclosure records a lookup and updates the queue for future
-// checks. It runs on the main thread.
 func (a *app) rememberAIDisclosure(videoID string, status youtube.AIDisclosure) {
 	if a.aiFilter.put(videoID, status) {
 		a.page.rowsDirty = true
@@ -127,9 +108,6 @@ func (a *app) rememberAIDisclosure(videoID string, status youtube.AIDisclosure) 
 	}
 }
 
-// setExcludeAIGenerated saves the user's choice and applies it to the current
-// queue and page. The track already playing is never stopped by turning the
-// filter on.
 func (a *app) setExcludeAIGenerated(enabled bool) {
 	if a.settings.ExcludeAIGenerated == enabled {
 		return
@@ -150,8 +128,6 @@ func (a *app) applyAIFilterChange() {
 	a.refresh()
 }
 
-// checkAIBeforePlay skips a known AI track, or starts the lookup that must
-// finish before an unknown one can play. It reports whether it took over.
 func (a *app) checkAIBeforePlay(item youtube.MusicItem, startAt time.Duration, changed bool) bool {
 	if a.excludesItem(item) {
 		a.skipExcluded(item)
@@ -166,8 +142,6 @@ func (a *app) checkAIBeforePlay(item youtube.MusicItem, startAt time.Duration, c
 		if err := ctx.Err(); err != nil {
 			return youtube.AIUnknown, err
 		}
-		// Like stream resolution, checking a newly chosen track replaces
-		// the old audio off the main thread, including any held preload.
 		a.player.Stop()
 		return client.AIDisclosure(ctx, videoID)
 	}, func(status youtube.AIDisclosure, err error) {
@@ -187,9 +161,6 @@ func (a *app) checkAIBeforePlay(item youtube.MusicItem, startAt time.Duration, c
 
 const aiExcludedReason = "YouTube marks this song as made with AI."
 
-// skipExcluded looks through the whole queue for an allowed or unchecked
-// track. A full pass bounds repeat queues; new recommendation batches have
-// their own limit so exclusions never exhaust the playback failure budget.
 func (a *app) skipExcluded(item youtube.MusicItem) {
 	title := strings.TrimSpace(item.Title)
 	if title == "" {

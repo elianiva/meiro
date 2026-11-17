@@ -7,23 +7,13 @@ import (
 )
 
 const (
-	// urlTTL is how long a resolved audio URL is reused. YouTube's media URLs
-	// stay valid for hours, so this is a wide safety margin.
-	urlTTL = 30 * time.Minute
-	// urlLimit bounds how many resolved URLs are remembered.
-	urlLimit = 8
-	// ResolveTimeout bounds one resolve, a yt-dlp run.
+	urlTTL         = 30 * time.Minute
+	urlLimit       = 8
 	ResolveTimeout = 90 * time.Second
 )
 
-// Resolver finds a direct audio URL and the length of a track.
 type Resolver func(ctx context.Context, videoID string) (string, time.Duration, error)
 
-// URLs remembers resolved audio URLs, so a track resolved ahead of time plays
-// without waiting on yt-dlp. A URL is a few hundred bytes: resolving ahead
-// costs no meaningful bandwidth, unlike downloading the audio. Concurrent
-// requests for one track share a single resolve. It is safe for concurrent
-// use.
 type URLs struct {
 	resolve Resolver
 
@@ -32,9 +22,7 @@ type URLs struct {
 }
 
 type urlEntry struct {
-	at time.Time
-	// waiters counts the Gets waiting on the resolve, and cancel stops it.
-	// Both belong to URLs.mu.
+	at      time.Time
 	waiters int
 	cancel  context.CancelFunc
 	done    chan struct{}
@@ -43,15 +31,10 @@ type urlEntry struct {
 	err     error
 }
 
-// NewURLs returns an empty cache that resolves with resolve.
 func NewURLs(resolve Resolver) *URLs {
 	return &URLs{resolve: resolve, entries: make(map[string]*urlEntry)}
 }
 
-// Get returns the audio URL and length of a track, resolving it unless a
-// fresh result or a resolve in flight exists. A resolve in flight stops when
-// the last Get waiting on it ends, so a skipped track does not leave yt-dlp
-// running; a failed one is not remembered.
 func (c *URLs) Get(ctx context.Context, videoID string) (string, time.Duration, error) {
 	if err := ctx.Err(); err != nil {
 		return "", 0, err
@@ -59,8 +42,6 @@ func (c *URLs) Get(ctx context.Context, videoID string) (string, time.Duration, 
 	c.mu.Lock()
 	e, ok := c.entries[videoID]
 	if !ok || e.stale() {
-		// The resolve is shared, so it keeps the request's values but is
-		// cancelled by its waiters leaving, not by this request alone.
 		runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ResolveTimeout)
 		e = &urlEntry{at: time.Now(), done: make(chan struct{}), cancel: cancel}
 		c.entries[videoID] = e
@@ -79,8 +60,6 @@ func (c *URLs) Get(ctx context.Context, videoID string) (string, time.Duration, 
 	}
 }
 
-// leave ends one wait on e. The last one out stops a resolve still running
-// and forgets it, so the next Get starts afresh.
 func (c *URLs) leave(e *urlEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -100,16 +79,12 @@ func (c *URLs) leave(e *urlEntry) {
 	}
 }
 
-// Forget drops what is remembered of a track, so that the next Get resolves
-// it again. It is for a URL that stopped working before its time, as one that
-// expired while the machine slept.
 func (c *URLs) Forget(videoID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.entries, videoID)
 }
 
-// Reset drops everything remembered, for a change in how tracks are resolved.
 func (c *URLs) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -126,12 +101,9 @@ func (c *URLs) run(ctx context.Context, videoID string, e *urlEntry) {
 		}
 		c.mu.Unlock()
 	}
-	// Remove failed results before waking waiters. Otherwise a caller that
-	// retries immediately can still find and reuse this failed entry.
 	close(e.done)
 }
 
-// stale reports whether a finished entry is past its lifetime.
 func (e *urlEntry) stale() bool {
 	select {
 	case <-e.done:
@@ -141,8 +113,6 @@ func (e *urlEntry) stale() bool {
 	}
 }
 
-// trimLocked drops the oldest entries beyond the limit. The caller holds
-// c.mu.
 func (c *URLs) trimLocked() {
 	for len(c.entries) > urlLimit {
 		oldest, oldestAt := "", time.Time{}

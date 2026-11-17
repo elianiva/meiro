@@ -10,15 +10,12 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// afterAnimations draws frames until the player's entry animation is over,
-// which a click would otherwise land in the middle of.
 func afterAnimations(tt *ui.Tester) {
 	for end := time.Now().Add(500 * time.Millisecond); time.Now().Before(end); {
 		tt.Frame()
 	}
 }
 
-// openTrackMenu opens the menu of the row of a track on the page shown.
 func openTrackMenu(t *testing.T, tt *ui.Tester, title string) {
 	t.Helper()
 	row, ok := tt.Find(title)
@@ -33,8 +30,6 @@ func openTrackMenu(t *testing.T, tt *ui.Tester, title string) {
 	tt.Frame()
 }
 
-// likeWrite is the last like write the fake YouTube was asked for: its
-// endpoint, and the video its target names.
 func likeWrite() (endpoint, videoID string) {
 	write := written()
 	target, _ := write.body["target"].(map[string]any)
@@ -175,7 +170,7 @@ func TestSignedOutHasNoLike(t *testing.T) {
 			t.Fatalf("the signed-out player has a heart: %q", text)
 		}
 	}
-	a.toggleLike(a.current) // a shortcut that reached it would write nothing
+	a.toggleLike(a.current)
 	if likeWrites.Load() != 0 {
 		t.Fatalf("a signed-out like wrote %d times", likeWrites.Load())
 	}
@@ -227,7 +222,6 @@ func TestARejectedLikeIsTakenBack(t *testing.T) {
 	a.openPlayer(tabQueue, false)
 	afterAnimations(tt)
 
-	// Hold the write back, to see the heart before YouTube answers.
 	var held []func()
 	run := a.run
 	a.run = func(work func()) { held = append(held, work) }
@@ -238,7 +232,6 @@ func TestARejectedLikeIsTakenBack(t *testing.T) {
 	if !tt.HasText("Unlike Album Track One") || a.current.Like != youtube.Liked {
 		t.Fatalf("the heart did not fill at once: %q %q", a.current.Like, tt.Texts())
 	}
-	// A press while the write is out writes nothing more.
 	if err := tt.Click("Unlike Album Track One"); err != nil {
 		t.Fatal(err)
 	}

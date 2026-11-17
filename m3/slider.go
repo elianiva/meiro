@@ -6,10 +6,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// hueSteps is how many gradients paint the hue slider's spectrum, one per
-// span between two stops of hueStrip, which holds the colours of the stops,
-// derived once rather than on every paint. A band per colour would be a
-// hundred and more quads in every frame of the page.
 const hueSteps = 24
 
 var hueStrip = func() [hueSteps + 1]ui.Color {
@@ -20,19 +16,18 @@ var hueStrip = func() [hueSteps + 1]ui.Color {
 	return strip
 }()
 
-// A wavy slider's active track is a wave that travels from the handle back to
-// the start while the music plays: waveWavelength is the distance between two
-// crests, and the wave covers one wavelength every wavePeriodMS.
 const (
 	waveWavelength = 30
 	wavePeriodMS   = 1800
 )
 
-// handleBox returns a slider's handle as a box of whole device pixels whose
-// left edge sits on the pixel grid. A handle four DIPs wide lands on four
-// device pixels at 100%, but a desktop scale that is not whole turns it into
-// 4.8: the bar then rounds to five or to four depending on where it sits
-// between two pixels, so as it travels it looks to flicker wide and thin.
+const (
+	zeroDBMarkGap       = 3
+	zeroDBMarkLength    = 6
+	zeroDBMarkThickness = 2
+	waveRampLength      = 10
+)
+
 func handleBox(p *ui.Painter, cx, cy, w, h float32) ui.Rect {
 	scale := p.Scale()
 	width := max(float32(math.Round(float64(w*scale))), 1)
@@ -40,39 +35,21 @@ func handleBox(p *ui.Painter, cx, cy, w, h float32) ui.Rect {
 	return ui.Rect{X: left / scale, Y: cy - h/2, W: width / scale, H: h}
 }
 
-// wavePhase is where the travelling wave sits at a wall-clock time, in
-// milliseconds since the epoch. It moves toward the start of the track as time
-// passes and repeats once per period, so its value is always negative except
-// at the start of a period.
 func wavePhase(nowMillis int64) float32 {
 	return -float32(nowMillis%wavePeriodMS) / wavePeriodMS * waveWavelength
 }
 
-// SliderSpec describes a slider.
 type SliderSpec struct {
-	Label string
-	Key   any
-	// Thickness is the track's height; 4 by default, 16 and up for the
-	// Expressive sizes.
-	Thickness float32
-	// Wavy draws the active track as a wave. Waving makes it travel while true
-	// and settle flat while false, so a paused track goes still.
+	Label        string
+	Key          any
+	Thickness    float32
 	Wavy, Waving bool
-	// Hue paints the track as the spectrum, for choosing a hue.
-	Hue bool
-	// Vertical stands the slider up: lo at the bottom, hi at the top. Draw
-	// expects a tall, narrow box, as an equaliser's band slider has.
-	Vertical bool
-	// Disabled greys the slider out.
-	Disabled bool
+	Hue          bool
+	Vertical     bool
+	Disabled     bool
 }
 
-// Slider builds an Expressive slider: the active track and the inactive one
-// part around a slim handle, which narrows as it is held. It reports changes
-// and presses through the returned element.
 func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.Element {
-	// The scheme is read through the theme's pointer, not copied into the draw
-	// closure, which would put a whole scheme on the heap every frame.
 	sc := &Of(c).Scheme
 	thick := spec.Thickness
 	if thick == 0 {
@@ -80,8 +57,6 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 	}
 	key := spec.Key
 	if key == nil {
-		// The label is unique among the controls of a row, and a key of its
-		// own: building "slider-" + label here would allocate every frame.
 		key = spec.Label
 	}
 	const pad float32 = 10
@@ -89,8 +64,6 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 	s := ui.SliderBase(c.Key(key), value, lo, hi).Height(max(handleH, MinTarget)).PaddingX(pad).
 		Cursor(ui.CursorPointer).Grow(1).MinWidth(40).FocusRing(false)
 	if !spec.Vertical {
-		// The pointer finds the slider MinTarget high; the layout keeps its
-		// old height, as a button's does.
 		s.Margin(-slop(max(handleH, 32)), 0)
 	}
 	if spec.Label != "" {
@@ -122,8 +95,6 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 		active, inactive, handle = sc.OnSurface.Alpha(0.38), sc.OnSurface.Alpha(0.12), sc.OnSurface.Alpha(0.38)
 	}
 	focused := s.FocusVisible()
-	// A desktop that asks for less motion sees the wave hold still, and the
-	// window draws only when the value changes.
 	still := c.Preferences().ReduceMotion
 
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -141,19 +112,14 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 			y0, y1 := r.Y+pad, r.Y+r.H-pad
 			hy := y1 - (y1-y0)*frac
 			p.Fill(ui.Rect{X: cx - thick/2, Y: y0, W: thick, H: y1 - y0}, inactive, radius)
-			// The active track fills from the middle of the range to the
-			// thumb: above the middle for a boost, below for a cut.
 			mid := y1
 			if lo < 0 && hi > 0 {
 				mid = y1 - (y1-y0)*float32(-lo/(hi-lo))
-				// The 0 dB mark, a short line beside the track at the
-				// level the thumb rests on.
-				p.Fill(ui.Rect{X: cx - thick/2 - 9, Y: mid - 1, W: 6, H: 2}, handle, 1)
+				p.Fill(ui.Rect{X: cx - thick/2 - zeroDBMarkGap - zeroDBMarkLength, Y: mid - zeroDBMarkThickness/2, W: zeroDBMarkLength, H: zeroDBMarkThickness}, handle, 1)
 			}
 			if span := max(mid, hy) - min(mid, hy); span > 1 {
 				p.Fill(ui.Rect{X: cx - thick/2, Y: min(mid, hy), W: thick, H: span}, active, radius)
 			}
-			// The thumb, a circle on the track, a shade wider while held.
 			d := max(thick+10, 18)
 			if pressed {
 				d += 2
@@ -182,14 +148,12 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 			return
 		}
 
-		// The inactive track, from the handle to the end.
 		if left := hx + gap + handleW/2; x1-left > 1 {
 			p.Fill(ui.Rect{X: left, Y: cy - thick/2, W: x1 - left, H: thick}, inactive, radius)
 			if x1-left > 14 && !spec.Wavy {
 				p.Fill(ui.Rect{X: x1 - 6, Y: cy - 2, W: 4, H: 4}, active, 2)
 			}
 		}
-		// The active track, from the start to the handle: flat, or a wave.
 		if end := hx - gap - handleW/2; end-x0 > 1 {
 			if amplitude < 0.05 {
 				p.Fill(ui.Rect{X: x0, Y: cy - thick/2, W: end - x0, H: thick}, active, radius)
@@ -197,7 +161,6 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 				phase := float32(0)
 				if spec.Waving && !still {
 					animatePaint(p)
-					// The wave travels from the handle back to the start.
 					phase = wavePhase(p.Now().UnixMilli())
 				}
 				var path ui.Path
@@ -206,7 +169,7 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 					if x > end {
 						x = end
 					}
-					ramp := min((x-x0)/10, 1) // the wave grows out of the start
+					ramp := min((x-x0)/waveRampLength, 1)
 					y := cy + amplitude*ramp*float32(math.Sin(2*math.Pi*float64((x-x0-phase)/waveWavelength)))
 					if first {
 						path.MoveTo(x, y)
@@ -223,7 +186,6 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 				p.Fill(ui.Rect{X: x0 - radius, Y: cy - radius, W: thick, H: thick}, active, radius)
 			}
 		}
-		// The handle.
 		p.Fill(handleBox(p, hx, cy, handleW, handleH), handle, handleW/2)
 		if focused {
 			p.Stroke(ui.Rect{X: hx - 6, Y: cy - handleH/2 - 3, W: 12, H: handleH + 6}, sc.Secondary, 6, 2)

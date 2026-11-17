@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// A purged cache holds no pixels, and a cover asked for again is fetched again.
 func TestPurgeDropsArtworkUntilAskedAgain(t *testing.T) {
 	var source bytes.Buffer
 	if err := png.Encode(&source, image.NewRGBA(image.Rect(0, 0, 8, 8))); err != nil {

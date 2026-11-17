@@ -12,22 +12,8 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// posthogProjectKey and sentryProjectDSN are where the app's two messages
-// go. A release build has tools/dist.sh generate a file that sets them from
-// MEIRO_POSTHOG_KEY and MEIRO_SENTRY_DSN; a development build reads those
-// variables when it runs.
-//
-// Without a PostHog key the app sends nothing and never asks, since a notice
-// about a message that could not go out would only waste the user's time.
-// Without a Sentry DSN it offers no crash reports, since there is nowhere to
-// send them.
-//
-// Neither value is confidential: whatever a desktop app can send with, the
-// people running it can read. The PostHog key only lets a message into the
-// project, and the DSN only lets a report in; neither grants reading.
 var posthogProjectKey, sentryProjectDSN string
 
-// posthogKey is the project key this build sends the install ping with.
 func posthogKey() string {
 	if posthogProjectKey != "" {
 		return posthogProjectKey
@@ -35,7 +21,6 @@ func posthogKey() string {
 	return os.Getenv("MEIRO_POSTHOG_KEY")
 }
 
-// sentryDSN is the project this build sends crash reports to.
 func sentryDSN() string {
 	if sentryProjectDSN != "" {
 		return sentryProjectDSN
@@ -43,21 +28,13 @@ func sentryDSN() string {
 	return os.Getenv("MEIRO_SENTRY_DSN")
 }
 
-// privacyURL is where the repository explains what Meiro sends.
 const privacyURL = "https://github.com/elianiva/meiro#privacy"
 
-// privacyState is the first-run notice about the install ping.
 type privacyState struct {
-	// ask is whether the notice is on screen.
-	ask bool
-	// sending is set while the ping is on its way, so one answer is one
-	// message and the next launch is the only retry.
+	ask     bool
 	sending bool
 }
 
-// startPrivacy asks about the install ping on first run, and sends one the
-// user agreed to that has not gone out, which a launch before the network was
-// up leaves behind. Main thread only.
 func (a *app) startPrivacy() {
 	if a.capture == nil || a.settings.UsagePingSent {
 		return
@@ -71,14 +48,10 @@ func (a *app) startPrivacy() {
 	}
 }
 
-// usagePingOn reports whether the user agreed to the install ping.
 func (a *app) usagePingOn() bool {
 	return a.settings.UsagePing != nil && *a.settings.UsagePing
 }
 
-// answerUsagePing records the user's answer. details says whether the ping
-// carries the OS, architecture and Meiro version; without it the message
-// holds only its event name and a random ID.
 func (a *app) answerUsagePing(details bool) {
 	on := true
 	a.settings.UsagePing, a.settings.UsagePingDetails = &on, details
@@ -86,15 +59,12 @@ func (a *app) answerUsagePing(details bool) {
 	a.sendUsagePing()
 }
 
-// declineUsagePing records a no, which sends nothing now or later.
 func (a *app) declineUsagePing() {
 	off := false
 	a.settings.UsagePing, a.settings.UsagePingDetails = &off, false
 	a.saveSettings()
 }
 
-// setUsagePing is the Settings switch. Turning it on keeps the details
-// choice already made, and sends the ping now unless it went out already.
 func (a *app) setUsagePing(on bool) {
 	a.settings.UsagePing = &on
 	if !on {
@@ -106,11 +76,6 @@ func (a *app) setUsagePing(on bool) {
 	}
 }
 
-// sendUsagePing sends the one anonymous install ping. With the system details
-// chosen it carries the OS, architecture and app version, so the project can
-// see which builds people run; otherwise it holds only its event name. The
-// random ID is made by the collector client and never saved, so neither
-// message says who ran it.
 func (a *app) sendUsagePing() {
 	capture := a.capture
 	if capture == nil || a.settings.UsagePingSent || a.privacy.sending || !a.usagePingOn() {
@@ -120,9 +85,6 @@ func (a *app) sendUsagePing() {
 	if a.settings.UsagePingDetails {
 		properties = map[string]any{"os": runtime.GOOS, "arch": runtime.GOARCH, "version": appVersion()}
 	}
-	// The answer is kept, so a failure leaves the ping for the next launch,
-	// which asks nothing again. Sent is kept only once it arrived, so a quit
-	// in the middle sends it again rather than losing it.
 	a.privacy.sending = true
 	spawn(a, func() error {
 		return capture("install", properties)
@@ -137,8 +99,6 @@ func (a *app) sendUsagePing() {
 	})
 }
 
-// appVersion is the release's version, or "development" for a build without
-// one. The install ping and a crash report both name it.
 func appVersion() string {
 	if version := mygo.App.Version(); version != "" {
 		return version
@@ -146,8 +106,6 @@ func appVersion() string {
 	return "development"
 }
 
-// reportCrash sends a crash report when the user turned them on, and reports
-// whether it did.
 func (a *app) reportCrash(crash sentry.Crash) bool {
 	send := a.sendCrash
 	if send == nil || !a.settings.CrashReports {
@@ -161,8 +119,6 @@ func (a *app) reportCrash(crash sentry.Crash) bool {
 	return true
 }
 
-// privacyDialog asks, once, whether Meiro may count this install. Closing
-// it without an answer counts as a no, so the question is never repeated.
 func (a *app) privacyDialog(c *ui.Context) {
 	if !a.privacy.ask {
 		return
@@ -190,15 +146,12 @@ func (a *app) privacyDialog(c *ui.Context) {
 			})
 		})
 	})
-	// The scrim and the Escape key close it without an answer, which is a no.
 	if !open && a.privacy.ask {
 		a.privacy.ask = false
 		a.declineUsagePing()
 	}
 }
 
-// privacyCard holds the messages the app can send, and what each one is.
-// Neither is on until the user says so.
 func (a *app) privacyCard(c *ui.Context) {
 	if a.capture == nil && a.sendCrash == nil {
 		return
@@ -256,7 +209,6 @@ func (a *app) privacyCard(c *ui.Context) {
 	})
 }
 
-// openPrivacy shows the repository's privacy section in the browser.
 func (a *app) openPrivacy() {
 	spawn(a, func() error { return a.openURL(privacyURL) }, func(err error) {
 		if err != nil {

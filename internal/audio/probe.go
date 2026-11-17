@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Probe reads a cached audio file's length from its container or audio frames.
-// It returns 0 when the format is unsupported, incomplete, or unreadable.
 func Probe(ctx context.Context, path string) time.Duration {
 	if ctx.Err() != nil {
 		return 0
@@ -213,6 +211,13 @@ func probeMP4Header(f *os.File, offset, size int64) time.Duration {
 	}
 }
 
+const (
+	ebmlSegmentID       = 0x18538067
+	ebmlInfoID          = 0x1549a966
+	ebmlTimecodeScaleID = 0x2ad7b1
+	ebmlDurationID      = 0x4489
+)
+
 func probeWebM(f *os.File, size int64) time.Duration {
 	segmentStart, segmentEnd := int64(0), size
 	for offset := int64(0); offset < size; {
@@ -225,7 +230,7 @@ func probeWebM(f *os.File, size int64) time.Duration {
 			return 0
 		}
 		dataStart := offset + int64(idLen+sizeLen)
-		if id == 0x18538067 { // Segment
+		if id == ebmlSegmentID {
 			segmentStart = dataStart
 			if !unknown {
 				if length > uint64(size-dataStart) {
@@ -255,7 +260,7 @@ func probeWebM(f *os.File, size int64) time.Duration {
 			return 0
 		}
 		dataEnd := dataStart + int64(length)
-		if id == 0x1549a966 { // Info
+		if id == ebmlInfoID {
 			return probeWebMInfo(f, dataStart, dataEnd)
 		}
 		offset = dataEnd
@@ -277,7 +282,7 @@ func probeWebMInfo(f *os.File, offset, end int64) time.Duration {
 			return 0
 		}
 		switch id {
-		case 0x2ad7b1: // TimecodeScale
+		case ebmlTimecodeScaleID:
 			if length == 0 || length > 8 {
 				return 0
 			}
@@ -286,7 +291,7 @@ func probeWebMInfo(f *os.File, offset, end int64) time.Duration {
 				return 0
 			}
 			timecodeScale = binary.BigEndian.Uint64(b[:])
-		case 0x4489: // Duration, a big-endian float
+		case ebmlDurationID:
 			switch length {
 			case 4:
 				var b [4]byte

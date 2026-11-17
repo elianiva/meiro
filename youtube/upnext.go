@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-// UpNextOptions identifies the playback queue whose next items are requested.
-// PlaylistIndex is optional because a single-track radio request has no
-// playlist position. Continuation is set when loading another page of the
-// same queue.
 type UpNextOptions struct {
 	VideoID       string
 	PlaylistID    string
@@ -17,9 +13,8 @@ type UpNextOptions struct {
 	Continuation  string
 }
 
-// GetUpNext fetches the read-only queue for a track. Set PlaylistID and
-// PlaylistIndex when the track plays from a playlist, and Continuation to
-// extend the same queue with another /next page.
+const automixPlaylistPrefix = "RDAMVM"
+
 func (c *Client) GetUpNext(ctx context.Context, options UpNextOptions) (*BrowseResult, error) {
 	if strings.TrimSpace(options.VideoID) == "" {
 		return nil, errors.New("youtube: video ID is required")
@@ -27,10 +22,7 @@ func (c *Client) GetUpNext(ctx context.Context, options UpNextOptions) (*BrowseR
 	payload := map[string]any{"videoId": options.VideoID}
 	playlistID := options.PlaylistID
 	if playlistID == "" {
-		// A track on its own is seeded with its own mix, which is what the
-		// automix link in the bare response points at: asking for it
-		// directly saves that first round trip.
-		playlistID = "RDAMVM" + options.VideoID
+		playlistID = automixPlaylistPrefix + options.VideoID
 	}
 	payload["playlistId"] = playlistID
 	if options.PlaylistIndex != nil {
@@ -60,7 +52,6 @@ func (c *Client) GetUpNext(ctx context.Context, options UpNextOptions) (*BrowseR
 	return upNextResult(decodeResponse(raw)), nil
 }
 
-// upNextResult reads a decoded /next response.
 func upNextResult(root any) *BrowseResult {
 	items, sections, _ := browseParts(root, false)
 	return &BrowseResult{
@@ -179,9 +170,6 @@ func automixPlaylistPayload(root any) map[string]any {
 	return walk(root)
 }
 
-// ContinueUpNext requests another page of a queue returned by GetUpNext. The
-// video ID and optional playlist fields preserve the context used to create
-// that queue.
 func (c *Client) ContinueUpNext(ctx context.Context, options UpNextOptions, continuation string) (*BrowseResult, error) {
 	if strings.TrimSpace(continuation) == "" {
 		return nil, errors.New("youtube: up-next continuation token is required")

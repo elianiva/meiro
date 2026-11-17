@@ -1,10 +1,5 @@
 package main
 
-// The writes a signed-in user makes to their account from the pages: liking a
-// track, saving an album or a playlist to the library, and following an
-// artist. Each shows at once, is written behind, and is taken back with a
-// notice if YouTube refuses it.
-
 import (
 	"context"
 	"slices"
@@ -15,11 +10,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// writeBehind writes a change the app already shows, off the main thread, and
-// runs done with the result on it. key names what the write changes: callers
-// ignore a press while a write of the same key is out, so the answers cannot
-// arrive in another order than the presses. done does not run once another
-// account is in use: its pages say their own.
 func (a *app) writeBehind(key string, write func(ctx context.Context, client *youtube.Client) error, done func(err error)) {
 	a.writing[key] = true
 	client := a.client()
@@ -36,8 +26,6 @@ func (a *app) writeBehind(key string, write func(ctx context.Context, client *yo
 	})
 }
 
-// likeLabel is what a track's menu offers for its like: to give one, or to
-// take it back.
 func likeLabel(item youtube.MusicItem) (label string, icon *ui.SVG) {
 	if item.Like == youtube.Liked {
 		return "Unlike", m3.IconFavorite
@@ -45,17 +33,10 @@ func likeLabel(item youtube.MusicItem) (label string, icon *ui.SVG) {
 	return "Like", m3.IconFavoriteBorder
 }
 
-// canLike says whether a track can be liked now: it needs an account, and a
-// track.
 func (a *app) canLike(item youtube.MusicItem) bool {
 	return a.signedIn() && item.VideoID != ""
 }
 
-// toggleLike likes a track, or takes its like back, as the track shows it. The
-// change shows at once and is written behind it; a write YouTube refuses is
-// taken back, and the user is told. A track is written one change at a time:
-// a press while its last change is out is ignored, so the answers cannot
-// arrive in another order than the presses.
 func (a *app) toggleLike(item youtube.MusicItem) {
 	a.toggleRating(item, youtube.Liked)
 }
@@ -92,10 +73,6 @@ func (a *app) toggleRating(item youtube.MusicItem, rating youtube.LikeStatus) {
 	})
 }
 
-// eachItem calls fn with every copy of a track or an item the app holds: the
-// one playing, the queue, the page shown and the related songs. A kept page is
-// not among them: callers that change what they hold drop the cache instead,
-// as a page it holds is read again from YouTube.
 func (a *app) eachItem(fn func(*youtube.MusicItem)) {
 	fn(&a.current)
 	a.queue.each(fn)
@@ -114,9 +91,6 @@ func (a *app) eachItem(fn func(*youtube.MusicItem)) {
 	a.page.rowsDirty = true
 }
 
-// setLike gives every copy of a track the status. With unknownOnly, only
-// copies that do not know their status take it, which is how a status
-// YouTube sent is learned.
 func (a *app) setLike(videoID string, status youtube.LikeStatus, unknownOnly bool) {
 	a.eachItem(func(item *youtube.MusicItem) {
 		if item.VideoID == videoID && (!unknownOnly || item.Like == youtube.LikeUnknown) {
@@ -128,8 +102,6 @@ func (a *app) setLike(videoID string, status youtube.LikeStatus, unknownOnly boo
 	}
 }
 
-// learnLikes takes the statuses YouTube sent with a list of tracks for the
-// copies of them the app holds without one.
 func (a *app) learnLikes(items []youtube.MusicItem) {
 	for _, item := range items {
 		if item.Like != youtube.LikeUnknown && !a.writing["like:"+item.VideoID] {
@@ -138,16 +110,12 @@ func (a *app) learnLikes(items []youtube.MusicItem) {
 	}
 }
 
-// forgetAccountState drops what the items held say about the account that has just
-// gone: another account has its own.
 func (a *app) forgetAccountState() {
 	clear(a.writing)
 	a.page.library, a.page.subscription = youtube.LibraryState{}, youtube.Subscription{}
 	a.eachItem(func(item *youtube.MusicItem) { item.Like, item.Library = youtube.LikeUnknown, nil })
 }
 
-// likeButton is the heart of the full player: filled while the track is liked.
-// It is not built for a signed-out user, who cannot like.
 func (a *app) likeButton(c *ui.Context) {
 	if !a.canLike(a.current) {
 		return
@@ -180,14 +148,10 @@ func (a *app) dislikeButton(c *ui.Context) {
 	}
 }
 
-// canSave says whether an album or a playlist can be saved to the library, or
-// taken out of it, now: it needs an account, and a page that offered a way.
 func (a *app) canSave(library youtube.LibraryState) bool {
 	return a.signedIn() && library.ID != ""
 }
 
-// libraryLabel is what the page's button and the card's menu offer for an
-// album or a playlist: to save it, or to take it out.
 func libraryLabel(library youtube.LibraryState) (label string, icon *ui.SVG) {
 	if library.Saved {
 		return "Remove from library", m3.IconCheck
@@ -195,8 +159,6 @@ func libraryLabel(library youtube.LibraryState) (label string, icon *ui.SVG) {
 	return "Save to library", m3.IconAdd
 }
 
-// named is how a notice calls an album or a playlist: by its title in quotes,
-// or, for a page that has not named itself yet, as what it is.
 func named(title string) string {
 	if title == "" {
 		return "this album or playlist"
@@ -204,10 +166,6 @@ func named(title string) string {
 	return "“" + title + "”"
 }
 
-// toggleLibrary saves an album or a playlist to the library, or takes it out,
-// as it shows. The change shows at once and is written behind it; a write
-// YouTube refuses is taken back, and the user is told. Like a track's like, a
-// press while the last change is out is ignored.
 func (a *app) toggleLibrary(library youtube.LibraryState, title string) {
 	id := library.ID
 	key := "library:" + id
@@ -238,9 +196,6 @@ func (a *app) toggleLibrary(library youtube.LibraryState, title string) {
 	})
 }
 
-// setSaved gives everything the app holds about a playlist the state. The
-// library and the playlists it offers to put a song in are read again the next
-// time they are asked for, so they hold what YouTube says of the change.
 func (a *app) setSaved(id string, saved bool) {
 	a.eachItem(func(item *youtube.MusicItem) {
 		if item.Library != nil && item.Library.ID == id {
@@ -254,9 +209,6 @@ func (a *app) setSaved(id string, saved bool) {
 	a.knownPlaylists = knownPlaylists{}
 }
 
-// dropFromLibraryPage takes a playlist that has just left the library off the
-// library page, if that is the page shown: reading the page back would show
-// what YouTube still holds before it has taken the change.
 func (a *app) dropFromLibraryPage(id string) {
 	if r, _ := a.route(); r.id != routeLibrary {
 		return
@@ -270,9 +222,6 @@ func (a *app) dropFromLibraryPage(id string) {
 	a.page.rowsDirty = true
 }
 
-// libraryButton is the button of an album's or a playlist's page that saves it
-// to the library or takes it out. It is not built for a signed-out user, nor
-// for a page that offers no way to save it.
 func (a *app) libraryButton(c *ui.Context) {
 	library := a.page.library
 	if !a.canSave(library) {
@@ -288,16 +237,10 @@ func (a *app) libraryButton(c *ui.Context) {
 	}
 }
 
-// canSubscribe says whether an artist can be followed, or unfollowed, now: it
-// needs an account, and a page that offered a button.
 func (a *app) canSubscribe(s youtube.Subscription) bool {
 	return a.signedIn() && s.ChannelID != ""
 }
 
-// toggleSubscription follows the artist of the page shown, or stops following
-// them, as the button shows. Like a like, the change shows at once and is
-// written behind it, taken back if YouTube refuses it, and a press while the
-// last change is out is ignored.
 func (a *app) toggleSubscription() {
 	s, name := a.page.subscription, a.page.detail.title
 	if name == "" {
@@ -330,9 +273,6 @@ func (a *app) toggleSubscription() {
 	})
 }
 
-// setSubscribed gives the page shown the state, if it is the artist's. The
-// pages kept in the cache are dropped, so the library, which lists the artists
-// followed, is read again the next time it is shown.
 func (a *app) setSubscribed(channelID string, subscribed bool) {
 	if a.page.subscription.ChannelID == channelID {
 		a.page.subscription.Subscribed = subscribed
@@ -340,9 +280,6 @@ func (a *app) setSubscribed(channelID string, subscribed bool) {
 	a.pages.Clear()
 }
 
-// subscribeButton is the button of an artist's page that follows them or stops
-// following them. It is not built for a signed-out user, nor for a page that
-// offers none.
 func (a *app) subscribeButton(c *ui.Context) {
 	s := a.page.subscription
 	if !a.canSubscribe(s) {

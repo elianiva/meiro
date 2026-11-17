@@ -13,21 +13,12 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// newPlaylistID marks the tile that makes a playlist among the items of a
-// page. No playlist, album, artist or track ID is one, so it cannot collide.
 const newPlaylistID = "new-playlist"
 
-// newPlaylistItem is the tile the library leads with: a plus where a playlist
-// shows its artwork, which asks for a name instead of opening a page.
 var newPlaylistItem = youtube.MusicItem{ID: newPlaylistID, Title: "New playlist"}
 
-// isNewPlaylist says whether an item is that tile.
 func isNewPlaylist(item youtube.MusicItem) bool { return item.ID == newPlaylistID }
 
-// newPlaylistState is the dialog that makes a playlist: the name being
-// typed, the song it is asked to hold, whether the write is out, and what it
-// answered. The app holds one while the dialog is open, and nil otherwise, so
-// a write that lands after its dialog closed knows it.
 type newPlaylistState struct {
 	open bool
 	name string
@@ -36,17 +27,12 @@ type newPlaylistState struct {
 	err  string
 }
 
-// writeTimeout bounds a write to the account, or a read of its playlists.
 const writeTimeout = time.Minute
 
-// openNewPlaylist asks for the name of a playlist to make, and holds a song in
-// it when one is given.
 func (a *app) openNewPlaylist(song youtube.MusicItem) {
 	a.newPlaylist = &newPlaylistState{open: true, song: song}
 }
 
-// createNewPlaylist makes the playlist the dialog names, and shows it in the
-// library.
 func (a *app) createNewPlaylist() {
 	d := a.newPlaylist
 	if d == nil {
@@ -76,9 +62,6 @@ func (a *app) createNewPlaylist() {
 		case r.err != nil:
 			a.notice = "Could not create “" + name + "”: " + firstLine(r.err.Error())
 		default:
-			// YouTube's library does not hold a new playlist the moment it
-			// answers, so the playlist is put in the library the app shows
-			// rather than read back from YouTube and not found.
 			a.showPlaylist(r.id, name)
 			if open {
 				a.newPlaylist = nil
@@ -91,14 +74,13 @@ func (a *app) createNewPlaylist() {
 	})
 }
 
-// newPlaylistDialog asks for a name, and shows what YouTube answered.
 func (a *app) newPlaylistDialog(c *ui.Context) {
 	d := a.newPlaylist
 	if d == nil {
 		return
 	}
 	if !d.open {
-		a.newPlaylist = nil // closed by its scrim or the Escape key
+		a.newPlaylist = nil
 		return
 	}
 	sc := m3.Of(c).Scheme
@@ -134,10 +116,6 @@ func (a *app) newPlaylistDialog(c *ui.Context) {
 	})
 }
 
-// showPlaylist puts a playlist the app has just made at the front of the
-// library, which is where YouTube lists a new one. YouTube answers the write
-// before its library holds the playlist, so reading the library back loses it;
-// the next load of the page replaces what is shown here.
 func (a *app) showPlaylist(id, name string) {
 	if r, _ := a.route(); id == "" || r.id != routeLibrary || name == "" {
 		return
@@ -152,10 +130,6 @@ func (a *app) showPlaylist(id, name string) {
 	a.page.rowsDirty = true
 }
 
-// deletePlaylistState is the question a delete asks: which playlist, whether
-// the write is out, and what it answered. The app holds one while the dialog
-// is open, and nil otherwise, so a write that lands after its dialog closed
-// knows it.
 type deletePlaylistState struct {
 	open  bool
 	id    string
@@ -164,8 +138,6 @@ type deletePlaylistState struct {
 	err   string
 }
 
-// askDeletePlaylist asks whether a playlist should be deleted. A delete
-// cannot be undone, so the question names the playlist it would take.
 func (a *app) askDeletePlaylist(id, title string) {
 	if id == "" {
 		return
@@ -173,14 +145,13 @@ func (a *app) askDeletePlaylist(id, title string) {
 	a.deletePlaylist = &deletePlaylistState{open: true, id: id, title: title}
 }
 
-// deletePlaylistDialog asks the question, and shows what YouTube answered.
 func (a *app) deletePlaylistDialog(c *ui.Context) {
 	d := a.deletePlaylist
 	if d == nil {
 		return
 	}
 	if !d.open {
-		a.deletePlaylist = nil // closed by its scrim or the Escape key
+		a.deletePlaylist = nil
 		return
 	}
 	sc := m3.Of(c).Scheme
@@ -204,7 +175,6 @@ func (a *app) deletePlaylistDialog(c *ui.Context) {
 	})
 }
 
-// confirmDeletePlaylist deletes the playlist the dialog names.
 func (a *app) confirmDeletePlaylist() {
 	d := a.deletePlaylist
 	if d == nil || d.busy {
@@ -239,8 +209,6 @@ func (a *app) confirmDeletePlaylist() {
 	})
 }
 
-// playlistName is how a dialog names a playlist: in quotes, or plainly when
-// the page never showed a name.
 func playlistName(title string) string {
 	if title = strings.TrimSpace(title); title == "" {
 		return "This playlist"
@@ -248,16 +216,12 @@ func playlistName(title string) string {
 	return "“" + title + "”"
 }
 
-// writeFailure is what a dialog says of a write that failed: the reason, and
-// not the response body YouTube sent with it, which a person cannot read.
 func writeFailure(err error) string {
 	line := firstLine(err.Error())
 	line, _, _ = strings.Cut(line, ": {")
 	return line
 }
 
-// forgetPlaylist drops a playlist the account no longer holds from what the
-// page shows, and leaves its page when that is the one open.
 func (a *app) forgetPlaylist(id string) {
 	gone := strings.TrimPrefix(id, "VL")
 	same := func(item youtube.MusicItem) bool {
@@ -276,33 +240,22 @@ func (a *app) forgetPlaylist(id string) {
 	a.page.rowsDirty = true
 }
 
-// addToPlaylistState is the dialog that puts a song in a playlist: the song,
-// the playlists to choose from, and what a choice answered. The app holds one
-// while the dialog is open, and nil otherwise.
 type addToPlaylistState struct {
 	open      bool
 	item      youtube.MusicItem
 	playlists []youtube.MusicItem
-	// load reads the library's playlists; busy is set while a choice is
-	// being written.
-	load task
-	busy bool
-	err  string
-	list ui.ListState
+	load      task
+	busy      bool
+	err       string
+	list      ui.ListState
 }
 
-// likedMusicID is the playlist a library holds thumbs-up songs in. It is not
-// offered to put a song in: the thumb is what does that.
 const likedMusicID = "LM"
 
-// openAddToPlaylist asks which playlist a song goes into, and reads the
-// playlists to choose from.
 func (a *app) openAddToPlaylist(item youtube.MusicItem) {
 	d := &addToPlaylistState{open: true, item: item}
 	a.addToPlaylist = d
 	client := a.client()
-	// The playlists the library last showed are offered at once, while the
-	// library is read again to catch up with what changed since.
 	if known := a.knownPlaylists; known.client == client {
 		d.playlists = known.items
 	}
@@ -320,15 +273,11 @@ func (a *app) openAddToPlaylist(item youtube.MusicItem) {
 	})
 }
 
-// knownPlaylists are the playlists a library last held, kept so the picker
-// need not wait for the whole library to be read again. They belong to the
-// client that read them: another account has its own.
 type knownPlaylists struct {
 	client *youtube.Client
 	items  []youtube.MusicItem
 }
 
-// dismissAddToPlaylist closes the picker and stops its read.
 func (a *app) dismissAddToPlaylist() {
 	if d := a.addToPlaylist; d != nil {
 		d.load.stop()
@@ -336,14 +285,10 @@ func (a *app) dismissAddToPlaylist() {
 	}
 }
 
-// libraryPlaylists picks the playlists out of a library page, in the order the
-// page holds them, once each, leaving out the one a thumb fills.
 func libraryPlaylists(library *youtube.BrowseResult) []youtube.MusicItem {
 	if library == nil {
 		return nil
 	}
-	// A page's sections hold its items as well, so the sections are what to
-	// read: the loose items are only for a page without any.
 	groups := make([][]youtube.MusicItem, 0, len(library.Sections)+1)
 	for _, section := range library.Sections {
 		groups = append(groups, section.Items)
@@ -352,9 +297,6 @@ func libraryPlaylists(library *youtube.BrowseResult) []youtube.MusicItem {
 		groups = append(groups, library.Items)
 	}
 	var playlists []youtube.MusicItem
-	// A library page lists a playlist in more than one shelf, and the picker
-	// gives each row a key of its playlist: two rows with one key would share
-	// one state, and the click on one would land on the other.
 	seen := make(map[string]bool)
 	for _, items := range groups {
 		for _, item := range items {
@@ -369,7 +311,6 @@ func libraryPlaylists(library *youtube.BrowseResult) []youtube.MusicItem {
 	return playlists
 }
 
-// choosePlaylist puts the song the dialog holds into the playlist chosen.
 func (a *app) removeFromPlaylist(playlistID string, item youtube.MusicItem) {
 	client := a.client()
 	spawn(a, func() error {
@@ -408,8 +349,6 @@ func (a *app) choosePlaylist(playlist youtube.MusicItem) {
 		open := a.addToPlaylist == d
 		switch {
 		case errors.Is(err, youtube.ErrAlreadyInPlaylist):
-			// The playlist holds the song already, so nothing was written and
-			// nothing went wrong.
 			if open {
 				a.dismissAddToPlaylist()
 			}
@@ -422,8 +361,6 @@ func (a *app) choosePlaylist(playlist youtube.MusicItem) {
 			if open {
 				a.dismissAddToPlaylist()
 			}
-			// Revisit cached pages with fresh account data, and refresh the
-			// destination now if a suggestion was added from its own page.
 			a.pages.Clear()
 			if r, id := a.route(); r.id == routePlaylist && strings.TrimPrefix(id, "VL") == strings.TrimPrefix(target.ID, "VL") {
 				a.loadPage(r, id)
@@ -433,14 +370,13 @@ func (a *app) choosePlaylist(playlist youtube.MusicItem) {
 	})
 }
 
-// addToPlaylistDialog asks which playlist a song goes into.
 func (a *app) addToPlaylistDialog(c *ui.Context) {
 	d := a.addToPlaylist
 	if d == nil {
 		return
 	}
 	if !d.open {
-		a.dismissAddToPlaylist() // closed by its scrim or the Escape key
+		a.dismissAddToPlaylist()
 		return
 	}
 	sc := m3.Of(c).Scheme
@@ -457,8 +393,6 @@ func (a *app) addToPlaylistDialog(c *ui.Context) {
 		case len(d.playlists) == 0:
 			m3.Text(c, m3.BodyMedium, "You have no playlists yet.").TextColor(sc.OnSurfaceVariant)
 		default:
-			// A library can hold hundreds of playlists: the list builds, and
-			// asks for the artwork of, only those in view.
 			playlists := d.playlists
 			list := &d.list
 			list.Key = func(i int) any {
@@ -487,11 +421,8 @@ func (a *app) addToPlaylistDialog(c *ui.Context) {
 	})
 }
 
-// playlistChoiceHeight is the room a row of the picker takes, with the gap
-// below it.
 const playlistChoiceHeight = 58
 
-// playlistChoice is one row of the picker: a playlist the song can go into.
 func (a *app) playlistChoice(c *ui.Context, playlist youtube.MusicItem) {
 	sc := m3.Of(c).Scheme
 	row := ui.ButtonBase(c.Key(itemKey("add-to", playlist)))
@@ -507,25 +438,11 @@ func (a *app) playlistChoice(c *ui.Context, playlist youtube.MusicItem) {
 	}
 }
 
-// detailSearchWidth is how wide the bar the playlist search opens into reaches
-// at most.
 const detailSearchWidth = 520
 
-// detailSearchButton is the side of the button that opens the playlist search,
-// the small icon button the toolbar row is built from.
 const detailSearchButton = 40
 
-// playlistSearch draws the control that narrows a playlist page to the songs
-// that match: an icon button that opens into the bar the Search page uses,
-// beside Sort above the songs. Closing it puts the page back to its whole
-// list, since a search that showed none of a page's rows would leave nothing
-// to say it was still on.
 func (a *app) playlistSearch(c *ui.Context) {
-	// One element carries both states, so opening grows the control instead
-	// of swapping one thing for another. Its size is a maximum, which the
-	// animation moves: a width would only set the flex base, and the
-	// control's Grow then fills the rest of the line, so the bar would jump
-	// out at full size and jump back into the button when it closed.
 	control := ui.Row(c.Key("playlist-search")).MinWidth(0).Grow(1).Shrink(1)
 	target := float32(0)
 	if a.detailSearchOpen {
@@ -548,8 +465,8 @@ func (a *app) playlistSearch(c *ui.Context) {
 		return
 	}
 	maxWidth := float32(detailSearchWidth)
-	if a.listWidth > 0 {
-		maxWidth = min(maxWidth, a.listWidth-48)
+	if a.listWidthLastFrame > 0 {
+		maxWidth = min(maxWidth, a.listWidthLastFrame-48)
 	}
 	control.MaxWidth(detailSearchButton + (maxWidth-detailSearchButton)*min(max(grown, 0), 1))
 	control.Children(func() {
@@ -574,8 +491,6 @@ func (a *app) playlistSearch(c *ui.Context) {
 	})
 }
 
-// closePlaylistSearch puts a playlist page back to its whole list, and the
-// control back to the button that opens the search.
 func (a *app) closePlaylistSearch() {
 	a.detailSearchOpen, a.detailSearchHadFocus = false, false
 	a.detailFilter = ""

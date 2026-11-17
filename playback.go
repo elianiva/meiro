@@ -17,93 +17,52 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// playback is the track playing, the queue it plays from, and the work that
-// keeps the music going: finding each track's audio and the recommendations
-// that follow the queue.
 type playback struct {
-	current youtube.MusicItem
-	queue   queue
-	// total is the current track's length, once known.
-	total     time.Duration
-	scrub     float64
-	scrubbing bool
-	// seekTarget is the position the user last asked for, which seeking moves
-	// the player to off the main thread.
-	seekTarget  time.Duration
-	seekVersion uint64
-	volume      float64
-	muted       float64 // the last volume above 0, to return to on unmute
-	loudness    float64
-	loudnessOK  bool
-	loudnessMap *lru.Cache[string, youtube.Loudness]
-	shuffle     bool
-	repeat      repeatMode
-	// playErr is the reason the current track does not play, as shown;
-	// rawPlayErr is what was reported, which is also what tells one failure
-	// from the next.
+	current             youtube.MusicItem
+	queue               queue
+	total               time.Duration
+	scrub               float64
+	scrubbing           bool
+	seekTarget          time.Duration
+	seekVersion         uint64
+	volume              float64
+	muted               float64
+	loudness            float64
+	loudnessOK          bool
+	loudnessMap         *lru.Cache[string, youtube.Loudness]
+	shuffle             bool
+	repeat              repeatMode
 	playErr, rawPlayErr string
-	// skipped counts the tracks in a row that were passed over because they
-	// would not play; a track that plays, or one the listener chooses, ends
-	// the run.
-	skipped int
-	// aiRefills counts recommendation batches requested without an allowed
-	// track starting. Exclusions do not use the playback failure limit.
-	aiRefills int
-	// recoveries counts the times in a row the current track's stream broke
-	// off and was found again; the count ends when the track plays on.
-	recoveries    int
-	recoveredFrom time.Duration
+	skipped             int
+	aiRefills           int
+	recoveries          int
+	recoveredFrom       time.Duration
 
-	// aiCheck checks the chosen track before stream finds its audio.
-	stream  task
-	aiCheck task
-	// notificationArtwork loads the current cover before showing its track
-	// notification.
+	stream              task
+	aiCheck             task
 	notificationArtwork task
-	// notices shows track notifications in place of the desktop, for tests.
-	notices trackNotices
-	// loudnessLoad and preloadLoudnessLoad ask for the loudness of the current
-	// and the next track; a result lands in loudnessMap whenever it arrives.
+	notices             trackNotices
 	loudnessLoad        task
 	preloadLoudnessLoad task
 	streams             *audio.URLs
-	// seeking moves the player to seekTarget; it is busy while the decode is
-	// being restarted there.
-	seeking task
-	// speeding changes the player's speed to the current track's.
-	speeding task
-	// preload resolves the next track and has the player decode it ahead of
-	// the end of the current one; preloaded is what it left with the player,
-	// and preloadFailed the track it could not, which is not tried again
-	// until the track changes.
-	preload       task
-	preloaded     preloadedAudio
-	preloadFailed string
-	preloadFor    string
-	upNext        upNextState
-	queueRest     task
-	// opening is the album or playlist whose songs are being read to play
-	// it, so that a second press does not read them again.
-	opening    task
-	openingKey string
+	seeking             task
+	speeding            task
+	preload             task
+	preloaded           preloadedAudio
+	preloadFailed       string
+	preloadFor          string
+	upNext              upNextState
+	queueRest           task
+	opening             task
+	openingKey          string
 
 	suspendedWhilePlaying bool
 
-	// resumeID is the restored track that has not played yet; the first play
-	// of it starts at a.scrub, where the last run left it.
-	resumeID string
-	// episodes are where the podcast episodes left part-way through stopped,
-	// the one left last first. Playing one again starts there.
-	episodes []playstate.Episode
-	// episodeProgress is the authenticated YouTube watch-time session for the
-	// episode playing. It is nil while signed out or between episodes.
+	resumeID        string
+	episodes        []playstate.Episode
 	episodeProgress *episodeProgressSync
 }
 
-// notificationArtworkNeeded reports whether a track notification can show a
-// cover: every platform with notifications except macOS, which presents
-// playback in the notch or the menu bar instead. Tests answer for a system
-// that shows them.
 func (a *app) notificationArtworkNeeded() bool {
 	return runtime.GOOS != "darwin" && a.notifications()
 }
@@ -112,13 +71,10 @@ func newPlayback(streams *audio.URLs, volume float64) playback {
 	return playback{queue: newQueue(), streams: streams, volume: volume, loudnessMap: lru.New[string, youtube.Loudness](256)}
 }
 
-// play starts item, with tracks as the queue.
 func (a *app) play(item youtube.MusicItem, tracks []youtube.MusicItem) {
 	a.playFrom(item, tracks, -1, youtube.UpNextOptions{}, "")
 }
 
-// playFrom starts an item from a queue, and remembers the context used to
-// ask YouTube Music for the generated queue that follows it.
 func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index int, options youtube.UpNextOptions, source string) {
 	token := ""
 	if r, id := a.route(); r.id == routePlaylist && id == options.PlaylistID && len(tracks) == len(a.page.playable) {
@@ -127,8 +83,6 @@ func (a *app) playFrom(item youtube.MusicItem, tracks []youtube.MusicItem, index
 	a.playFromWithContinuation(item, tracks, index, options, source, token)
 }
 
-// playFromWithContinuation starts the first page before reading the remaining
-// playlist songs, keeping recommendations behind them.
 func (a *app) playFromWithContinuation(item youtube.MusicItem, tracks []youtube.MusicItem, index int, options youtube.UpNextOptions, source, token string) {
 	if item.VideoID == "" {
 		return
@@ -139,7 +93,7 @@ func (a *app) playFromWithContinuation(item youtube.MusicItem, tracks []youtube.
 	if a.settings.ExcludeAIGenerated {
 		a.queue.dropMarkedAI(a.excludesItem)
 	}
-	clear(a.scrobble.queued) // the queue they were added to is gone
+	clear(a.scrobble.queued)
 	a.learnCredits(tracks...)
 	a.learnCredits(item)
 	options.VideoID = item.VideoID
@@ -148,7 +102,7 @@ func (a *app) playFromWithContinuation(item youtube.MusicItem, tracks []youtube.
 	if a.loading() && a.current.VideoID == item.VideoID {
 		a.loadPlayingPlaylistRest()
 		a.ensureUpNext()
-		return // this track is already on its way
+		return
 	}
 	if a.shuffle {
 		a.queue.shuffleQueue()
@@ -156,28 +110,19 @@ func (a *app) playFromWithContinuation(item youtube.MusicItem, tracks []youtube.
 	a.start(item)
 }
 
-// maxSkips is how many unplayable tracks in a row the queue moves past
-// before it stops and shows the error, so that a network that is down does
-// not use the whole queue up.
 const maxSkips = 3
 
-// start makes item the current track and finds its audio.
 func (a *app) start(item youtube.MusicItem) {
 	a.skipped = 0
 	a.aiRefills = 0
 	a.startTrack(item, false)
 }
 
-// startNext makes item, which the queue chose, the current track. Last.fm is
-// told the listener did not pick it, unless they queued it.
 func (a *app) startNext(item youtube.MusicItem) {
 	a.skipped = 0
 	a.startTrack(item, true)
 }
 
-// skipUnplayable moves on to the next track after item failed to play, unless
-// maxSkips tracks were passed over already or nothing follows. Then the
-// track stays where it is, with the reason it failed.
 func (a *app) skipUnplayable(item youtube.MusicItem) {
 	if a.current.VideoID != item.VideoID || a.skipped >= maxSkips {
 		return
@@ -192,8 +137,6 @@ func (a *app) skipUnplayable(item youtube.MusicItem) {
 	a.startTrack(a.queue.moveTo(next), true)
 }
 
-// startTrack is start without ending a run of skipped tracks. automatic says
-// the queue chose item, rather than the listener.
 func (a *app) startTrack(item youtube.MusicItem, automatic bool) {
 	a.aiCheck.stop()
 	a.stream.stop()
@@ -204,18 +147,11 @@ func (a *app) startTrack(item youtube.MusicItem, automatic bool) {
 	a.startTrackNow(item, startAt, changed)
 }
 
-// startTrackNow finds the chosen track's audio after the AI check lets it
-// through, retaining its original start position and history transition.
 func (a *app) startTrackNow(item youtube.MusicItem, startAt time.Duration, changed bool) {
-	// The old stream is stopped by the work that finds the new one: stopping
-	// kills ffmpeg and waits for the audio device, which is not for the main
-	// thread to do.
 	a.streamAudio(item, startAt, changed)
 	a.afterEnter(item, changed)
 }
 
-// enterTrack makes item the current track, and says where in it to start and
-// whether it is another track than the one before.
 func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration, bool) {
 	a.recoveries = 0
 	changed := a.current.VideoID != item.VideoID
@@ -235,22 +171,15 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 	}
 	a.resumeID = ""
 	a.scrub, a.playErr, a.rawPlayErr = startAt.Seconds(), "", ""
-	// A position in the track that is ending is not one for the next one, and
-	// the decode the seek was moving is about to be replaced.
 	a.seeking.stop()
 	a.seekTarget = 0
-	// The track's audio starts at the track's own speed.
 	a.speeding.stop()
-	// What was being readied was for the track after the old one.
 	a.preload.stop()
 	a.preloaded, a.preloadFailed = preloadedAudio{}, ""
-	// Entering a track is not playing it: Last.fm hears of it once playback
-	// is confirmed, which the polls see.
 	a.beginListen(item, automatic)
 	return startAt, changed
 }
 
-// afterEnter is what a track entered asks for besides its audio.
 func (a *app) afterEnter(item youtube.MusicItem, changed bool) {
 	a.loadPlayingPlaylistRest()
 	if changed {
@@ -268,18 +197,11 @@ func (a *app) afterEnter(item youtube.MusicItem, changed bool) {
 	a.syncSystemMedia()
 }
 
-// notifyTrack waits for a fresh Windows cover so the native notification can
-// show it instead of the app icon. Other platforms keep their normal
-// notification path.
 func (a *app) notifyTrack(item youtube.MusicItem) {
 	notices := a.trackNotices()
 	if notices == nil {
 		return
 	}
-	// Whether Meiro is in front is asked as the notification would appear,
-	// after the cover has downloaded: the user may have come to the app in
-	// the meantime. What they see there needs no banner, and the earlier
-	// track's is stale.
 	show := func(icon []byte) {
 		if notices.appActive() {
 			notices.dismissNotification()
@@ -300,14 +222,12 @@ func (a *app) notifyTrack(item youtube.MusicItem) {
 		}
 		if err != nil {
 			log.Printf("fetching track notification artwork: %v", err)
-			icon = nil // The coloured app icon is the safe fallback.
+			icon = nil
 		}
 		show(icon)
 	})
 }
 
-// trackNotices is where track notifications go: the desktop, or what a test
-// puts in its place. It is nil without either.
 func (a *app) trackNotices() trackNotices {
 	if a.notices != nil {
 		return a.notices
@@ -318,14 +238,10 @@ func (a *app) trackNotices() trackNotices {
 	return a.desktop
 }
 
-// starting reports whether a chosen track is being checked or resolved.
 func (a *app) starting() bool { return a.aiCheck.busy() || a.stream.busy() }
 
-// loading includes ffmpeg opening the audio after the checks and resolution.
 func (a *app) loading() bool { return a.starting() || a.player.Buffering() }
 
-// enqueue adds a track to the chosen queue without changing the current
-// track. Chosen tracks stay ahead of auto-play recommendations.
 func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 	if item.VideoID == "" {
 		return
@@ -352,15 +268,12 @@ func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 	a.syncSystemMedia()
 }
 
-// moveQueue carries out a drag in the queue's list.
 func (a *app) moveQueue(rows []int, to int) {
 	if a.queue.moveRows(rows, to) {
 		a.queueChanged()
 	}
 }
 
-// removeFromQueue drops the track at a place in the queue. The track playing
-// stays.
 func (a *app) removeFromQueue(index int) {
 	if index < 0 || index >= a.queue.len() {
 		return
@@ -373,8 +286,6 @@ func (a *app) removeFromQueue(index int) {
 	a.queueChanged()
 }
 
-// selectedQueueIndices are the selected queue tracks, in descending order,
-// leaving out the track playing and the recommendations divider.
 func (a *app) selectedQueueIndices() []int {
 	var indices []int
 	for row := a.queue.rows() - 1; row >= 0; row-- {
@@ -389,7 +300,6 @@ func (a *app) selectedQueueIndices() []int {
 	return indices
 }
 
-// removeSelectedFromQueue removes every selected track except the one playing.
 func (a *app) removeSelectedFromQueue() {
 	indices := a.selectedQueueIndices()
 	if len(indices) == 0 {
@@ -402,16 +312,12 @@ func (a *app) removeSelectedFromQueue() {
 	a.queueChanged()
 }
 
-// shiftInQueue moves the track at a place in the queue one up or down.
 func (a *app) shiftInQueue(index, delta int) {
 	if a.queue.shift(index, delta) {
 		a.queueChanged()
 	}
 }
 
-// playNextInQueue queues the track at a place in the queue to play after the
-// track playing, leaving its row where it is. The queue can hold the song
-// twice.
 func (a *app) playNextInQueue(index int) {
 	if index < 0 || index >= a.queue.len() {
 		return
@@ -419,7 +325,6 @@ func (a *app) playNextInQueue(index int) {
 	a.enqueue(a.queue.at(index), true)
 }
 
-// clearUpcoming empties the queue after the track playing.
 func (a *app) clearUpcoming() {
 	a.queueRest.stop()
 	if a.queue.clearUpcoming() {
@@ -428,28 +333,21 @@ func (a *app) clearUpcoming() {
 	}
 }
 
-// queueChanged follows an edit of the queue: what plays next may be another
-// track now.
 func (a *app) queueChanged() {
 	a.clearQueueSelection()
-	a.nowPlaying.queueFollow = "" // the list scrolls to the current track again
+	a.nowPlaying.queueFollow = ""
 	a.warmNext()
 	a.syncPreload()
 	a.ensureUpNext()
 	a.syncSystemMedia()
 }
 
-// clearQueueSelection forgets the choice before a queue change can reuse a
-// row's key for a different track.
 func (a *app) clearQueueSelection() {
 	a.nowPlaying.queueSelection.Clear()
 	a.nowPlaying.queueSelectionAnchor = -1
 	a.nowPlaying.queueSelectionCursor = -1
 }
 
-// playVideoID starts a video, wherever it comes from: a link, a history
-// entry or the queue. Tracks the queue or the page already holds play from
-// there.
 func (a *app) playVideoID(id string) {
 	if id == "" {
 		return
@@ -467,12 +365,8 @@ func (a *app) playVideoID(id string) {
 	a.play(youtube.MusicItem{VideoID: id}, nil)
 }
 
-// pollInterval is how often the ticker looks at the player.
 const pollInterval = 250 * time.Millisecond
 
-// startTicker wakes the main thread while a track plays, or has just ended
-// or failed, so poll can move playback on. The view only describes the
-// state the polls leave behind.
 func (a *app) startTicker() {
 	failure := ""
 	a.every(pollInterval, func() {
@@ -484,9 +378,6 @@ func (a *app) startTicker() {
 	})
 }
 
-// poll advances what playback depends on: the player's position, the next
-// track when one ends, and the system's media controls. It runs on the main
-// thread, from the ticker.
 func (a *app) poll() {
 	if a.aiCheck.busy() || !a.player.Active() {
 		return
@@ -497,13 +388,10 @@ func (a *app) poll() {
 	}
 	if failure := a.player.Failure(); failure != "" {
 		if a.stream.busy() {
-			return // a track, or this one again, is on its way
+			return
 		}
 		if a.player.StreamFailed() {
 			if a.atTrackEnd() {
-				// The stream broke off in the last moment of the track, so
-				// the track is over rather than broken: finding the stream
-				// again would play that moment a second time.
 				log.Printf("playback: stream broke off at the end of the track video_id=%s at=%s: %s", a.current.VideoID, a.player.Position().Round(time.Second), failure)
 				a.trackEnded()
 				return
@@ -515,18 +403,12 @@ func (a *app) poll() {
 		if a.rawPlayErr != failure {
 			a.failPlayback(a.current, "player stopped", failure)
 		}
-		// ffmpeg gave up on the stream, and finding it again did not help.
-		// The queue keeps its place: the track after this one plays, and the
-		// failure stays on the player until it does. A stream that stops
-		// because the sound did is not the queue's business, so it is left
-		// where it is.
 		if a.player.StreamFailed() {
 			a.skipUnplayable(a.current)
 		}
 		return
 	}
 	if a.player.Ended() {
-		// A new track is already on its way; the old one's end is not news.
 		if !a.stream.busy() {
 			a.trackEnded()
 		}
@@ -535,7 +417,7 @@ func (a *app) poll() {
 	if a.player.Playing() {
 		a.syncEpisodeProgress()
 		if a.recoveries > 0 && a.player.Position() > a.recoveredFrom+recoveryHealthy {
-			a.recoveries = 0 // it held, so the next break gets all its tries
+			a.recoveries = 0
 		}
 		a.observeListen()
 		a.syncPreload()
@@ -547,8 +429,6 @@ func (a *app) poll() {
 	}
 }
 
-// trackEnded moves on when a track finishes: it repeats, or plays the next
-// one, or stops at the end of the queue.
 func (a *app) trackEnded() {
 	if a.repeat == repeatTrack {
 		a.startNext(a.current)
@@ -557,8 +437,6 @@ func (a *app) trackEnded() {
 	a.advance()
 }
 
-// advance plays the next track of the queue, waiting for recommendations at
-// its end when auto-play is on.
 func (a *app) advance() {
 	if next, ok := a.queue.nextEligible(a.settings.AutoPlay, a.repeat, a.settings.AutoSkipDisliked); ok {
 		a.startNext(a.queue.moveTo(next))
@@ -575,9 +453,6 @@ func (a *app) advance() {
 		return
 	}
 	if a.settings.AutoPlay {
-		// The queue is over and the music should not be. Wait for what
-		// YouTube has to follow it with, which ensureUpNext asks for when the
-		// recommendations pulled so far have been played out.
 		a.upNext.waiting = true
 		a.finishEpisodeProgress(false)
 		a.player.Stop()
@@ -588,7 +463,6 @@ func (a *app) advance() {
 	a.stopAtQueueEnd()
 }
 
-// stopAtQueueEnd stops playback, and drops a track still being found.
 func (a *app) stopAtQueueEnd() {
 	a.aiCheck.stop()
 	a.stream.stop()
@@ -597,8 +471,6 @@ func (a *app) stopAtQueueEnd() {
 	a.syncSystemMedia()
 }
 
-// previous restarts the track, or plays the one before it when the track
-// has only just started.
 func (a *app) previous() {
 	if a.queue.index == 0 || a.player.Position() > 3*time.Second {
 		a.seek(0)
@@ -607,23 +479,14 @@ func (a *app) previous() {
 	a.start(a.queue.moveTo(a.queue.index - 1))
 }
 
-// seek moves the track to a position. seekVersion tells the system's media
-// controls an explicit change of position from playback moving on.
-//
-// Moving the player there restarts the decode: it kills ffmpeg and waits for
-// the audio device, which is not for the main thread to do. One seek is on its
-// way at a time, and a position asked for while one is on its way is the one
-// the next, and last, seek applies.
 func (a *app) seek(position time.Duration) {
-	a.scrobble.listen.Break() // the position jumps; what it jumps over was not heard
+	a.scrobble.listen.Break()
 	a.seekTarget = position
 	if !a.seeking.busy() {
 		a.applySeek()
 	}
 }
 
-// applySeek moves the player to the position asked for, then to a newer one
-// that landed while this was on its way.
 func (a *app) applySeek() {
 	at := a.seekTarget
 	startTask(a, &a.seeking, noTimeout, func(ctx context.Context) (time.Duration, error) {
@@ -642,11 +505,9 @@ func (a *app) applySeek() {
 	})
 }
 
-// togglePlay pauses a playing track, resumes a paused one, and starts the
-// current track again after it failed or ended.
 func (a *app) togglePlay() {
 	if a.starting() {
-		return // the track is already on its way
+		return
 	}
 	if a.playErr != "" || !a.player.Active() {
 		if a.current.VideoID != "" {
@@ -661,8 +522,6 @@ func (a *app) togglePlay() {
 	}
 }
 
-// resume plays a paused track, or starts the current one again when it has
-// ended or failed. It does nothing while a track plays or is on its way.
 func (a *app) resume() {
 	if a.starting() || a.player.Playing() {
 		return
@@ -680,17 +539,12 @@ func (a *app) resume() {
 	a.syncSystemMedia()
 }
 
-// pause holds the track where it is.
 func (a *app) pause() {
 	a.player.Pause()
 	a.finishEpisodeProgress(false)
 	a.syncSystemMedia()
 }
 
-// setShuffle turns shuffle on or off. Turning it on arranges the whole queue
-// behind the track playing, which moves to the top, and the queue then plays
-// in that order to its end, where auto-play takes over. Turning it off puts
-// the queue back in the order it held, with the track playing where it was.
 func (a *app) setShuffle(on bool) {
 	a.clearQueueSelection()
 	a.shuffle = on
@@ -703,7 +557,6 @@ func (a *app) setShuffle(on bool) {
 	a.syncSystemMedia()
 }
 
-// setVolume sets the volume, from 0 to 100, and keeps it for the next run.
 func (a *app) setVolume(v float64) {
 	a.volume = min(max(v, 0), 100)
 	if a.volume > 0 {
@@ -714,11 +567,8 @@ func (a *app) setVolume(v float64) {
 	a.syncSystemMedia()
 }
 
-// playbackSpeeds are the speeds a track can play at.
 var playbackSpeeds = []float64{0.5, 0.8, 1, 1.2, 1.5, 1.8, 2, 2.5, 3}
 
-// speedFor is how fast item plays: an episode at the speed chosen for
-// podcasts, anything else at the one chosen for music.
 func (a *app) speedFor(item youtube.MusicItem) float64 {
 	speed := a.settings.MusicSpeed
 	if item.IsEpisode() {
@@ -730,7 +580,6 @@ func (a *app) speedFor(item youtube.MusicItem) float64 {
 	return 1
 }
 
-// applyCrossfade sends the crossfade length to the player, zero when it is off.
 func (a *app) applyCrossfade() {
 	var fade time.Duration
 	if a.settings.Crossfade {
@@ -739,8 +588,6 @@ func (a *app) applyCrossfade() {
 	a.player.SetCrossfade(fade)
 }
 
-// setSpeed chooses how fast tracks like the current one play, podcast
-// episodes or music, keeps the choice, and plays the current track at it.
 func (a *app) setSpeed(speed float64) {
 	if a.current.IsEpisode() {
 		a.settings.PodcastSpeed = speed
@@ -751,10 +598,6 @@ func (a *app) setSpeed(speed float64) {
 	a.applySpeed()
 }
 
-// applySpeed plays the current track at its speed, if it does not already.
-// Changing the speed restarts the decode, which is not for the main thread to
-// do. While the track's audio is on its way this is left to the work that
-// finds it, which applies the speed once it plays.
 func (a *app) applySpeed() {
 	if a.starting() {
 		return
@@ -767,30 +610,26 @@ func (a *app) applySpeed() {
 	})
 }
 
-// toggleMute silences the player, or brings back the last volume above 0. With
-// no such volume in this run, it unmutes to 40.
+const defaultUnmuteVolume = 40
+
 func (a *app) toggleMute() {
 	switch {
 	case a.volume > 0:
-		a.muted = a.volume // the volume from settings at startup skips setVolume
+		a.muted = a.volume
 		a.setVolume(0)
 	case a.muted > 0:
 		a.setVolume(a.muted)
 	default:
-		a.setVolume(40)
+		a.setVolume(defaultUnmuteVolume)
 	}
 }
 
-// cycleRepeat goes from not repeating to repeating the queue to repeating the
-// track and back.
 func (a *app) cycleRepeat() {
 	a.repeat = a.repeat.next()
 	a.syncPreload()
 	a.syncSystemMedia()
 }
 
-// setAudioCacheLimit changes the number of recently played audio files kept
-// locally, evicting old files at once when the limit goes down.
 func (a *app) setAudioCacheLimit(limit int) {
 	a.settings.CacheSongs = audio.ValidLimit(limit)
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
@@ -799,7 +638,6 @@ func (a *app) setAudioCacheLimit(limit int) {
 	a.saveSettings()
 }
 
-// parseDuration reads a "3:42" or "1:02:03" track length.
 func parseDuration(text string) time.Duration {
 	parts := strings.Split(strings.TrimSpace(text), ":")
 	if len(parts) < 2 || len(parts) > 3 {
@@ -816,7 +654,6 @@ func parseDuration(text string) time.Duration {
 	return total
 }
 
-// clock formats a position as "3:42" or "1:02:03".
 func clock(d time.Duration) string {
 	total := int(max(d, 0).Seconds())
 	hours, minutes, seconds := total/3600, (total%3600)/60, total%60

@@ -32,158 +32,85 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// app is the state the window shows. It is owned by the main thread: the
-// view reads and changes it there, and background work hands its results
-// back through update, or through a task.
-//
-// The state is grouped by what owns it. A group with rules of its own, as
-// the queue, the account session and the page shown, is a type of its own
-// whose methods keep those rules.
 type app struct {
-	// desktop is the window and the system around it; nil in tests.
-	desktop *desktop
-	router  *ui.Router
-	player  *player.Player
-	media   systemmedia.Session
-	discord *discordrpc.Session
-	thumbs  *artwork.Cache
-	// displayScale is the largest scale of the displays, which sizes the
-	// artwork asked for; 0 in tests, which ask for the sizes the views name.
+	desktop      *desktop
+	router       *ui.Router
+	player       *player.Player
+	media        systemmedia.Session
+	discord      *discordrpc.Session
+	thumbs       *artwork.Cache
 	displayScale float32
 
-	// run runs work off the main thread. Tests replace it with a runner
-	// that runs the work inline, so a frame sees its result at once.
-	run func(work func())
-	// sleep waits for a delay, or until ctx ends. Tests do not wait.
-	sleep func(ctx context.Context, delay time.Duration) error
-	// openURL opens a link in the default browser. Tests record it.
-	openURL func(url string) error
-	// keepRunning keeps the app at full speed while none of its windows
-	// shows, as a download does in the menu bar. Tests record it.
-	keepRunning func(reason string) func()
-	// capture sends the install ping to PostHog. It is nil when the build
-	// has no project key, and tests replace it to record what would be sent.
-	capture func(event string, properties map[string]any) error
-	// sendCrash sends a crash report to Sentry. It is nil when the build has
-	// no DSN, and tests replace it to record what would be sent.
-	sendCrash func(crash sentry.Crash) error
-	// bundled reports whether a helper program is the one inside the app.
-	// Tests replace it.
-	bundled func(name string) bool
-	// notifications reports whether the system shows notifications. Tests
-	// replace it, since MyGo's answer needs its event loop.
+	run           func(work func())
+	sleep         func(ctx context.Context, delay time.Duration) error
+	openURL       func(url string) error
+	keepRunning   func(reason string) func()
+	capture       func(event string, properties map[string]any) error
+	sendCrash     func(crash sentry.Crash) error
+	bundled       func(name string) bool
 	notifications func() bool
 
-	// What the user chose, and the writer that keeps it.
-	settings settings.Settings
-	saver    settings.Writer
-	// settingsSeen is the last settings.json content the watcher read, so it
-	// notices only a change it has not handled. watchSettings starts it, and
-	// then only the watcher's goroutine touches it.
+	settings     settings.Settings
+	saver        settings.Writer
 	settingsSeen []byte
-	// colors are the theme colours another program wrote to colors.json, or
-	// nil. colorsSeen is the content they came from, kept like settingsSeen.
-	colors     *m3.Colors
-	colorsPath string
-	colorsSeen []byte
-	// playSave keeps the queue and position for the next run.
-	playSave playbackSave
+	colors       *m3.Colors
+	colorsPath   string
+	colorsSeen   []byte
+	playSave     playbackSave
 
-	account accountState
-	// scrobble is the Last.fm connection and the plays waiting for it.
-	scrobble scrobbler
-	// keyboard is the shortcuts, and the recording of a new one.
-	keyboard keyboardState
-	// openPath shows a file or folder in the system; tests replace it.
-	openPath func(path string) error
-	// hasPremium asks whether the account behind a cookie has YouTube
-	// Premium; tests replace it.
-	hasPremium func(ctx context.Context, cookie string) (bool, error)
-	// logsDir is the folder the log file is in; empty when there is none.
-	logsDir string
-	// notice is a message for the next frame to show as a toast.
-	notice string
-	// noticeHelp adds a Learn more button to the notice that opens the
-	// explanation of an outdated yt-dlp.
-	noticeHelp bool
-	// noticePremium makes the notice offer to turn on AccountAudio.
+	account       accountState
+	scrobble      scrobbler
+	keyboard      keyboardState
+	openPath      func(path string) error
+	hasPremium    func(ctx context.Context, cookie string) (bool, error)
+	logsDir       string
+	notice        string
+	noticeHelp    bool
 	noticePremium bool
 
 	theme themeState
 
-	// page is the page shown. It moves between here and pages, the cache of
-	// recent ones, so exactly one place holds each.
-	page     *pageData
-	location string
-	routed   routed
-	pageLoad task // the load of the page shown
-	pageMore task // the next part of the page shown
-	// pageSimilar reads what a playlist page has after its own songs: more of
-	// the playlist, and what YouTube suggests under it.
-	pageSimilar task
-	pages       *lru.Cache[string, *pageData]
-	details     *lru.Cache[string, detail]
-	carousels   *lru.Cache[string, *m3.CarouselState]
-	list        *ui.ListState
-	listWidth   float32 // width the page's list had in the last frame
-	// detailCompact is whether a detail page's hero has scrolled out of
-	// view, so the top bar carries its artwork, name and actions instead.
-	detailCompact bool
-	// pull is the pull-to-refresh gesture of the page shown.
-	pull pullState
-	// swipe is the row the pointer swipes sideways, which adds its track to
-	// the queue or takes it out. swipeMods are the modifiers a swipe asks
-	// for, which keep it apart from the other gestures of a row; tests clear
-	// them, since the tester sends no modifiers with the pointer.
-	swipe     swipeState
-	swipeMods ui.Modifiers
-	// railItems and railFooter reuse the rail's destination lists between
-	// frames, so that a frame does not allocate them again.
-	railItems, railFooter []m3.NavItem
-	search                searchState
-	// searchField and detailSearchField move the keyboard to the top bar's
-	// search and to the playlist page's, where Focus waits while one is hidden.
+	page                           *pageData
+	location                       string
+	routed                         routed
+	pageLoad                       task
+	pageMore                       task
+	pageSimilar                    task
+	pages                          *lru.Cache[string, *pageData]
+	details                        *lru.Cache[string, detail]
+	carousels                      *lru.Cache[string, *m3.CarouselState]
+	list                           *ui.ListState
+	listWidthLastFrame             float32
+	detailCompact                  bool
+	pull                           pullState
+	swipe                          swipeState
+	swipeMods                      ui.Modifiers
+	railItems, railFooter          []m3.NavItem
+	search                         searchState
 	searchField, detailSearchField ui.Handle
-	// settingsSearch is the filter in the Settings top bar.
-	settingsSearch settingsSearchState
-	// writing holds the writes to a like, the library or a subscription that
-	// are out, by what they change, so that one is not asked for twice.
-	writing  map[string]bool
-	menuOpen bool // the account menu
-	// detailFilter narrows a playlist page to the songs that match. It is
-	// part of the page's rows key, so a change asks for the rows again.
-	// detailSearchOpen is whether the bar that types it is open.
-	detailFilter         string
-	detailSearchOpen     bool
-	detailSearchHadFocus bool
-	detailSort           playlistSort
-	detailSortOpen       bool
-	menu                 itemMenu
-	// cover is the card whose cover opened the page showing, so that the
-	// page's hero can take the picture from it as MyGo flies one into the
-	// other.
-	cover       cardCover
-	playerCover coverState
-	miniCover   coverState
-	// bylineFor and bylineParts keep the byline of the track playing, which
-	// the player asks for every frame.
-	bylineFor   bylineKey
-	bylineParts []youtube.BylinePart
-	// artMemo is this frame's artwork lookups, so a picture shown twice in a
-	// frame asks the cache once. A build clears it before drawing.
-	artMemo map[artKey]*ui.Bitmap
+	settingsSearch                 settingsSearchState
+	writing                        map[string]bool
+	accountMenuOpen                bool
+	detailFilter                   string
+	detailSearchOpen               bool
+	detailSearchHadFocus           bool
+	detailSort                     playlistSort
+	detailSortOpen                 bool
+	menu                           itemMenu
+	cover                          cardCover
+	playerCover                    coverState
+	miniCover                      coverState
+	bylineFor                      bylineKey
+	bylineParts                    []youtube.BylinePart
+	artMemo                        map[artKey]*ui.Bitmap
 
-	// Dialogs.
 	crash          *crashState
 	toolHelp       *toolHelpState
 	newPlaylist    *newPlaylistState
 	deletePlaylist *deletePlaylistState
 	addToPlaylist  *addToPlaylistState
-	// privacy is the first-run notice about the install ping.
-	privacy privacyState
+	privacy        privacyState
 
-	// knownPlaylists are the playlists the library last showed, offered at
-	// once by the playlist picker.
 	knownPlaylists knownPlaylists
 
 	playback
@@ -191,27 +118,18 @@ type app struct {
 	nowPlaying nowPlayingState
 	notch      notchState
 
-	// The local listening history and the stats page built from it.
-	historyPath    string
-	history        []history.Entry
-	historyLoaded  bool
-	historyLoading bool
-	// historyDiscard drops the plays the read in flight brings: the user
-	// cleared the history while it was being read.
-	historyDiscard bool
-	// confirmClearHistory is set once the user has asked to clear the history,
-	// until they confirm or keep it.
+	historyPath         string
+	history             []history.Entry
+	historyLoaded       bool
+	historyLoading      bool
+	historyDiscard      bool
 	confirmClearHistory bool
 	historyWriter       history.Writer
-	statsRange          int // days the stats page covers: 7, 14 or 30
+	statsRangeDays      int
 	stats               statsMemo
 
-	// downloads is the music saved to play offline.
 	downloads downloads
 
-	// audioCache is the cache playback uses now; the settings page swaps it
-	// from the main thread while background work holds on to the one it
-	// started with.
 	audioCacheMu       sync.RWMutex
 	audioCache         *audio.Cache
 	audioAuth          audioAuth
@@ -223,63 +141,44 @@ type app struct {
 	cacheLimitError    string
 	cacheDirectoryText string
 	cacheDirError      string
-	// report is the lookup of tool versions for a problem report, and
-	// reportError what went wrong opening it.
-	report      task
-	reportError string
-	// tools are the versions of the bundled programs, shown in Settings once
-	// toolsLookup has read them.
-	tools       report.Info
-	toolsLoaded bool
-	toolsLookup task
+	report             task
+	reportError        string
+	tools              report.Info
+	toolsLoaded        bool
+	toolsLookup        task
 
-	// eqApplied is the band table the player last received, so slider changes
-	// update the live filter only when a gain actually changes.
-	eqApplied [player.EQBandCount]float64
-	// eqDebounce waits out a quiet moment after slider changes before saving
-	// settings.
+	eqApplied  [player.EQBandCount]float64
 	eqDebounce task
 
-	// betterLyrics finds a track's lyrics on Better Lyrics, which times each
-	// word; tests replace it.
 	betterLyrics func(ctx context.Context, q betterlyrics.Query) ([]lyrics.Line, error)
-	// lyricsSource finds a track's lyrics on LRCLIB; tests replace it.
 	lyricsSource lyricsSource
-	// collectInfo reads the versions of the helper programs, which runs
-	// them; tests replace it.
-	collectInfo func(ctx context.Context, app string) report.Info
+	collectInfo  func(ctx context.Context, app string) report.Info
 
-	// stop ends the periodic work; stopOnce closes it once.
-	stop     chan struct{}
-	stopOnce sync.Once
-	// shutdownOnce lets both the OS ending the session and the normal exit
-	// run shutdown, without closing twice.
+	stop         chan struct{}
+	stopOnce     sync.Once
 	shutdownOnce sync.Once
 }
 
-// newApp builds the app with no window. setup gives it one.
 func newApp() *app {
 	a := &app{
-		router:      ui.NewRouter(routeByID(routeHome).path("")),
-		player:      player.New(playerOptions()...),
-		settings:    settings.Defaults(),
-		openURL:     mygo.Shell.OpenExternal,
-		keepRunning: mygo.Power.KeepRunning,
-		bundled:     proc.Bundled,
-		nowPlaying:  nowPlayingState{queueSelectionAnchor: -1, queueSelectionCursor: -1},
-		page:        &pageData{scroll: &ui.ScrollState{}},
-		list:        &ui.ListState{},
-		pages:       lru.New[string, *pageData](pageCacheLimit),
-		details:     lru.New[string, detail](pageCacheLimit),
-		carousels:   lru.New[string, *m3.CarouselState](pageCacheLimit * 4),
-		writing:     make(map[string]bool),
-		stop:        make(chan struct{}),
-		statsRange:  14,
-		swipeMods:   ui.Shift,
-		keyboard:    keyboardState{hintDelay: hintDelay},
+		router:         ui.NewRouter(routeByID(routeHome).path("")),
+		player:         player.New(playerOptions()...),
+		settings:       settings.Defaults(),
+		openURL:        mygo.Shell.OpenExternal,
+		keepRunning:    mygo.Power.KeepRunning,
+		bundled:        proc.Bundled,
+		nowPlaying:     nowPlayingState{queueSelectionAnchor: -1, queueSelectionCursor: -1},
+		page:           &pageData{scroll: &ui.ScrollState{}},
+		list:           &ui.ListState{},
+		pages:          lru.New[string, *pageData](pageCacheLimit),
+		details:        lru.New[string, detail](pageCacheLimit),
+		carousels:      lru.New[string, *m3.CarouselState](pageCacheLimit * 4),
+		writing:        make(map[string]bool),
+		stop:           make(chan struct{}),
+		statsRangeDays: 14,
+		swipeMods:      ui.Shift,
+		keyboard:       keyboardState{hintDelay: hintDelay},
 	}
-	// Notifications need MyGo's event loop, so the function is only called
-	// when a track starts.
 	a.notifications = mygo.NotificationsSupported
 	a.scrobble = newScrobbler()
 	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}), &a.audioAuth, &a.traces)), a.settings.Volume)
@@ -292,13 +191,10 @@ func newApp() *app {
 		}()
 	}
 	a.sleep = sleep
-	// A build with no key sends nothing, and never asks.
 	if key := posthogKey(); key != "" {
 		client := &posthog.Client{Key: key}
 		a.capture = client.Capture
 	}
-	// A build with no DSN has nowhere to send crash reports, so it offers
-	// none.
 	if dsn := sentryDSN(); dsn != "" {
 		client, err := sentry.New(dsn, mygo.App.Version())
 		if err != nil {
@@ -319,8 +215,6 @@ func newApp() *app {
 	return a
 }
 
-// update runs fn where the view can see its result, on the main thread, and
-// draws a frame. Without a desktop, as in tests, it runs fn at once.
 func (a *app) update(fn func()) {
 	if a.desktop != nil {
 		inner := fn
@@ -332,14 +226,10 @@ func (a *app) update(fn func()) {
 	a.desktop.update(fn)
 }
 
-// refresh draws a frame with what background work produced.
 func (a *app) refresh() { a.desktop.invalidate() }
 
-// saveSettings keeps the settings, off the main thread.
 func (a *app) saveSettings() { a.saver.Save(&a.settings) }
 
-// client returns the client to use for a request: the account's when the
-// user is signed in, the public one otherwise.
 func (a *app) client() *youtube.Client {
 	if s := a.account.session; s != nil {
 		return s.client
@@ -347,19 +237,14 @@ func (a *app) client() *youtube.Client {
 	return a.account.public
 }
 
-// signedIn reports whether an account is in use.
 func (a *app) signedIn() bool { return a.account.session != nil }
 
-// currentAudioCache is the audio cache playback uses now. Background work
-// keeps the one it was handed, which stays usable until shutdown.
 func (a *app) currentAudioCache() *audio.Cache {
 	a.audioCacheMu.RLock()
 	defer a.audioCacheMu.RUnlock()
 	return a.audioCache
 }
 
-// replaceAudioCache makes cache the one playback uses, and returns the one it
-// replaces, which is closed at shutdown.
 func (a *app) replaceAudioCache(cache *audio.Cache) *audio.Cache {
 	a.audioCacheMu.Lock()
 	defer a.audioCacheMu.Unlock()
@@ -371,7 +256,6 @@ func (a *app) replaceAudioCache(cache *audio.Cache) *audio.Cache {
 	return previous
 }
 
-// closeAudioCaches stops every cache's downloads and waits for them.
 func (a *app) closeAudioCaches() {
 	a.audioCacheMu.Lock()
 	caches := a.retiredAudioCaches
@@ -383,7 +267,6 @@ func (a *app) closeAudioCaches() {
 	}
 }
 
-// sleep waits for delay, or until ctx ends, and reports why it stopped.
 func sleep(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()

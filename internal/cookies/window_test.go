@@ -19,8 +19,6 @@ import (
 	"github.com/elianiva/meiro/internal/proc"
 )
 
-// TestMain lets the test binary stand in for the browser: the sign-in window
-// starts it with the flags of a real one.
 func TestMain(m *testing.M) {
 	if mode := os.Getenv("MEIRO_FAKE_BROWSER"); mode != "" {
 		fakeBrowser(mode, os.Args[1:])
@@ -29,14 +27,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// fakeBrowser serves the one DevTools command the sign-in uses. "signin"
-// shows a signed-out page for two reads and then a signed-in one; "quit"
-// goes away on the first read, as a window the user closed does. "firefox"
-// writes the cookie database of a profile and waits to be killed;
-// "firefox-quit" exits at once, or after MEIRO_FAKE_BROWSER_WAIT exists.
 func fakeBrowser(mode string, args []string) {
-	// Edge's Windows launcher exits before the browser unless relaunch is
-	// disabled. Model that early exit without needing a real browser.
 	if mode == "edge-signin" && !slices.Contains(args, "--edge-skip-compat-layer-relaunch") {
 		os.Exit(0)
 	}
@@ -45,7 +36,6 @@ func fakeBrowser(mode string, args []string) {
 		if profile == "" {
 			os.Exit(2)
 		}
-		// The reader only passes its database gate once this file exists.
 		if err := os.WriteFile(filepath.Join(profile, "cookies.sqlite"), nil, 0o600); err != nil {
 			os.Exit(2)
 		}
@@ -137,7 +127,6 @@ func itoa(n int) string {
 	return string(b)
 }
 
-// valueAfter is the argument after name, or "".
 func valueAfter(args []string, name string) string {
 	for i, arg := range args {
 		if arg == name && i+1 < len(args) {
@@ -181,8 +170,6 @@ func TestSignInWindowWaitsForTheSessionThenDeletesTheProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The signed-out reads are skipped, the expired cookie and the other
-	// site's cookie are left out, and the subdomain's cookie is kept.
 	if want := "SAPISID=live; SID=session; LOGIN_INFO=li"; got != want {
 		t.Errorf("header = %q, want %q", got, want)
 	}
@@ -260,8 +247,6 @@ func TestSignInWindowFirefoxReadsTheSessionFromACookieDatabase(t *testing.T) {
 	if want := "SAPISID=live; SID=session"; got != want {
 		t.Errorf("header = %q, want %q", got, want)
 	}
-	// The store does not change after the first read, so yt-dlp runs once
-	// and the cached header still waits out the settle time.
 	if calls != 1 {
 		t.Errorf("the reader ran %d times, want 1 while the store is unchanged", calls)
 	}
@@ -323,7 +308,6 @@ func TestSignInWindowReportsAClosedWindowDuringARead(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the reader never ran")
 	}
-	// Only now does the window end, with the reader still blocked.
 	if err := os.WriteFile(hold, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -760,9 +744,6 @@ func TestLinuxCandidatesCoverNativeFlatpakAndSnapInstalls(t *testing.T) {
 	}
 }
 
-// TestFindBrowserKeepsChromiumFirstWhenNothingIsDefaulted checks the Linux
-// fallback order: with no default browser to prefer, a Flatpak Chromium wins
-// over a native Zen.
 func TestFindBrowserKeepsChromiumFirstWhenNothingIsDefaulted(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the Flatpak and native candidates are Linux installs")
@@ -788,7 +769,6 @@ func TestFindBrowserKeepsChromiumFirstWhenNothingIsDefaulted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// No xdg-settings on PATH, so there is no default to prefer.
 	b, ok := findBrowser(context.Background(), true)
 	if !ok {
 		t.Fatal("findBrowser found no browser")
@@ -798,9 +778,6 @@ func TestFindBrowserKeepsChromiumFirstWhenNothingIsDefaulted(t *testing.T) {
 	}
 }
 
-// TestFindBrowserInAFlatpakAsksTheHost checks that, inside a Flatpak, the
-// browsers and the default are read on the host through flatpak-spawn, and
-// that the profile goes where the host browser can see it.
 func TestFindBrowserInAFlatpakAsksTheHost(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Flatpak is Linux")
@@ -837,8 +814,6 @@ func TestFindBrowserInAFlatpakAsksTheHost(t *testing.T) {
 	}
 }
 
-// TestSignInWindowInAFlatpakWithoutHostAccessAsksForIt checks that a Flatpak
-// that may not reach the host says so, rather than that no browser exists.
 func TestSignInWindowInAFlatpakWithoutHostAccessAsksForIt(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Flatpak is Linux")
@@ -854,8 +829,6 @@ func TestSignInWindowInAFlatpakWithoutHostAccessAsksForIt(t *testing.T) {
 	}
 }
 
-// TestLinuxCandidatesUseXDGDataHome checks a user Flatpak install under a
-// custom XDG_DATA_HOME is found at the path Flatpak actually uses.
 func TestLinuxCandidatesUseXDGDataHome(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Flatpak user exports are Linux")
@@ -883,9 +856,6 @@ func TestLinuxCandidatesUseXDGDataHome(t *testing.T) {
 	t.Errorf("no Flatpak candidate at %s", export)
 }
 
-// TestWindowsDefaultKindReadsTheBrowserFromTheCommand checks a FirefoxURL
-// ProgID is resolved to the browser its command starts: Windows registers
-// Zen under the same ProgID prefix as Firefox.
 func TestWindowsDefaultKindReadsTheBrowserFromTheCommand(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -926,9 +896,6 @@ func TestWindowsDefaultKindReadsTheBrowserFromTheCommand(t *testing.T) {
 	}
 }
 
-// TestWindowsCandidatesFindZen checks a Windows install of Zen is found where
-// its installer puts it, so the browser the user defaults to can open the
-// sign-in window.
 func TestWindowsCandidatesFindZen(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("ProgramFiles", root)
@@ -947,9 +914,6 @@ func TestWindowsCandidatesFindZen(t *testing.T) {
 	t.Fatalf("no Zen candidate at %s", want)
 }
 
-// TestDarwinAndWindowsCandidatesKeepTheTableOrder checks the fallback order
-// the browserCandidates comment promises: the Chromium-based rows come first,
-// whatever install root a browser lives in.
 func TestDarwinAndWindowsCandidatesKeepTheTableOrder(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -1035,14 +999,10 @@ func TestPreferringPutsTheDefaultBrowserFirst(t *testing.T) {
 	if want := []string{"b", "d", "a", "c"}; !samePaths(got, want) {
 		t.Errorf("preferring = %v, want order %v", got, want)
 	}
-	// A default that is not one of these, or not installed, changes nothing.
 	if got := preferring(all, "", ""); !samePaths(got, []string{"a", "b", "c", "d"}) {
 		t.Errorf("no default changed the order: %v", got)
 	}
 
-	// The exact .desktop file the system named wins over another install of
-	// the same browser; without one, every candidate of the named kind moves
-	// up and keeps its order.
 	installs := []candidate{
 		{kind: "firefox", path: "native"},
 		{kind: "firefox", path: "flatpak", desktopID: "org.mozilla.firefox.desktop"},
@@ -1069,7 +1029,6 @@ func TestStaleAgeOutlivesTheSignInTimeout(t *testing.T) {
 	}
 }
 
-// samePaths compares the paths of candidates in order.
 func samePaths(got []candidate, want []string) bool {
 	if len(got) != len(want) {
 		return false

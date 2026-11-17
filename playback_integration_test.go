@@ -34,17 +34,12 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// resolved records the tracks the app asked its stream resolver for, in place
-// of yt-dlp.
 type resolved struct {
-	mu  sync.Mutex
-	ids []string
-	err map[string]error
-	// file, when set, is the audio every track resolves to.
+	mu   sync.Mutex
+	ids  []string
+	err  map[string]error
 	file string
-	// url, when set, chooses the URL of a track's nth resolve (from 1), in
-	// place of file, and may fail it.
-	url func(videoID string, n int) (string, error)
+	url  func(videoID string, n int) (string, error)
 }
 
 func (r *resolved) resolve(_ context.Context, videoID string) (string, time.Duration, error) {
@@ -70,9 +65,6 @@ func (r *resolved) resolve(_ context.Context, videoID string) (string, time.Dura
 	return "/nonexistent/" + videoID + ".m4a", 3 * time.Minute, nil
 }
 
-// asked reports whether the resolver was asked for videoID. The app also
-// resolves the next track ahead of time, so the last ask is not the track
-// playing.
 func (r *resolved) count(videoID string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -96,8 +88,6 @@ func (r *resolved) asked(videoID string) bool {
 	return false
 }
 
-// playbackApp is an app whose tracks resolve to fake files, for the tests of
-// what the app decides. TestPlayingATrackThroughToTheEnd plays real audio.
 func playbackApp(t *testing.T) (*app, *resolved) {
 	t.Helper()
 	a := newTestApp(t)
@@ -135,7 +125,7 @@ func TestQueueAdvancesPreviousAndStops(t *testing.T) {
 		t.Fatalf("after one track current=%q", a.current.VideoID)
 	}
 	a.trackEnded()
-	a.previous() // just started: goes back a track
+	a.previous()
 	if a.current.VideoID != "b" || a.queue.index != 1 {
 		t.Fatalf("previous left index %d on %q", a.queue.index, a.current.VideoID)
 	}
@@ -143,14 +133,12 @@ func TestQueueAdvancesPreviousAndStops(t *testing.T) {
 	if a.current.VideoID != "c" {
 		t.Fatalf("current = %q", a.current.VideoID)
 	}
-	a.trackEnded() // the end of the queue, nothing repeats
+	a.trackEnded()
 	if a.current.VideoID != "c" || a.loading() {
 		t.Errorf("the queue end: current=%q loading=%v", a.current.VideoID, a.loading())
 	}
 }
 
-// shownNotices records the track notifications the app shows, in place of
-// the desktop. front says whether a Meiro window is in front.
 type shownNotices struct {
 	front     bool
 	shown     []string
@@ -213,7 +201,7 @@ func TestTrackNotificationLooksAtTheFrontWindowOnceItsCoverArrives(t *testing.T)
 			if n.front {
 				t.Error("Meiro was in front before the second cover was asked for")
 			}
-			n.front = true // The user comes to Meiro while the cover downloads.
+			n.front = true
 		}
 		return redArt{}.RoundTrip(r)
 	})}, func() {})
@@ -241,19 +229,19 @@ func TestRepeatModes(t *testing.T) {
 	q := tracks("a", "b")
 	a.play(q[0], q)
 
-	a.cycleRepeat() // queue
+	a.cycleRepeat()
 	a.trackEnded()
 	a.trackEnded()
 	if a.current.VideoID != "a" {
 		t.Errorf("repeating the queue ended on %q, want a", a.current.VideoID)
 	}
-	a.cycleRepeat() // track
+	a.cycleRepeat()
 	before := a.stream.gen
 	a.trackEnded()
 	if a.current.VideoID != "a" || a.stream.gen == before {
 		t.Errorf("repeating the track: current=%q, restarted=%v", a.current.VideoID, a.stream.gen != before)
 	}
-	a.cycleRepeat() // off
+	a.cycleRepeat()
 	if a.repeat != repeatOff {
 		t.Errorf("a third press left repeat %d", a.repeat)
 	}
@@ -262,7 +250,7 @@ func TestRepeatModes(t *testing.T) {
 func TestTurningShuffleOffPutsTheQueueBack(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c", "d")
-	a.play(q[2], q) // c, with the songs before it in the queue
+	a.play(q[2], q)
 	a.setShuffle(true)
 	if a.queue.index != 0 || a.current.VideoID != "c" {
 		t.Fatalf("shuffle left %q at %d, want c at the top", a.current.VideoID, a.queue.index)
@@ -311,7 +299,6 @@ func TestAnUnplayableTrackSaysWhyAndRetries(t *testing.T) {
 	if len(a.history) != 0 {
 		t.Errorf("the failed track was recorded: %+v", a.history)
 	}
-	// Pressing play asks for the same track again.
 	delete(r.err, "bad")
 	a.togglePlay()
 	if r.count("bad") != 2 || a.playErr != "" {
@@ -319,8 +306,6 @@ func TestAnUnplayableTrackSaysWhyAndRetries(t *testing.T) {
 	}
 }
 
-// Each way a track fails says why in the player bar, in words, not as what
-// yt-dlp printed.
 func TestAnUnplayableTrackShowsAReadableReason(t *testing.T) {
 	for _, tc := range []struct{ raw, want string }{
 		{"yt-dlp could not resolve the audio: Video unavailable. This video is not available in your country", "This track is not available in your region."},
@@ -368,8 +353,6 @@ func TestAnUnplayableTrackIsSkipped(t *testing.T) {
 	}
 }
 
-// A run of failures, as a network that is down makes, stops at the limit with
-// the error shown, and a track the listener chooses starts the count again.
 func TestSkippingStopsAfterAFewFailuresInARow(t *testing.T) {
 	a, r := playbackApp(t)
 	q := tracks("a", "b", "c", "d", "e", "f", "g")
@@ -389,7 +372,7 @@ func TestSkippingStopsAfterAFewFailuresInARow(t *testing.T) {
 	if len(a.history) != 0 {
 		t.Errorf("the unplayable tracks were recorded: %+v", a.history)
 	}
-	a.playVideoID("e") // chosen by the listener
+	a.playVideoID("e")
 	if a.current.VideoID != "g" {
 		t.Errorf("current = %q, want a fresh run of skips to reach g", a.current.VideoID)
 	}
@@ -402,7 +385,6 @@ func TestAPlayedTrackEndsTheRunOfSkips(t *testing.T) {
 		r.err[id] = errors.New("Video unavailable")
 	}
 	a.play(q[0], q)
-	// a, b skipped, c plays; the two failures after it are a new run.
 	a.advance()
 	if a.current.VideoID != "f" || a.playErr != "" {
 		t.Errorf("current %q, playErr %q: want f playing after c", a.current.VideoID, a.playErr)
@@ -476,7 +458,6 @@ func TestLoudnessSurvivesTheStreamResolving(t *testing.T) {
 	if !a.loudnessOK || math.Abs(a.player.Volume()-want) > 1e-9 {
 		t.Fatalf("first play: loudness known=%t, volume %v, want %v", a.loudnessOK, a.player.Volume(), want)
 	}
-	// The second play finds the value in the cache and asks for nothing.
 	a.play(tracks("song")[0], tracks("song"))
 	if !a.loudnessOK || math.Abs(a.player.Volume()-want) > 1e-9 {
 		t.Fatalf("replay: loudness known=%t, volume %v, want %v", a.loudnessOK, a.player.Volume(), want)
@@ -496,8 +477,6 @@ func TestLoudnessIsAppliedBeforeTheAudioStarts(t *testing.T) {
 		body := `{"playerConfig":{"audioConfig":{"loudnessDb":6}}}`
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})}})}
-	// The stream is asked for after the gain is applied, so the fake resolver
-	// sees the volume the player holds when the audio is about to start.
 	atResolve := -1.0
 	urls := a.streams
 	a.streams = audio.NewURLs(func(ctx context.Context, videoID string) (string, time.Duration, error) {
@@ -532,7 +511,7 @@ func TestNormalizationToggleImmediatelyUpdatesPlayerVolume(t *testing.T) {
 
 func TestVolumeAndMutePersistToSettings(t *testing.T) {
 	a, _ := playbackApp(t)
-	a.volume = 30 // as restored from settings at startup
+	a.volume = 30
 	a.toggleMute()
 	a.toggleMute()
 	if a.settings.Volume != 30 {
@@ -551,7 +530,7 @@ func TestVolumeAndMutePersistToSettings(t *testing.T) {
 		t.Errorf("unmuting restored %v, want 30", a.settings.Volume)
 	}
 	a.setVolume(15)
-	a.setVolume(0) // the slider dragged down to 0
+	a.setVolume(0)
 	a.toggleMute()
 	if a.settings.Volume != 15 {
 		t.Errorf("unmuting after the slider went to 0 restored %v, want 15", a.settings.Volume)
@@ -808,8 +787,6 @@ func TestAutoPlayCompletesWhenNoRecommendationsAreReturned(t *testing.T) {
 	}
 }
 
-// A queue played the way the app runs it: real ffmpeg decoding real audio,
-// the ticker's poll moving on from each track to the next.
 func TestPlayingATrackThroughToTheEnd(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -846,7 +823,7 @@ func TestPlayingATrackThroughToTheEnd(t *testing.T) {
 		t.Errorf("history = %+v, want only the two tracks that started", a.history)
 	}
 
-	a.togglePlay() // pressing play on an ended track starts it again
+	a.togglePlay()
 	waitPlaying := time.Now().Add(5 * time.Second)
 	for !a.player.Playing() && time.Now().Before(waitPlaying) {
 		a.poll()
@@ -861,9 +838,6 @@ func TestPlayingATrackThroughToTheEnd(t *testing.T) {
 	}
 }
 
-// deferredRunner replaces the app's background runner with a queue the test
-// drains by hand, so the work the app hands off can be held in flight while
-// the test asks what the main thread did with it.
 func deferredRunner(a *app) (drain func()) {
 	var pending []func()
 	a.run = func(work func()) { pending = append(pending, work) }
@@ -876,9 +850,6 @@ func deferredRunner(a *app) (drain func()) {
 	}
 }
 
-// Moving the player to a position restarts ffmpeg there and waits for the
-// audio device, so it happens off the main thread, and a position asked for
-// while one is on its way is the one that plays.
 func TestSeekingMovesThePlayerOffTheMainThread(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -902,17 +873,16 @@ func TestSeekingMovesThePlayerOffTheMainThread(t *testing.T) {
 	if got := a.player.Position(); got > 2*time.Second {
 		t.Fatalf("the player moved to %v on the main thread, want the seek queued", got)
 	}
-	a.seek(9 * time.Second) // asked for while the first seek is on its way
+	a.seek(9 * time.Second)
 	drain()
 	if got := a.player.Position(); got < 2*time.Second || got >= 8*time.Second {
 		t.Fatalf("position after the first seek = %v, want about 3s", got)
 	}
-	drain() // the position asked for second, which replaces the first
+	drain()
 	if got := a.player.Position(); got < 8*time.Second {
 		t.Fatalf("position after the second seek = %v, want about 9s", got)
 	}
 
-	// Keyboard edits must reach the decoder too, not only move the thumb.
 	a.player.Pause()
 	a.total, a.scrub = 15*time.Second, 9
 	tt := ui.NewTester(a.view, 1280, 800)
@@ -930,8 +900,6 @@ func TestSeekingMovesThePlayerOffTheMainThread(t *testing.T) {
 	}
 }
 
-// A track the audio cache holds plays from the cache, without asking the
-// resolver.
 func TestACachedTrackPlaysWithoutResolving(t *testing.T) {
 	media := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "audio/mp4")
@@ -966,9 +934,6 @@ func TestACachedTrackPlaysWithoutResolving(t *testing.T) {
 	}
 }
 
-// A stream that breaks off mid-song, as the network dropping or an audio URL
-// that expired while the machine slept makes it, is found again and played
-// on from where it stopped.
 func TestABrokenStreamResumesFromItsPosition(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -984,7 +949,6 @@ func TestABrokenStreamResumesFromItsPosition(t *testing.T) {
 	defer expired.Close()
 
 	a, r := playbackApp(t)
-	// The first URL is dead; resolving again gives one that plays.
 	r.url = func(_ string, n int) (string, error) {
 		if n == 1 {
 			return expired.URL + "/a.m4a", nil
@@ -992,7 +956,7 @@ func TestABrokenStreamResumesFromItsPosition(t *testing.T) {
 		return tone, nil
 	}
 	a.play(tracks("a")[0], nil)
-	a.player.Seek(12 * time.Second) // the track had played to here
+	a.player.Seek(12 * time.Second)
 	waitFor(t, func() bool { return a.player.Failure() != "" })
 
 	waitFor(t, func() bool {
@@ -1010,9 +974,6 @@ func TestABrokenStreamResumesFromItsPosition(t *testing.T) {
 	}
 }
 
-// A podcast show opens as a page of its episodes. An episode left part-way
-// through starts where it stopped the next time it plays, and the place is
-// saved with the queue, so it outlives the run.
 func TestAPodcastEpisodeComesBackWhereItStopped(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -1023,7 +984,7 @@ func TestAPodcastEpisodeComesBackWhereItStopped(t *testing.T) {
 		t.Fatalf("making a tone: %v: %s", err, out)
 	}
 	a, r := playbackApp(t)
-	r.url = func(string, int) (string, error) { return tone, nil } // three minutes long, as far as the app knows
+	r.url = func(string, int) (string, error) { return tone, nil }
 	saved := filepath.Join(t.TempDir(), "playback.json")
 	a.playSave.writer.Path = saved
 	a.router.Push("/podcast/MPSPPLshow")
@@ -1061,9 +1022,6 @@ func TestAPodcastEpisodeComesBackWhereItStopped(t *testing.T) {
 	}
 }
 
-// An episode plays at the speed chosen from the player bar's overflow menu,
-// and goes on at it from where it was. Music keeps a speed of its own, chosen
-// the same way, and the next episode plays at the speed chosen for podcasts.
 func TestEpisodesAndMusicPlayAtTheirOwnChosenSpeeds(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -1140,9 +1098,6 @@ func TestEpisodesAndMusicPlayAtTheirOwnChosenSpeeds(t *testing.T) {
 	}
 }
 
-// A signed-in episode can resume from YouTube's account progress when there
-// is no local position. A local position wins when both are available, and a
-// signed-out session ignores the account hint. Pausing sends a final interval.
 func TestPodcastEpisodeSyncsResumeProgressWithTheAccount(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -1203,9 +1158,6 @@ func TestPodcastEpisodeSyncsResumeProgressWithTheAccount(t *testing.T) {
 	}
 }
 
-// A stream that stays broken is tried a bounded number of times, then the
-// reason is shown; a resolve that fails while the network is down counts as
-// a try, and one that works afterwards ends the trouble.
 func TestAStreamThatStaysBrokenGivesUpAfterTheRetries(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg is not installed")
@@ -1249,8 +1201,6 @@ func TestAStreamThatBreaksOffAtTheEndPlaysTheNextTrack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A track whose data stops just before its end: ffmpeg plays almost all
-	// of it and then reports the stream broken off.
 	broken := filepath.Join(t.TempDir(), "broken.wav")
 	if err := os.WriteFile(broken, data[:len(data)-4000], 0o644); err != nil {
 		t.Fatal(err)
@@ -1261,9 +1211,6 @@ func TestAStreamThatBreaksOffAtTheEndPlaysTheNextTrack(t *testing.T) {
 	q := tracks("a", "b")
 	a.play(q[0], q)
 
-	// The break is the player's, before the app has looked at it, and the
-	// sound drains the last moment out while the ticker waits for its next
-	// look at the player.
 	waitFor(t, func() bool { return a.player.Failure() != "" })
 	waitFor(t, func() bool { return a.total-a.player.Position() <= endOfTrackLead })
 
@@ -1278,10 +1225,6 @@ func TestAStreamThatBreaksOffAtTheEndPlaysTheNextTrack(t *testing.T) {
 		t.Errorf("playErr = %q", a.playErr)
 	}
 }
-
-// A stream that breaks off mid-song, as the network dropping or an audio URL
-// that expired while the machine slept makes it, is found again and played
-// on from where it stopped.
 
 func waitFor(t *testing.T, done func() bool) {
 	t.Helper()
@@ -1301,16 +1244,12 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	a.nowPlaying.open, a.nowPlaying.queueOnly, a.nowPlaying.playerShown = true, true, true
 	tt := ui.NewTester(a.nowPlayingView, 1000, 700)
 
-	// A row of the queue has no buttons: a right click opens its menu, which
-	// holds the remove.
 	rowB, ok := tt.Find("Track b")
 	if !ok {
 		t.Fatalf("no row: %q", tt.Texts())
 	}
 	tt.RightClickAt(rowB.X+rowB.W/2, rowB.Y+rowB.H/2)
 	tt.Frame()
-	// The queue's own actions are as tall as the song's, so every gap in the
-	// menu matches.
 	var heights []float32
 	for _, label := range []string{"Play next", "Move up", "Move down", "Remove from queue", "Start radio", "Add to playlist", "Copy"} {
 		e, ok := tt.Find(label)
@@ -1332,7 +1271,6 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 		t.Fatalf("after remove: %v", got)
 	}
 
-	// Drag the last row above the one before it.
 	from, ok1 := tt.Find("Track d")
 	to, ok2 := tt.Find("Track c")
 	if !ok1 || !ok2 {
@@ -1349,7 +1287,6 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 		t.Fatalf("after drag: %v", got)
 	}
 
-	// The track playing has nowhere to go, so its menu offers no remove.
 	rowA, ok := tt.Find("Track a")
 	if !ok {
 		t.Fatalf("no row: %q", tt.Texts())
@@ -1370,9 +1307,6 @@ func TestEditingTheQueueFromItsPanel(t *testing.T) {
 	}
 }
 
-// A queued song's menu offers Play next, which adds a copy of it directly
-// after the track playing and leaves its row where it is. The queue can hold
-// the same song twice, so the entry stays on a song that already plays next.
 func TestPlayingAQueuedTrackNext(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c", "d")
@@ -1400,8 +1334,6 @@ func TestPlayingAQueuedTrackNext(t *testing.T) {
 		t.Errorf("Play next changed the track playing: %q at %d", a.current.VideoID, a.queue.index)
 	}
 
-	// The copy already plays next, and its menu offers Play next again: the
-	// entry adds another copy rather than moving the row.
 	rowD, ok = tt.Find("Track d")
 	if !ok {
 		t.Fatalf("the copied row is missing: %q", tt.Texts())
@@ -1418,9 +1350,6 @@ func TestPlayingAQueuedTrackNext(t *testing.T) {
 	}
 }
 
-// A queue row shows its menu button under the pointer, as it shows the cross
-// that takes the song out, and keeps the cross beside the length. The
-// download mark belongs to the library, so a downloaded song has none here.
 func TestAQueueRowShowsItsActionsUnderThePointer(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c")
@@ -1473,8 +1402,6 @@ func TestAQueueRowShowsItsActionsUnderThePointer(t *testing.T) {
 	a.menu.close()
 }
 
-// A music list row offers to play a song next, beside the button that adds it
-// to the end of the queue, and the song goes directly after the track playing.
 func TestAMusicListRowPlaysASongNext(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b")
@@ -1504,8 +1431,6 @@ func TestAMusicListRowPlaysASongNext(t *testing.T) {
 	}
 }
 
-// A row's menu button shows under the pointer in a music list, as it does in
-// the queue, where it appears beside the cross.
 func TestAMenuButtonShowsOnHoverInEveryList(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/playlist/VLPL_metadata")
@@ -1549,7 +1474,6 @@ func TestAMenuButtonShowsOnHoverInEveryList(t *testing.T) {
 	b.menu.close()
 }
 
-// A downloaded song keeps its mark outside the queue, where the mark matters.
 func TestADownloadedSongKeepsItsMarkOnAPage(t *testing.T) {
 	a := newTestApp(t)
 	a.downloads.lib.Add(offline.Song{Item: youtube.MusicItem{VideoID: "linked-track", Title: "Linked Track"}})
@@ -1650,26 +1574,24 @@ func TestQueueSelectionMovesAndRemovesTogether(t *testing.T) {
 func TestQueueEditsAtTheEdges(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c", "d")
-	a.play(q[1], q) // a [b] c d
+	a.play(q[1], q)
 	a.settings.AutoPlay = true
 	a.queue.appendGenerated(tracks("r1", "r2"))
-	a.enqueue(tracks("n")[0], true) // a [b] n c d r1 r2
+	a.enqueue(tracks("n")[0], true)
 
-	a.removeFromQueue(a.queue.index) // the track playing cannot be removed
+	a.removeFromQueue(a.queue.index)
 	if a.current.VideoID != "b" || a.queue.len() != 7 {
 		t.Fatalf("removed the current track: %v", ids(a.queue.items))
 	}
-	a.removeFromQueue(0) // before the current place
+	a.removeFromQueue(0)
 	if a.queue.current().VideoID != "b" || a.queue.index != 0 {
 		t.Errorf("place after removing before: %d", a.queue.index)
 	}
-	a.removeFromQueue(a.queue.find("d")) // after it
+	a.removeFromQueue(a.queue.find("d"))
 	if a.queue.current().VideoID != "b" || a.queue.at(a.queue.recStart).VideoID != "r1" {
 		t.Errorf("after removing after: %v recStart %d", ids(a.queue.items), a.queue.recStart)
 	}
 
-	// b [n] c r1 r2: drag c above the play-next track, then n below the
-	// divider; play-next still plays first and the boundary stays on r1.
 	a.moveQueue([]int{a.queue.rowOf(a.queue.find("c"))}, a.queue.rowOf(1))
 	a.moveQueue([]int{a.queue.rowOf(a.queue.find("n"))}, a.queue.rows())
 	if a.queue.playNext != "n" || a.queue.at(a.queue.recStart).VideoID != "r1" && a.queue.at(a.queue.recStart).VideoID != "n" {
@@ -1679,12 +1601,12 @@ func TestQueueEditsAtTheEdges(t *testing.T) {
 		t.Errorf("play-next lost: next %d %v", next, ok)
 	}
 
-	a.settings.AutoPlay = false // clearing with auto-play on asks for new recommendations
-	a.clearUpcoming()           // while playing
+	a.settings.AutoPlay = false
+	a.clearUpcoming()
 	if got := ids(a.queue.items); !slices.Equal(got, []string{"b"}) || a.current.VideoID != "b" {
 		t.Errorf("after clear: %v", got)
 	}
-	a.clearUpcoming() // nothing left to clear
+	a.clearUpcoming()
 	a.removeFromQueue(5)
 	a.moveQueue([]int{9}, 0)
 	if a.queue.len() != 1 {
@@ -1698,8 +1620,6 @@ func TestQueueEditsAtTheEdges(t *testing.T) {
 	}
 }
 
-// tonesApp is an app whose every track is one tone of the given
-// length in seconds, to test the hand over between tracks on real audio.
 func tonesApp(t *testing.T, seconds int) (*app, *resolved) {
 	t.Helper()
 	ffmpeg, err := exec.LookPath("ffmpeg")
@@ -1715,8 +1635,6 @@ func tonesApp(t *testing.T, seconds int) (*app, *resolved) {
 	return a, r
 }
 
-// pollUntil polls the app as its ticker does until cond holds, and fails the
-// test when it does not in time.
 func pollUntil(t *testing.T, a *app, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
@@ -1729,9 +1647,6 @@ func pollUntil(t *testing.T, a *app, what string, cond func() bool) {
 	}
 }
 
-// followsWithoutPause plays until the current track is want, and fails if the
-// player let the sound end on the way: a hand over keeps one stream running
-// from the track before to the one after.
 func followsWithoutPause(t *testing.T, a *app, want string) {
 	t.Helper()
 	pollUntil(t, a, "track "+want, func() bool {
@@ -1757,7 +1672,6 @@ func TestTheNextTrackIsReadiedAndFollowsWithoutAPause(t *testing.T) {
 	if n := r.count("b"); n != 1 {
 		t.Errorf("b was resolved %d times, want once", n)
 	}
-	// And the one after it is readied in turn.
 	pollUntil(t, a, "c to be readied", func() bool { return a.player.Preloaded() == "c" })
 	followsWithoutPause(t, a, "c")
 }
@@ -1797,7 +1711,7 @@ func TestEditingTheQueueChangesWhatIsReadied(t *testing.T) {
 	q := tracks("a", "b", "c")
 	a.play(q[0], q)
 	pollUntil(t, a, "b to be readied", func() bool { return a.player.Preloaded() == "b" })
-	a.removeFromQueue(1) // b leaves the queue; c follows
+	a.removeFromQueue(1)
 	if got := a.player.Preloaded(); got == "b" {
 		t.Fatal("still holding b after its track left the queue")
 	}
@@ -1822,7 +1736,6 @@ func TestATrackThatCannotBeResolvedIsLeftToTheSkip(t *testing.T) {
 	if r.count("b") != n {
 		t.Error("a failed preload was tried again on every poll")
 	}
-	// At the end of a, b fails as it always did, and the queue moves on to c.
 	pollUntil(t, a, "c to play", func() bool { return a.current.VideoID == "c" && a.player.Playing() })
 	if !strings.Contains(a.notice, "Skipped Track b") {
 		t.Errorf("notice = %q, want b skipped", a.notice)
@@ -1850,19 +1763,13 @@ func TestSeekingNearTheEndStillHandsOver(t *testing.T) {
 	a.play(q[0], q)
 	pollUntil(t, a, "b to be readied", func() bool { return a.player.Preloaded() == "b" })
 	a.player.Pause()
-	a.seek(2500 * time.Millisecond) // dropping the readied stream, which the next poll readies again
+	a.seek(2500 * time.Millisecond)
 	a.player.Resume()
 	pollUntil(t, a, "b to be readied again", func() bool { return a.player.Preloaded() == "b" || a.current.VideoID == "b" })
 	followsWithoutPause(t, a, "b")
 }
 
-// The 48 DIP targets of two neighbouring buttons must not cover each other's
-// drawn shape: a press just inside the edge of "Up next" is its own, not the
-// next button's.
 func TestPlayerMetadataLinksNavigateWithoutInterruptingPlayback(t *testing.T) {
-	// The player bar and the full player draw these links with the same code,
-	// and the full player only adds its close animation before the same
-	// navigation, so one destination covers the full player.
 	for _, dest := range []struct {
 		full                 bool
 		label, path, heading string
@@ -1873,8 +1780,6 @@ func TestPlayerMetadataLinksNavigateWithoutInterruptingPlayback(t *testing.T) {
 	} {
 		full := dest.full
 		t.Run(strconv.FormatBool(full)+"/"+dest.label, func(t *testing.T) {
-			// The null sink consumes audio faster than real time. Leave
-			// enough audio for keyboard traversal under the race detector.
 			a, r := tonesApp(t, 600)
 			r.url = func(string, int) (string, error) { return r.file, nil }
 			a.router.Push("/playlist/VLPL_metadata")
@@ -1955,9 +1860,6 @@ func TestPlayerMetadataLinksStayInMainAppAndDisappearWithTheTrack(t *testing.T) 
 	if a.current.VideoID != "unlinked-track" || tt.HasText("Go to album: Deep Focus") || tt.HasText("Go to artist: Aurora Vale") || !tt.HasText("Unknown artist • Unknown album") {
 		t.Fatal("unlinked track inherited old destinations or lost its plain metadata")
 	}
-	// Previous restarts a track that has played past 3s, and a loaded machine
-	// gets there before the click; hold this one at its start so Previous goes
-	// back a track.
 	a.player.Pause()
 	a.seek(0)
 	pollUntil(t, a, "the seek to the start", func() bool { return !a.seeking.busy() })
@@ -1975,8 +1877,6 @@ func TestPlayerMetadataLinksStayInMainAppAndDisappearWithTheTrack(t *testing.T) 
 	}
 }
 
-// A track YouTube gives no audio for says why in the skip toast, and Learn
-// more explains an outdated yt-dlp for the build the listener runs.
 func TestFormatUnavailableOffersHelpForTheBuild(t *testing.T) {
 	for _, tc := range []struct {
 		full bool
@@ -2038,8 +1938,6 @@ func TestNarrowPlayerBarRevealsVerticalVolumeSliderOnHover(t *testing.T) {
 	}
 }
 
-// The window names the track while it plays, the way the taskbar shows it,
-// and the app once it pauses.
 func TestTheWindowTitleNamesTheTrackPlaying(t *testing.T) {
 	a, _ := tonesApp(t, 3)
 	item := youtube.MusicItem{VideoID: "a", Title: "All Because of You", Artist: "Bill", Artists: "Bill Withers, Grover Washington"}
@@ -2051,7 +1949,6 @@ func TestTheWindowTitleNamesTheTrackPlaying(t *testing.T) {
 	if got, want := a.windowTitle(), "Bill Withers, Grover Washington - All Because of You"; got != want {
 		t.Errorf("while playing the title is %q, want %q", got, want)
 	}
-	// An item whose row links no artist names one only in its byline.
 	radio := youtube.MusicItem{VideoID: "b", Title: "Kitto Coaster", Subtitle: "Ado", Kind: youtube.KindTrack}
 	a.play(radio, []youtube.MusicItem{radio})
 	pollUntil(t, a, "b to play", func() bool { return a.current.VideoID == "b" && a.player.Playing() })
@@ -2064,8 +1961,6 @@ func TestTheWindowTitleNamesTheTrackPlaying(t *testing.T) {
 	}
 }
 
-// recordingMedia keeps the states the app publishes to the system's media
-// controls, in place of the real session.
 type recordingMedia struct {
 	states []systemmedia.State
 }
@@ -2077,17 +1972,12 @@ func (r *recordingMedia) Update(state systemmedia.State) error {
 
 func (r *recordingMedia) Close() error { return nil }
 
-// The media controls and the listening history name the artist the song
-// credits, not the byline YouTube flattens around it. The album is published
-// as its own field, so a desktop widget can show it where it has room.
 func TestSystemMediaAndHistoryNameTheArtist(t *testing.T) {
 	a, _ := tonesApp(t, 600)
 	a.historyPath = filepath.Join(t.TempDir(), "history.json")
-	t.Cleanup(a.historyWriter.Wait) // the play is written in the background
+	t.Cleanup(a.historyWriter.Wait)
 	media := &recordingMedia{}
 	a.media = media
-	// The row YouTube gives a playlist track: the kind first, then two
-	// linked artists and a play count, with the album in its own column.
 	a.router.Push("/playlist/VLPL_metadata")
 	tt := ui.NewTester(a.view, 1000, 700)
 	if err := tt.Click("Linked Track"); err != nil {
@@ -2114,8 +2004,6 @@ func TestSystemMediaAndHistoryNameTheArtist(t *testing.T) {
 	}
 }
 
-// Clicking the playing track in the queue pauses it, and clicking it again
-// resumes it, rather than starting it over. Another track still plays.
 func TestClickingThePlayingQueueRowTogglesPlayback(t *testing.T) {
 	a, _ := tonesApp(t, 600)
 	items := tracks("a", "b")
@@ -2123,13 +2011,11 @@ func TestClickingThePlayingQueueRowTogglesPlayback(t *testing.T) {
 	pollUntil(t, a, "a to play", func() bool { return a.player.Playing() })
 	tt := ui.NewTester(a.view, 1180, 850)
 	tt.Frame()
-	if err := tt.Click("Track a"); err != nil { // the bar's title opens the player on the queue
+	if err := tt.Click("Track a"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 
-	// The player names the track too, so the row is found by its place:
-	// the one above the next track's.
 	next, ok := tt.Find("Track b")
 	if !ok {
 		t.Fatalf("the queue shows no Track b: %q", tt.Texts())
@@ -2149,8 +2035,6 @@ func TestClickingThePlayingQueueRowTogglesPlayback(t *testing.T) {
 	pollUntil(t, a, "b to play", func() bool { return a.current.VideoID == "b" && a.player.Playing() })
 }
 
-// twoCovers answers a solid red picture for a red cover and a solid blue one
-// for a blue cover, so a crossfade between them shows both at once.
 type twoCovers struct{}
 
 func (twoCovers) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -2174,8 +2058,6 @@ func (twoCovers) RoundTrip(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// The player's cover crossfades from one track to the next, rather than cutting
-// or flashing the placeholder while the new picture loads.
 func TestThePlayerCoverCrossfadesBetweenTracks(t *testing.T) {
 	a := newTestApp(t)
 	a.thumbs.Close()
@@ -2202,7 +2084,6 @@ func TestThePlayerCoverCrossfadesBetweenTracks(t *testing.T) {
 	if c := pixel(); c.R < 200 || c.B > 20 {
 		t.Fatalf("the first cover is %v, want red", c)
 	}
-	// The next cover is already in the cache, as one on a queue row would be.
 	for range 20 {
 		a.thumbs.Bitmap(blue, 160)
 		tt.Frame()
@@ -2218,7 +2099,7 @@ func TestThePlayerCoverCrossfadesBetweenTracks(t *testing.T) {
 		tt.Advance(25 * time.Millisecond)
 		tt.Frame()
 		if c := pixel(); c.R > 20 && c.B > 20 {
-			faded = true // both pictures show at once
+			faded = true
 		}
 	}
 	if !faded {

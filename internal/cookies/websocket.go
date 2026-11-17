@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
-	"crypto/sha1" //nolint:gosec // the WebSocket handshake is defined with SHA-1
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -14,10 +14,6 @@ import (
 	"net/http"
 	"time"
 )
-
-// This is the smallest WebSocket client the browser's debugging port needs:
-// text messages over a loopback connection, with no extensions. It is not a
-// general client.
 
 const (
 	wsGUID       = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -31,14 +27,11 @@ const (
 )
 
 type wsConn struct {
-	conn net.Conn
-	r    *bufio.Reader
-	// client frames are masked, server frames are not.
+	conn   net.Conn
+	r      *bufio.Reader
 	client bool
 }
 
-// dialWS opens a WebSocket to a loopback address. ctx bounds the handshake
-// and ends the connection when it is done.
 func dialWS(ctx context.Context, addr, path string) (*wsConn, error) {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
@@ -46,8 +39,6 @@ func dialWS(ctx context.Context, addr, path string) (*wsConn, error) {
 		return nil, err
 	}
 	ws := &wsConn{conn: conn, r: bufio.NewReader(conn), client: true}
-	// The connection ends with ctx, so a cancelled sign-in cannot leave a
-	// read waiting.
 	context.AfterFunc(ctx, func() { conn.Close() })
 	if err := ws.handshake(ctx, addr, path); err != nil {
 		conn.Close()
@@ -82,15 +73,12 @@ func (w *wsConn) handshake(ctx context.Context, addr, path string) error {
 }
 
 func wsAccept(key string) string {
-	sum := sha1.Sum([]byte(key + wsGUID)) //nolint:gosec // defined by RFC 6455
+	sum := sha1.Sum([]byte(key + wsGUID))
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
 func (w *wsConn) Close() error { return w.conn.Close() }
 
-// limit holds reads and writes to ctx's deadline, and returns what lifts the
-// limit again. A deadline that cannot be set leaves the connection to ctx's
-// cancellation, which closes it.
 func (w *wsConn) limit(ctx context.Context) (lift func()) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
@@ -100,7 +88,6 @@ func (w *wsConn) limit(ctx context.Context) (lift func()) {
 	return func() { _ = w.conn.SetDeadline(time.Time{}) }
 }
 
-// writeText sends one text message.
 func (w *wsConn) writeText(payload []byte) error { return w.writeFrame(opText, payload) }
 
 func (w *wsConn) writeFrame(op byte, payload []byte) error {
@@ -132,8 +119,6 @@ func (w *wsConn) writeFrame(op byte, payload []byte) error {
 	return err
 }
 
-// readMessage reads the next text message, answering pings on the way. It
-// returns io.EOF when the peer closes.
 func (w *wsConn) readMessage() ([]byte, error) {
 	var message []byte
 	for {

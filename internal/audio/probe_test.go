@@ -54,7 +54,7 @@ func TestProbeDurationRejectsUnsupportedAndCanceled(t *testing.T) {
 }
 
 func wavFixture() []byte {
-	const dataBytes = 32000 // 2 seconds at 8 kHz, 16-bit mono.
+	const dataBytes = 32000
 	b := make([]byte, 44+dataBytes)
 	copy(b, "RIFF")
 	binary.LittleEndian.PutUint32(b[4:], uint32(len(b)-8))
@@ -74,7 +74,7 @@ func wavFixture() []byte {
 func flacFixture() []byte {
 	b := make([]byte, 4+4+34)
 	copy(b, "fLaC")
-	b[4] = 0x80 // Last metadata block, STREAMINFO.
+	b[4] = 0x80
 	b[7] = 34
 	packed := uint64(44100)<<44 | 88200
 	binary.BigEndian.PutUint64(b[18:26], packed)
@@ -144,7 +144,7 @@ func mp3Fixture() []byte {
 	copy(b, "ID3\x04\x00\x00\x00\x00\x00\x00")
 	for i := range frameCount {
 		frame := b[10+i*frameLength : 10+(i+1)*frameLength]
-		copy(frame, []byte{0xff, 0xfb, 0x90, 0x64}) // MPEG-1 Layer III, 128 kb/s, 44.1 kHz.
+		copy(frame, []byte{0xff, 0xfb, 0x90, 0x64})
 	}
 	return b
 }

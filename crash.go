@@ -14,34 +14,20 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// crashState is the dialog that tells the user the app hit a bug, in place
-// of the window vanishing. It is nil while no crash is being shown.
 type crashState struct {
-	open bool
-	// where is what the app was doing, and message what it panicked with.
+	open           bool
 	where, message string
-	// details is the report the user can copy: versions, where, the panic
-	// and its stack, with secrets redacted.
-	details string
-	// reported is set when the report went to the developer, because the
-	// user turned crash reports on.
-	reported bool
-	// inView is set when drawing the window is what panicked. The window is
-	// then drawn as the dialog alone until it is dismissed, so a page that
-	// cannot be drawn does not bring the dialog down with it.
-	inView bool
+	details        string
+	reported       bool
+	inView         bool
 }
 
-// recoverMain is deferred by code that runs on the main thread, and turns a
-// panic there into the crash dialog. It must be the deferred call itself.
 func (a *app) recoverMain(where string) {
 	if v := recover(); v != nil {
 		a.crashed(where, v, debug.Stack(), false)
 	}
 }
 
-// recoverBackground is recoverMain for work off the main thread: the dialog
-// is raised on the main thread.
 func (a *app) recoverBackground(where string) {
 	if v := recover(); v != nil {
 		stack := debug.Stack()
@@ -49,15 +35,11 @@ func (a *app) recoverBackground(where string) {
 	}
 }
 
-// guarded runs fn off the main thread, with a panic in it shown as a crash.
 func (a *app) guarded(where string, fn func()) {
 	defer a.recoverBackground(where)
 	fn()
 }
 
-// frame draws the window. A panic while drawing it is shown as a crash
-// instead of ending the app; the production window draws through it, and
-// tests draw a.view directly, so they see a panic.
 func (a *app) frame(c *ui.Context) { a.guard(c, a.view) }
 
 func (a *app) guard(c *ui.Context, build func(*ui.Context)) {
@@ -76,8 +58,6 @@ func (a *app) guard(c *ui.Context, build func(*ui.Context)) {
 	build(c)
 }
 
-// crashed records a panic: it goes to the log with its stack, and, unless a
-// crash is already on screen, opens the dialog. Main thread only.
 func (a *app) crashed(where string, v any, stack []byte, inView bool) {
 	message := fmt.Sprint(v)
 	details := applog.Redact(crashDetails(where, message, stack))
@@ -93,7 +73,6 @@ func (a *app) crashed(where string, v any, stack []byte, inView bool) {
 	}
 }
 
-// crashDetails is the report for a panic.
 func crashDetails(where, message string, stack []byte) string {
 	version := mygo.App.Version()
 	if version == "" {
@@ -103,14 +82,14 @@ func crashDetails(where, message string, stack []byte) string {
 		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), where, message, stack)
 }
 
-// crashDialog tells the user the app hit a bug, and offers the details.
 func (a *app) crashDialog(c *ui.Context) {
 	d := a.crash
 	if d == nil {
 		return
 	}
-	if !d.open {
-		a.dismissCrash() // closed by its scrim or the Escape key
+	closedByScrimOrEscape := !d.open
+	if closedByScrimOrEscape {
+		a.dismissCrash()
 		return
 	}
 	sc := m3.Of(c).Scheme
@@ -139,8 +118,6 @@ func (a *app) crashDialog(c *ui.Context) {
 	})
 }
 
-// dismissCrash closes the dialog. When the window could not be drawn, the
-// page that was shown is the likely cause, so it goes home first.
 func (a *app) dismissCrash() {
 	if a.crash != nil && a.crash.inView {
 		a.navigate(routeHome)

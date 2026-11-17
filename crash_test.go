@@ -50,8 +50,6 @@ func TestAPanicWhileDrawingShowsTheCrashDialog(t *testing.T) {
 		t.Errorf("opened %v, want the logs folder", opened)
 	}
 
-	// While drawing is what panics, the dialog stays up on its own, and
-	// Continue goes home and draws the window again.
 	tt.Frame()
 	if a.crash == nil {
 		t.Fatal("the dialog went away by itself")

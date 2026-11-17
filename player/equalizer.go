@@ -21,8 +21,6 @@ type eqConfig struct {
 	gain  float64
 }
 
-// equalizer is shared by the decoder's reader and the control thread. The
-// latter publishes immutable targets; the reader owns all filter state.
 type equalizer struct {
 	target atomic.Pointer[eqConfig]
 }
@@ -71,9 +69,6 @@ type filterState struct {
 	z1, z2 [channelCount]float64
 }
 
-// eqReader filters decoded PCM as it reaches the audio device. A change to
-// the target coefficients blends over 50 ms, so moving a slider neither
-// restarts decoding nor puts a click in the sound.
 type eqReader struct {
 	reader io.Reader
 	eq     *equalizer
@@ -104,9 +99,9 @@ func (r *eqReader) Read(out []byte) (int, error) {
 	if len(r.ready) > 0 {
 		return r.readReady(out)
 	}
-	wanted := min(max(len(out)-len(out)%4, 4), len(r.scratch))
+	wanted := min(max(len(out)-len(out)%bytesPerFrame, bytesPerFrame), len(r.scratch))
 	for len(r.pending) < wanted && r.readErr == nil {
-		need := min(wanted-len(r.pending)+3, len(r.scratch))
+		need := min(wanted-len(r.pending)+bytesPerFrame-1, len(r.scratch))
 		n, err := r.reader.Read(r.scratch[:need])
 		r.pending = append(r.pending, r.scratch[:n]...)
 		if err != nil {
@@ -117,7 +112,7 @@ func (r *eqReader) Read(out []byte) (int, error) {
 		}
 	}
 	n := min(len(r.pending), wanted)
-	n -= n % 4
+	n -= n % bytesPerFrame
 	if n > 0 {
 		r.refreshTarget()
 		r.process(r.pending[:n])
@@ -162,8 +157,8 @@ func (r *eqReader) refreshTarget() {
 }
 
 func (r *eqReader) process(pcm []byte) {
-	for frame := 0; frame < len(pcm)/4; {
-		frames := min(eqBlockFrames, len(pcm)/4-frame)
+	for frame := 0; frame < len(pcm)/bytesPerFrame; {
+		frames := min(eqBlockFrames, len(pcm)/bytesPerFrame-frame)
 		if r.remaining > 0 {
 			frames = min(frames, r.remaining)
 			for i := range r.coeffs {
@@ -177,7 +172,7 @@ func (r *eqReader) process(pcm []byte) {
 		}
 		for i := range frames {
 			for channel := range channelCount {
-				offset := (frame+i)*4 + channel*2
+				offset := (frame+i)*bytesPerFrame + channel*bytesPerSample
 				sample := int16(uint16(pcm[offset]) | uint16(pcm[offset+1])<<8)
 				value := float64(sample) / 32768
 				for band, coeff := range r.coeffs {

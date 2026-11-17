@@ -23,14 +23,10 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// fakeScrobbler is Last.fm as the app's tests see it: it records every call
-// and answers as the test sets it up to.
 type fakeScrobbler struct {
-	mu    sync.Mutex
-	calls []url.Values
-	// reply answers a call; the default accepts it.
-	reply func(url.Values) (status int, body string)
-	// approvals is how many getSession calls say "not approved" first.
+	mu        sync.Mutex
+	calls     []url.Values
+	reply     func(url.Values) (status int, body string)
 	approvals int
 }
 
@@ -56,7 +52,6 @@ func (f *fakeScrobbler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(reply))
 }
 
-// called is the calls made so far to a method.
 func (f *fakeScrobbler) called(method string) []url.Values {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -75,8 +70,6 @@ func (f *fakeScrobbler) total() int {
 	return len(f.calls)
 }
 
-// scrobbleApp is a playback app connected to a fake Last.fm as "neo", whose
-// session and outbox are kept in a folder the test can look at.
 func scrobbleApp(t *testing.T) (*app, *fakeScrobbler, string) {
 	t.Helper()
 	a, _ := playbackApp(t)
@@ -87,19 +80,16 @@ func scrobbleApp(t *testing.T) (*app, *fakeScrobbler, string) {
 	a.scrobble.client = &lastfm.Client{Key: "key", Secret: "secret", Root: server.URL}
 	a.openScrobbler(lastFMSession(dir), filepath.Join(dir, "pending.json"))
 	a.settings.LastFMUser, a.scrobble.session = "neo", "SK"
-	// The clock stands a few minutes after the plays listenTo makes.
 	a.scrobble.now = func() time.Time { return time.Date(2026, 3, 1, 12, 10, 0, 0, time.UTC) }
 	a.saver.Path = filepath.Join(dir, "settings.json")
 	t.Cleanup(a.scrobble.outbox.Wait)
 	return a, f, dir
 }
 
-// song is a track YouTube Music credits properly.
 func song(id string) youtube.MusicItem {
 	return youtube.MusicItem{VideoID: id, Title: "Song " + id, Artist: "Artist " + id, Album: "Album " + id, Duration: "3:00"}
 }
 
-// listenTo plays the current play through a fake clock until it qualifies.
 func listenTo(a *app, total time.Duration) {
 	at := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	var position time.Duration
@@ -111,18 +101,17 @@ func listenTo(a *app, total time.Duration) {
 
 func TestNothingIsSentUntilPlaybackIsConfirmed(t *testing.T) {
 	a, f, _ := scrobbleApp(t)
-	hold := deferredRunner(a) // the audio is still being found
+	hold := deferredRunner(a)
 	q := []youtube.MusicItem{song("a"), song("b")}
 	a.play(q[0], q)
 	if !a.stream.busy() {
 		t.Fatal("the track should still be loading")
 	}
-	a.observeListen() // a poll while loading
+	a.observeListen()
 	if f.total() != 0 {
 		t.Fatalf("a request went out while the track was loading: %v", f.calls)
 	}
 	hold()
-	// The resolver points at a file that is not there: the track fails.
 	for range 5 {
 		a.poll()
 	}
@@ -162,7 +151,7 @@ func TestConnectingInTheMiddleOfATrackSendsNowPlaying(t *testing.T) {
 	dir := t.TempDir()
 	a.openScrobbler(lastFMSession(dir), filepath.Join(dir, "pending.json"))
 	q := []youtube.MusicItem{song("a")}
-	a.play(q[0], q) // before Last.fm is connected
+	a.play(q[0], q)
 	pollUntil(t, a, "playback", a.player.Playing)
 	a.finishConnect(lastfm.Session{Name: "neo", Key: "SK"})
 	pollUntil(t, a, "now playing", func() bool { return len(f.called("track.updateNowPlaying")) > 0 })
@@ -175,7 +164,7 @@ func TestAQualifyingPlayIsScrobbledOnceWithItsStartTime(t *testing.T) {
 	a, f, _ := scrobbleApp(t)
 	a.beginListen(song("a"), false)
 	listenTo(a, 3*time.Minute)
-	listenTo(a, 3*time.Minute) // more of the same play: it scrobbles once
+	listenTo(a, 3*time.Minute)
 	calls := f.called("track.scrobble")
 	if len(calls) != 1 {
 		t.Fatalf("%d scrobbles, want 1: %v", len(calls), calls)
@@ -190,7 +179,6 @@ func TestAQualifyingPlayIsScrobbledOnceWithItsStartTime(t *testing.T) {
 			t.Errorf("%s = %q, want %q", name, call.Get(name), value)
 		}
 	}
-	// Playback was confirmed by the first sample, at 12:00:00.25 UTC.
 	if ts := call.Get("timestamp[0]"); ts != "1772366400" {
 		t.Errorf("timestamp = %s, want the play's start (1772366400)", ts)
 	}
@@ -202,31 +190,31 @@ func TestChosenByUserFollowsWhoChoseTheTrack(t *testing.T) {
 	chosen := func() bool { return a.scrobble.listen.Chosen }
 
 	q := []youtube.MusicItem{song("a"), song("b"), song("c"), song("d")}
-	a.play(q[1], q) // picked from a list
+	a.play(q[1], q)
 	if !chosen() {
 		t.Error("a track the listener picked was not chosen by them")
 	}
-	a.advance() // the queue moves on to c
+	a.advance()
 	if chosen() || a.current.VideoID != "c" {
 		t.Errorf("c, which the queue moved to: current %s, chosen %t", a.current.VideoID, chosen())
 	}
 	a.enqueue(song("e"), false)
-	a.advance() // d
+	a.advance()
 	if chosen() || a.current.VideoID != "d" {
 		t.Errorf("d: current %s, chosen %t", a.current.VideoID, chosen())
 	}
-	a.advance() // e, which the listener queued
+	a.advance()
 	if !chosen() || a.current.VideoID != "e" {
 		t.Errorf("e was queued by the listener: current %s, chosen %t", a.current.VideoID, chosen())
 	}
-	a.previous() // going back is the listener's doing
+	a.previous()
 	if !chosen() {
 		t.Error("going to the previous track was not the listener's choice")
 	}
 	a.play(q[0], q[:1])
 	a.enqueue(song("z"), false)
 	fresh := []youtube.MusicItem{song("a"), song("z")}
-	a.play(fresh[0], fresh) // a new queue forgets what was queued before
+	a.play(fresh[0], fresh)
 	a.advance()
 	if chosen() || a.current.VideoID != "z" {
 		t.Errorf("z: current %s, chosen %t: the queue it was added to is gone", a.current.VideoID, chosen())
@@ -257,8 +245,6 @@ func TestRepeatedTrackIsNotChosenAgain(t *testing.T) {
 	}
 }
 
-// panelFor is the answer of YouTube Music's /next for a track: the track
-// itself, with the byline that names who made it.
 func panelFor(id, byline string) string {
 	return `{"contents":{"playlistPanelRenderer":{"contents":[{"playlistPanelVideoRenderer":{"videoId":"` + id +
 		`","title":{"runs":[{"text":"From the panel"}]},"longBylineText":{"runs":[` + byline + `]}}}]}}}`
@@ -277,7 +263,6 @@ func TestAnArtistLeftOutOfAListIsLookedUp(t *testing.T) {
 			a.account.public = youtube.NewClient(youtube.Options{APIKey: "k", HTTPClient: &http.Client{Transport: playbackRoundTrip(func(r *http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(panelFor("x", tc.byline))), Request: r}, nil
 			})}})
-			// What a search for the artist hands over: a title, and no artist.
 			a.current = youtube.MusicItem{VideoID: "x", Title: "Searched song", Subtitle: "Song"}
 			a.beginListen(a.current, false)
 			listenTo(a, 3*time.Minute)
@@ -298,8 +283,6 @@ func TestAnArtistLeftOutOfAListIsLookedUp(t *testing.T) {
 	}
 }
 
-// countingYouTube answers every /next with the panel of the track asked for,
-// and counts the questions.
 func countingYouTube(a *app, byline string) *atomic.Int32 {
 	var asked atomic.Int32
 	a.account.public = youtube.NewClient(youtube.Options{APIKey: "k", HTTPClient: &http.Client{Transport: playbackRoundTrip(func(r *http.Request) (*http.Response, error) {
@@ -324,13 +307,12 @@ func TestAnArtistLookedUpOnceIsRemembered(t *testing.T) {
 
 	a.current = bare
 	a.beginListen(bare, false)
-	a.beginListen(bare, false) // played again, as a repeat or from another list
+	a.beginListen(bare, false)
 	if asked.Load() != 1 {
 		t.Errorf("%d requests for one track, want 1", asked.Load())
 	}
 	a.scrobble.credits.Wait()
 
-	// After a restart the answer is still known.
 	b, _, _ := scrobbleApp(t)
 	again := countingYouTube(b, yorushika)
 	b.openCredits(filepath.Join(dir, "credits.json"))
@@ -345,9 +327,7 @@ func TestAListThatNamesTheArtistFillsInOtherListsWithoutAsking(t *testing.T) {
 	a, _, _ := scrobbleApp(t)
 	asked := countingYouTube(a, yorushika)
 	deferredRunner(a)
-	// One list names the artist; the tracks reach the queue through playFrom.
 	a.play(song("x"), []youtube.MusicItem{song("x")})
-	// Another leaves it out, as a search for the artist does.
 	bare := youtube.MusicItem{VideoID: "x", Title: "Song x", Subtitle: "Song"}
 	a.play(bare, []youtube.MusicItem{bare})
 	if got := a.scrobble.listen.Track.Artist; got != "Artist x" {
@@ -356,7 +336,6 @@ func TestAListThatNamesTheArtistFillsInOtherListsWithoutAsking(t *testing.T) {
 	if asked.Load() != 0 {
 		t.Errorf("%d requests, want none", asked.Load())
 	}
-	// A queued track teaches too.
 	a.enqueue(song("q"), false)
 	if got := a.withKnownCredits(youtube.MusicItem{VideoID: "q"}).Artist; got != "Artist q" {
 		t.Errorf("a queued track was not learned: %q", got)
@@ -378,11 +357,10 @@ func TestLearningTheCurrentTracksArtistFillsTheListenInFlight(t *testing.T) {
 	deferredRunner(a)
 	bare := youtube.MusicItem{VideoID: "x", Title: "Searched"}
 	a.current = bare
-	a.beginListen(bare, false) // the lookup is held back by the runner
+	a.beginListen(bare, false)
 	if a.scrobble.listen.Track.Valid() {
 		t.Fatal("the track had an artist already")
 	}
-	// The queue's first page arrives with the track's own entry.
 	a.learnCredits(youtube.MusicItem{VideoID: "x", Title: "Searched", Artist: "Yorushika"})
 	if got := a.scrobble.listen.Track.Artist; got != "Yorushika" {
 		t.Errorf("artist %q, want it filled from the page that came in", got)
@@ -418,7 +396,6 @@ func TestATransientFailureKeepsThePlayForARestart(t *testing.T) {
 	}
 	a.scrobble.outbox.Wait()
 
-	// The app is closed and opened again, and Last.fm is back.
 	b, f2, _ := scrobbleApp(t)
 	b.openScrobbler(lastFMSession(dir), filepath.Join(dir, "pending.json"))
 	t.Cleanup(b.scrobble.outbox.Wait)
@@ -469,7 +446,6 @@ func TestARequestLastFmRejectsForGoodIsDroppedNotRetried(t *testing.T) {
 		}
 		return http.StatusOK, `{}`
 	}
-	// Three plays wait together: the middle one is bad.
 	for _, id := range []string{"a", "bad", "c"} {
 		a.scrobble.outbox.Add(lastfm.Scrobble{Track: lastfm.Track{Artist: "X", Title: "Song " + id}, Started: time.Now().Add(-time.Hour)})
 	}
@@ -495,7 +471,7 @@ func TestARequestLastFmRejectsForGoodIsDroppedNotRetried(t *testing.T) {
 func TestConnectingPausingAndDisconnectingInSettings(t *testing.T) {
 	a, f, _ := scrobbleApp(t)
 	a.settings.LastFMUser, a.scrobble.session = "", ""
-	f.approvals = 2 // the user takes a moment to approve
+	f.approvals = 2
 	var opened []string
 	a.openURL = func(link string) error { opened = append(opened, link); return nil }
 	a.router.Push("/settings")
@@ -577,7 +553,7 @@ func TestConnectingCanBeCancelled(t *testing.T) {
 		<-gate
 		return ctx.Err()
 	}
-	a.run = func(work func()) { go work() } // the wait must not block the test
+	a.run = func(work func()) { go work() }
 	a.openURL = func(string) error { return nil }
 	a.connectLastFM()
 	waitFor(t, func() bool { return len(f.called("auth.getSession")) > 0 })

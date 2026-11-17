@@ -13,8 +13,6 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// updatesCard is where the user checks for updates and chooses whether they
-// install themselves. Builds made without update signing say so instead.
 func (a *app) updatesCard(c *ui.Context) {
 	a.settingsCard(c, "Updates", m3.IconRefresh, func() {
 		version := mygo.App.Version()
@@ -52,7 +50,6 @@ func (a *app) updatesCard(c *ui.Context) {
 	})
 }
 
-// updateSubtitle names the last successful update check, when there was one.
 func updateSubtitle() string {
 	if last := updater.LastCheck(); !last.IsZero() {
 		return "Last checked " + last.Format("Jan 2, 15:04") + "."
@@ -60,11 +57,8 @@ func updateSubtitle() string {
 	return "Signed releases install themselves."
 }
 
-// kofiURL is the project's tip page.
 const kofiURL = "https://ko-fi.com/elianiva"
 
-// supportCard is where the user leaves a tip, which is the only money the
-// project takes.
 func (a *app) supportCard(c *ui.Context) {
 	a.settingsCard(c, "Ko-fi", m3.IconCoffee, func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
@@ -76,7 +70,6 @@ func (a *app) supportCard(c *ui.Context) {
 	})
 }
 
-// openKoFi shows the tip page in the browser.
 func (a *app) openKoFi() {
 	spawn(a, func() error { return a.openURL(kofiURL) }, func(err error) {
 		if err != nil {
@@ -85,9 +78,6 @@ func (a *app) openKoFi() {
 	})
 }
 
-// loadToolVersions reads the versions of yt-dlp and ffmpeg when Settings
-// opens, once: they only change with the app. Reading them runs the tools, so
-// it happens off the main thread.
 func (a *app) loadToolVersions() {
 	if a.toolsLoaded || a.toolsLookup.busy() {
 		return
@@ -100,9 +90,6 @@ func (a *app) loadToolVersions() {
 	})
 }
 
-// toolsCard shows the versions of the playback programs the app finds. yt-dlp
-// is refreshed with every release in the full build, so its version tells
-// whether a bug report comes from a stale bundle or system install.
 func (a *app) toolsCard(c *ui.Context) {
 	a.settingsCard(c, "Playback tools", m3.IconSettings, func() {
 		yt, ff := "Looking up…", "Looking up…"
@@ -114,11 +101,8 @@ func (a *app) toolsCard(c *ui.Context) {
 	})
 }
 
-// reportTimeout bounds reading the tool versions for a report.
 const reportTimeout = 15 * time.Second
 
-// reportCard opens a prefilled GitHub issue. The details are the versions of
-// the app and its tools and the system's name; nothing of the account.
 func (a *app) reportCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Support", m3.IconError, func() {
@@ -138,8 +122,6 @@ func (a *app) reportCard(c *ui.Context) {
 	})
 }
 
-// reportProblem reads the tool versions off the main thread, then opens the
-// issue in the browser.
 func (a *app) reportProblem() {
 	a.reportError = ""
 	version := mygo.App.Version()
@@ -156,8 +138,6 @@ func (a *app) reportProblem() {
 	})
 }
 
-// logsCard is where the user finds the log file, which says what went wrong
-// when something did.
 func (a *app) logsCard(c *ui.Context) {
 	a.settingsCard(c, "Logs", m3.IconFolder, func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
@@ -173,7 +153,6 @@ func (a *app) logsCard(c *ui.Context) {
 	})
 }
 
-// openLogs shows the folder of the log files in the system's file manager.
 func (a *app) openLogs() {
 	dir := a.logsDir
 	if dir == "" {

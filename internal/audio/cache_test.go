@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// The cache downloads real bytes from a media server, keeps the most recent
-// tracks within its limit, and survives a restart.
 func TestCacheFromDownloadToRestart(t *testing.T) {
 	long := make([]byte, 2*downloadRange+3)
 	for i := range long {
@@ -24,8 +22,6 @@ func TestCacheFromDownloadToRestart(t *testing.T) {
 		case "/gone":
 			http.Error(w, "expired", http.StatusForbidden)
 		case "/long":
-			// A track longer than one range. YouTube throttles a request
-			// for the whole of it; this server refuses one.
 			if ranged := r.Header.Get("Range"); ranged == "" || strings.HasSuffix(ranged, "-") {
 				http.Error(w, "ask for a range", http.StatusTooManyRequests)
 				return
@@ -67,8 +63,6 @@ func TestCacheFromDownloadToRestart(t *testing.T) {
 		t.Errorf("cached bytes = %q", data)
 	}
 
-	// A third track pushes out the least recently used one, which is "one"
-	// now that "two" was just read.
 	cache.Get("two")
 	cache.Add("three", media.URL+"/three")
 	waitCached("three")
@@ -76,14 +70,12 @@ func TestCacheFromDownloadToRestart(t *testing.T) {
 		t.Errorf("eviction kept one=%v two=%v", cached("one"), cached("two"))
 	}
 
-	// An expired URL caches nothing and leaves nothing half written.
 	cache.Add("gone", media.URL+"/gone")
 	cache.Close()
 	if cached("gone") {
 		t.Error("a refused download was cached")
 	}
 
-	// A restart finds the files that were kept.
 	again, _, err := Open(root, 2)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +85,6 @@ func TestCacheFromDownloadToRestart(t *testing.T) {
 		t.Error("the cache lost its files across a restart")
 	}
 
-	// A track longer than one range arrives whole, every range in its place.
 	cache = again
 	cache.Add("long", media.URL+"/long")
 	waitCached("long")
@@ -103,8 +94,6 @@ func TestCacheFromDownloadToRestart(t *testing.T) {
 	}
 }
 
-// Requests for one track share a single resolve, and a failed resolve is
-// asked again.
 func TestURLsShareOneResolve(t *testing.T) {
 	var calls atomic.Int32
 	release := make(chan struct{})
@@ -138,8 +127,6 @@ func TestURLsShareOneResolve(t *testing.T) {
 	}
 }
 
-// A resolve stops when the last request waiting on it gives up, so a skipped
-// track does not leave yt-dlp running; one that someone still waits on goes on.
 func TestURLsCancelAbandonedResolve(t *testing.T) {
 	stopped := make(chan string, 2)
 	urls := NewURLs(func(ctx context.Context, videoID string) (string, time.Duration, error) {

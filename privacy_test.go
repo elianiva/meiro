@@ -10,7 +10,6 @@ import (
 	"github.com/elianiva/meiro/internal/settings"
 )
 
-// pingRecorder keeps the install pings the app would send.
 type pingRecorder struct {
 	events []string
 	props  []map[string]any
@@ -22,7 +21,6 @@ func (r *pingRecorder) capture(event string, properties map[string]any) error {
 	return nil
 }
 
-// crashRecorder keeps the crash reports the app would send.
 type crashRecorder struct {
 	crashes []sentry.Crash
 }
@@ -32,8 +30,6 @@ func (r *crashRecorder) capture(crash sentry.Crash) error {
 	return nil
 }
 
-// A new copy asks before it sends anything, sends the one ping when the user
-// says yes, and never asks again.
 func TestFirstRunAsksBeforeTheInstallPing(t *testing.T) {
 	a := newTestApp(t)
 	r := &pingRecorder{}
@@ -76,7 +72,6 @@ func TestFirstRunAsksBeforeTheInstallPing(t *testing.T) {
 	}
 	a.saver.Wait()
 
-	// A later launch keeps the answer, asks nothing, and sends nothing.
 	next := newTestApp(t)
 	next.settings = settings.Load(path)
 	next.capture = r.capture
@@ -86,7 +81,6 @@ func TestFirstRunAsksBeforeTheInstallPing(t *testing.T) {
 	}
 }
 
-// The fallback sends the one message with nothing but its event name.
 func TestJustPingSendsNoDetails(t *testing.T) {
 	a := newTestApp(t)
 	r := &pingRecorder{}
@@ -139,8 +133,6 @@ func TestDecliningTheInstallPingSendsNothing(t *testing.T) {
 	}
 }
 
-// A crash report only leaves the app when the user turned it on, and the
-// dialog says where it went.
 func TestCrashReportsFollowTheSwitch(t *testing.T) {
 	a := newTestApp(t)
 	r := &crashRecorder{}
@@ -168,8 +160,6 @@ func TestCrashReportsFollowTheSwitch(t *testing.T) {
 	}
 }
 
-// The Settings card shows the messages, sends the ping when it is turned on
-// there, and turns crash reports on and off.
 func TestPrivacyCardControlsBothMessages(t *testing.T) {
 	a := newTestApp(t)
 	pings := &pingRecorder{}
@@ -220,7 +210,6 @@ func TestPrivacyCardControlsBothMessages(t *testing.T) {
 	}
 }
 
-// A build with neither a key nor a DSN sends nothing and never asks.
 func TestABuildWithNoKeysIsSilent(t *testing.T) {
 	a := newTestApp(t)
 	a.capture, a.sendCrash = nil, nil

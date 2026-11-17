@@ -160,8 +160,6 @@ func TestImportedAccountChoiceSurvivesRestartAndRefresh(t *testing.T) {
 				t.Fatalf("wrong identity was reported as expiry or accepted: %q", a.account.signIn.err)
 			}
 			transport.swapped = false
-			// A valid switcher email verifies the selected index even when
-			// Music omits it, including on restart and cookie renewal.
 			click(choice.name)
 			if !a.signedIn() || a.account.session.details.Email != "music@example.test" || transport.index != "1" || transport.pageID != choice.channel {
 				t.Fatalf("wrong imported identity: index=%q channel=%q session=%v", transport.index, transport.pageID, a.signedIn())
@@ -196,8 +194,6 @@ func TestImportedAccountChoiceSurvivesRestartAndRefresh(t *testing.T) {
 					t.Fatal("account menu could not switch back to the first Google account")
 				}
 			}
-			// A saved index must not silently select another person if Google
-			// changes the order of the accounts within the browser session.
 			transport.swapped = true
 			reordered := makeApp()
 			reordered.settings = saved
@@ -209,8 +205,6 @@ func TestImportedAccountChoiceSurvivesRestartAndRefresh(t *testing.T) {
 	}
 }
 
-// A row YouTube marks as another channel but does not name has no page ID to
-// switch with, so the menu says why instead of leaving the click unanswered.
 func TestUnnamedChannelSaysWhyItCannotSwitch(t *testing.T) {
 	resetFakes()
 	fakePageID.Store("")

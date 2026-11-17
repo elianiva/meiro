@@ -27,12 +27,6 @@ func findRenderer(root any, rendererName string) *jsonObject {
 	return walk(root)
 }
 
-// browseParts walks a response once, in document order, and returns the items
-// it holds, the sections of a browse page, and the card a search leads with.
-// Every item renderer is parsed once, whether it sits inside a section or
-// outside one, and a section's items are the ones it itself listed. A search
-// has no shelves of its own: its items are the one list it shows, and the card
-// its results lead with is the heading over them, not a row among them.
 func browseParts(root any, search bool) ([]MusicItem, []MusicSection, MusicItem) {
 	var items []MusicItem
 	var sections []MusicSection
@@ -79,22 +73,19 @@ func browseParts(root any, search bool) ([]MusicItem, []MusicSection, MusicItem)
 	return items, sections, top
 }
 
-// sectionItems collects one section's items, which dedupe against each other
-// rather than against the whole page.
 type sectionItems struct {
 	items []MusicItem
 	seen  map[itemIdentity]struct{}
 }
 
-// parseMusicRenderer reads the item a key and value name, when the key names an
-// item renderer.
+const audioTrackVideoType = "MUSIC_VIDEO_TYPE_ATV"
+
 func parseMusicRenderer(key string, value any) (MusicItem, *jsonObject, bool) {
 	renderer, ok := value.(*jsonObject)
 	if !ok {
 		return MusicItem{}, nil, false
 	}
 	if key == "musicCardShelfRenderer" {
-		// A search's top result is a card, not a list entry.
 		item, ok := parseMusicCardShelf(renderer)
 		return item, renderer, ok
 	}
@@ -104,18 +95,13 @@ func parseMusicRenderer(key string, value any) (MusicItem, *jsonObject, bool) {
 	}
 	item := parseMusicItem(kind, renderer)
 	if key == "playlistPanelVideoRenderer" {
-		// Every entry of a queue is a panel video, songs included: the
-		// entry says in its watch endpoint which one it is. One that does
-		// not say is taken for a song, as a queue is mostly songs.
-		if videoType := nestedString(renderer.get("navigationEndpoint"), "musicVideoType"); videoType == "" || videoType == "MUSIC_VIDEO_TYPE_ATV" {
+		if videoType := nestedString(renderer.get("navigationEndpoint"), "musicVideoType"); videoType == "" || videoType == audioTrackVideoType {
 			item.Kind = KindTrack
 		}
 	}
 	return item, renderer, true
 }
 
-// isSectionRenderer reports whether a key names a shelf or grid the page shows
-// as its own section.
 func isSectionRenderer(key string) bool {
 	switch key {
 	case "musicShelfRenderer", "musicShelfContinuation", "musicPlaylistShelfRenderer", "musicPlaylistShelfContinuation", "playlistVideoListRenderer", "playlistVideoListContinuation", "gridRenderer", "gridContinuation", "musicCarouselShelfRenderer":
@@ -125,9 +111,6 @@ func isSectionRenderer(key string) bool {
 	}
 }
 
-// appendMusicItem keeps a parsed item unless its renderer held nothing to
-// identify it by. A playlist may hold a song twice; its entries differ by
-// the ID the playlist gave each, which keeps both.
 func appendMusicItem(items *[]MusicItem, seen map[itemIdentity]struct{}, item MusicItem, renderer *jsonObject) {
 	identity := itemIdentity{
 		videoID: item.VideoID, browseID: item.BrowseID, playlistID: item.PlaylistID, title: item.Title,
@@ -143,16 +126,10 @@ func appendMusicItem(items *[]MusicItem, seen map[itemIdentity]struct{}, item Mu
 	*items = append(*items, item)
 }
 
-// itemIdentity is what makes two renderers the same item. A struct of strings
-// hashes in place, where joining them into one key allocated for every item.
 type itemIdentity struct {
 	videoID, browseID, playlistID, title, setVideoID string
 }
 
-// parseMusicCardShelf reads the card a search leads with. It carries its media
-// in the card itself, outside any list: the title run navigates to what the
-// card opens, the artist's browse endpoint sits in the subtitle runs, and the
-// length trails the subtitle.
 func parseMusicCardShelf(renderer *jsonObject) (MusicItem, bool) {
 	item := MusicItem{Kind: KindMusicItem}
 	item.Title = rendererText(renderer.get("title"))
@@ -174,7 +151,6 @@ func parseMusicCardShelf(renderer *jsonObject) (MusicItem, bool) {
 	item.setCredits(bylineCredits(renderer.get("subtitle")))
 	item.setDisplayByline(renderer)
 	if item.VideoID != "" && item.Kind != KindEpisode {
-		// A card of a song plays its video, and says so.
 		item.Kind = KindVideo
 	}
 	if item.VideoID != "" {
@@ -189,10 +165,6 @@ func parseMusicCardShelf(renderer *jsonObject) (MusicItem, bool) {
 	return item, true
 }
 
-// cardTarget reads what a card opens from the title it shows and from the card
-// itself: navigationID names the page, and the video is what the card plays. A
-// card that names neither is one of a song, whose artist, named in the
-// subtitle, is the page its menu can open.
 func cardTarget(renderer *jsonObject) (browseID, videoID string) {
 	for _, value := range []any{renderer.get("title"), renderer.get("onTap")} {
 		if browseID == "" {
@@ -211,7 +183,6 @@ func cardTarget(renderer *jsonObject) (browseID, videoID string) {
 	return browseID, videoID
 }
 
-// nestedObject is the object stored under name in the object value is.
 func nestedObject(value any, name string) (*jsonObject, bool) {
 	object, ok := value.(*jsonObject)
 	if !ok {
@@ -221,8 +192,6 @@ func nestedObject(value any, name string) (*jsonObject, bool) {
 	return child, ok
 }
 
-// trailingDuration reads a track length from the end of a card's subtitle,
-// where it trails the artist as "Video • Artist • 8.4M views • 2:05".
 func trailingDuration(subtitle string) string {
 	for _, part := range strings.Split(subtitle, " • ") {
 		if isDurationText(strings.TrimSpace(part)) {
@@ -267,7 +236,6 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 		item.Subtitle = rendererColumnText(renderer, "flexColumns", 1)
 	}
 	if item.Subtitle == "" {
-		// The tracks of a queue name who made them in a byline, not a subtitle.
 		item.Subtitle = rendererText(renderer.get("longBylineText"))
 		if item.Subtitle == "" {
 			item.Subtitle = rendererText(renderer.get("shortBylineText"))
@@ -278,8 +246,6 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 		item.Duration = rendererColumnText(renderer, "fixedColumns", 0)
 	}
 	if item.Duration == "" {
-		// Search and library rows keep the length at the end of their last
-		// flex column, as "Artist • Album • 3:42".
 		item.Duration = rendererFlexDuration(renderer)
 		if item.Duration != "" {
 			item.Subtitle = strings.TrimSuffix(item.Subtitle, " • "+item.Duration)
@@ -305,13 +271,9 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 		item.ProgressPercent = episodeProgress(renderer)
 	}
 	if length := episodeLength(renderer); length != "" && item.Duration == "" {
-		// An episode's length is rounded to the minute, as "1 hr 30 min",
-		// which is no clock time: it reads with the date beside it.
 		item.Subtitle = strings.TrimPrefix(item.Subtitle+" • "+length, " • ")
 	}
 	if kind == KindTrack || kind == KindVideo || item.VideoID != "" {
-		// A two-row item is a song or a video when it carries a video, as the
-		// cards of a home shelf do; one without is an album or an artist.
 		item.setCredits(rendererCredits(renderer))
 	}
 	item.setDisplayByline(renderer)
@@ -320,10 +282,6 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 	item.Like = likeStatus(renderer)
 	item.Library = itemLibraryState(renderer)
 	if item.BrowseID == "" && (kind == KindTrack || kind == KindVideo) {
-		// A song or a video names no page of its own: the artist beside it
-		// is the page the row can open. A row that names its own page, as an
-		// album or a playlist in the results of a search does, keeps it,
-		// however the row credits the artist.
 		item.BrowseID = rendererArtistBrowseID(renderer)
 	}
 	switch {
@@ -338,15 +296,11 @@ func parseMusicItem(kind ItemKind, renderer *jsonObject) MusicItem {
 		item.Thumbnail = rendererThumbnail(renderer.get("thumbnail"))
 	}
 	if item.Thumbnail == "" {
-		// Two-row items keep their art under thumbnailRenderer instead of
-		// thumbnail.
 		item.Thumbnail = rendererThumbnail(renderer)
 	}
 	return item
 }
 
-// isEpisode reports whether the tap that plays a renderer names a podcast
-// episode.
 func isEpisode(renderer *jsonObject) bool {
 	for _, key := range []string{"navigationEndpoint", "onTap", "overlay"} {
 		if nestedString(renderer.get(key), "musicVideoType") == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
@@ -356,8 +310,6 @@ func isEpisode(renderer *jsonObject) bool {
 	return false
 }
 
-// episodeLength reads the length a show's episode row keeps beside its
-// progress, as "1 hr 30 min".
 func episodeLength(renderer *jsonObject) string {
 	progress, ok := nestedObject(renderer.get("playbackProgress"), "musicPlaybackProgressRenderer")
 	if !ok {
@@ -413,8 +365,6 @@ func rendererColumnText(renderer *jsonObject, columnName string, index int) stri
 	if !ok {
 		return ""
 	}
-	// A flex column holds a musicResponsiveListItemFlexColumnRenderer and a
-	// fixed column a musicResponsiveListItemFixedColumnRenderer.
 	for _, key := range []string{"musicResponsiveListItemFlexColumnRenderer", "musicResponsiveListItemFixedColumnRenderer"} {
 		if columnRenderer, ok := column.get(key).(*jsonObject); ok {
 			return rendererText(columnRenderer.get("text"))
@@ -423,9 +373,6 @@ func rendererColumnText(renderer *jsonObject, columnName string, index int) stri
 	return ""
 }
 
-// rendererVideoID finds a renderer's video ID where a track's own taps
-// keep it: its data, its play overlay and its columns. The menu stays out:
-// its mix and shuffle entries carry queue IDs, not the track's.
 func rendererVideoID(renderer *jsonObject) string {
 	for _, key := range []string{"playlistItemData", "overlay", "flexColumns", "thumbnailOverlay", "navigationEndpoint", "title", "onTap"} {
 		value := renderer.get(key)
@@ -439,8 +386,6 @@ func rendererVideoID(renderer *jsonObject) string {
 	return ""
 }
 
-// rendererTitle reads a shelf's title, which newer responses put in the
-// shelf's header instead of the shelf itself.
 func rendererTitle(renderer *jsonObject) string {
 	if title := rendererText(renderer.get("title")); title != "" {
 		return title
@@ -461,9 +406,6 @@ func rendererTitle(renderer *jsonObject) string {
 	return ""
 }
 
-// nestedString returns the first non-empty string stored under name anywhere
-// in value. It visits members in document order, so the result follows the
-// response.
 func nestedString(value any, name string) string {
 	var result string
 	var walk func(any)
@@ -490,9 +432,6 @@ func nestedString(value any, name string) string {
 	return result
 }
 
-// rendererFlexDuration reads a track length from the trailing run of a
-// musicResponsiveListItemRenderer's last flex column, where search and
-// library rows keep it.
 func rendererFlexDuration(renderer *jsonObject) string {
 	columns, ok := renderer.get("flexColumns").([]any)
 	if !ok {
@@ -531,8 +470,6 @@ func rendererFlexDuration(renderer *jsonObject) string {
 	return ""
 }
 
-// isDurationText reports whether text reads as a track length, as "3:42" or
-// "1:02:03".
 func isDurationText(text string) bool {
 	parts := strings.Split(text, ":")
 	if len(parts) < 2 || len(parts) > 3 {
@@ -564,9 +501,6 @@ func navigationID(value any) string {
 				walk(child)
 			}
 		case *jsonObject:
-			// Queue taps name a watch endpoint, not a page: their playlist
-			// is the mix being offered, and the track itself carries the
-			// video ID. navigationID only names browsable pages.
 			if node.has("watchEndpoint") {
 				return
 			}
@@ -615,14 +549,12 @@ func rendererThumbnail(value any) string {
 	return result
 }
 
-// sectionMoreID reads the playlist a shelf's title opens: the full list behind
-// the few songs the shelf shows. Only a list shelf names one this way.
 func sectionMoreID(kind string, renderer *jsonObject) string {
 	if kind != "musicShelfRenderer" {
 		return ""
 	}
 	id := navigationID(renderer.get("title"))
-	if !strings.HasPrefix(id, "VL") {
+	if !strings.HasPrefix(id, browsePlaylistPrefix) {
 		return ""
 	}
 	return id

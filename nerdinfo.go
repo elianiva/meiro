@@ -15,16 +15,11 @@ import (
 	"github.com/elianiva/meiro/player"
 )
 
-// resolveTrace is how one track's audio was found, kept for the playback
-// details.
 type resolveTrace struct {
-	VideoID string
-	// Source is who found the audio: the player request or yt-dlp.
-	Source string
-	// Signed says the account's cookies went with the request.
-	Signed bool
-	URL    string
-	// DirectError is why the player request failed, when yt-dlp took over.
+	VideoID     string
+	Source      string
+	Signed      bool
+	URL         string
 	DirectError string
 	Elapsed     time.Duration
 	Run         ytdlp.Run
@@ -32,7 +27,6 @@ type resolveTrace struct {
 
 const traceLimit = 16
 
-// resolveTraces holds the latest traces. Resolving runs off the main thread.
 type resolveTraces struct {
 	mu    sync.Mutex
 	items []resolveTrace
@@ -64,27 +58,21 @@ func (t *resolveTraces) get(videoID string) (resolveTrace, bool) {
 	return resolveTrace{}, false
 }
 
-// playingAudio is where the track playing came from.
 type playingAudio struct {
 	videoID string
-	// url is the stream's address, or the path of the file when file is set.
-	url  string
-	file bool
+	url     string
+	file    bool
 }
 
 type nerdState struct{ open bool }
 
-// audioFormats are the audio formats YouTube serves, by itag.
 var audioFormats = map[string]string{
 	"139": "AAC, 48 kbps", "140": "AAC, 128 kbps", "141": "AAC, 256 kbps (Premium)",
 	"249": "Opus, ~50 kbps", "250": "Opus, ~70 kbps", "251": "Opus, ~130 kbps", "774": "Opus, ~256 kbps (Premium)",
 }
 
-// detailRow is one labelled line of the playback details.
 type detailRow struct{ label, value string }
 
-// streamAddress is the address of the stream playing, or "" when the track
-// plays from a file.
 func (a *app) streamAddress() string {
 	if a.playing.videoID == a.current.VideoID {
 		if a.playing.file {
@@ -96,7 +84,6 @@ func (a *app) streamAddress() string {
 	return trace.URL
 }
 
-// playbackDetails lists what is known of how the current track plays.
 func (a *app) playbackDetails() []detailRow {
 	var rows []detailRow
 	add := func(label, value string) {
@@ -138,8 +125,6 @@ func (a *app) playbackDetails() []detailRow {
 	return rows
 }
 
-// streamRows reads what YouTube puts in a media URL: the format, the size, and
-// from them the bitrate.
 func streamRows(stream string) []detailRow {
 	parsed, err := url.Parse(stream)
 	if err != nil || parsed.Host == "" {
@@ -169,9 +154,6 @@ func streamRows(stream string) []detailRow {
 	return rows
 }
 
-// nerdDialog shows the details of how the current track plays, with a button
-// that copies them. The stream address has a button of its own, and stays out
-// of the copy: it carries a signature that works for anyone who has it.
 func (a *app) nerdDialog(c *ui.Context) {
 	d := a.nerd
 	if d == nil {

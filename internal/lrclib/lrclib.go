@@ -1,6 +1,3 @@
-// Package lrclib fetches song lyrics from https://lrclib.net, and reads the
-// time-synced ones, which come in the LRC format, into lines with the moment
-// each is sung.
 package lrclib
 
 import (
@@ -23,39 +20,33 @@ import (
 	"github.com/elianiva/meiro/internal/lyrics"
 )
 
-// userAgent names the app, as LRCLIB asks of its clients.
 const userAgent = "Meiro (https://github.com/elianiva/meiro)"
 
-// maxBody bounds the answer read; lyrics are a few kilobytes.
 const maxBody = 1 << 20
 
-// Query names the track to look for. Duration is optional, and lets LRCLIB
-// tell apart versions of a song that are of different length.
+const (
+	defaultRetryDelay = 700 * time.Millisecond
+	maxAttempts       = 3
+)
+
 type Query struct {
 	Title, Artist, Album string
 	Duration             time.Duration
 }
 
-// Lyrics is what LRCLIB knows of a track. Plain or Synced can be empty; a
-// track that is only music has neither, and Instrumental set.
 type Lyrics struct {
 	Plain        string
 	Synced       []lyrics.Line
 	Instrumental bool
 }
 
-// Empty reports whether there is nothing to show.
 func (l *Lyrics) Empty() bool {
 	return l == nil || (l.Plain == "" && len(l.Synced) == 0)
 }
 
-// Client asks LRCLIB. The zero value uses the real service.
 type Client struct {
-	HTTP *http.Client
-	// BaseURL replaces https://lrclib.net, for tests.
-	BaseURL string
-	// RetryDelay is the wait before the first retry, and twice that before
-	// the second: 700 ms when zero.
+	HTTP       *http.Client
+	BaseURL    string
 	RetryDelay time.Duration
 }
 
@@ -73,11 +64,6 @@ func (r response) lyrics() *Lyrics {
 	}
 }
 
-// Get finds the lyrics of a track. It returns nil and no error when LRCLIB
-// has none: the exact match is tried first, then a search by title and artist,
-// then by the title cut down to the song's own name. A failing request does not
-// end the lookup, the next step is tried, and the error is only returned when
-// nothing was found at all.
 func (c *Client) Get(ctx context.Context, q Query) (*Lyrics, error) {
 	if q.Title == "" {
 		return nil, nil
@@ -116,7 +102,7 @@ func (c *Client) Get(ctx context.Context, q Query) (*Lyrics, error) {
 			l := r.lyrics()
 			switch {
 			case len(l.Synced) > 0:
-				return l, nil // the best there is: it has both forms
+				return l, nil
 			case plain == nil && !l.Empty():
 				plain = l
 			}
@@ -128,8 +114,6 @@ func (c *Client) Get(ctx context.Context, q Query) (*Lyrics, error) {
 	return nil, firstErr
 }
 
-// ShortTitle is a track title without what YouTube Music adds to it: the
-// translation or version after a " - ", and a "(feat. …)" credit.
 func ShortTitle(title string) string {
 	if i := strings.Index(title, " - "); i > 0 {
 		title = title[:i]
@@ -149,7 +133,6 @@ func ShortTitle(title string) string {
 	return strings.TrimSpace(title)
 }
 
-// fetch reads a JSON answer into out, and reports false for a 404.
 func (c *Client) fetch(ctx context.Context, path string, values url.Values, out any) (bool, error) {
 	base := c.BaseURL
 	if base == "" {
@@ -161,13 +144,11 @@ func (c *Client) fetch(ctx context.Context, path string, values url.Values, out 
 	}
 	delay := c.RetryDelay
 	if delay == 0 {
-		delay = 700 * time.Millisecond
+		delay = defaultRetryDelay
 	}
-	// LRCLIB answers 5xx now and then, and a request that fails at the
-	// network is as likely to work the next time, so each is tried three times.
 	for attempt := 1; ; attempt++ {
 		found, retry, err := c.fetchOnce(ctx, client, base, path, values, out)
-		if err == nil || !retry || attempt == 3 {
+		if err == nil || !retry || attempt == maxAttempts {
 			return found, err
 		}
 		select {
@@ -178,7 +159,6 @@ func (c *Client) fetch(ctx context.Context, path string, values url.Values, out 
 	}
 }
 
-// fetchOnce makes one request, and reports whether a failure is worth another.
 func (c *Client) fetchOnce(ctx context.Context, client *http.Client, base, path string, values url.Values, out any) (found, retry bool, err error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path+"?"+values.Encode(), nil)
 	if err != nil {
@@ -210,20 +190,8 @@ func (c *Client) fetchOnce(ctx context.Context, client *http.Client, base, path 
 	return true, false, nil
 }
 
-// restart is how far back the first stamp of a line must jump, from the one
-// before it, to start another copy of the song.
-const restart = 10 * time.Second
+const restartJump = 10 * time.Second
 
-// ParseLRC reads synced lyrics: lines such as "[01:23.45] text", which may
-// carry several stamps for a repeated line. Lines without a stamp, and
-// metadata tags such as "[ar: name]", are skipped. The result is in time
-// order.
-//
-// Some files hold the song more than once, as a romanised or translated copy
-// after the original, and the second copy starts again from the top. Such a
-// file is split where its time jumps back, and the copy with the most
-// non-ASCII text, which is the original for a song in Japanese or Korean, is
-// kept; with no difference between them, the first.
 func ParseLRC(text string) []lyrics.Line {
 	var blocks [][]lyrics.Line
 	var current []lyrics.Line
@@ -247,7 +215,7 @@ func ParseLRC(text string) []lyrics.Line {
 			continue
 		}
 		first := slices.Min(stamps)
-		if len(current) > 0 && first < previous-restart {
+		if len(current) > 0 && first < previous-restartJump {
 			blocks, current = append(blocks, current), nil
 		}
 		previous = first
@@ -278,7 +246,6 @@ func ParseLRC(text string) []lyrics.Line {
 	return best
 }
 
-// parseStamp reads "mm:ss" or "mm:ss.xx".
 func parseStamp(s string) (time.Duration, bool) {
 	minutes, rest, ok := strings.Cut(s, ":")
 	if !ok {

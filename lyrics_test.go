@@ -60,8 +60,6 @@ func TestLyricsAreLookedUpAgainOnceTheLengthIsKnown(t *testing.T) {
 	a.betterLyrics = func(_ context.Context, q betterlyrics.Query) ([]lyrics.Line, error) {
 		asked = append(asked, q.Duration)
 		if q.Duration == 0 {
-			// Better Lyrics keys its cache on the length, and serves only
-			// cached songs: without one, it has nothing.
 			return nil, nil
 		}
 		return []lyrics.Line{{At: 0, Text: "word timed", Words: []lyrics.Word{{At: 0, Text: "word timed"}}}}, nil
@@ -73,7 +71,6 @@ func TestLyricsAreLookedUpAgainOnceTheLengthIsKnown(t *testing.T) {
 	if len(asked) != 1 || asked[0] != 0 || a.nowPlaying.lyrics.footer != "Source: YouTube Music" {
 		t.Fatalf("the first lookup asked for %v and found %q", asked, a.nowPlaying.lyrics.footer)
 	}
-	// The stream resolves, and its length goes with the lyrics lookups.
 	a.total = 212 * time.Second
 	a.refreshLyrics()
 	if len(asked) != 2 || asked[1] != 212*time.Second {
@@ -82,7 +79,6 @@ func TestLyricsAreLookedUpAgainOnceTheLengthIsKnown(t *testing.T) {
 	if len(a.nowPlaying.lyrics.synced) != 1 || a.nowPlaying.lyrics.footer != "Source: Better Lyrics" {
 		t.Fatalf("the lyrics are %#v from %q", a.nowPlaying.lyrics.synced, a.nowPlaying.lyrics.footer)
 	}
-	// One lookup with the length is all a track gets.
 	a.refreshLyrics()
 	a.loadLyrics()
 	if len(asked) != 2 {
@@ -97,7 +93,6 @@ func TestLyricsUseTheArtistKnownForTheTrack(t *testing.T) {
 		asked = q
 		return nil, nil
 	}
-	// An album row leaves the artist out; another list named it before.
 	a.queue.restore(playstate.State{Items: []youtube.MusicItem{{VideoID: "song", Title: "E85", Kind: youtube.KindTrack, Duration: "2:34"}}, Index: 0, RecStart: -1})
 	a.current = a.queue.current()
 	a.scrobble.credits.Put("song", credits.Credits{Artist: "Don Toliver", Album: "OCTANE"})
@@ -119,7 +114,6 @@ func TestTheSungLineSitsInTheMiddleOfTheLyrics(t *testing.T) {
 	}
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
 	a.current = a.queue.current()
-	// Twenty-four seconds into a four-minute song: the fifth of the ten lines.
 	a.total, a.resumeID, a.scrub = 4*time.Minute, a.current.VideoID, 24
 	a.nowPlaying.tab = tabLyrics
 	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
@@ -131,8 +125,6 @@ func TestTheSungLineSitsInTheMiddleOfTheLyrics(t *testing.T) {
 	if !ok {
 		t.Fatalf("the line being sung is not shown: %q", tt.Texts())
 	}
-	// The lyrics fill the panel between the modes above them and the buttons
-	// below them, so their middle is where the sung line belongs.
 	modes, ok := tt.Find("Synced lyrics")
 	if !ok {
 		t.Fatalf("the lyrics have no switch: %q", tt.Texts())

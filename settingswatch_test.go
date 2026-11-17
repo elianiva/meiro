@@ -32,7 +32,6 @@ func TestSettingsWatcherNoticesAnAtomicWrite(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- watcher.run(stop) }()
 
-	// A tool writes a temporary file and renames it over settings.json.
 	tmp := filepath.Join(dir, "settings.json.tmp")
 	if err := os.WriteFile(tmp, []byte(`{"seed":"#d81b78"}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -131,7 +130,7 @@ func TestSettingsFileChangesApplyWithoutARestart(t *testing.T) {
 	a.settings.CacheDirectory = cacheDir
 	writeSettingsFile(t, path, a.settings)
 	a.settingsSeen, _ = os.ReadFile(path)
-	a.keyMap() // build the shortcuts before the file changes
+	a.keyMap()
 
 	var shown m3.Scheme
 	tt := ui.NewTester(func(c *ui.Context) {
@@ -347,7 +346,6 @@ func TestColorsFileThemesTheWindow(t *testing.T) {
 	a.settingsSeen, _ = os.ReadFile(a.saver.Path)
 	derived := m3.New(a.settings.Theme(uiFont), true).Scheme
 
-	// The light set is left out: a mode with no colours keeps the seed's own.
 	file := `{"dark": {"primary": "#00e63a", "on_primary": "#003910", "surface": "#101510"}}`
 	if err := os.WriteFile(a.colorsPath, []byte(file), 0o600); err != nil {
 		t.Fatal(err)
@@ -361,7 +359,6 @@ func TestColorsFileThemesTheWindow(t *testing.T) {
 		tt.Advance(themeGlide + 20*time.Millisecond)
 		return s
 	}
-	// Until matugen is the colour source, the file is read and ignored.
 	if got := shown("dark"); got.Primary != derived.Primary {
 		t.Errorf("primary = %v with the source not matugen, want the seed's %v", got.Primary, derived.Primary)
 	}

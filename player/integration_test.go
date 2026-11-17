@@ -12,12 +12,6 @@ import (
 	"time"
 )
 
-// These tests run the real ffmpeg on real audio and feed its PCM to a fake
-// speaker that listens at twenty times real time, so a whole track plays in
-// a fraction of a second and no sound card is needed.
-
-// newTestPlayer returns a player on the fake speaker, and a three second
-// sine wave made by ffmpeg to play.
 func newTestPlayer(t *testing.T) (*Player, string) {
 	return newTestPlayerWithDuration(t, 3)
 }
@@ -95,7 +89,7 @@ func TestPauseHoldsAndResumeFinishes(t *testing.T) {
 	if !p.Paused() || p.Playing() {
 		t.Fatalf("pause left paused=%v playing=%v", p.Paused(), p.Playing())
 	}
-	time.Sleep(50 * time.Millisecond) // let a chunk in flight land
+	time.Sleep(50 * time.Millisecond)
 	held := p.Position()
 	time.Sleep(150 * time.Millisecond)
 	if p.Position() != held || p.Ended() {
@@ -141,8 +135,6 @@ func TestSetSpeedGoesOnFromWhereTheStreamIs(t *testing.T) {
 	}
 	p.Resume()
 	waitFor(t, "the track to end", p.Ended)
-	// The six seconds left play in three seconds of sound: a position that
-	// ignored the speed would stop near 7s, and sound not sped up near 16s.
 	if !near(p.Position(), 10*time.Second) {
 		t.Errorf("position at the end = %v, want about 10s", p.Position())
 	}
@@ -183,8 +175,6 @@ func TestAPreloadedStreamTakesOverWithoutEnding(t *testing.T) {
 	if got := p.Preloaded(); got != "next" {
 		t.Fatalf("Preloaded = %q, want next", got)
 	}
-	// The first stream ends within a fraction of a second at the fake
-	// speaker's pace; the hand over must not show as an ended stream.
 	deadline := time.Now().Add(10 * time.Second)
 	var tag string
 	for time.Now().Before(deadline) {
@@ -240,7 +230,7 @@ func TestPlaySeekAndStopDropThePreload(t *testing.T) {
 		"stop":   p.Stop,
 		"cancel": p.CancelPreload,
 	} {
-		p.Pause() // hold the track so it cannot end meanwhile
+		p.Pause()
 		if err := p.Play(wav); err != nil {
 			t.Fatal(err)
 		}

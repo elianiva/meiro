@@ -7,8 +7,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// The same binding reads differently on each platform, and the modifier of
-// shortcuts is Command on macOS and Control elsewhere.
 func TestLabelPerPlatform(t *testing.T) {
 	for _, tt := range []struct {
 		b                    Binding
@@ -97,7 +95,6 @@ func TestOverrides(t *testing.T) {
 	if _, taken := m.Conflict(Search, Binding{Cmd: true, Key: ui.KeyP}); taken {
 		t.Error("an action does not conflict with itself")
 	}
-	// The key Search gave up is free again.
 	if _, taken := m.Conflict(Home, Binding{Cmd: true, Key: ui.KeyK}); taken {
 		t.Error("a key given up is still taken")
 	}

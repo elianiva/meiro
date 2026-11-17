@@ -1,9 +1,3 @@
-// Package sentry turns a crash into a Sentry event with the official
-// sentry-go SDK. It sends only what the user agreed to: the details the crash
-// dialog shows, and nothing that could name a person.
-//
-// Secrets and web addresses are removed here, at the boundary, so a caller
-// cannot send them by accident.
 package sentry
 
 import (
@@ -19,16 +13,12 @@ import (
 	"github.com/elianiva/meiro/internal/applog"
 )
 
-// Timeout bounds one report, so a slow network never holds up what sends it.
 const Timeout = 10 * time.Second
 
-// Client sends crash reports to one project.
 type Client struct {
 	sdk *sentrygo.Client
 }
 
-// New makes a client for the project the DSN names. release is the app's
-// version, empty for a development build.
 func New(dsn, release string) (*Client, error) {
 	tag := ""
 	environment := "development"
@@ -49,20 +39,12 @@ func New(dsn, release string) (*Client, error) {
 	return &Client{sdk: sdk}, nil
 }
 
-// Crash is one panic to report.
 type Crash struct {
-	// Where is what the app was doing, and Message what it panicked with.
 	Where, Message string
-	// Details is the report the crash dialog offers to copy, with the
-	// versions, the panic and its stack.
-	Details string
-	// Stack is the goroutine dump debug.Stack returned, parsed into the
-	// frames Sentry groups by.
-	Stack string
+	Details        string
+	Stack          string
 }
 
-// Capture sends one crash report. It waits for the SDK to hand the event to
-// its transport, so a failure can be logged while the app is still up.
 func (c *Client) Capture(crash Crash) error {
 	if c == nil || c.sdk == nil {
 		return errors.New("sentry: no client")
@@ -91,9 +73,6 @@ func (c *Client) Capture(crash Crash) error {
 	return nil
 }
 
-// parseFrames turns the goroutine dump debug.Stack returns into Sentry
-// frames, oldest first. It reads the goroutine that panicked, which is the
-// first block, and stops at the blank line before the others.
 func parseFrames(stack string) []sentrygo.Frame {
 	var frames []sentrygo.Frame
 	lines := strings.Split(stack, "\n")
@@ -121,14 +100,16 @@ func parseFrames(stack string) []sentrygo.Frame {
 		})
 		i++
 	}
-	// Sentry shows the newest frame last.
+	return newestLast(frames)
+}
+
+func newestLast(frames []sentrygo.Frame) []sentrygo.Frame {
 	for left, right := 0, len(frames)-1; left < right; left, right = left+1, right-1 {
 		frames[left], frames[right] = frames[right], frames[left]
 	}
 	return frames
 }
 
-// location reads the file and line from a stack frame's "path:line +0x1d".
 func location(line string) (string, int) {
 	if i := strings.Index(line, " +0x"); i >= 0 {
 		line = line[:i]
@@ -144,7 +125,6 @@ func location(line string) (string, int) {
 	return line[:colon], number
 }
 
-// functionName drops the argument list Go prints after a function.
 func functionName(line string) string {
 	if strings.HasSuffix(line, ")") {
 		if i := strings.LastIndex(line, "("); i > 0 {
@@ -154,11 +134,8 @@ func functionName(line string) string {
 	return line
 }
 
-// addressPattern matches a web address, which can name a video or carry a
-// token.
 var addressPattern = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+`)
 
-// Redact replaces web addresses with a placeholder.
 func Redact(s string) string {
 	return addressPattern.ReplaceAllString(s, "<url>")
 }

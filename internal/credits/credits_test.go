@@ -30,8 +30,8 @@ func TestOldestEntriesGoFirstAndUpdatesRenew(t *testing.T) {
 	for i := range MaxEntries {
 		c.Put(fmt.Sprint("id", i), Credits{Artist: "x"})
 	}
-	c.Put("id0", Credits{Artist: "renewed"}) // id0 is now the newest
-	c.Put("new", Credits{Artist: "x"})       // pushes out the oldest, id1
+	c.Put("id0", Credits{Artist: "renewed"})
+	c.Put("new", Credits{Artist: "x"})
 	if _, ok := c.Get("id1"); ok {
 		t.Error("the oldest entry was kept")
 	}

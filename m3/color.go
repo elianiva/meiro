@@ -6,31 +6,16 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Colour in Material 3 is built from tonal palettes: a hue and a chroma held
-// fixed while the tone, how light the colour is, walks from 0 (black) to 100
-// (white). Every role of a scheme (primary, container, on-container, surface
-// and the rest) is one tone of one palette, picked so that a role and the role
-// drawn on it always keep their contrast whatever the seed is.
-//
-// Material's reference implementation solves for tones in the HCT space. This
-// package computes them in Oklch instead, which keeps hue stable across tones
-// and needs no iteration: a tone T maps to the lightness an L* of T has, and
-// the chroma is pulled in until the colour fits sRGB.
-
-// Palette is one hue and chroma, read at any tone.
 type Palette struct {
-	Hue    float64 // degrees, Oklch
-	Chroma float64 // Oklch chroma, about 0 to 0.3
+	Hue    float64
+	Chroma float64
 }
 
-// Tone returns the palette's colour at tone t, from 0 (black) to 100 (white).
 func (p Palette) Tone(t float64) ui.Color {
 	t = math.Max(0, math.Min(100, t))
 	return oklchToColor(toneToLightness(t), p.Chroma, p.Hue)
 }
 
-// toneToLightness maps an L* tone to Oklab lightness. For a grey, Oklab's
-// lightness is the cube root of luminance, which is what L* encodes.
 func toneToLightness(tone float64) float64 {
 	var y float64
 	if tone > 8 {
@@ -42,7 +27,6 @@ func toneToLightness(tone float64) float64 {
 	return math.Cbrt(y)
 }
 
-// HueOf returns the Oklch hue and chroma of a colour.
 func HueOf(c ui.Color) (hue, chroma float64) {
 	_, a, b := colorToOklab(c)
 	chroma = math.Hypot(a, b)
@@ -53,8 +37,6 @@ func HueOf(c ui.Color) (hue, chroma float64) {
 	return hue, chroma
 }
 
-// FromHue returns a vivid colour of a hue, to show a seed that has none of
-// its own, as the swatch of a hue slider.
 func FromHue(hue float64) ui.Color {
 	return Palette{Hue: hue, Chroma: 0.14}.Tone(55)
 }
@@ -86,7 +68,6 @@ func colorToOklab(c ui.Color) (l, a, b float64) {
 	return
 }
 
-// oklabToLinear returns linear sRGB, which may lie outside 0 to 1.
 func oklabToLinear(l, a, b float64) (r, g, bl float64) {
 	lc := l + 0.3963377774*a + 0.2158037573*b
 	mc := l - 0.1055613458*a - 0.0638541728*b
@@ -103,8 +84,6 @@ func inGamut(r, g, b float64) bool {
 	return r >= -eps && r <= 1+eps && g >= -eps && g <= 1+eps && b >= -eps && b <= 1+eps
 }
 
-// oklchToColor returns the sRGB colour of an Oklch colour, taking chroma away
-// until it fits the gamut.
 func oklchToColor(l, c, h float64) ui.Color {
 	if l <= 0 {
 		return ui.RGB(0, 0, 0)
@@ -134,26 +113,16 @@ func oklchToColor(l, c, h float64) ui.Color {
 	return ui.RGB(to8(r), to8(g), to8(b))
 }
 
-// Style is how a scheme spends its chroma: how loud the seed is, and how far
-// the secondary and tertiary palettes turn away from it.
 type Style int
 
 const (
-	// TonalSpot is Material's default: calm, with a quiet tertiary accent.
 	TonalSpot Style = iota
-	// Vibrant keeps the seed loud and the neutrals tinted.
 	Vibrant
-	// Expressive turns the secondary and tertiary palettes well away from the
-	// seed, for a livelier, more playful set.
 	Expressive
-	// Neutral is nearly grey with a trace of the seed.
 	Neutral
-	// Monochrome has no hue at all.
 	Monochrome
 )
 
-// Styles lists every style in the order a picker shows them. Each call returns
-// a fresh slice, so callers cannot change the collection.
 func Styles() []Style { return []Style{TonalSpot, Vibrant, Expressive, Neutral, Monochrome} }
 
 func (s Style) String() string {
@@ -170,7 +139,6 @@ func (s Style) String() string {
 	return "Tonal spot"
 }
 
-// Blurb is a short description for a style's picker.
 func (s Style) Blurb() string {
 	switch s {
 	case Vibrant:
@@ -206,12 +174,10 @@ func (s Style) recipe() recipe {
 	return recipe{primary: 0.125, secondaryTurn: 0, secondary: 0.042, tertiaryTurn: 60, tertiary: 0.07, neutral: 0.008, neutralVariant: 0.017}
 }
 
-// Palettes are the six tonal palettes a scheme draws from.
 type Palettes struct {
 	Primary, Secondary, Tertiary, Neutral, NeutralVariant, Error Palette
 }
 
-// NewPalettes derives the palettes of a seed colour in a style.
 func NewPalettes(seed ui.Color, style Style) Palettes {
 	hue, _ := HueOf(seed)
 	r := style.recipe()
@@ -225,7 +191,6 @@ func NewPalettes(seed ui.Color, style Style) Palettes {
 	}
 }
 
-// Scheme is every colour role of Material 3, for one appearance.
 type Scheme struct {
 	Dark bool
 
@@ -243,8 +208,6 @@ type Scheme struct {
 	Scrim, Shadow                                                 ui.Color
 }
 
-// NewScheme builds the scheme of the palettes in a light or dark appearance.
-// Tones follow Material's baseline mapping.
 func NewScheme(p Palettes, dark bool) Scheme {
 	pick := func(light, darkTone float64) float64 {
 		if dark {
@@ -295,13 +258,10 @@ func NewScheme(p Palettes, dark bool) Scheme {
 	return s
 }
 
-// Layer draws a state layer of colour over a base, as Material does for
-// hover, focus and press: the colour at the given opacity.
 func Layer(base, over ui.Color, opacity float32) ui.Color {
 	return over.Alpha(opacity).Over(base)
 }
 
-// Contrast returns the WCAG contrast ratio of two opaque colours.
 func Contrast(a, b ui.Color) float64 {
 	la, lb := luminance(a), luminance(b)
 	if la < lb {
@@ -314,8 +274,6 @@ func luminance(c ui.Color) float64 {
 	return 0.2126*srgbToLinear(float64(c.R)/255) + 0.7152*srgbToLinear(float64(c.G)/255) + 0.0722*srgbToLinear(float64(c.B)/255)
 }
 
-// Mix returns the scheme t of the way from s to o, role by role: a theme
-// glides to its next colours by mixing, instead of cutting.
 func (s Scheme) Mix(o Scheme, t float32) Scheme {
 	out := s
 	out.Primary = s.Primary.Mix(o.Primary, t)
@@ -363,15 +321,10 @@ func (s Scheme) Mix(o Scheme, t float32) Scheme {
 	return out
 }
 
-// Colors are role colours chosen from outside, such as the set a wallpaper
-// tool generates, for the light and the dark appearance. A role left out keeps
-// the colour the seed gives it.
 type Colors struct {
 	Light, Dark map[string]ui.Color
 }
 
-// Role returns the colour of the role a snake_case name stands for, such as
-// "on_primary_container", or nil for a name that is not a role.
 func (s *Scheme) Role(name string) *ui.Color {
 	switch name {
 	case "primary":
@@ -444,7 +397,6 @@ func (s *Scheme) Role(name string) *ui.Color {
 	return nil
 }
 
-// apply puts the colours of one appearance over a scheme.
 func (c *Colors) apply(s *Scheme) {
 	roles := c.Light
 	if s.Dark {

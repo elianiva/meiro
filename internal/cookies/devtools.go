@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// devtools speaks the Chrome DevTools Protocol over one WebSocket, one
-// request at a time, which is all reading cookies and closing the browser
-// need.
 type devtools struct {
 	ws   *wsConn
 	next int
@@ -23,7 +20,6 @@ type devtoolsCookie struct {
 	Expires float64 `json:"expires"`
 }
 
-// call sends a command and waits for its answer, skipping events.
 func (d *devtools) call(ctx context.Context, method string, result any) error {
 	defer d.ws.limit(ctx)()
 	d.next++
@@ -60,7 +56,6 @@ func (d *devtools) call(ctx context.Context, method string, result any) error {
 	}
 }
 
-// cookies reads every cookie the browser holds.
 func (d *devtools) cookies(ctx context.Context) ([]devtoolsCookie, error) {
 	var out struct {
 		Cookies []devtoolsCookie `json:"cookies"`
@@ -71,15 +66,10 @@ func (d *devtools) cookies(ctx context.Context) ([]devtoolsCookie, error) {
 	return out.Cookies, nil
 }
 
-// closeBrowser asks the browser to quit. It may drop the connection before
-// it answers, and the caller stops the process either way.
 func (d *devtools) closeBrowser(ctx context.Context) {
 	_ = d.call(ctx, "Browser.close", nil)
 }
 
-// youtubeHeader builds the Cookie header a request to music.youtube.com
-// carries from the cookies of a browser: those of youtube.com and its
-// subdomains that have not expired. A later cookie of the same name wins.
 func youtubeHeader(all []devtoolsCookie, now time.Time) string {
 	var pairs []string
 	seen := map[string]int{}
@@ -88,8 +78,8 @@ func youtubeHeader(all []devtoolsCookie, now time.Time) string {
 		if domain != "youtube.com" && !strings.HasSuffix(domain, ".youtube.com") {
 			continue
 		}
-		// Expires is -1 for a cookie of the session.
-		if c.Expires > 0 && time.Unix(int64(c.Expires), 0).Before(now) {
+		isSessionCookie := c.Expires <= 0
+		if !isSessionCookie && time.Unix(int64(c.Expires), 0).Before(now) {
 			continue
 		}
 		pair := c.Name + "=" + c.Value

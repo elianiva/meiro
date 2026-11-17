@@ -30,6 +30,7 @@ go_test(
     srcs = [
         "accounts_test.go",
         "ai_test.go",
+        "artist_songs_test.go",
         "cookie_test.go",
         "credits_test.go",
         "integration_test.go",

@@ -18,7 +18,6 @@ import (
 	"github.com/elianiva/meiro/player"
 )
 
-// swatches are the seed colours the settings offer.
 var swatches = []struct{ name, hex string }{
 	{"Violet", "#6750a4"},
 	{"Indigo", "#4c5ed6"},
@@ -34,13 +33,11 @@ var swatches = []struct{ name, hex string }{
 	{"Orchid", "#a73fc0"},
 }
 
-// settingsRow is one row of the settings page: a section heading, or a card
-// under it.
 type settingsRow struct {
 	key     string
-	heading string                      // set for a heading
-	search  string                      // words the card answers
-	card    func(a *app, c *ui.Context) // set for a card
+	heading string
+	search  string
+	card    func(a *app, c *ui.Context)
 }
 
 type settingsSearchState struct {
@@ -49,8 +46,6 @@ type settingsSearchState struct {
 	field ui.Handle
 }
 
-// settingsRows are the rows of the settings page, top to bottom. Cards that
-// answer the same question sit under one heading.
 var settingsRows = []settingsRow{
 	{key: "h-account", heading: "Account"},
 	{key: "account", search: "sign in profile account session", card: (*app).accountCard},
@@ -156,11 +151,6 @@ func (a *app) closeSettingsSearch() {
 	a.settingsSearch = settingsSearchState{}
 }
 
-// settingsPage is where the user chooses how the app looks, sounds and plays,
-// and manages the account, the caches, Last.fm and the shortcuts.
-//
-// The rows are the rows of a list, so only the ones in view are built, laid
-// out and painted: the page is long, and scrolling it rebuilds the frame.
 func (a *app) settingsPage(c *ui.Context) {
 	rows := settingsRowsFor(a.settingsSearch.query)
 	if len(rows) == 0 {
@@ -193,7 +183,6 @@ func (a *app) settingsPage(c *ui.Context) {
 	}).Grow(1).Padding(0, 0, a.clearance()-16)
 }
 
-// settingsCard is a tonal card that holds one group of settings.
 func (a *app) settingsCard(c *ui.Context, title string, icon *ui.SVG, build func()) {
 	sc := m3.Of(c).Scheme
 	ui.Column(c).Padding(24).Gap(22).Radius(m3.ExtraLarge).Background(sc.SurfaceContainerLow).Children(func() {
@@ -205,7 +194,6 @@ func (a *app) settingsCard(c *ui.Context, title string, icon *ui.SVG, build func
 	})
 }
 
-// settingLabel names a control, with what it does under it.
 func settingLabel(c *ui.Context, title, body string) ui.Element {
 	sc := m3.Of(c).Scheme
 	return ui.Column(c).Gap(2).MinWidth(0).Children(func() {
@@ -220,7 +208,6 @@ func (a *app) appearanceCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	th := m3.Of(c)
 	a.settingsCard(c, "Appearance", m3.IconPalette, func() {
-		// Light, dark, or whatever the desktop is.
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Theme", "Follow the desktop, or stay light or dark.").Grow(1)
 			mode := int(th.Mode)
@@ -230,8 +217,6 @@ func (a *app) appearanceCard(c *ui.Context) {
 			}
 		})
 
-		// Where the colours come from: one chosen here, the cover of the song
-		// playing, or the set matugen writes.
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Wrap().Children(func() {
 			settingLabel(c, "Colour source", "").Grow(1)
 			source := 0
@@ -249,7 +234,6 @@ func (a *app) appearanceCard(c *ui.Context) {
 			m3.Text(c, m3.BodyMedium, "Waiting for colors.json from matugen.").TextColor(sc.OnSurfaceVariant)
 		}
 
-		// The seed: twelve colours, and any hue between.
 		if !a.settings.Dynamic && !a.settings.Matugen {
 			ui.Column(c).Gap(14).Children(func() {
 				settingLabel(c, "Colour", "Every colour in the app grows from this one.")
@@ -274,7 +258,6 @@ func (a *app) appearanceCard(c *ui.Context) {
 			})
 		}
 
-		// How the seed is spent.
 		if !a.settings.Matugen {
 			ui.Column(c).Gap(14).Children(func() {
 				settingLabel(c, "Palette", "How boldly the colour is used.")
@@ -289,8 +272,6 @@ func (a *app) appearanceCard(c *ui.Context) {
 			})
 		}
 
-		// How large the interface is, at a readable size in the interface
-		// that grows with it.
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Zoom", "Make everything larger or smaller.").Grow(1)
 			zoom := settings.ClampZoom(a.settings.Zoom)
@@ -317,8 +298,6 @@ func (a *app) appearanceCard(c *ui.Context) {
 	})
 }
 
-// playbackCacheCard controls the number of recently played songs kept on
-// disk for replay without another network stream.
 func (a *app) playbackCacheCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Playback cache", m3.IconFolder, func() {
@@ -359,8 +338,6 @@ func (a *app) playbackCacheCard(c *ui.Context) {
 	})
 }
 
-// soundCard holds the equaliser's bands. Slider changes update the player as
-// they happen; only saving the settings waits for the drag to finish.
 func (a *app) soundCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Sound", m3.IconVolumeUp, func() {
@@ -402,13 +379,10 @@ func (a *app) soundCard(c *ui.Context) {
 				}
 			}
 		})
-		// The bands, one upright slider each above its frequency, the way an
-		// equaliser is drawn: the handle rests on the 0 dB mark, and a boost
-		// or cut fills between the two.
 		ui.Row(c).FillWidth().MaxWidth(640).Gap(4).Justify(ui.SpaceBetween).Children(func() {
 			for i := range player.EQBandCount {
 				ui.Column(c).Gap(6).Width(m3.MinTarget).AlignItems(ui.Center).Children(func() {
-					m3.Slider(c, &a.settings.EQBands[i], -eqBoostRange, eqBoostRange, m3.SliderSpec{
+					m3.Slider(c, &a.settings.EQBands[i], -eqBoostRangeDB, eqBoostRangeDB, m3.SliderSpec{
 						Label: eqLabels[i] + " dB", Key: "eq-" + strconv.Itoa(i),
 						Thickness: 6, Vertical: true, Disabled: !a.settings.EQOn,
 					}).Height(148).FillWidth()
@@ -446,9 +420,6 @@ func (a *app) playbackCard(c *ui.Context) {
 	})
 }
 
-// crossfadeCard fades the end of a track into the start of the next. The
-// player takes a change live, so the slider applies as it moves and the
-// settings are saved once it has been quiet.
 func (a *app) crossfadeCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Crossfade", m3.IconMusicNote, func() {
@@ -478,9 +449,6 @@ func (a *app) crossfadeCard(c *ui.Context) {
 	})
 }
 
-// aiFilterCard controls whether Meiro skips tracks YouTube marks as altered
-// or generated with AI. The label is checked before a track starts because
-// YouTube's list responses do not carry it.
 func (a *app) aiFilterCard(c *ui.Context) {
 	a.settingsCard(c, "AI-generated songs", m3.IconMusicNote, func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
@@ -494,8 +462,6 @@ func (a *app) aiFilterCard(c *ui.Context) {
 	})
 }
 
-// swatch is one seed colour, drawn as the primary colour it would give. The
-// chosen one squares off and shows a check.
 func (a *app) swatch(c *ui.Context, name, hex string) bool {
 	th := m3.Of(c)
 	sc := th.Scheme
@@ -533,8 +499,6 @@ func (a *app) swatch(c *ui.Context, name, hex string) bool {
 	return b.Clicked()
 }
 
-// stylePreview returns the scheme a palette style would give the seed in a
-// light or dark appearance, reusing what it resolved until either changes.
 func (a *app) stylePreview(seed ui.Color, dark bool, style m3.Style) m3.Scheme {
 	t := &a.theme
 	if t.previews == nil || seed != t.previewSeed || dark != t.previewDark {
@@ -548,7 +512,6 @@ func (a *app) stylePreview(seed ui.Color, dark bool, style m3.Style) m3.Scheme {
 	return preview
 }
 
-// styleTile previews a palette style in the colours the seed would give it.
 func (a *app) styleTile(c *ui.Context, style m3.Style) bool {
 	th := m3.Of(c)
 	sc := th.Scheme
@@ -610,9 +573,6 @@ func (a *app) accountCard(c *ui.Context) {
 	})
 }
 
-// chooseAudioCacheDirectory opens the native folder picker, then switches
-// future playback to an app-owned audio folder inside the chosen directory.
-// The songs cached in the folder before are removed.
 func (a *app) chooseAudioCacheDirectory() {
 	defaultRoot, _ := mygo.App.Path(mygo.PathCache)
 	current := a.cacheDirectoryText
@@ -654,14 +614,13 @@ func (a *app) chooseAudioCacheDirectory() {
 			return
 		}
 		if c.root == "" {
-			return // the picker was cancelled
+			return
 		}
 		if c.cache != nil {
 			c.cache.SetLimit(a.settings.CacheSongs)
 			if previous := a.replaceAudioCache(c.cache); previous != nil {
 				a.run(func() {
 					previous.Close()
-					// The old location is app-owned and no longer used.
 					if previous.Dir() != c.cache.Dir() {
 						previous.Purge()
 					}
@@ -677,8 +636,6 @@ func (a *app) chooseAudioCacheDirectory() {
 	})
 }
 
-// desktopCard holds the switches that tie Meiro to the rest of the system:
-// notifications, the tray, the global shortcut and starting at login.
 func (a *app) desktopCard(c *ui.Context) {
 	a.settingsCard(c, "Desktop", m3.IconNotifications, func() {
 		ui.Column(c).Gap(4).Children(func() {
@@ -747,8 +704,6 @@ func (a *app) desktopCard(c *ui.Context) {
 	})
 }
 
-// desktopSwitch is one system-integration row: a label and a switch that
-// saves through apply.
 func (a *app) desktopSwitch(c *ui.Context, title, body string, on bool, apply func(bool)) {
 	ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(8, 0).Children(func() {
 		settingLabel(c, title, body).Grow(1)

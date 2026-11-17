@@ -6,7 +6,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// Every page has exactly one route, and every route's path leads back to it.
 func TestRouteTableIsComplete(t *testing.T) {
 	seen := map[routeID]bool{}
 	patterns := map[string]bool{}
@@ -23,7 +22,7 @@ func TestRouteTableIsComplete(t *testing.T) {
 		}
 		id := ""
 		if r.isDetail() {
-			id = "MPREb a/b" // escaped in the path, and back
+			id = "MPREb a/b"
 		}
 		got, gotID := matchRoute(r.path(id))
 		if got.id != r.id || gotID != id {

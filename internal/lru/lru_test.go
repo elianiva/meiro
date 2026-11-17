@@ -6,7 +6,7 @@ func TestCacheDropsTheLeastRecentlyUsed(t *testing.T) {
 	c := New[string, int](2)
 	c.Put("a", 1)
 	c.Put("b", 2)
-	if _, ok := c.Get("a"); !ok { // a is now the most recent
+	if _, ok := c.Get("a"); !ok {
 		t.Fatal("a was dropped early")
 	}
 	c.Put("c", 3)
@@ -31,10 +31,10 @@ func TestCacheKeepsOrderThroughUpdatesAndDeletes(t *testing.T) {
 	for i := range 3 {
 		c.Put(i, i)
 	}
-	c.Put(0, 10) // 0 is now the most recent
+	c.Put(0, 10)
 	c.Delete(1)
 	c.Put(3, 3)
-	c.Put(4, 4) // drops 2, the least recent left
+	c.Put(4, 4)
 	for key, want := range map[int]bool{0: true, 1: false, 2: false, 3: true, 4: true} {
 		if _, ok := c.Peek(key); ok != want {
 			t.Errorf("key %d present=%v, want %v", key, ok, want)

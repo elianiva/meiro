@@ -120,16 +120,11 @@ func TestCardPlayerBylineDoesNotLinkMetadataOrUnknownDestinations(t *testing.T) 
 	if !slices.Equal(item.PlayerByline(), want) {
 		t.Fatalf("card linked non-credit metadata or retained duration: %+v", item.PlayerByline())
 	}
-	// The card's own line drops the kind label too: it reads who made the
-	// track, not what kind of item it is.
 	if want := "Band • 496M plays"; item.Subtitle != want {
 		t.Errorf("card subtitle = %q, want %q", item.Subtitle, want)
 	}
 }
 
-// A row that links an album but no artist keeps YouTube's own line. The text
-// before the album is a name shown without a link, not the kind of item, so
-// dropping it would leave the album reading as the row's byline.
 func TestRowWhoseAlbumLinksBeforeAnyArtistKeepsItsLine(t *testing.T) {
 	const response = `{"playlistItemData":{"videoId":"song"},"flexColumns":[
 	{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Title"}]}}},
@@ -166,8 +161,6 @@ func TestTwoRowSubtitleCreditsArtist(t *testing.T) {
 	const renderer = `{"title":{"runs":[{"text":"Cover"}]},"subtitle":{"runs":[
 		{"text":"Song"},{"text":" • "},{"text":"Singer","navigationEndpoint":{"browseEndpoint":{"browseId":"UCsinger"}}}]},
 		"navigationEndpoint":{"watchEndpoint":{"videoId":"vid-9"}}}`
-	// A home shelf's cards are two-row items that are not told apart from an
-	// album's by their renderer, only by the video they carry.
 	for _, kind := range []ItemKind{KindVideo, KindMusicItem} {
 		item := parseMusicItem(kind, decodeResponse(json.RawMessage(renderer)).(*jsonObject))
 		if item.Artist != "Singer" || item.Subtitle != "Singer" {

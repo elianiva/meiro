@@ -8,28 +8,15 @@ import (
 	"time"
 )
 
-// fadeReader holds back the last hold of a stream, so that when the stream
-// ends it can be mixed with the start of the one that follows: the end fades
-// out as the next one fades in. It knows nothing of how long the track is; the
-// end of the stream is how it finds the end.
-//
-// It builds up its lookahead as the track plays, taking twice what it hands
-// on, so a track starts without waiting for the lookahead to fill. A hold of
-// zero passes the stream through.
 type fadeReader struct {
-	src  io.Reader
-	hold atomic.Int64
-	// upcoming gives the session that follows, once src has ended cleanly, and
-	// nil when none does.
+	src      io.Reader
+	hold     atomic.Int64
 	upcoming func() *session
 
 	buf     []byte
 	scratch [32 * 1024]byte
 	err     error
 
-	// mixing is set once src has ended and upcoming has been asked. total is
-	// how much of the end there was to mix, mixed how much of it has been, and
-	// follower the stream it was mixed with.
 	mixing   bool
 	follower *session
 	total    int
@@ -41,9 +28,8 @@ func newFadeReader(src io.Reader, upcoming func() *session) *fadeReader {
 	return &fadeReader{src: src, upcoming: upcoming}
 }
 
-// setHold changes how much of the end is held back, as a duration of sound.
 func (f *fadeReader) setHold(d time.Duration) {
-	f.hold.Store(int64(d) * bytesPerSecond / int64(time.Second) / 4 * 4)
+	f.hold.Store(int64(d) * bytesPerSecond / int64(time.Second) / bytesPerFrame * bytesPerFrame)
 }
 
 func (f *fadeReader) Read(p []byte) (int, error) {
@@ -70,8 +56,8 @@ func (f *fadeReader) Read(p []byte) (int, error) {
 			emit = n / 2
 		}
 		emit = min(emit, len(p))
-		if len(p) >= 4 {
-			emit -= emit % 4
+		if len(p) >= bytesPerFrame {
+			emit -= emit % bytesPerFrame
 		}
 		if emit <= 0 {
 			continue
@@ -82,8 +68,6 @@ func (f *fadeReader) Read(p []byte) (int, error) {
 	}
 }
 
-// readEnd hands on what is left after src has ended: mixed with the start of
-// the next stream if there is one, and as it is if not.
 func (f *fadeReader) readEnd(p []byte) (int, error) {
 	if len(f.buf) == 0 {
 		return 0, f.err
@@ -107,10 +91,8 @@ func (f *fadeReader) readEnd(p []byte) (int, error) {
 	}
 	head := f.head[:n]
 	m, _ := io.ReadFull(f.follower.source.reader, head)
-	// The follower's own count must include what was taken from it here, so its
-	// position starts where the mix left off.
 	f.follower.source.read.Add(int64(m))
-	m &^= 3
+	m -= m % bytesPerFrame
 	if m == 0 {
 		f.follower = nil
 		return f.readEnd(p)

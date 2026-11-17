@@ -9,31 +9,18 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// keyboardState is the shortcuts in force and what the user is doing to them.
 type keyboardState struct {
-	// keys is built from the settings on first use, and dropped when they
-	// change.
-	keys *keymap.Map
-	// recording is the action waiting for its new key in the settings, or "".
+	keys      *keymap.Map
 	recording keymap.Action
-	// field is the button of the action being recorded, which takes the
-	// keyboard when recording starts.
-	field ui.Handle
-	// problem says why the key just pressed was not taken.
-	problem string
-	// hints is set while the keys show over the controls they press.
-	hints bool
-	// heldSince is when the shortcut modifier went down, zero while up.
+	field     ui.Handle
+	problem   string
+	hints     bool
 	heldSince time.Time
-	// hintDelay is how long the modifier is held before the overlay of
-	// shortcuts shows, so Ctrl+C does not flash it.
 	hintDelay time.Duration
 }
 
-// hintDelay is how long Cmd or Ctrl is held before the shortcuts show.
 const hintDelay = 500 * time.Millisecond
 
-// keyMap returns the shortcuts in force.
 func (a *app) keyMap() keymap.Map {
 	if a.keyboard.keys == nil {
 		m := keymap.New(a.settings.Shortcuts)
@@ -42,14 +29,12 @@ func (a *app) keyMap() keymap.Map {
 	return *a.keyboard.keys
 }
 
-// shortcutsChanged keeps the settings after a change of a shortcut.
 func (a *app) shortcutsChanged() {
 	a.keyboard.keys = nil
 	a.keyboard.problem = ""
 	a.saveSettings()
 }
 
-// setShortcut binds an action to a key.
 func (a *app) setShortcut(action keymap.Action, b keymap.Binding) {
 	if keymap.IsDefault(action, b) {
 		delete(a.settings.Shortcuts, string(action))
@@ -62,29 +47,25 @@ func (a *app) setShortcut(action keymap.Action, b keymap.Binding) {
 	a.shortcutsChanged()
 }
 
-// resetShortcut gives an action its default key back.
 func (a *app) resetShortcut(action keymap.Action) {
 	delete(a.settings.Shortcuts, string(action))
 	a.shortcutsChanged()
 }
 
-// resetShortcuts gives every action its default key back.
 func (a *app) resetShortcuts() {
 	a.settings.Shortcuts = nil
 	a.shortcutsChanged()
 }
 
-// shortcuts are the keys the window answers wherever the keyboard focus is
-// that does not want them itself. They sleep while a new key is being
-// recorded in the settings, so pressing it does not also do what it did.
 func (a *app) shortcuts(c *ui.Context) {
 	if a.keyboard.recording != "" {
 		return
 	}
 	keys := a.keyMap()
 	for _, info := range keymap.Actions {
-		if info.Action == keymap.ClosePlayer && !a.nowPlaying.open {
-			continue // Escape is for whatever else is open until the player is
+		playerNotOpen := info.Action == keymap.ClosePlayer && !a.nowPlaying.open
+		if playerNotOpen {
+			continue
 		}
 		for _, b := range keys.Bindings(info.Action) {
 			if c.Shortcut(b.Modifiers(), b.Key) {
@@ -94,15 +75,9 @@ func (a *app) shortcuts(c *ui.Context) {
 	}
 }
 
-// reserveSpaceForPlayback reserves Space for playback throughout the shell.
-// MyGo gives Space to the focused control before window shortcuts, so pressing
-// it after a click activated that control instead of the player. The shell
-// claim takes Space from its controls, including switches, and hands it to the
-// play or pause shortcut. Text fields take Space as typing before the claim is
-// read, and dialogs outside the shell keep their own Space behavior.
 func (a *app) reserveSpaceForPlayback(shell ui.Element) {
 	if a.keyboard.recording != "" {
-		return // the field taking the new key reads Space itself
+		return
 	}
 	for _, b := range a.keyMap().Bindings(keymap.PlayPause) {
 		if b.Key != ui.KeySpace || b.Modifiers() != 0 {
@@ -112,10 +87,13 @@ func (a *app) reserveSpaceForPlayback(shell ui.Element) {
 	}
 }
 
-// volumeStep is how much a shortcut moves the volume.
 const volumeStep = 5
 
-// perform does what an action means.
+const (
+	playPauseBadgeDrop = -12
+	defaultBadgeDrop   = -16
+)
+
 func (a *app) perform(action keymap.Action) {
 	switch action {
 	case keymap.PlayPause:
@@ -163,15 +141,11 @@ func (a *app) perform(action keymap.Action) {
 	}
 }
 
-// startRecording waits for the new key of action, which its button takes.
 func (a *app) startRecording(action keymap.Action) {
 	a.keyboard.recording, a.keyboard.problem = action, ""
 	a.keyboard.field.Focus()
 }
 
-// captureKey takes the key pressed while action is recording, as its new
-// shortcut. Escape gives up; a key another action has is refused, saying
-// which.
 func (a *app) captureKey(action keymap.Action, ev ui.InputEvent) bool {
 	if ev.Kind != ui.InputKeyDown {
 		return false
@@ -184,7 +158,6 @@ func (a *app) captureKey(action keymap.Action, ev ui.InputEvent) bool {
 	case key == ui.KeyEscape && ev.Mods == 0:
 		a.keyboard.recording, a.keyboard.problem = "", ""
 	case !keymap.Known(key):
-		// A key with no name, or a modifier alone: wait for another.
 	default:
 		b := keymap.FromEvent(ev.Mods, key)
 		if other, taken := a.keyMap().Conflict(action, b); taken {
@@ -197,7 +170,6 @@ func (a *app) captureKey(action keymap.Action, ev ui.InputEvent) bool {
 	return true
 }
 
-// keyboardCard lists the shortcuts, each a button that waits for its new key.
 func (a *app) keyboardCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	keys := a.keyMap()
@@ -239,9 +211,6 @@ func (a *app) keyboardCard(c *ui.Context) {
 	})
 }
 
-// updateHints decides whether the keys show this frame: while Cmd or Ctrl is
-// held for a moment, the way to see what a modifier would do without leaving
-// the page. It asks for another frame when the wait is not over.
 func (a *app) updateHints(c *ui.Context) {
 	a.keyboard.hints = false
 	if c.Modifiers()&(ui.Ctrl|ui.Super) == 0 || a.keyboard.recording != "" {
@@ -259,15 +228,12 @@ func (a *app) updateHints(c *ui.Context) {
 	a.keyboard.hints = true
 }
 
-// glyphIcons are the pictures for the keys drawn as such.
 var glyphIcons = map[keymap.Glyph]*ui.SVG{
 	keymap.GlyphLeft: m3.IconArrowBack, keymap.GlyphRight: m3.IconArrowForward,
 	keymap.GlyphUp: m3.IconArrowUp, keymap.GlyphDown: m3.IconArrowDown,
 	keymap.GlyphShift: m3.IconShift, keymap.GlyphSpace: m3.IconSpaceBar, keymap.GlyphEnter: m3.IconKeyReturn,
 }
 
-// hintParts is what to press, once the modifier is down, for actions: their
-// first keys, side by side.
 func (a *app) hintParts(actions ...keymap.Action) []m3.KeyPart {
 	keys := a.keyMap()
 	var parts []m3.KeyPart
@@ -283,10 +249,6 @@ func (a *app) hintParts(actions ...keymap.Action) []m3.KeyPart {
 	return parts
 }
 
-// hinted builds a control and, while the keys show, lays the key of its
-// actions over its corner. The wrapper is there in every frame, so the
-// control keeps its state when the keys come and go; it is returned for the
-// layout of the control to be set on it.
 func (a *app) hinted(c *ui.Context, build func(), actions ...keymap.Action) ui.Element {
 	return ui.Row(c.Key(actions[0])).Shrink(0).Children(func() {
 		build()
@@ -297,16 +259,11 @@ func (a *app) hinted(c *ui.Context, build func(), actions ...keymap.Action) ui.E
 			}
 			at := ui.Box(c).Absolute().PassThrough()
 			if actions[0] == keymap.Search {
-				// A wide field takes its key inside its end, where it reads
-				// as part of the field.
 				at.Top(13).Right(16)
 			} else {
-				// Centred under a control, where it covers none of its
-				// neighbours: they are closer together than their badges
-				// are wide.
-				drop := float32(-16)
+				drop := float32(defaultBadgeDrop)
 				if actions[0] == keymap.PlayPause {
-					drop = -12 // its button is 8 taller, so this keeps the row level
+					drop = playPauseBadgeDrop
 				}
 				at.Left(0).Right(0).Bottom(drop).Center()
 			}

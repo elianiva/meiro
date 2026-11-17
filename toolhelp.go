@@ -8,32 +8,24 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// releasesURL is where the builds of Meiro, with the latest yt-dlp in each
-// full one, are published.
 const releasesURL = "https://github.com/elianiva/meiro/releases"
 
-// toolHelpState is the dialog that explains a track YouTube gave no audio
-// for. It is nil while closed.
 type toolHelpState struct {
 	open bool
 }
 
-// openToolHelp shows the dialog, and reads the yt-dlp version for it.
 func (a *app) openToolHelp() {
 	a.toolHelp = &toolHelpState{open: true}
 	a.loadToolVersions()
 }
 
-// toolHelpDialog says that yt-dlp may be out of date, and what to do about it
-// for the build the listener runs: the full build ships its own yt-dlp and
-// gets a newer one with a newer Meiro, the minimal build uses the one on PATH.
 func (a *app) toolHelpDialog(c *ui.Context) {
 	d := a.toolHelp
 	if d == nil {
 		return
 	}
 	if !d.open {
-		a.toolHelp = nil // closed by its scrim or the Escape key
+		a.toolHelp = nil
 		return
 	}
 	sc := m3.Of(c).Scheme
@@ -69,6 +61,4 @@ func (a *app) toolHelpDialog(c *ui.Context) {
 	})
 }
 
-// ytdlpBundled reports whether the app runs the yt-dlp inside it, which is
-// what makes it the full build.
 func (a *app) ytdlpBundled() bool { return a.bundled("yt-dlp") }

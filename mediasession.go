@@ -9,12 +9,8 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// Discord Rich Presence uses Meiro's public Discord application ID.
 const discordPresenceApplicationID = "1561435721456296087"
 
-// systemMediaControls maps operating-system commands to the app's playback
-// actions. Platform callbacks arrive on other goroutines, so each goes
-// through update before it touches the app.
 func (a *app) systemMediaControls() systemmedia.Controls {
 	on := func(fn func()) func() { return func() { a.update(fn) } }
 	return systemmedia.Controls{
@@ -45,7 +41,6 @@ func (a *app) systemMediaControls() systemmedia.Controls {
 	}
 }
 
-// repeatLoops pairs each repeat mode with the loop status the system shows.
 var repeatLoops = [...]systemmedia.Loop{
 	repeatOff:   systemmedia.LoopNone,
 	repeatQueue: systemmedia.LoopPlaylist,
@@ -61,9 +56,6 @@ func repeatFromLoop(loop systemmedia.Loop) repeatMode {
 	return repeatOff
 }
 
-// syncSystemMedia publishes a snapshot of playback to the system's media
-// controls, and lines the sleep assertion and the tray up with it. Every
-// path that changes playback calls it.
 func (a *app) syncSystemMedia() {
 	a.syncDesktop()
 	a.syncDiscordPresence()
@@ -116,8 +108,6 @@ func (a *app) syncSystemMedia() {
 	}
 }
 
-// syncDiscordPresence publishes only while playback is audible and the user
-// has enabled sharing. Discord IPC runs on its own worker, not the UI thread.
 func (a *app) syncDiscordPresence() {
 	if !a.settings.DiscordPresence {
 		a.closeDiscordPresence()
@@ -143,10 +133,6 @@ func (a *app) syncDiscordPresence() {
 	a.discord.Update(discordPresenceState(a.current, a.player.Position(), a.total, a.seekVersion))
 }
 
-// shownArtist is the artist line for a track: the credited artists, else the
-// one credit an older saved queue kept, else the byline the player shows for a
-// row that links none. An episode's byline names a date or a show, not an
-// artist, so it stays out.
 func shownArtist(item youtube.MusicItem) string {
 	if item.Artists != "" {
 		return item.Artists
@@ -160,8 +146,6 @@ func shownArtist(item youtube.MusicItem) string {
 	return item.Subtitle
 }
 
-// discordPresenceState selects the fields from the current track that belong
-// in Discord's compact activity.
 func discordPresenceState(item youtube.MusicItem, position, total time.Duration, seekVersion uint64) discordrpc.State {
 	return discordrpc.State{
 		VideoID:     item.VideoID,
@@ -175,7 +159,6 @@ func discordPresenceState(item youtube.MusicItem, position, total time.Duration,
 	}
 }
 
-// closeDiscordPresence stops the old IPC worker away from the UI thread.
 func (a *app) closeDiscordPresence() {
 	if a.discord == nil {
 		return

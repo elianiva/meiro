@@ -13,10 +13,8 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// playerArt is the size, in pixels, the player asks artwork for.
 const playerArt = 160
 
-// panelTab is a tab of the full-screen player's side panel.
 type panelTab uint8
 
 const (
@@ -25,71 +23,49 @@ const (
 	tabRelated
 )
 
-// panelTabs are the side panel's tabs, in the order they show.
 var panelTabs = [...]struct {
 	tab   panelTab
 	label string
 }{{tabQueue, "Up next"}, {tabLyrics, "Lyrics"}, {tabRelated, "Related"}}
 
-// nowPlayingState is the full-screen player, and what its side panel shows.
 type nowPlayingState struct {
-	open bool
-	// closing is set while the player sinks away, before open is cleared.
-	closing bool
-	// navigateTo is a metadata destination waiting for the close animation.
-	navigateTo    youtube.BylinePart
-	navigateToSet bool
-	tab           panelTab
-	tabDraft      int
-	// playerShown says the player has been built, so its rise starts on its
-	// first frame only.
-	playerShown bool
-	// queueOnly shows the side panel alone, in a window too narrow for both.
+	open                 bool
+	closing              bool
+	navigateTo           youtube.BylinePart
+	navigateToSet        bool
+	tab                  panelTab
+	tabDraft             int
+	playerShown          bool
 	queueOnly            bool
 	queueList            ui.ListState
 	queueSelection       ui.Selection[string]
 	queueSelectionAnchor int
 	queueSelectionCursor int
-	// queueFollow is the track the queue's list last scrolled to.
-	queueFollow string
-	// queueViews keeps the strings of the queue rows drawn lately, so a
-	// frame reads them while the same rows stay in view. It is bounded, and
-	// starts over when it fills.
-	queueViews    map[queueCallKey]queueRowView
-	cover         coverState
-	volumeDraft   float64
-	volumeHeld    bool
-	volumePopup   bool
-	lyrics        lyricsState
-	lyricsScroll  ui.ScrollState
-	details       detailsState
-	related       relatedState
-	relatedList   ui.ListState
-	autoPlayDraft bool
-	// miniOpen is whether the tray's mini player shows. Its side panel then
-	// loads what its tab shows, as the full-screen player's does.
-	miniOpen bool
-	// speedMenu is the key of the overflow button whose speed menu is open,
-	// or empty, and speedChoices says that menu shows the speeds rather than
-	// the row that leads to them.
-	speedMenu    string
-	speedChoices bool
+	queueFollow          string
+	queueViews           map[queueCallKey]queueRowView
+	cover                coverState
+	volumeDraft          float64
+	volumeHeld           bool
+	volumePopup          bool
+	lyrics               lyricsState
+	lyricsScroll         ui.ScrollState
+	details              detailsState
+	related              relatedState
+	relatedList          ui.ListState
+	autoPlayDraft        bool
+	miniOpen             bool
+	speedMenu            string
+	speedChoices         bool
 }
 
-// relatedState is the related songs of the track playing.
 type relatedState struct {
 	load    task
 	videoID string
 	items   []youtube.MusicItem
-	// tracks are the items that play, which become the queue when one of
-	// them is chosen; the playlists, albums, artists and shows among the
-	// items open a page instead.
-	tracks []youtube.MusicItem
-	err    string
+	tracks  []youtube.MusicItem
+	err     string
 }
 
-// detailsState is the Details tab of the podcast episode playing, which it
-// shows in the place of lyrics.
 type detailsState struct {
 	load    task
 	videoID string
@@ -97,7 +73,6 @@ type detailsState struct {
 	err     string
 }
 
-// openPlayer opens the full-screen player on a tab.
 func (a *app) openPlayer(tab panelTab, queueOnly bool) {
 	a.nowPlaying.navigateToSet = false
 	a.nowPlaying.open, a.nowPlaying.closing = true, false
@@ -105,16 +80,11 @@ func (a *app) openPlayer(tab panelTab, queueOnly bool) {
 	a.loadPanel()
 }
 
-// setMiniShown records that the mini player opened or closed, and loads its
-// panel when it opens.
 func (a *app) setMiniShown(open bool) {
 	a.nowPlaying.miniOpen = open
 	a.loadPanel()
 }
 
-// loadPanel starts the load behind the tab of the side panel that is showing.
-// Opening the panel, choosing a tab and starting a track call it; building the
-// view never does.
 func (a *app) loadPanel() {
 	if a.notch.expanded {
 		a.loadLyrics()
@@ -135,10 +105,8 @@ func (a *app) loadPanel() {
 	}
 }
 
-// panelTimeout bounds the load of a side panel tab.
 const panelTimeout = time.Minute
 
-// loadRelated fetches related songs for the track playing, once per track.
 func (a *app) loadRelated() {
 	r := &a.nowPlaying.related
 	id := a.current.VideoID
@@ -170,7 +138,6 @@ func (a *app) loadRelated() {
 	})
 }
 
-// loadDetails fetches the details of the episode playing, once per episode.
 func (a *app) loadDetails() {
 	d := &a.nowPlaying.details
 	id := a.current.VideoID
@@ -184,7 +151,6 @@ func (a *app) loadDetails() {
 	}, func(details *youtube.EpisodeDetails, err error) {
 		if err != nil {
 			log.Printf("details: video_id=%s: %v", id, err)
-			// Not remembered, so opening the tab or the next episode tries again.
 			d.err, d.videoID = "Couldn't load the details. Try again in a moment.", ""
 			return
 		}
@@ -192,12 +158,8 @@ func (a *app) loadDetails() {
 	})
 }
 
-// riseDistance is how far below its place the player starts, and ends.
 const riseDistance = 80
 
-// nowPlayingView is the full-screen player: the artwork large, the controls,
-// and beside them the queue or the lyrics. It rises over the sheet, and sinks
-// away when it closes.
 func (a *app) nowPlayingView(c *ui.Context) {
 	m3.Provide(c, a.resolveTheme(c))
 	sc := m3.Of(c).Scheme
@@ -205,8 +167,6 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	wide := w > 1040 && (h >= 700 || w > 1320)
 	panel := ui.Column(c.Key("now-playing")).Absolute().Left(0).Right(0).
 		Background(sc.Surface).Radius(m3.ExtraLarge).Clip()
-	// The player is pinned to the sheet's edges, so it rises and sinks by
-	// moving its Top and its Bottom, through m3.Rise.
 	away := float32(0)
 	if a.nowPlaying.closing {
 		away = riseDistance
@@ -214,8 +174,6 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	lift := m3.Rise(panel, "rise", riseDistance, away, !a.nowPlaying.playerShown, m3.SpatialDefault)
 	panel.Top(lift).Bottom(-lift).Opacity(1 - min(max(lift/riseDistance, 0), 1))
 	a.nowPlaying.playerShown = true
-	// The sheet has already built the page beneath the closing player; drop
-	// the player when its slide reaches the end.
 	if a.nowPlaying.closing && lift >= riseDistance-0.5 {
 		a.nowPlaying.open, a.nowPlaying.closing = false, false
 		if a.nowPlaying.navigateToSet {
@@ -252,8 +210,6 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	})
 }
 
-// nowPlayingMain is the artwork, the name, the scrubber and the controls:
-// stacked in a tall window, side by side in a short one.
 func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 	controls := func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -285,7 +241,6 @@ func (a *app) nowPlayingMain(c *ui.Context, windowHeight float32) {
 	})
 }
 
-// nowPlayingArtwork shows the cover with its video badge and track menu.
 func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius float32) {
 	key := itemKey("now-playing-menu", a.current)
 	var menuButton ui.Element
@@ -295,10 +250,7 @@ func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius fl
 		}
 		menuButton = m3.IconButton(c, m3.IconButtonSpec{
 			Icon: m3.IconMore, Label: "More options for " + a.current.Title, Key: key + "-button",
-			// On a picture the dots need a ground of their own.
 			Container: m3.Of(c).Scheme.SurfaceContainerHighest.Alpha(0.85),
-			// Off the corner by the margin a card keeps around its own: on the
-			// artwork itself a flush button reads as touching the edge.
 		}).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(8).Right(8)
 	})
 	m3.Elevation(c, artwork, 3)
@@ -310,11 +262,8 @@ func (a *app) nowPlayingArtwork(c *ui.Context, imageSize int, artSize, radius fl
 	}
 }
 
-// panelSurface is the tone of the card the queue, lyrics and related songs
-// sit on. The lyrics dissolve into it where the card ends.
 func panelSurface(sc m3.Scheme) ui.Color { return sc.SurfaceContainerLow.Alpha(0.9) }
 
-// sidePanel holds the queue, lyrics and related songs under tabs, on a tonal card.
 func (a *app) sidePanel(c *ui.Context, wide, compactQueue bool) {
 	sc := m3.Of(c).Scheme
 	card := ui.Column(c.Key("np-side")).Radius(m3.ExtraLarge).Background(panelSurface(sc)).Clip().
@@ -356,8 +305,6 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 	if compact {
 		tabs.Padding(4, 8, 0)
 	} else {
-		// The card keeps 8 above the tabs, so 4 here gives the row the same
-		// 12 the card's sides give it.
 		tabs.Padding(4, 12, 8)
 	}
 	tabs.Gap(4).Children(func() {
@@ -370,7 +317,6 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 			}
 			label := t.label
 			if t.tab == tabLyrics && a.current.IsEpisode() {
-				// An episode has its details where a song has its lyrics.
 				label = "Details"
 			}
 			button.Grow(1).Basis(0).MinWidth(0).Height(m3.MinTarget).Center().Radius(m3.Full).
@@ -402,9 +348,6 @@ func (a *app) nowPlayingTabs(c *ui.Context, compact bool) {
 	}
 }
 
-// queueSourceLine names the list the queue plays from, on one line: "Playing
-// from" and the playlist in the same size, the playlist in bold. The label
-// roles are used because their emphasis weight is the bold one.
 func (a *app) queueSourceLine(c *ui.Context, compact bool) {
 	sc := m3.Of(c).Scheme
 	role := m3.LabelLarge
@@ -417,8 +360,6 @@ func (a *app) queueSourceLine(c *ui.Context, compact bool) {
 	})
 }
 
-// queueRowKey is the list identity of a queue row, including repeated
-// occurrences of the same track. The divider has an identity of its own.
 func queueRowKey(q *queue, row int) string {
 	if q.isDivider(row) {
 		return "queue-recommendations"
@@ -429,7 +370,6 @@ func queueRowKey(q *queue, row int) string {
 	return ""
 }
 
-// selectQueueRow applies a modifier-click to the queue's multi-selection.
 func (a *app) selectQueueRow(index int, mods ui.Modifiers) {
 	row := a.queue.rowOf(index)
 	key := queueRowKey(&a.queue, row)
@@ -454,23 +394,12 @@ func (a *app) selectQueueRow(index int, mods ui.Modifiers) {
 		}
 		a.nowPlaying.queueSelectionAnchor = index
 	}
-	// ListState.Selected is a rendered row index, which can differ from the
-	// queue item index when generated tracks add the recommendations divider.
 	a.nowPlaying.queueSelectionCursor = row
 }
 
-// queueView lists the tracks of the queue, with the current one picked out.
 func (a *app) queueView(c *ui.Context, compact bool) {
-	// The scheme is read through the theme's pointer, not copied into a
-	// closure that outlives the build.
 	sc := &m3.Of(c).Scheme
 	q := &a.queue
-	// One rhythm down the panel: the source, the switch and the count sit the
-	// same distance apart, measured to their text, and the list follows at
-	// the same distance. The switch's row is 28 tall around its 16 line in
-	// the mini player, so its text sits 6 lower there; the count's row holds
-	// the Clear queue button, whose 48 target draws 8 above and below the 32
-	// the row takes.
 	gap, top, pull, pad := float32(20), float32(8), float32(8), float32(16)
 	rowGap := float32(12)
 	if compact {
@@ -502,17 +431,12 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 		if a.upNext.err != "" {
 			m3.Text(c, m3.BodySmall, "Recommendations aren't available right now.").TextColor(sc.Error).Shrink(0)
 		}
-		// The count's row: pulled up and padded by the target the Clear queue
-		// button draws around its layout.
 		ui.Row(c).Margin(-pull, 0).Padding(0, 0, pad).AlignItems(ui.Center).Children(func() {
 			m3.Text(c, m3.BodySmall, strconv.Itoa(q.remaining())+" up next").Grow(1).TextColor(sc.OnSurfaceVariant)
 			clear := func() {
 				m3.Button(c, m3.ButtonSpec{Label: "Clear queue", Kind: m3.TextOnly, Size: m3.ExtraSmall32, Disabled: q.remaining() < 1, Key: "queue-clear"}).OnClick(a.clearUpcoming)
 			}
 			if compact {
-				// The button's shape keeps 12 beside its label and the label's
-				// last letter stops 4 short of that; the margin puts the label
-				// on the list's edge, where the lengths end.
 				ui.Row(c).Shrink(0).Margin(0, -16, 0, 0).Children(clear)
 				return
 			}
@@ -524,8 +448,6 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 		return
 	}
 	list := &a.nowPlaying.queueList
-	// A press in a row can replace the queue while the list still asks about
-	// a row of the one before, so every question checks the row is there.
 	list.Key = func(row int) any { return queueRowKey(q, row) }
 	list.Selection = &a.nowPlaying.queueSelection
 	list.Selected = &a.nowPlaying.queueSelectionCursor
@@ -540,11 +462,7 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 		return ""
 	}
 	list.Header = q.isDivider
-	// Rows drag to a new place in the queue; the divider between chosen and
-	// generated tracks is not draggable itself.
 	list.Reorder = a.moveQueue
-	// Shift turns a drag on a row into a swipe that takes it out, so while it
-	// is held the list must not read the same drag as a move.
 	if a.swipeAllowed(c) {
 		list.Reorder = nil
 	}
@@ -559,7 +477,6 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 	view := ui.List(c, list, q.rows(), func(row int) {
 		index, ok := q.trackAt(row)
 		if !ok {
-			// Center the heading between the visible rows, including the next row's artwork inset.
 			height := float32(40)
 			topPadding := float32(8)
 			if compact {
@@ -616,9 +533,6 @@ func (a *app) relatedView(c *ui.Context) {
 	}
 }
 
-// detailsView shows the Details tab of the episode playing, as YouTube Music
-// does: its views, date and length, its title, its show, and its description,
-// whose timestamps seek and whose links open in the browser.
 func (a *app) detailsView(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	d := &a.nowPlaying.details
@@ -629,7 +543,6 @@ func (a *app) detailsView(c *ui.Context) {
 		a.message(c, m3.IconLyrics, d.err, "", "", nil)
 	case d.details != nil:
 		details := d.details
-		// Keyed by the episode, so the next one starts at the top.
 		ui.Scroll(c.Key("details-"+d.videoID)).Grow(1).Padding(8, 24, 24).Children(func() {
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
 				if details.Strapline != "" {
@@ -663,7 +576,6 @@ func (a *app) detailsView(c *ui.Context) {
 	}
 }
 
-// detailsShow is the episode's show, which opens the show's page.
 func (a *app) detailsShow(c *ui.Context, details *youtube.EpisodeDetails) {
 	sc := m3.Of(c).Scheme
 	show := ui.ButtonBase(c.Key("details-show")).Row().AlignSelf(ui.Start).Gap(8).AlignItems(ui.Center).

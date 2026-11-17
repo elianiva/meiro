@@ -2,7 +2,7 @@ package youtube
 
 import (
 	"context"
-	"crypto/sha1" //nolint:gosec // SAPISIDHASH is defined as SHA-1
+	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -12,19 +12,12 @@ import (
 	"testing"
 )
 
-// sapisidHash is the SAPISIDHASH value for a secret, an origin and a
-// timestamp, as YouTube defines it.
 func sapisidHash(secret, origin string, timestamp int64) string {
 	input := fmt.Sprintf("%d %s %s", timestamp, secret, origin)
-	digest := sha1.Sum([]byte(input)) //nolint:gosec // SAPISIDHASH is defined as SHA-1
+	digest := sha1.Sum([]byte(input))
 	return fmt.Sprintf("%d_%s", timestamp, hex.EncodeToString(digest[:]))
 }
 
-// A cookie-authenticated request must carry a SAPISIDHASH computed for the
-// origin it is sent to. YouTube binds the hash to that origin and answers
-// signed-out content for a request whose hash is for another one, so every
-// sign-in and every library, like and playlist write failed while the hash was
-// pinned to www.youtube.com and the requests went to music.youtube.com.
 func TestAuthorizationHashesTheOriginTheRequestIsSentTo(t *testing.T) {
 	auth, err := NewCookieAuth("SAPISID=secret", CookieOptions{})
 	if err != nil {

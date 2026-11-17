@@ -11,42 +11,25 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// The metrics of the shell, in DIPs.
 const (
-	playerHeight = 88
-	playerGutter = 16
-	sheetInset   = 8
-	pageGutter   = 24
-	// detailCompactSlot is the room the top bar keeps for a detail page's
-	// compact header, whether it is showing or not, so the global search
-	// beside it never moves as the page scrolls.
+	playerHeight      = 88
+	playerGutter      = 16
+	sheetInset        = 8
+	pageGutter        = 24
 	detailCompactSlot = 300
-	// topbarBackButton is the room Back takes, and topbarLeftBlock the whole
-	// left side of the bar. Every page keeps that block, so the search sits in
-	// the same place on every page.
-	topbarBackButton = 40
-	topbarLeftBlock  = topbarBackButton + 16 + detailCompactSlot
+	plainHeadingInset = 8
+	topbarBackButton  = 40
+	topbarLeftBlock   = topbarBackButton + 16 + detailCompactSlot
 )
 
-// view builds the window: the navigation rail, the sheet that holds the page
-// under its top bar, and the player floating over the foot of the sheet.
 func (a *app) view(c *ui.Context) {
 	a.beginArtFrame()
-	// The zoom comes first: the frame that sets another one builds again at
-	// the new size, and everything below measures the window it zoomed.
 	c.SetZoom(a.zoom())
-	// The artwork comes before the theme: a cover whose colour just landed
-	// draws its theme this frame, and the glide it starts asks for the frames
-	// that follow, rather than waiting for the next unrelated repaint.
 	a.followArtwork()
 	th := a.resolveTheme(c)
 	m3.Provide(c, th)
 	a.syncWindowButtons(th.Dark)
 	a.updateHints(c)
-	// The window paints no background of its own: the rail, the sheet's
-	// border and the sheet between them cover it, so a frame fills the window
-	// as the sheet and a thin ring rather than as a full-window quad under
-	// everything.
 
 	a.syncLocation()
 	if a.notice != "" {
@@ -87,9 +70,6 @@ func (a *app) view(c *ui.Context) {
 	a.shortcuts(c)
 }
 
-// syncWindowButtons draws the Windows window controls for the app's
-// appearance. They follow the system's otherwise, so a light app on a dark
-// desktop got light glyphs on the light tint.
 func (a *app) syncWindowButtons(dark bool) {
 	if a.desktop == nil || a.desktop.win == nil || a.theme.buttonsSet && a.theme.buttonsDark == dark {
 		return
@@ -102,10 +82,8 @@ func (a *app) syncWindowButtons(dark bool) {
 	a.theme.buttonsSet, a.theme.buttonsDark = true, dark
 }
 
-// navigate opens a page that takes no ID.
 func (a *app) navigate(id routeID) { a.router.Push(routeByID(id).path("")) }
 
-// navID is the rail's name for a destination: its path.
 func navID(id routeID) string { return routeByID(id).path("") }
 
 func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
@@ -131,7 +109,6 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 	if r.nav != routeNotFound {
 		selected = navID(r.nav)
 	}
-	// Only controls on the left (the traffic lights) sit over the rail.
 	topInset := float32(0)
 	if bar.Left > 0 {
 		topInset = bar.Height
@@ -150,32 +127,15 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 	if event.Item != "" && event.Item != selected {
 		a.router.Push(event.Item)
 	} else if event.Item != "" && a.nowPlaying.open && !a.nowPlaying.closing {
-		// The page is already showing, so its tab has nothing to open: with
-		// the player over the page it puts the player away instead.
 		a.nowPlaying.closing = true
 	}
 }
 
-// sheetCorner is the side of the square painted behind each of the sheet's
-// corners: the inset, plus the reach of a continuous corner, 1.528665 of its
-// radius. The sheet's own fill covers all of it but the rounded band the
-// square is there to fill, so any larger square would do.
-const sheetCorner = sheetInset + m3.ExtraLarge*1.528665
+const sheetCorner = sheetInset + m3.ExtraLarge*continuousCornerReach
 
-// sheet is the rounded surface the pages live on. The player floats over its
-// foot, and the full-screen player covers it, along with the top bar and the
-// page under it.
-//
-// The window tint between the sheet and the window's edge is painted as a
-// ring of thin strips and corner squares behind the sheet, not as a
-// full-window fill under it: the sheet covers all of the window but that
-// edge and the corners its rounding cuts, so a full-window quad is the
-// largest thing a frame would paint.
 func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 	sc := m3.Of(c).Scheme
 	tint := sc.SurfaceContainerLow
-	// Window buttons on the right (Windows) sit on the tint, so the
-	// sheet starts below them.
 	top := float32(sheetInset)
 	if bar.Right > 0 {
 		top = max(top, bar.Height)
@@ -196,10 +156,6 @@ func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 		defer sheetCorners(c, tint)
 		if a.nowPlaying.open {
 			if a.nowPlaying.closing {
-				// The page is only built during the short close animation,
-				// under the sinking player. The opening wave still builds only
-				// the player, so the page is not repainted on every frame of
-				// that longer transition.
 				a.sheetContents(c)
 				a.nowPlayingView(c)
 				if !a.nowPlaying.open {
@@ -207,9 +163,6 @@ func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 				}
 				return
 			}
-			// While the player is open, only it is built: the page and top
-			// bar would be laid out and painted in full on every frame of
-			// the wave and slide into the player.
 			a.nowPlayingView(c)
 			if a.nowPlaying.open {
 				return
@@ -220,7 +173,6 @@ func (a *app) sheet(c *ui.Context, bar ui.TitleBar) {
 	})
 }
 
-// sheetContents builds the page and the player bar beneath it.
 func (a *app) sheetContents(c *ui.Context) {
 	a.topBar(c)
 	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
@@ -232,8 +184,6 @@ func (a *app) sheetContents(c *ui.Context) {
 	}
 }
 
-// clearance is the room a list leaves at its foot so the player never hides
-// its last row.
 func (a *app) clearance() float32 {
 	if a.current.VideoID == "" {
 		return 24
@@ -241,22 +191,13 @@ func (a *app) clearance() float32 {
 	return playerHeight + playerGutter*2
 }
 
-// topBar names the page, with a way back on the pages a click opened, the
-// search every music page runs from, and the account at its end. It drags the
-// window.
 func (a *app) topBar(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	r, _ := a.route()
 	back := r.isDetail()
-	// Every page keeps the same left block, even one without a back button or
-	// a compact header, so the global search never changes place between
-	// pages or when a detail page scrolls. A plain page insets its heading by
-	// 8 DIPs inside that block, putting it back on the same gutter it had
-	// before the block existed.
-	padding := float32(pageGutter) - 8
+	padding := float32(pageGutter - plainHeadingInset)
 	topbar := ui.Row(c).Height(76).PaddingX(padding).Gap(16).AlignItems(ui.Center).Shrink(0).DragWindow()
 	if back {
-		// A page with a hero carries its wash up behind the bar.
 		topbar.Background(sc.PrimaryContainer.Mix(sc.Surface, 0.45))
 	}
 	compactTarget := float32(0)
@@ -271,9 +212,6 @@ func (a *app) topBar(c *ui.Context) {
 				if m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconArrowBack, Label: "Back", Key: "back"}).Clicked() {
 					a.router.Back()
 				}
-				// The slot keeps its width whether the compact header shows
-				// or not, so the global search never moves when the page
-				// scrolls.
 				ui.Row(c).Width(detailCompactSlot).Shrink(0).Children(func() {
 					if compact > 0.01 {
 						a.compactHeader(c, compact)
@@ -290,8 +228,7 @@ func (a *app) topBar(c *ui.Context) {
 			}
 		})
 		ui.Spacer(c)
-		if r.bare {
-			// Settings has a local filter; Stats has no search entry point.
+		if r.appOwned {
 			if r.id == routeSettings {
 				a.settingsSearchBar(c)
 			}
@@ -304,8 +241,6 @@ func (a *app) topBar(c *ui.Context) {
 	})
 }
 
-// routerView builds the page the router shows, and the one it leaves while it
-// animates away, from the route table.
 func (a *app) routerView(c *ui.Context) {
 	a.router.View(c, func(page *ui.Route) {
 		r, _ := matchRoute(page.Path())
@@ -327,8 +262,6 @@ func (a *app) routerView(c *ui.Context) {
 	})
 }
 
-// message shows a state in the middle of a page: a glyph in a tonal shape,
-// what happened, and a button when there is something to do about it.
 func (a *app) message(c *ui.Context, icon *ui.SVG, title, body, action string, run func()) {
 	sc := m3.Of(c).Scheme
 	ui.Column(c).FillWidth().Center().Gap(12).Padding(56, 32).Children(func() {
@@ -349,11 +282,6 @@ func (a *app) message(c *ui.Context, icon *ui.SVG, title, body, action string, r
 	})
 }
 
-// sheetCorners paints the window tint over the four corners of the sheet,
-// above whatever the page draws there, so the page seems to be cut by the
-// sheet's rounded edge without a clip, whose mask is as large as the window.
-// These decorative masks must not take pointer events from controls beneath
-// them.
 func sheetCorners(c *ui.Context, tint ui.Color) {
 	n := float32(m3.ExtraLarge) * sheetReach
 	for i, corner := range sheetCornerShapes {
@@ -371,23 +299,14 @@ func sheetCorners(c *ui.Context, tint ui.Color) {
 	}
 }
 
-// sheetReach is how far a corner of the sheet reaches along each edge, in
-// radii: 1 for a circular corner and 1.528665 for the continuous corner macOS
-// draws.
 const continuousCornerReach = 1.528665
 
 var sheetReach = map[bool]float32{false: 1, true: continuousCornerReach}[runtime.GOOS == "darwin"]
 
-// sheetCornerShapes are the four pieces that cover what lies outside the
-// rounded corners of the sheet: top left, top right, bottom left and bottom
-// right.
 var sheetCornerShapes = [4]*ui.SVG{
 	cornerShape(false, false), cornerShape(true, false), cornerShape(false, true), cornerShape(true, true),
 }
 
-// cornerShape draws the area outside one rounded corner: the corner's square
-// less the quarter of the sheet that stays. Its curve follows the sheet's, a
-// circle or the continuous corner's Bézier segments.
 func cornerShape(right, bottom bool) *ui.SVG {
 	reach := 100 * float64(sheetReach)
 	point := func(x, y float64) string {
@@ -401,14 +320,13 @@ func cornerShape(right, bottom bool) *ui.SVG {
 	}
 	path := "M" + point(0, 0)
 	if runtime.GOOS == "darwin" {
-		// The segments of the corner macOS draws, in units of its radius.
 		path += "L" + point(reach, 0) +
 			"C" + point(108.849323, 0) + " " + point(86.840694, 0) + " " + point(63.149399, 7.491139) +
 			"C" + point(37.282383, 16.905956) + " " + point(16.905956, 37.282383) + " " + point(7.491139, 63.149399) +
 			"C" + point(0, 86.840694) + " " + point(0, 108.849323) + " " + point(0, reach)
 	} else {
-		const k = 0.5522847498 // a quarter circle as one Bézier curve
-		path += "L" + point(100, 0) + "C" + point(100*(1-k), 0) + " " + point(0, 100*(1-k)) + " " + point(0, 100)
+		const quarterCircleBezier = 0.5522847498
+		path += "L" + point(100, 0) + "C" + point(100*(1-quarterCircleBezier), 0) + " " + point(0, 100*(1-quarterCircleBezier)) + " " + point(0, 100)
 	}
 	path += "Z"
 	size := strconv.FormatFloat(reach, 'f', 3, 64)

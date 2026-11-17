@@ -1,6 +1,3 @@
-// Package keymap is the app's keyboard shortcuts: what each one does, its
-// default key, how a key is written in the settings file and how it is
-// labelled on each platform.
 package keymap
 
 import (
@@ -10,11 +7,8 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Action is something a shortcut does. The value is what the settings file
-// calls it, so it never changes once released.
 type Action string
 
-// The actions with a shortcut.
 const (
 	PlayPause   Action = "playPause"
 	Previous    Action = "previous"
@@ -36,17 +30,12 @@ const (
 	ResetZoom   Action = "resetZoom"
 )
 
-// Binding is a key with the modifiers held for it. Cmd is the platform's
-// shortcut modifier (Command on macOS, Control elsewhere) and is kept apart
-// from the others, so a binding means the same on every platform and a
-// settings file can move between them.
 type Binding struct {
 	Cmd  bool
-	Mods ui.Modifiers // the modifiers besides Cmd
+	Mods ui.Modifiers
 	Key  ui.Key
 }
 
-// Modifiers returns the modifiers to hold for the binding on this platform.
 func (b Binding) Modifiers() ui.Modifiers {
 	if b.Cmd {
 		return b.Mods | ui.Cmd
@@ -54,29 +43,21 @@ func (b Binding) Modifiers() ui.Modifiers {
 	return b.Mods
 }
 
-// FromEvent is the binding of a key pressed with mods held. The platform's
-// shortcut modifier becomes Cmd.
 func FromEvent(mods ui.Modifiers, key ui.Key) Binding {
 	b := Binding{Mods: mods &^ ui.Cmd, Key: key}
 	b.Cmd = mods&ui.Cmd != 0
 	return b
 }
 
-// Info describes an action for the settings page.
 type Info struct {
-	Action Action
-	Title  string
-	// Group is the heading it is listed under.
-	Group string
-	// Defaults are the keys an unchanged action answers to. Changing the
-	// shortcut replaces all of them.
+	Action   Action
+	Title    string
+	Group    string
 	Defaults []Binding
 }
 
 func cmd(key ui.Key) Binding { return Binding{Cmd: true, Key: key} }
 
-// Actions lists every action with a shortcut, in the order the settings page
-// shows them.
 var Actions = []Info{
 	{PlayPause, "Play or pause", "Playback", []Binding{{Key: ui.KeySpace}}},
 	{Previous, "Previous track", "Playback", []Binding{{Cmd: true, Mods: ui.Shift, Key: ui.KeyJ}}},
@@ -98,11 +79,8 @@ var Actions = []Info{
 	{ResetZoom, "Actual size", "Window", []Binding{cmd(ui.Key0)}},
 }
 
-// Groups are the headings of Actions, in order.
 var Groups = []string{"Playback", "Navigation", "Window"}
 
-// Title is the name of an action, or its ID for one this version does not
-// know.
 func Title(a Action) string {
 	for _, info := range Actions {
 		if info.Action == a {
@@ -112,16 +90,10 @@ func Title(a Action) string {
 	return string(a)
 }
 
-// Map is the shortcuts in force: the defaults, with what the user changed.
 type Map struct {
 	bindings map[Action][]Binding
 }
 
-// New returns the shortcuts the overrides change, written as String writes a
-// binding, by action ID. An override that names no action, or reads as no
-// key, is ignored and the action keeps its default: the settings file is
-// edited by hand, so that is not an error. Two actions may be given the same
-// key there; the settings page is what keeps that from happening (Conflict).
 func New(overrides map[string]string) Map {
 	m := Map{bindings: make(map[Action][]Binding, len(Actions))}
 	for _, info := range Actions {
@@ -141,10 +113,8 @@ func New(overrides map[string]string) Map {
 	return m
 }
 
-// Bindings are the keys that do an action.
 func (m Map) Bindings(a Action) []Binding { return m.bindings[a] }
 
-// Primary is the key shown for an action, and false when it has none.
 func (m Map) Primary(a Action) (Binding, bool) {
 	if bs := m.bindings[a]; len(bs) > 0 {
 		return bs[0], true
@@ -152,7 +122,6 @@ func (m Map) Primary(a Action) (Binding, bool) {
 	return Binding{}, false
 }
 
-// Conflict reports the action other than a that already answers to b.
 func (m Map) Conflict(a Action, b Binding) (Action, bool) {
 	for _, info := range Actions {
 		if info.Action == a {
@@ -167,7 +136,6 @@ func (m Map) Conflict(a Action, b Binding) (Action, bool) {
 	return "", false
 }
 
-// IsDefault reports whether b is how the action is bound out of the box.
 func IsDefault(a Action, b Binding) bool {
 	for _, info := range Actions {
 		if info.Action == a {
@@ -177,7 +145,6 @@ func IsDefault(a Action, b Binding) bool {
 	return false
 }
 
-// Label writes the primary key of an action for display, as Binding.Label.
 func (m Map) Label(a Action, goos string) string {
 	if b, ok := m.Primary(a); ok {
 		return b.Label(goos)
@@ -185,7 +152,6 @@ func (m Map) Label(a Action, goos string) string {
 	return "—"
 }
 
-// Labels writes every key of an action for display, joined by " / ".
 func (m Map) Labels(a Action, goos string) string {
 	bs := m.bindings[a]
 	parts := make([]string, len(bs))
@@ -198,11 +164,8 @@ func (m Map) Labels(a Action, goos string) string {
 	return strings.Join(parts, " / ")
 }
 
-// OS is the platform the app runs on, for Label.
 func OS() string { return runtime.GOOS }
 
-// Label writes the binding as the platform writes shortcuts: "⌘ K" on macOS
-// with the modifier symbols of its menus, "Ctrl+K" on Linux and Windows.
 func (b Binding) Label(goos string) string {
 	key := keyLabel(b.Key)
 	if goos == "darwin" {
@@ -244,10 +207,8 @@ func (b Binding) Label(goos string) string {
 	return strings.Join(append(parts, key), "+")
 }
 
-// Glyph names a key that is drawn as a picture rather than written.
 type Glyph uint8
 
-// The keys drawn as pictures.
 const (
 	GlyphNone Glyph = iota
 	GlyphLeft
@@ -259,7 +220,6 @@ const (
 	GlyphEnter
 )
 
-// Part is one piece of what to press: a word or symbol, or a Glyph.
 type Part struct {
 	Text  string
 	Glyph Glyph
@@ -270,10 +230,6 @@ var keyGlyphs = map[ui.Key]Glyph{
 	ui.KeySpace: GlyphSpace, ui.KeyEnter: GlyphEnter,
 }
 
-// HintParts is what to press once the shortcut modifier is down, for a badge
-// on a button: the other modifiers, then the key, with arrows, Shift, Space
-// and Enter as glyphs. Cmd is left out, as it is already down. A binding
-// without Cmd cannot be triggered by the held modifier, so has no hint.
 func (b Binding) HintParts(goos string) []Part {
 	if !b.Cmd {
 		return nil
@@ -312,7 +268,6 @@ func pick[T any](ok bool, yes, no T) T {
 	return no
 }
 
-// CmdLabel writes the platform's shortcut modifier alone: "⌘" or "Ctrl".
 func CmdLabel(goos string) string {
 	if goos == "darwin" {
 		return "⌘"
@@ -320,7 +275,6 @@ func CmdLabel(goos string) string {
 	return "Ctrl"
 }
 
-// String writes the binding as the settings file does: "Shift+Cmd+K".
 func (b Binding) String() string {
 	var parts []string
 	if b.Mods&ui.Shift != 0 {
@@ -341,7 +295,6 @@ func (b Binding) String() string {
 	return strings.Join(append(parts, keyName(b.Key)), "+")
 }
 
-// Parse reads what String writes, in any case and order of modifiers.
 func Parse(text string) (Binding, bool) {
 	parts := strings.Split(text, "+")
 	key, ok := keyByName[strings.ToLower(parts[len(parts)-1])]
@@ -365,10 +318,8 @@ func Parse(text string) (Binding, bool) {
 			return Binding{}, false
 		}
 	}
-	// Control on Linux is Cmd already: keep one spelling of one key.
 	b = FromEvent(b.Modifiers(), key)
 	return b, true
 }
 
-// Known reports whether a key can be bound.
 func Known(key ui.Key) bool { _, ok := nameByKey[key]; return ok }

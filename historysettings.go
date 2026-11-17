@@ -9,8 +9,6 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// historyCard is where the user sees what the listening history holds, and
-// clears it. Clearing asks twice: it cannot be undone.
 func (a *app) historyCard(c *ui.Context) {
 	a.settingsCard(c, "Listening history", m3.IconHistory, func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {

@@ -119,8 +119,6 @@ func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	}
 }
 
-// The mini player keeps the speed in its overflow menu, so no speed button
-// takes a place beside the volume slider.
 func TestMiniPlayerPicksThePlaybackSpeedFromItsOverflowMenu(t *testing.T) {
 	a := newTestApp(t)
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
@@ -234,8 +232,6 @@ func TestRelatedPlaylistOpensItsPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	// A playlist among the related songs opens its page rather than trying
-	// to play, and the song goes on playing.
 	if err := tt.Click("Related Playlist"); err != nil {
 		t.Fatal(err)
 	}
@@ -292,8 +288,6 @@ func TestPlayingFromRelatedQueuesOnlySongs(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	// The songs play with each other as the queue; the playlist and the
-	// artist between them are not queued.
 	if err := tt.Click("First Related Song"); err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +361,6 @@ func TestEpisodeShowsDetailsInsteadOfLyrics(t *testing.T) {
 	}
 }
 
-// redArt answers every picture with a solid red PNG.
 type redArt struct{}
 
 func (redArt) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -393,7 +386,6 @@ func TestMiniPlayerAloneTakesTheArtworkColour(t *testing.T) {
 	a.settings.Dynamic = true
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
 	a.current = a.queue.current()
-	// A size-templated URL names a different picture for every size asked.
 	a.current.Thumbnail = "https://lh3.googleusercontent.com/cover=w544-h544"
 	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
 	for range 200 {
@@ -406,12 +398,8 @@ func TestMiniPlayerAloneTakesTheArtworkColour(t *testing.T) {
 	t.Fatal("the mini player never took a colour from the artwork")
 }
 
-// The window asks for a cover at the size it draws it, which a display at
-// scale 1 makes smaller than the player's own. The theme still has to follow
-// the cover the window shows.
 func TestWindowTakesTheArtworkColourAtTheDisplayScale(t *testing.T) {
 	a := newTestApp(t)
-	// A display at scale 1 asks for the player's 64-point cover at 64 pixels.
 	a.displayScale = 1
 	a.thumbs = artwork.New(&http.Client{Transport: redArt{}}, func() {})
 	a.settings.Dynamic = true
@@ -430,8 +418,6 @@ func TestWindowTakesTheArtworkColourAtTheDisplayScale(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	// The frame that took the colour draws the glide from it, rather than
-	// leaving the next theme to a repaint nothing asked for.
 	colour := a.theme.dynamic
 	if !a.theme.dynamicOK || colour.R < 150 || colour.G > 40 || colour.B > 40 {
 		t.Fatalf("the player's red cover gave %v (taken = %v)", colour, a.theme.dynamicOK)
@@ -446,9 +432,6 @@ func TestWindowTakesTheArtworkColourAtTheDisplayScale(t *testing.T) {
 	}
 }
 
-// A restored, paused queue lets the user seek through timed lyrics without a
-// wall clock or network. The notch geometry represents a Retina display above
-// and to the left of the primary display, in logical points.
 func notchTestApp(t *testing.T) *app {
 	t.Helper()
 	a, _ := playbackApp(t)
@@ -476,8 +459,6 @@ func TestMacDesktopOffersNotchAndBackgroundPlayback(t *testing.T) {
 		if !tt.HasText("Track notifications") || !tt.HasText("Menu bar icon") || tt.HasText("Keep running when closed") {
 			t.Fatal("non-Mac desktop controls changed")
 		}
-		// Click finds the row title first and Space plays or pauses, so
-		// toggle the switch from the keyboard with Enter.
 		tabTo(t, tt, "Menu bar icon")
 		tt.Key(0, ui.KeyEnter)
 		a.saver.Wait()
@@ -525,8 +506,6 @@ func TestNotchBackgroundDefaultCanBeOverriddenAndSaved(t *testing.T) {
 			}
 			tt.Type("desktop")
 			tt.Advance(time.Second)
-			// The first click reverses the displayed default: a supported notch
-			// starts on, while a Mac without one still starts off.
 			if err := tt.Click("Keep running in background"); err != nil {
 				t.Fatal(err)
 			}
@@ -535,7 +514,6 @@ func TestNotchBackgroundDefaultCanBeOverriddenAndSaved(t *testing.T) {
 			if saved.CloseToTray == nil || *saved.CloseToTray == notchAvailable {
 				t.Fatal("background switch did not reflect the notch default or save its override")
 			}
-			// A saved preference wins even after reconnecting a notched display.
 			a.settings = saved
 			a.notch.cutout.Width = 180
 			tt.Frame()
@@ -719,7 +697,6 @@ func TestNotchLyricsFollowSeekingAndTrackChanges(t *testing.T) {
 	if err := tt.Click("Next"); err != nil {
 		t.Fatal(err)
 	}
-	// Returning to a song may use either lyric cache; collapsing must not fetch.
 	callsBeforeClose := calls
 	if err := tt.Click("Close notch lyrics from playback indicator"); err != nil {
 		t.Fatal(err)
@@ -890,8 +867,6 @@ func TestNotchDisplayChangesRestoreTheMenuBarWithoutSaving(t *testing.T) {
 	if err := panel.Click("Open notch lyrics"); err != nil {
 		t.Fatal(err)
 	}
-	// A display notification removes the built-in cutout (for example in
-	// clamshell mode). The saved preference must survive the temporary loss.
 	a.setNotchCutout(mygo.Rectangle{})
 	panel.Frame()
 	main.Frame()
@@ -1027,7 +1002,6 @@ func TestNotchProgressSeeksWithoutInterferenceFromTheMainPlayer(t *testing.T) {
 	if !found || line.X < 268 || line.Y < 38 || line.Y+line.H > 174 {
 		t.Fatal("reduced motion did not place the active lyric in its column")
 	}
-	// A track whose duration is unknown cannot accept a seek.
 	a.total = 0
 	tt.Frame()
 	version := a.seekVersion
@@ -1045,7 +1019,6 @@ func TestNotchCollapsesTwoSecondsAfterPointerLeaves(t *testing.T) {
 	}
 	nt.SetSize(480, 190)
 	nt.Advance(300 * time.Millisecond)
-	// Empty space inside the panel counts as inside, not just controls.
 	nt.Move(240, 60)
 	nt.Advance(5 * time.Second)
 	if !a.notch.expanded {
@@ -1144,8 +1117,6 @@ func TestNotchAutoCollapseWaitsAfterKeyboardSeeking(t *testing.T) {
 	}
 	nt.SetSize(480, 190)
 	nt.Advance(300 * time.Millisecond)
-	// Mouse focus has no visible keyboard focus ring, but subsequent arrow
-	// keys must still postpone closing while the user seeks.
 	if err := nt.Click("Notch position"); err != nil {
 		t.Fatal(err)
 	}
@@ -1175,12 +1146,12 @@ func TestNotchCompactWingsCompleteHeldClicks(t *testing.T) {
 		}
 		x, y := r.X+r.W/2, r.Y+r.H/2
 		nt.Press(x, y)
-		nt.SetFocused(true) // AppKit can make the panel key on mouse down.
+		nt.SetFocused(true)
 		nt.Advance(500 * time.Millisecond)
 		if a.notch.expanded {
 			t.Fatal("press opened the notch before release")
 		}
-		nt.Release(142, 19) // Cancel over the non-interactive camera gap.
+		nt.Release(142, 19)
 		if a.notch.expanded {
 			t.Fatal("cancelled press opened the notch")
 		}
@@ -1391,7 +1362,6 @@ func TestNotchOpenMeiroCollapsesWithoutChangingPlayback(t *testing.T) {
 		if bounds.Width != cutoutWidth+2*notchWing || bounds.Height != 38 || a.notch.transitioning || tt.HasText("Open Meiro") || tt.HasText("Keep these lyrics") || tt.HasText("Next") {
 			t.Fatalf("%s: opening Meiro left an expanded notch", input)
 		}
-		// The headless desktop is nil; native Show/Restore/Focus needs macOS.
 		if a.current.VideoID != "a" || a.player.Playing() || a.playbackPosition() != position || a.seekVersion != seekVersion || calls != 1 || a.nowPlaying.open || a.router.Path() != "/home" {
 			t.Fatalf("%s: opening Meiro changed playback, the main page, or fetched lyrics again", input)
 		}
@@ -1499,7 +1469,6 @@ func TestEpisodeRelatedTabListsEpisodes(t *testing.T) {
 	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
 	a.setMiniShown(true)
 	tt.Frame()
-	// Its Related tab is of the page type episodes have, not songs'.
 	if err := tt.Click("Related"); err != nil {
 		t.Fatal(err)
 	}

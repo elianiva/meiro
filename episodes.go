@@ -10,9 +10,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// episodeProgressSync owns one account progress session. It is main-thread
-// state; network requests capture its pointer and publish results through
-// app.update.
 type episodeProgressSync struct {
 	item         youtube.MusicItem
 	client       *youtube.Client
@@ -29,16 +26,12 @@ type episodeProgressSync struct {
 	finishAt     time.Duration
 }
 
-// episodeProgressInterval bounds how often the account receives a heartbeat.
 const episodeProgressInterval = 20 * time.Second
 
-// episodeProgressTimeout bounds starting a tracking session or sending a
-// watch-time interval.
+const episodeSeekTolerance = 2 * time.Second
+
 const episodeProgressTimeout = 15 * time.Second
 
-// reportPlayback tells YouTube Music the signed-in account started item, so
-// it lands in the history that the recommendations are made from. Nothing on
-// screen depends on it, and a failure costs only a worse suggestion.
 func (a *app) reportPlayback(item youtube.MusicItem) {
 	if !a.signedIn() {
 		return
@@ -53,9 +46,6 @@ func (a *app) reportPlayback(item youtube.MusicItem) {
 	})
 }
 
-// episodeProgressPosition turns YouTube's percentage into a resume position
-// after audio resolution supplies the actual duration. Ignore nearly-new and
-// nearly-finished positions, as the local episode resume does.
 func episodeProgressPosition(item youtube.MusicItem, duration time.Duration) time.Duration {
 	if !item.IsEpisode() || item.ProgressPercent <= 0 || item.ProgressPercent >= 100 || duration <= 0 {
 		return 0
@@ -67,9 +57,6 @@ func episodeProgressPosition(item youtube.MusicItem, duration time.Duration) tim
 	return position
 }
 
-// beginEpisodeProgress starts the account's tracking session without holding
-// up audio. A result for an episode that has already ended is still used to
-// send its final interval, but cannot replace the current episode's session.
 func (a *app) beginEpisodeProgress(item youtube.MusicItem, position, duration time.Duration) {
 	if !a.signedIn() || !item.IsEpisode() {
 		return
@@ -108,9 +95,6 @@ func (a *app) beginEpisodeProgress(item youtube.MusicItem, position, duration ti
 	})
 }
 
-// syncEpisodeProgress sends a watch-time interval after each 20 seconds of
-// actual playback. Position jumps and seeks reset its baseline, so skipped
-// audio is never attributed to the account.
 func (a *app) syncEpisodeProgress() {
 	state := a.episodeProgress
 	if state == nil || state.finished || state.session == nil || state.pending || !a.player.Playing() {
@@ -125,7 +109,7 @@ func (a *app) syncEpisodeProgress() {
 	elapsed := now.Sub(state.lastSample)
 	advanced := position - state.lastPosition
 	state.lastPosition, state.lastSample = position, now
-	if advanced < 0 || advanced > elapsed+2*time.Second {
+	if advanced < 0 || advanced > elapsed+episodeSeekTolerance {
 		state.lastReported = position
 		return
 	}
@@ -154,9 +138,6 @@ func (a *app) syncEpisodeProgress() {
 	})
 }
 
-// finishEpisodeProgress closes the current interval when an episode pauses,
-// ends or is replaced. During shutdown it waits briefly so the final position
-// is not lost when the window's update loop stops.
 func (a *app) finishEpisodeProgress(wait bool) {
 	state := a.episodeProgress
 	if state == nil {
@@ -196,8 +177,6 @@ func (a *app) finishEpisodeProgress(wait bool) {
 	a.sendEpisodeProgressFinal(state)
 }
 
-// sendEpisodeProgressFinal sends the final interval once, including when the
-// session-start or heartbeat request completed after the episode was left.
 func (a *app) sendEpisodeProgressFinal(state *episodeProgressSync) {
 	if state.session == nil || state.finalSent {
 		return
@@ -213,8 +192,6 @@ func (a *app) sendEpisodeProgressFinal(state *episodeProgressSync) {
 	})
 }
 
-// leaveEpisode keeps where listening stopped in the current track, when it is
-// a podcast episode left part-way through. It runs as the track is left.
 func (a *app) leaveEpisode() {
 	item := a.current
 	if !item.IsEpisode() {
@@ -229,9 +206,6 @@ func (a *app) leaveEpisode() {
 	a.episodes = a.episodes[:min(len(a.episodes), playstate.MaxEpisodes)]
 }
 
-// takeEpisode returns where listening to an episode stopped, or 0, and
-// forgets it: from here the episode is the current track, whose place the
-// saved queue keeps.
 func (a *app) takeEpisode(videoID string) time.Duration {
 	i := slices.IndexFunc(a.episodes, func(e playstate.Episode) bool { return e.VideoID == videoID })
 	if i < 0 {

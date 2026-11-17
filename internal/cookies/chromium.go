@@ -6,7 +6,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/pbkdf2"
-	"crypto/sha1" //nolint:gosec // Chromium derives its cookie key with PBKDF2-HMAC-SHA1
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -23,16 +23,8 @@ import (
 	"github.com/elianiva/meiro/internal/proc"
 )
 
-// A Chromium browser encrypts its cookies with a key it keeps in the macOS
-// keychain. yt-dlp finds that key under the name "<browser> Safe Storage",
-// which browsers with a key of their own, Helium among them, do not use; so
-// for those the app reads the cookie database itself.
-
-// keychainKey names a browser's key in the macOS keychain.
 type keychainKey struct{ service, account string }
 
-// chromiumCookie reads the cookie of the YouTube session in a Chromium
-// profile: the profile's directory, and where its browser keeps the key.
 func chromiumCookie(ctx context.Context, profile string, key keychainKey) (string, error) {
 	aesKey, err := chromiumKey(ctx, key)
 	if err != nil {
@@ -41,8 +33,6 @@ func chromiumCookie(ctx context.Context, profile string, key keychainKey) (strin
 	return readChromiumCookies(ctx, profile, aesKey)
 }
 
-// readChromiumCookies reads the YouTube cookies of a profile, decrypting them
-// with the key of the browser.
 func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (string, error) {
 	sqlite, err := exec.LookPath("sqlite3")
 	if err != nil {
@@ -58,8 +48,6 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 	if database == "" {
 		return "", fmt.Errorf("%s has no cookie database", profile)
 	}
-	// SQLite's backup command takes a consistent snapshot, including committed
-	// WAL contents, instead of racing the browser while copying database files.
 	directory, err := proc.MkdirTemp("meiro-cookies-")
 	if err != nil {
 		return "", err
@@ -114,8 +102,7 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 		if host != "youtube.com" && !strings.HasSuffix(host, ".youtube.com") {
 			continue
 		}
-		// Chromium counts expiry in microseconds since 1601.
-		if row.Expires > 0 && time.Unix(row.Expires/1_000_000-11_644_473_600, 0).Before(now) {
+		if row.Expires > 0 && time.Unix(row.Expires/1_000_000-windowsEpochToUnixSeconds, 0).Before(now) {
 			continue
 		}
 		value := row.Value
@@ -141,9 +128,6 @@ func readChromiumCookies(ctx context.Context, profile string, aesKey []byte) (st
 	return strings.Join(pairs, "; "), nil
 }
 
-// chromiumKey derives the key a Chromium browser on macOS encrypts its
-// cookies with from the password it keeps in the keychain, which asks the
-// user before it answers.
 func chromiumKey(ctx context.Context, key keychainKey) ([]byte, error) {
 	out, err := proc.Command(ctx, "security", "find-generic-password", "-w", "-s", key.service, "-a", key.account).Output()
 	if err != nil {
@@ -152,16 +136,18 @@ func chromiumKey(ctx context.Context, key keychainKey) ([]byte, error) {
 	return deriveChromiumKey(strings.TrimRight(string(out), "\n"))
 }
 
-// deriveChromiumKey is the key Chromium encrypts cookies with on macOS, from
-// the password in the keychain. The values are from Chromium's
-// os_crypt_mac.mm.
+const (
+	chromiumKeySalt       = "saltysalt"
+	chromiumKeyIterations = 1003
+	chromiumKeyLength     = 16
+)
+
+const windowsEpochToUnixSeconds = 11_644_473_600
+
 func deriveChromiumKey(password string) ([]byte, error) {
-	return pbkdf2.Key(sha1.New, password, []byte("saltysalt"), 1003, 16)
+	return pbkdf2.Key(sha1.New, password, []byte(chromiumKeySalt), chromiumKeyIterations, chromiumKeyLength)
 }
 
-// decryptChromium decrypts one cookie value of a Chromium browser on macOS:
-// "v10", then AES-128-CBC with a fixed IV. From version 24 of the database
-// the plaintext starts with the SHA-256 of the cookie's host.
 func decryptChromium(key, encrypted []byte, host string, version int) (string, bool) {
 	if len(encrypted) < 3 || string(encrypted[:3]) != "v10" {
 		return "", false

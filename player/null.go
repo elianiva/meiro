@@ -6,10 +6,12 @@ import (
 	"time"
 )
 
-// WithNullAudio makes the player listen to its stream without a sound card:
-// it drains the decoded audio at twenty times real time and plays nothing.
-// It lets a headless machine run the whole decode path, and a test finish a
-// track in a fraction of its length.
+const (
+	nullChunkDuration = 100 * time.Millisecond
+	nullChunkInterval = 5 * time.Millisecond
+	nullPausedPoll    = 2 * time.Millisecond
+)
+
 func WithNullAudio() Option {
 	return withAudio(&sharedAudio{open: func() (device, error) { return nullDevice{}, nil }})
 }
@@ -40,7 +42,7 @@ func (o *nullOutput) Play() {
 }
 
 func (o *nullOutput) listen() {
-	chunk := make([]byte, bytesPerSecond/10)
+	chunk := make([]byte, bytesPerSecond*int(nullChunkDuration)/int(time.Second))
 	for {
 		o.mu.Lock()
 		paused, quit := o.paused, o.quit
@@ -49,7 +51,7 @@ func (o *nullOutput) listen() {
 			return
 		}
 		if paused {
-			time.Sleep(2 * time.Millisecond)
+			time.Sleep(nullPausedPoll)
 			continue
 		}
 		if _, err := io.ReadFull(o.r, chunk); err != nil {
@@ -58,7 +60,7 @@ func (o *nullOutput) listen() {
 			o.mu.Unlock()
 			return
 		}
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(nullChunkInterval)
 	}
 }
 

@@ -1,4 +1,3 @@
-// Package ytdlp uses yt-dlp to resolve audio URLs and import browser cookies.
 package ytdlp
 
 import (
@@ -22,33 +21,27 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// ErrMissing reports that yt-dlp is neither inside the app nor on PATH.
+const (
+	skipManifestsArg       = "youtube:skip=hls,dash"
+	visionosClientArg      = "player_client=visionos"
+	premiumDetectedMessage = "Detected YouTube Premium subscription"
+	premiumProbeVideoID    = "jNQXAC9IVRw"
+)
+
 var ErrMissing = errors.New("playing needs ffmpeg and yt-dlp on PATH")
 
-// Run describes one yt-dlp resolve, for the playback details.
 type Run struct {
-	// Args are the arguments yt-dlp ran with, its cookie file shown by name
-	// only.
-	Args    []string
-	Elapsed time.Duration
-	// JSRuntime is the runtime that solved YouTube's challenge, or "none".
+	Args      []string
+	Elapsed   time.Duration
 	JSRuntime string
 }
 
-// Resolve asks yt-dlp for a direct audio URL of a track and its length. It
-// resolves anonymously unless cookie, a Cookie header for YouTube, is given:
-// then yt-dlp signs in with it, which is what gives a YouTube Premium account
-// its better audio. A signed-in resolve needs the solver, so it skips the
-// js-less attempt.
 func Resolve(ctx context.Context, videoID, cookie string) (string, time.Duration, Run, error) {
 	if cookie != "" {
 		return resolve(ctx, videoID, false, cookie)
 	}
-	// The visionos client returns anonymous audio URLs without a challenge.
-	// yt-dlp's default also asks the web client, which makes it run the solver
-	// under QuickJS for about seven seconds of CPU, so try visionos alone first
-	// and fall back to the full set if YouTube stops serving it.
-	streamURL, total, run, err := resolve(ctx, videoID, true, "")
+	const withoutSolver = true
+	streamURL, total, run, err := resolve(ctx, videoID, withoutSolver, "")
 	if err == nil {
 		return streamURL, total, run, nil
 	}
@@ -66,11 +59,9 @@ func resolve(ctx context.Context, videoID string, jsless bool, cookie string) (s
 	}
 	jsRuntime := "none"
 	var runtimeArgs []string
-	// The player API already lists the audio formats; the HLS and DASH
-	// manifests only cost two more requests.
-	extractorArgs := "youtube:skip=hls,dash"
+	extractorArgs := skipManifestsArg
 	if jsless {
-		extractorArgs += ";player_client=visionos"
+		extractorArgs += ";" + visionosClientArg
 	} else {
 		jsRuntime, runtimeArgs = jsRuntimeArgs()
 	}
@@ -114,8 +105,6 @@ func resolve(ctx context.Context, videoID string, jsless bool, cookie string) (s
 	return streamURL, durationFromURL(streamURL), run, nil
 }
 
-// cookieFile writes a Cookie header where yt-dlp can read it. The cookies are
-// a credential: remove deletes them, and runs as soon as yt-dlp has ended.
 func cookieFile(cookie string) (file string, remove func(), err error) {
 	directory, err := proc.MkdirTemp("meiro-cookies-")
 	if err != nil {
@@ -129,10 +118,6 @@ func cookieFile(cookie string) (file string, remove func(), err error) {
 	return file, func() { fsutil.RemoveAll(directory) }, nil
 }
 
-// HasPremium reports whether YouTube treats the account behind cookie as a
-// YouTube Premium subscriber. yt-dlp notices it while it reads a watch page
-// and says so in its debug output, so this runs it on one page, verbosely,
-// and reads that.
 func HasPremium(ctx context.Context, cookie string) (bool, error) {
 	path, err := proc.Tool("yt-dlp")
 	if err != nil {
@@ -144,17 +129,15 @@ func HasPremium(ctx context.Context, cookie string) (bool, error) {
 	}
 	defer remove()
 	output, runErr := proc.Command(ctx, path, "-v", "--simulate", "--no-playlist", "--no-warnings",
-		"--cookies", file, "--extractor-args", "youtube:skip=hls,dash;player_client=visionos",
-		youtube.WatchURL("jNQXAC9IVRw")).CombinedOutput()
-	if strings.Contains(string(output), "Detected YouTube Premium subscription") {
+		"--cookies", file, "--extractor-args", skipManifestsArg+";"+visionosClientArg,
+		youtube.WatchURL(premiumProbeVideoID)).CombinedOutput()
+	if strings.Contains(string(output), premiumDetectedMessage) {
 		return true, nil
 	}
 	if ctx.Err() != nil {
 		return false, ctx.Err()
 	}
 	if runErr != nil {
-		// The page was read before any format error, so a failed run that
-		// printed no detection may just not have got that far.
 		if reason := LastError(string(output)); reason != "" {
 			return false, errors.New(reason)
 		}
@@ -163,7 +146,6 @@ func HasPremium(ctx context.Context, cookie string) (bool, error) {
 	return false, nil
 }
 
-// netscape writes a Cookie header as the cookies.txt file yt-dlp reads.
 func netscape(header string) string {
 	expires := time.Now().AddDate(1, 0, 0).Unix()
 	var out strings.Builder
@@ -178,9 +160,6 @@ func netscape(header string) string {
 	return out.String()
 }
 
-// BrowserCookie has yt-dlp read the cookies of one browser, or profile, as
-// yt-dlp's --cookies-from-browser names it, and returns the Cookie header for
-// YouTube they make. It returns "" when the browser holds none.
 func BrowserCookie(ctx context.Context, spec string, parse func(netscape string) (string, error)) (string, error) {
 	path, err := proc.Tool("yt-dlp")
 	if err != nil {
@@ -190,12 +169,8 @@ func BrowserCookie(ctx context.Context, spec string, parse func(netscape string)
 	if err != nil {
 		return "", err
 	}
-	// The cookies are a credential: the directory goes as soon as they have
-	// been read.
 	defer fsutil.RemoveAll(directory)
 	file := filepath.Join(directory, "cookies.txt")
-	// yt-dlp needs a URL to get as far as loading the cookies, and saves them
-	// when it ends, whether or not it found anything to download.
 	output, runErr := proc.Command(ctx, path,
 		"--cookies-from-browser", spec, "--cookies", file,
 		"--skip-download", "--no-warnings", "--no-playlist", "--playlist-items", "0",
@@ -218,7 +193,6 @@ func BrowserCookie(ctx context.Context, spec string, parse func(netscape string)
 	return "", nil
 }
 
-// LastError returns the message of the last error yt-dlp printed.
 func LastError(output string) string {
 	reason := ""
 	for line := range strings.SplitSeq(output, "\n") {
@@ -229,12 +203,6 @@ func LastError(output string) string {
 	return reason
 }
 
-// jsRuntimeArgs names the JavaScript runtime yt-dlp should use to solve
-// YouTube's challenges, and the arguments that enable it. yt-dlp ships the
-// EJS solver scripts but needs a runtime to run them. A JIT runtime already
-// on PATH is several times cheaper in CPU than QuickJS, which only
-// interprets the solver. The app still ships QuickJS as the fallback so
-// playing works on a machine with neither.
 func jsRuntimeArgs() (string, []string) {
 	jsRuntime.mu.Lock()
 	defer jsRuntime.mu.Unlock()
@@ -242,8 +210,6 @@ func jsRuntimeArgs() (string, []string) {
 		return jsRuntime.name, slices.Clone(jsRuntime.args)
 	}
 	name, args := lookupJSRuntime()
-	// Only a runtime that exists is remembered, so installing one later is
-	// noticed and a missing tool is still reported on every call.
 	if args != nil {
 		jsRuntime.found, jsRuntime.name, jsRuntime.args = true, name, args
 	}
@@ -269,7 +235,6 @@ func lookupJSRuntime() (string, []string) {
 	return "none", nil
 }
 
-// durationFromURL reads the track length YouTube puts in its media URLs.
 func durationFromURL(streamURL string) time.Duration {
 	parsed, err := url.Parse(streamURL)
 	if err != nil {

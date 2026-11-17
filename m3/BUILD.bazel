@@ -21,7 +21,10 @@ go_library(
 
 go_test(
     name = "m3_test",
-    srcs = ["dialog_test.go"],
+    srcs = [
+        "dialog_test.go",
+        "slider_test.go",
+    ],
     embed = [":m3"],
     deps = ["@com_github_egoist_mygo//ui"],
 )

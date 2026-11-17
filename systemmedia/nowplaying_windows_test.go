@@ -12,8 +12,6 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// recordedNowPlaying records the calls the session makes, and wraps the
-// real NowPlaying so what it shows can be read back.
 type recordedNowPlaying struct {
 	calls   []string
 	command func(mygo.MediaCommand, time.Duration)
@@ -40,7 +38,6 @@ func (r *recordedNowPlaying) OnCommand(fn func(mygo.MediaCommand, time.Duration)
 	return func() { r.offs++ }
 }
 
-// take returns the calls since the last take.
 func (r *recordedNowPlaying) take() []string {
 	calls := r.calls
 	r.calls = nil
@@ -85,8 +82,6 @@ func TestMediaTransportPublishesTrack(t *testing.T) {
 	if info.Duration != 3*time.Minute || info.Position != 42*time.Second || info.State != mygo.PlaybackPaused {
 		t.Errorf("timeline = %v of %v, state %v", info.Position, info.Duration, info.State)
 	}
-	// Paused, the play/pause button needs Play; NowPlaying drops a play/pause
-	// whose command is not offered, so Pause goes with it for when it plays.
 	want := mygo.MediaPlay | mygo.MediaPause | mygo.MediaNext | mygo.MediaPrevious | mygo.MediaSeek
 	if info.Commands != want {
 		t.Errorf("commands = %b, want %b", info.Commands, want)
@@ -104,7 +99,6 @@ func TestMediaTransportOffersOnlyWhatStateAllows(t *testing.T) {
 	if got := shown(t).Commands; got != mygo.MediaPlay|mygo.MediaPause {
 		t.Errorf("commands = %b, want play and pause only", got)
 	}
-	// A live stream has no length to seek in.
 	state.CanSeek, state.Duration = true, 0
 	m.update(state)
 	if got := shown(t).Commands; got&mygo.MediaSeek != 0 {
@@ -135,7 +129,6 @@ func TestMediaTransportPublishesOnlyChanges(t *testing.T) {
 		t.Errorf("state = %v, want playing", got)
 	}
 
-	// Windows advances the position itself while playing.
 	state.Position += 500 * time.Millisecond
 	m.update(state)
 	if calls := np.take(); len(calls) != 0 {
@@ -258,7 +251,6 @@ func TestMediaTransportArtwork(t *testing.T) {
 		t.Errorf("artwork before load = %v", got)
 	}
 
-	// The track changes before its artwork arrives: the old one is dropped.
 	state.VideoID, state.ArtworkURL = "v2", "https://example.invalid/b.jpg"
 	m.update(state)
 	second := <-requests
@@ -276,7 +268,6 @@ func TestMediaTransportArtwork(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	// What follows keeps the artwork.
 	state.CanNext = false
 	m.update(state)
 	if got := string(shown(t).Artwork); got != "new" {

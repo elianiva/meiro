@@ -1,10 +1,7 @@
-// Package systemmedia connects app playback to the operating system's media
-// controls.
 package systemmedia
 
 import "time"
 
-// Status is the playback state published to the operating system.
 type Status string
 
 const (
@@ -13,25 +10,22 @@ const (
 	Playing Status = "Playing"
 )
 
-// Loop is what playback repeats, by the names MPRIS gives them.
 type Loop string
 
 const (
-	LoopNone     Loop = "None"     // play on, and stop at the end
-	LoopTrack    Loop = "Track"    // play the same track again
-	LoopPlaylist Loop = "Playlist" // go back to the start after the last
+	LoopNone     Loop = "None"
+	LoopTrack    Loop = "Track"
+	LoopPlaylist Loop = "Playlist"
 )
 
-// State describes the track and controls currently available to the user.
 type State struct {
-	VideoID    string
-	Title      string
-	Artist     string
-	Album      string
-	ArtworkURL string
-	Duration   time.Duration
-	Position   time.Duration
-	// SeekVersion advances on explicit seeks, including small seeks while playing.
+	VideoID     string
+	Title       string
+	Artist      string
+	Album       string
+	ArtworkURL  string
+	Duration    time.Duration
+	Position    time.Duration
 	SeekVersion uint64
 	Status      Status
 	Loop        Loop
@@ -57,10 +51,7 @@ func durationDistance(a, b time.Duration) time.Duration {
 	return b - a
 }
 
-// Controls are called when the operating system sends a media command.
 type Controls struct {
-	// Window is the app window's native handle. Windows puts the media
-	// buttons on its taskbar thumbnail; other systems do not need it.
 	Window     uintptr
 	Play       func()
 	Pause      func()
@@ -74,10 +65,7 @@ type Controls struct {
 	SetLoop    func(Loop)
 }
 
-// Session publishes state and receives commands from the operating system.
 type Session interface {
-	// Update publishes the latest player state. A failed update means the
-	// operating-system media session is no longer usable.
 	Update(State) error
 	Close() error
 }

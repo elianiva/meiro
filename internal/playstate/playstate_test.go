@@ -52,14 +52,12 @@ func TestWriterAndLoadRoundTripAndRepair(t *testing.T) {
 		t.Fatalf("loaded %+v", got)
 	}
 
-	// A hand-edited file with the current place outside the queue is no state.
 	if err := os.WriteFile(path, []byte(`{"items":[{"videoId":"a"}],"index":3,"recStart":-1}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := Load(path); !got.Empty() {
 		t.Errorf("loaded %+v from an out-of-range index", got)
 	}
-	// Tracks without an ID go, and the places follow.
 	if err := os.WriteFile(path, []byte(`{"items":[{"title":"x"},{"videoId":"a"},{"videoId":"b"}],"index":2,"recStart":2,"playNext":"gone"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}

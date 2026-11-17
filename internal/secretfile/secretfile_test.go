@@ -12,10 +12,6 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// keychain is a credential store held in memory. err, when set, is what
-// every call fails with, as a locked or missing store does. The first Get
-// signals entered, when set, and waits for release, as a store waiting for
-// the user does.
 type keychain struct {
 	secrets  map[string][]byte
 	err      error
@@ -53,8 +49,6 @@ func (k *keychain) Set(key string, value []byte) error {
 	return nil
 }
 
-// cookie is larger than the credential store keeps, as a whole browser
-// session's Cookie header can be.
 var cookie = "SAPISID=abc; " + strings.Repeat("x", 4*mygo.MaxSecretSize)
 
 func TestAnUnencryptedCredentialIsEncryptedInPlace(t *testing.T) {
@@ -80,8 +74,6 @@ func TestAnUnencryptedCredentialIsEncryptedInPlace(t *testing.T) {
 		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
 	}
 
-	// A store that lost the key, or whose user dismissed its unlock prompt,
-	// is reported rather than taken for a sign-out.
 	other := &File{Path: path, Keychain: &keychain{}, Name: "cookie"}
 	if _, err := other.Load(ctx); err == nil || errors.Is(err, ErrNotSaved) {
 		t.Errorf("without its key the file loaded %v; want an error", err)
@@ -178,10 +170,10 @@ func TestDeleteWaitsForAMigrationInProgress(t *testing.T) {
 		defer close(loaded)
 		_, _ = (&File{Path: path, Keychain: k, Name: "s"}).Load(ctx)
 	}()
-	<-entered // the migration is asking the store for the key
+	<-entered
 	deleted := make(chan error)
 	go func() { deleted <- (&File{Path: path, Keychain: k, Name: "s"}).Delete(ctx) }()
-	time.Sleep(50 * time.Millisecond) // a Delete that does not wait is done by now
+	time.Sleep(50 * time.Millisecond)
 	close(k.released)
 	<-loaded
 	if err := <-deleted; err != nil {

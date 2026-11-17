@@ -9,31 +9,19 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// persistInterval is how often the queue and position are looked at for a
-// change worth saving.
 const persistInterval = 5 * time.Second
 
-// positionStep is how far the position moves before it is saved again; a
-// queue that changes is saved at once, whatever the position.
 const positionStep = 5 * time.Second
 
-// restoreEndGuard is how near the end of a track a saved position must be to
-// start the track over instead: resuming there would end it at once.
 const restoreEndGuard = 2 * time.Second
 
-// playbackSave keeps the queue and the position between runs. Saving is
-// debounced by its writer.
 type playbackSave struct {
 	writer playstate.Writer
-	// last is what was last handed to the writer, to skip a save that would
-	// write what is already there.
 	last   queueMark
 	lastAt time.Duration
 	saved  bool
 }
 
-// queueMark is what makes one queue differ from another: the tracks in their
-// order, and the places in them.
 type queueMark struct {
 	tracks       uint64
 	index        int
@@ -43,8 +31,6 @@ type queueMark struct {
 	playlistMore string
 }
 
-// mark summarises the queue. It reads every track's ID, which is cheap
-// beside the period it is asked at.
 func (q *queue) mark() queueMark {
 	h := fnv.New64a()
 	for _, item := range q.items {
@@ -54,7 +40,6 @@ func (q *queue) mark() queueMark {
 	return queueMark{h.Sum64(), q.index, q.recStart, q.playNext, q.source, q.playlistMore}
 }
 
-// state is the queue as it is saved, with the position in the current track.
 func (q *queue) state(position time.Duration) playstate.State {
 	return playstate.State{
 		Items: q.items, Index: q.index, RecStart: q.recStart,
@@ -62,7 +47,6 @@ func (q *queue) state(position time.Duration) playstate.State {
 	}.Window()
 }
 
-// restore makes the queue what s holds, which playstate.Load has checked.
 func (q *queue) restore(s playstate.State) {
 	*q = newQueue()
 	q.items = slices.Clone(s.Items)
@@ -75,13 +59,9 @@ func (q *queue) restore(s playstate.State) {
 			q.remove(i)
 		}
 	}
-	// A queue saved before recommendations folded into it still points at the
-	// first one played: put the boundary after the track that was playing.
 	q.recStart = q.firstGeneratedFrom(q.index + 1)
 }
 
-// restorePlayback brings back the queue and the track the last run left,
-// paused where it was. Nothing plays until the user presses play.
 func (a *app) restorePlayback(path string) {
 	a.playSave.writer.Path = path
 	s := playstate.Load(path)
@@ -105,7 +85,6 @@ func (a *app) restorePlayback(path string) {
 	a.playSave.last, a.playSave.lastAt, a.playSave.saved = a.queue.mark(), position, true
 }
 
-// playbackPosition is how far into the current track playback is.
 func (a *app) playbackPosition() time.Duration {
 	switch {
 	case a.player.Active():
@@ -116,13 +95,8 @@ func (a *app) playbackPosition() time.Duration {
 	return 0
 }
 
-// persistPlayback hands the queue and position to the writer when they
-// changed since the last time. It runs on the main thread.
 func (a *app) persistPlayback() { a.savePlayback(positionStep) }
 
-// savePlayback hands them over when the queue changed or the position moved
-// by step or more. A step of 0 saves any change, as at exit, where the last
-// seconds of listening are worth keeping.
 func (a *app) savePlayback(step time.Duration) {
 	if a.current.VideoID == "" || a.queue.len() == 0 {
 		return
@@ -139,10 +113,6 @@ func (a *app) savePlayback(step time.Duration) {
 	s.writer.Save(state)
 }
 
-// episodeStartGuard is how far into an episode listening must come for the
-// place to be kept: one barely begun starts over.
 const episodeStartGuard = 30 * time.Second
 
-// episodeEndGuard is how near its end an episode counts as heard: one left
-// there starts over too, rather than with its closing seconds.
 const episodeEndGuard = time.Minute

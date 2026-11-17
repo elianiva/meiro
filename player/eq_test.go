@@ -51,7 +51,7 @@ func TestSetEQChangesFilterWithoutChangingTheDecoder(t *testing.T) {
 func TestEqualizerShapesTheChosenFrequency(t *testing.T) {
 	flat := make([]float64, EQBandCount)
 	boosted := make([]float64, EQBandCount)
-	boosted[4] = 6 // 500 Hz
+	boosted[4] = 6
 	base := sinePCM(500, time.Second)
 	nearby := sinePCM(2000, time.Second)
 	flatOutput := filteredPCM(t, base, flat)

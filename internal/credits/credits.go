@@ -1,9 +1,3 @@
-// Package credits remembers who made a track, by video ID, between runs.
-//
-// YouTube Music's lists often leave the artist out of a row, since the page
-// the row is on already says it, but the same track in another list, or the
-// track's own page, names it. Whatever names an artist is kept here, so the
-// next time a track turns up without one it is not asked for again.
 package credits
 
 import (
@@ -17,11 +11,8 @@ import (
 	"github.com/elianiva/meiro/internal/fsutil"
 )
 
-// MaxEntries bounds the cache; the oldest entries go first. An entry is a few
-// dozen bytes, so this is well under a megabyte on disk.
 const MaxEntries = 5000
 
-// Credits is who made a track and the album it is on.
 type Credits struct {
 	Artist string `json:"artist"`
 	Album  string `json:"album,omitempty"`
@@ -32,22 +23,17 @@ type entry struct {
 	Credits
 }
 
-// Cache is the credits known, safe for concurrent use. Changes are in memory
-// at once and written by a goroutine of the cache's own. The zero value keeps
-// them in memory only.
 type Cache struct {
 	path string
 
 	mu      sync.Mutex
 	known   map[string]Credits
-	order   []string // oldest first
+	order   []string
 	dirty   bool
 	running bool
 	done    chan struct{}
 }
 
-// Open reads the cache kept at path. A file that is missing or unreadable is
-// an empty cache.
 func Open(path string) *Cache {
 	c := &Cache{path: path, known: map[string]Credits{}}
 	if path == "" {
@@ -71,7 +57,6 @@ func Open(path string) *Cache {
 	return c
 }
 
-// Get is what is known of a track's credits.
 func (c *Cache) Get(id string) (Credits, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -79,8 +64,6 @@ func (c *Cache) Get(id string) (Credits, bool) {
 	return got, ok
 }
 
-// Put keeps a track's credits. Credits without an artist say nothing and are
-// not kept.
 func (c *Cache) Put(id string, credits Credits) {
 	if id == "" || credits.Artist == "" {
 		return
@@ -97,7 +80,6 @@ func (c *Cache) Put(id string, credits Credits) {
 	c.changedLocked()
 }
 
-// Len is how many tracks are known.
 func (c *Cache) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -153,7 +135,6 @@ func (c *Cache) drain(done chan struct{}) {
 	}
 }
 
-// Wait returns once what changed so far is on disk.
 func (c *Cache) Wait() {
 	c.mu.Lock()
 	done, running := c.done, c.running

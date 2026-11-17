@@ -10,44 +10,27 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// autoplayQueueLimit bounds the generated tracks a queue holds, the current
-// one and those to come; played history is dropped to stay under it.
 const autoplayQueueLimit = 100
 
-// queue is what plays: the tracks the user chose, followed by the tracks
-// auto-play generated after them, and the place of the one playing.
-//
-// Its fields are only changed by its methods, which keep them consistent:
-// index is a place in items whenever items is not empty, recStart is -1 or
-// a place in items, and every generated track in items is in generated.
 type queue struct {
-	items []youtube.MusicItem
-	index int
-	// recStart is the place of the first generated track still to play, or
-	// -1 when none is. Generated tracks before it have played, and are part
-	// of the queue rather than its recommendations.
-	recStart  int
-	generated map[string]struct{}
-	// playNext is the track the user asked to play next, which plays before
-	// the rest even after the queue is reordered.
-	playNext string
-	// shuffleKept is the order the queue held before it was arranged, so
-	// that turning shuffle off puts it back. It is empty when the queue is
-	// not arranged.
-	shuffleKept []youtube.MusicItem
-	// source names where the chosen tracks came from, for the queue's
-	// heading.
+	items        []youtube.MusicItem
+	index        int
+	recStart     int
+	generated    map[string]struct{}
+	playNext     string
+	shuffleKept  []youtube.MusicItem
 	source       string
 	playlistMore string
 }
 
-func newQueue() queue { return queue{recStart: -1, generated: map[string]struct{}{}} }
+const noRecommendations = -1
 
-// len is how many tracks the queue holds.
+func (q *queue) hasRecommendations() bool { return q.recStart != noRecommendations }
+
+func newQueue() queue { return queue{recStart: noRecommendations, generated: map[string]struct{}{}} }
+
 func (q *queue) len() int { return len(q.items) }
 
-// current is the track at the queue's place, or the zero item when the
-// queue is empty.
 func (q *queue) current() youtube.MusicItem {
 	if q.index < 0 || q.index >= len(q.items) {
 		return youtube.MusicItem{}
@@ -55,27 +38,17 @@ func (q *queue) current() youtube.MusicItem {
 	return q.items[q.index]
 }
 
-// each calls fn with every track of the queue, which may change the track's
-// fields but not which track it is.
 func (q *queue) each(fn func(*youtube.MusicItem)) {
 	for i := range q.items {
 		fn(&q.items[i])
 	}
 }
 
-// at is the track at a place in the queue.
 func (q *queue) at(index int) youtube.MusicItem { return q.items[index] }
 
-// remaining is how many tracks follow the current one.
 func (q *queue) remaining() int { return len(q.items) - q.index - 1 }
 
-// replace makes the queue tracks, chosen from source, with item at its
-// place: index when that is where item is, or else wherever item first is.
-// A queue without item in it holds item alone. Generated tracks and the
-// play-next mark of the queue before are dropped.
 func (q *queue) replace(item youtube.MusicItem, tracks []youtube.MusicItem, index int, source string) {
-	// The page that offered tracks rebuilds its own list on every frame, so
-	// the queue must not share its backing array.
 	*q = newQueue()
 	q.items, q.source = slices.Clone(tracks), source
 	if index < 0 || index >= len(q.items) || q.items[index].VideoID != item.VideoID {
@@ -87,17 +60,13 @@ func (q *queue) replace(item youtube.MusicItem, tracks []youtube.MusicItem, inde
 	q.index = index
 }
 
-// limit is the end of what may play: the whole queue, or only the chosen
-// tracks when auto-play is off.
 func (q *queue) limit(autoPlay bool) int {
-	if !autoPlay && q.recStart >= 0 {
+	if !autoPlay && q.hasRecommendations() {
 		return q.recStart
 	}
 	return len(q.items)
 }
 
-// next is the place of the track that follows the current one, and false
-// when the queue is over.
 func (q *queue) next(autoPlay bool, repeat repeatMode) (int, bool) {
 	if q.playNext != "" {
 		for i := max(q.index+1, 0); i < len(q.items); i++ {
@@ -118,8 +87,6 @@ func (q *queue) next(autoPlay bool, repeat repeatMode) (int, bool) {
 	return 0, false
 }
 
-// nextEligible chooses the same order as next, passing over known dislikes.
-// Each position is considered at most once, including when the queue repeats.
 func (q *queue) nextEligible(autoPlay bool, repeat repeatMode, skipDisliked bool) (int, bool) {
 	if !skipDisliked {
 		return q.next(autoPlay, repeat)
@@ -150,9 +117,6 @@ func (q *queue) nextEligible(autoPlay bool, repeat repeatMode, skipDisliked bool
 	return 0, false
 }
 
-// moveTo makes the track at index the current one. The recommendations that
-// have played fold into the queue, so the divider keeps only what is still to
-// come after the track playing.
 func (q *queue) moveTo(index int) youtube.MusicItem {
 	q.index = index
 	q.recStart = q.firstGeneratedFrom(q.index + 1)
@@ -162,8 +126,6 @@ func (q *queue) moveTo(index int) youtube.MusicItem {
 	return q.items[index]
 }
 
-// firstGeneratedFrom is the place of the first generated track at or after
-// from, or -1 when none is.
 func (q *queue) firstGeneratedFrom(from int) int {
 	for index := max(from, 0); index < len(q.items); index++ {
 		if _, generated := q.generated[q.items[index].VideoID]; generated {
@@ -173,18 +135,13 @@ func (q *queue) firstGeneratedFrom(from int) int {
 	return -1
 }
 
-// find is the place of a track in the queue, or -1.
 func (q *queue) find(videoID string) int {
 	return slices.IndexFunc(q.items, func(t youtube.MusicItem) bool { return t.VideoID == videoID })
 }
 
-// insert adds a chosen track: after the current one when playNext is set,
-// and otherwise at the end of the chosen tracks, ahead of the generated ones.
-// Once auto-play has moved into the generated tracks their boundary is behind
-// the current one, so the track goes after it, before the next generated one.
 func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 	position := len(q.items)
-	if q.recStart >= 0 {
+	if q.hasRecommendations() {
 		if q.index < q.recStart {
 			position = q.recStart
 		} else {
@@ -203,16 +160,12 @@ func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 	q.insertAt(item, position)
 	if playNext {
 		q.playNext = item.VideoID
-		// With auto-play off the queue stops at the generated tracks, so a
-		// track to play next placed among them moves the boundary past it.
-		if !autoPlay && q.recStart >= 0 && position >= q.recStart {
+		if !autoPlay && q.hasRecommendations() && position >= q.recStart {
 			q.recStart = position + 1
 		}
 	}
 }
 
-// appendPlaylist adds later pages before recommendations, mixing them among
-// the unplayed chosen songs when shuffled and remembering their original order.
 func (q *queue) appendPlaylist(items []youtube.MusicItem, shuffle bool) {
 	if shuffle && len(q.shuffleKept) == 0 {
 		q.shuffleKept = slices.Clone(q.items[:q.limit(false)])
@@ -235,14 +188,11 @@ func (q *queue) insertAt(item youtube.MusicItem, position int) {
 	if position <= q.index {
 		q.index++
 	}
-	if q.recStart >= 0 && position <= q.recStart {
+	if q.hasRecommendations() && position <= q.recStart {
 		q.recStart++
 	}
 }
 
-// remove drops the track at index, which must not be the current one. The
-// current place, the play-next mark and the boundary of the generated tracks
-// follow. It reports whether anything was removed.
 func (q *queue) remove(index int) bool {
 	if index < 0 || index >= len(q.items) || index == q.index {
 		return false
@@ -256,20 +206,17 @@ func (q *queue) remove(index int) bool {
 		q.playNext = ""
 	}
 	delete(q.generated, id)
-	if q.recStart >= 0 {
+	if q.hasRecommendations() {
 		if index < q.recStart {
 			q.recStart--
 		}
 		if q.recStart >= len(q.items) {
-			q.recStart = -1
+			q.recStart = noRecommendations
 		}
 	}
 	return true
 }
 
-// dropMarkedAI removes future tracks exclude rejects, leaving the track that
-// plays in place. The queue's boundary and generated-track bookkeeping follow
-// through remove.
 func (q *queue) dropMarkedAI(exclude func(youtube.MusicItem) bool) bool {
 	removed := false
 	for index := len(q.items) - 1; index > q.index; index-- {
@@ -280,8 +227,6 @@ func (q *queue) dropMarkedAI(exclude func(youtube.MusicItem) bool) bool {
 	return removed
 }
 
-// clearUpcoming drops every track that follows the current one, the
-// generated tracks included, and reports whether there were any.
 func (q *queue) clearUpcoming() bool {
 	q.playlistMore = ""
 	if q.remaining() < 1 {
@@ -289,13 +234,11 @@ func (q *queue) clearUpcoming() bool {
 	}
 	q.items = slices.Clone(q.items[:q.index+1])
 	q.playNext = ""
-	q.recStart = -1
+	q.recStart = noRecommendations
 	q.generated = map[string]struct{}{}
 	return true
 }
 
-// shift moves the track at index by delta places, one up or down the list,
-// across the divider if it is in the way. It reports whether anything moved.
 func (q *queue) shift(index, delta int) bool {
 	target := index + delta
 	if index < 0 || index >= len(q.items) || target < 0 || target >= len(q.items) {
@@ -308,11 +251,9 @@ func (q *queue) shift(index, delta int) bool {
 	return q.moveRows([]int{q.rowOf(index)}, to)
 }
 
-// regenerate counts the generated tracks again from the boundary, for a
-// queue that goes back to auto-play.
 func (q *queue) regenerate() {
 	q.generated = map[string]struct{}{}
-	if q.recStart < 0 {
+	if !q.hasRecommendations() {
 		return
 	}
 	for _, item := range q.items[q.recStart:] {
@@ -322,20 +263,14 @@ func (q *queue) regenerate() {
 	}
 }
 
-// sameSongTolerance is how far apart two uploads' lengths can be and still be
-// the same song: the music video and the audio upload of a track differ by a
-// second or so.
 const sameSongTolerance = 3 * time.Second
 
-// songID names a song by its title and artist, ignoring case,
-// spacing and punctuation, so that two uploads of it compare equal.
 type songID struct{ title, artist string }
 
 func songIDOf(item youtube.MusicItem) songID {
 	return songID{normalizeName(item.Title), normalizeName(item.Artist)}
 }
 
-// normalizeName lowercases text and keeps only its letters and digits.
 func normalizeName(text string) string {
 	var b strings.Builder
 	for _, r := range text {
@@ -346,18 +281,12 @@ func normalizeName(text string) string {
 	return b.String()
 }
 
-// noteVersion records the title, artist and length of a track, so that
-// another upload of the same song can be told from a different song. A track
-// of unknown length is recorded as zero.
 func noteVersion(versions map[songID][]time.Duration, item youtube.MusicItem) {
 	if key := songIDOf(item); key.title != "" {
 		versions[key] = append(versions[key], parseDuration(item.Duration))
 	}
 }
 
-// hasVersion reports whether the track is another upload of a song already
-// noted: the same title and artist, and nearly the same length. When either
-// length is unknown, the same title and artist are enough.
 func hasVersion(versions map[songID][]time.Duration, item youtube.MusicItem) bool {
 	key := songIDOf(item)
 	if key.title == "" {
@@ -369,10 +298,6 @@ func hasVersion(versions map[songID][]time.Duration, item youtube.MusicItem) boo
 	})
 }
 
-// appendGenerated adds the recommendations YouTube Music returned that the
-// queue does not already hold, keeping at most autoplayQueueLimit generated
-// tracks: played tracks are dropped first to make room, without touching
-// the one playing.
 func (q *queue) appendGenerated(items []youtube.MusicItem) {
 	seen := make(map[string]struct{}, len(q.items)+min(len(items), autoplayQueueLimit+1))
 	versions := make(map[songID][]time.Duration, len(q.items))
@@ -407,7 +332,7 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 		}
 		q.items = slices.Clone(q.items[played:])
 		q.index = 0
-		if q.recStart >= 0 {
+		if q.hasRecommendations() {
 			q.recStart = max(0, q.recStart-played)
 		}
 	}
@@ -415,7 +340,7 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 		if len(q.generated) >= autoplayQueueLimit {
 			break
 		}
-		if q.recStart < 0 {
+		if !q.hasRecommendations() {
 			q.recStart = len(q.items)
 		}
 		q.items = append(q.items, item)
@@ -423,26 +348,17 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 	}
 }
 
-// shuffleQueue arranges the whole queue behind the track that is playing,
-// which moves to the top, the way Spotify does it: the songs before it are
-// not left out, and the queue plays on from there to its end. The tracks
-// already played lose their place, which is what shuffling a queue means.
-// The generated tracks keep their place at the end. The order the chosen
-// tracks were in is kept for restoreQueue.
 func (q *queue) shuffleQueue() {
-	// A recommendation that has folded into the queue still came from
-	// Auto-play: arranging the queue around it would drag history with it.
 	if _, generated := q.generated[q.current().VideoID]; generated {
 		return
 	}
 	limit := len(q.items)
-	if q.recStart >= 0 && q.recStart < limit {
+	if q.hasRecommendations() && q.recStart < limit {
 		limit = q.recStart
 	}
 	if limit <= 1 || q.index < 0 || q.index >= limit {
 		return
 	}
-	// The order the queue is in now is what turning shuffle off puts back.
 	q.shuffleKept = append(q.shuffleKept[:0], q.items[:limit]...)
 	current := q.items[q.index]
 	rest := make([]youtube.MusicItem, 0, limit-1)
@@ -454,21 +370,17 @@ func (q *queue) shuffleQueue() {
 	ordered = append(ordered, rest...)
 	copy(q.items[:limit], ordered)
 	q.index = 0
-	if q.recStart >= 0 {
+	if q.hasRecommendations() {
 		q.recStart = limit
 	}
 }
 
-// restoreQueue puts the queue back in the order it held before it was
-// arranged, with the track that is playing where it was, and the tracks the
-// queue gained while it was arranged after the rest. The generated tracks
-// keep their place at the end.
 func (q *queue) restoreQueue() {
 	if len(q.shuffleKept) == 0 {
 		return
 	}
 	limit := len(q.items)
-	if q.recStart >= 0 && q.recStart < limit {
+	if q.hasRecommendations() && q.recStart < limit {
 		limit = q.recStart
 	}
 	if limit == 0 {
@@ -478,8 +390,6 @@ func (q *queue) restoreQueue() {
 	if q.index >= 0 && q.index < limit {
 		playing = q.items[q.index].VideoID
 	}
-	// The arranged tracks, taken in the order they are put back, each once:
-	// a playlist that holds a song twice keeps both copies.
 	left := slices.Clone(q.items[:limit])
 	ordered := make([]youtube.MusicItem, 0, limit)
 	take := func(want youtube.MusicItem) {
@@ -494,7 +404,6 @@ func (q *queue) restoreQueue() {
 	for _, item := range q.shuffleKept {
 		take(item)
 	}
-	// Whatever the queue gained while it was arranged follows the rest.
 	ordered = append(ordered, left...)
 	copy(q.items[:limit], ordered)
 	q.shuffleKept = q.shuffleKept[:0]
@@ -509,14 +418,8 @@ func (q *queue) restoreQueue() {
 	}
 }
 
-// The queue's list shows a divider between the chosen and the generated
-// tracks, when there are both. Rows of that list are not places in the
-// queue: these translate between the two.
-
-// hasDivider reports whether the list shows the divider.
 func (q *queue) hasDivider() bool { return q.recStart > 0 && q.recStart < len(q.items) }
 
-// rows is how many rows the list shows.
 func (q *queue) rows() int {
 	if q.hasDivider() {
 		return len(q.items) + 1
@@ -524,11 +427,8 @@ func (q *queue) rows() int {
 	return len(q.items)
 }
 
-// isDivider reports whether a row of the list is the divider.
 func (q *queue) isDivider(row int) bool { return q.hasDivider() && row == q.recStart }
 
-// trackAt is the place in the queue a row of the list shows, and false for
-// the divider or a row past the end.
 func (q *queue) trackAt(row int) (int, bool) {
 	if q.isDivider(row) {
 		return 0, false
@@ -539,7 +439,6 @@ func (q *queue) trackAt(row int) (int, bool) {
 	return row, row >= 0 && row < len(q.items)
 }
 
-// rowOf is the row of the list that shows a place in the queue.
 func (q *queue) rowOf(index int) int {
 	if q.hasDivider() && index >= q.recStart {
 		return index + 1
@@ -547,10 +446,6 @@ func (q *queue) rowOf(index int) int {
 	return index
 }
 
-// moveRows carries out a reorder of the list: the tracks the rows show move
-// to before the row to, as the list stood before the move. The current
-// track, the play-next mark and the boundary of the generated tracks follow.
-// It reports whether anything moved.
 func (q *queue) moveRows(rows []int, to int) bool {
 	indices := make([]int, 0, len(rows))
 	for _, row := range rows {
@@ -576,9 +471,6 @@ func (q *queue) moveRows(rows []int, to int) bool {
 	return true
 }
 
-// reorder moves the items at indices, in any order, to before index to, a
-// place in items as they stand before the move, and returns the result in a
-// new slice.
 func reorder(items []youtube.MusicItem, indices []int, to int) []youtube.MusicItem {
 	at := make(map[int]struct{}, len(indices))
 	for _, index := range indices {
@@ -595,7 +487,6 @@ func reorder(items []youtube.MusicItem, indices []int, to int) []youtube.MusicIt
 			rest = append(rest, item)
 		}
 	}
-	// Each item taken from before the destination pulls it back by one.
 	insert := to
 	for index := range at {
 		if index < to {
@@ -606,14 +497,12 @@ func reorder(items []youtube.MusicItem, indices []int, to int) []youtube.MusicIt
 	return slices.Concat(rest[:insert], moving, rest[insert:])
 }
 
-// repeatMode is what happens when a track, or the queue, ends.
 type repeatMode uint8
 
 const (
-	repeatOff   repeatMode = iota // play on, and stop at the end of the queue
-	repeatQueue                   // go back to the first track after the last
-	repeatTrack                   // play the same track again
+	repeatOff repeatMode = iota
+	repeatQueue
+	repeatTrack
 )
 
-// next is the mode a press of the repeat button goes to.
 func (m repeatMode) next() repeatMode { return (m + 1) % (repeatTrack + 1) }

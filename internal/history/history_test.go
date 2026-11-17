@@ -11,7 +11,7 @@ import (
 func TestSummarizeCountsTheRangeOnly(t *testing.T) {
 	now := time.Date(2026, 3, 10, 15, 0, 0, 0, time.UTC)
 	entries := []Entry{
-		{VideoID: "a", Title: "A", Artist: "X", PlayedAt: now.AddDate(0, 0, -30)}, // outside
+		{VideoID: "a", Title: "A", Artist: "X", PlayedAt: now.AddDate(0, 0, -30)},
 		{VideoID: "a", Title: "A", Artist: "X", PlayedAt: now.AddDate(0, 0, -1)},
 		{VideoID: "a", Title: "A", Artist: "X", PlayedAt: now},
 		{VideoID: "b", Title: "B", Artist: "Y", PlayedAt: now},
@@ -70,8 +70,6 @@ func TestWriterCopiesWhatItIsGiven(t *testing.T) {
 	}
 }
 
-// fullHistory is a history at its cap, with titles and artists the length of
-// real ones.
 func fullHistory() []Entry {
 	var h []Entry
 	for i := range MaxEntries {
@@ -80,8 +78,6 @@ func fullHistory() []Entry {
 	return h
 }
 
-// BenchmarkWrite and BenchmarkRead are what a play and a launch cost with the
-// history full; the file's size is reported with them.
 func BenchmarkWrite(b *testing.B) {
 	h, path := fullHistory(), filepath.Join(b.TempDir(), "history.json")
 	b.ReportAllocs()

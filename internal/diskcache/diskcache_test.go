@@ -16,11 +16,11 @@ func TestPutGetAndTrim(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 	c.Put("b", ten)
 	time.Sleep(2 * time.Millisecond)
-	if _, ok := c.Get("a"); !ok { // a is now newer than b
+	if _, ok := c.Get("a"); !ok {
 		t.Fatal("a missing")
 	}
 	time.Sleep(2 * time.Millisecond)
-	c.Put("c", ten) // 30 > 25: b, the least recently used, goes
+	c.Put("c", ten)
 	if c.Has("b") {
 		t.Error("b should have been trimmed")
 	}

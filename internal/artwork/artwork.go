@@ -1,6 +1,3 @@
-// Package artwork downloads, decodes and keeps the pictures the app shows:
-// covers, avatars and the artwork of the track playing, at the sizes they are
-// drawn at, within a memory budget.
 package artwork
 
 import (
@@ -29,111 +26,65 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// thumbBudget is how many bytes of pixels the cache keeps before dropping the
-// bitmaps that went longest without being drawn. MyGo holds a bitmap on the
-// GPU as long as the app uses it, so the cache must not grow without end
-// while the user browses. It counts bytes, not bitmaps, because a cover is
-// tens of kilobytes at one size and over a megabyte at another.
 const thumbBudget = 24 << 20
 
-// thumbSourceBudget bounds compressed pictures kept for rebuilding evicted
-// bitmaps without downloading them again.
 const thumbSourceBudget = 4 << 20
 
-// Store keeps downloaded pictures beyond the memory the cache may use, so an
-// evicted bitmap is rebuilt from a file and not downloaded again. A
-// diskcache.Cache is one.
 type Store interface {
 	Get(key string) ([]byte, bool)
 	Has(key string) bool
 	Put(key string, data []byte)
 }
 
-// thumbRetry is how long a failed download first waits before the next try.
-// Each further failure doubles the wait, up to thumbRetryMax.
 const thumbRetry = 10 * time.Second
 
-// thumbRetryMax caps the wait between attempts at a picture that keeps
-// failing for a reason that may pass, such as a dropped connection.
+const thumbRedrawSlack = time.Second
+
+const thumbDownloadBufferGuess = 512 << 10
+
 const thumbRetryMax = 5 * time.Minute
 
-// thumbFailures bounds the failure record, so that pages of broken covers
-// cannot grow it without end.
 const thumbFailures = 256
 
-// thumbQueueLimit bounds how many downloads wait at once. A page asks for
-// dozens of covers, and a fast scroll asks for more before the first have
-// landed; the least recently wanted wait is dropped and only asked for again
-// if it returns to view.
 const thumbQueueLimit = 128
 
-// thumbKeyMemo bounds the remembered (URL, size) derivations. The working set
-// is the covers on screen, so falling back to a fresh map costs one short
-// burst of regex work.
 const thumbKeyMemo = 4096
 
-// Cache keeps decoded artwork and a smaller cache of compressed sources. It
-// is safe for concurrent use: the view asks it for pictures on the main
-// thread while its workers download them.
 type Cache struct {
 	client *http.Client
 	notify func()
 
-	mu sync.Mutex
-	// cond wakes the workers that download and decode at most thumbFetches
-	// pictures at a time.
-	cond    *sync.Cond
-	closed  bool
-	queue   map[string]thumbJob
-	bitmaps map[string]*thumb
-	// recent orders bitmaps from most to least recently drawn, so eviction
-	// takes the back instead of scanning every entry.
-	recent  *list.List
-	sources map[string]*thumbSource
-	// held and sourceHeld count their respective caches' bytes. tick orders
-	// bitmap touches and source-cache reads and writes for both LRUs. seq
-	// orders waits in the queue, so the most recently wanted picture is
-	// served first.
+	mu         sync.Mutex
+	cond       *sync.Cond
+	closed     bool
+	queue      map[string]thumbJob
+	bitmaps    map[string]*thumb
+	recent     *list.List
+	sources    map[string]*thumbSource
 	held       int
 	sourceHeld int
 	tick       uint64
 	seq        uint64
 	pending    map[string]bool
 	colouring  map[string]bool
-	// keys remembers the sized URL and the sizeless base for a (URL, size)
-	// pair, so repeated lookups skip the regex work.
-	keys map[thumbRequest]thumbKeys
-	// failed holds how each download or decode failed. A permanent failure,
-	// such as a 404 or a picture that will not decode, is never retried; a
-	// transient one backs off further with each attempt.
-	failed map[string]thumbFailure
-	// sizes remembers which sizes of each picture are in bitmaps, by the
-	// picture's URL without its size, so a small copy can stand in while a
-	// larger one downloads. colours are keyed the same way, since a picture's
-	// colour does not depend on the size it was asked for.
-	sizes   map[string][]string
-	colours map[string]thumbColour
-	// disk is where pictures are kept on disk, or nil.
-	disk Store
+	keys       map[thumbRequest]thumbKeys
+	failed     map[string]thumbFailure
+	sizes      map[string][]string
+	colours    map[string]thumbColour
+	disk       Store
 }
 
-// UseStore keeps the pictures it downloads in store, and reads them from
-// there before downloading.
 func (t *Cache) UseStore(store Store) {
 	t.mu.Lock()
 	t.disk = store
 	t.mu.Unlock()
 }
 
-// thumbRequest is a picture URL and the pixel size requested for it.
 type thumbRequest struct {
 	url  string
 	size int
 }
 
-// thumbKeys is the derivation of a thumbRequest. sized names the bitmap in
-// every index, base groups every size of one picture, and fetch is the URL to
-// download and keep the compressed source under.
 type thumbKeys struct {
 	sized string
 	base  string
@@ -141,23 +92,18 @@ type thumbKeys struct {
 	size  int
 }
 
-// thumbJob is a picture waiting for a worker. A source means its compressed
-// bytes are already at hand, so no download is needed.
 type thumbJob struct {
 	tick   uint64
 	keys   thumbKeys
 	source []byte
 }
 
-// thumbFailure is how a failed picture waits for its next attempt.
 type thumbFailure struct {
 	at        time.Time
 	attempts  int
 	permanent bool
 }
 
-// wait is how long a failure waits before the next attempt: the base wait
-// doubled once per failure so far, never beyond the cap.
 func (f thumbFailure) wait() time.Duration {
 	wait := thumbRetry
 	for i := 1; i < f.attempts && wait < thumbRetryMax; i++ {
@@ -166,21 +112,15 @@ func (f thumbFailure) wait() time.Duration {
 	return min(wait, thumbRetryMax)
 }
 
-// errTooLarge and errDecode mark a picture that will never load, however many
-// times it is asked for.
 var (
 	errTooLarge = errors.New("picture is larger than the limit")
 	errDecode   = errors.New("picture could not be decoded")
 )
 
-// statusError is a non-2xx answer from the picture host.
 type statusError struct{ code int }
 
 func (e statusError) Error() string { return "HTTP " + strconv.Itoa(e.code) }
 
-// permanentFailure reports whether asking for the same URL again could ever
-// succeed. A 4xx other than a timeout or a rate limit will not, and neither
-// will a picture that is too large or fails to decode.
 func permanentFailure(err error) bool {
 	var status statusError
 	if errors.As(err, &status) {
@@ -193,11 +133,8 @@ func permanentFailure(err error) bool {
 	return errors.Is(err, errTooLarge) || errors.Is(err, errDecode)
 }
 
-// thumb is one cached bitmap, the colour taken from it, and what it costs.
 type thumb struct {
-	bitmap *ui.Bitmap
-	// url, base and element place the bitmap in the cache's indexes and in
-	// Cache.recent.
+	bitmap  *ui.Bitmap
 	url     string
 	base    string
 	element *list.Element
@@ -205,34 +142,26 @@ type thumb struct {
 	used    uint64
 }
 
-// thumbColour is the colour taken from a picture. It is only taken when
-// something asks for it, so covers never pay for a theme seed they will not
-// use. ready separates "not taken yet" from "taken and found nothing".
 type thumbColour struct {
 	colour ui.Color
 	has    bool
 	ready  bool
 }
 
-// thumbColours bounds the remembered colours.
 const thumbColours = 256
 
-// thumbSource is the compressed picture kept after its bitmap is evicted.
 type thumbSource struct {
 	data []byte
 	used uint64
 }
 
-// thumbBytes estimates the memory a bitmap takes: its pixels, and the
-// smaller copies MyGo makes of them for drawing it small, which add up to a
-// third more.
 func thumbBytes(b *ui.Bitmap) int {
 	w, h := b.Size()
-	return w * h * 4 * 4 / 3
+	const bytesPerPixel = 4
+	const withMipmaps = 4. / 3
+	return int(float64(w*h*bytesPerPixel) * withMipmaps)
 }
 
-// New returns a cache that downloads with client and calls notify when a
-// bitmap lands, so the window draws it.
 func New(client *http.Client, notify func()) *Cache {
 	t := &Cache{
 		client:    client,
@@ -255,7 +184,6 @@ func New(client *http.Client, notify func()) *Cache {
 	return t
 }
 
-// Close stops the workers. Pictures already queued are not fetched.
 func (t *Cache) Close() {
 	t.mu.Lock()
 	t.closed = true
@@ -263,10 +191,6 @@ func (t *Cache) Close() {
 	t.cond.Broadcast()
 }
 
-// Bitmap returns the artwork at url, asked for at size pixels across. The
-// picture is cropped square and shrunk to size when it is larger. While it
-// downloads or rebuilds from a compressed source, it returns another size of
-// the same picture when one is loaded, and nil otherwise.
 func (t *Cache) Bitmap(url string, size int) *ui.Bitmap {
 	if url == "" {
 		return nil
@@ -278,8 +202,6 @@ func (t *Cache) Bitmap(url string, size int) *ui.Bitmap {
 		return t.touch(entry)
 	}
 	if t.pending[key.sized] {
-		// The picture is already on its way. Asking for it again means it
-		// is still visible, which moves it ahead of stale waits.
 		if job, queued := t.queue[key.sized]; queued {
 			t.seq++
 			job.tick = t.seq
@@ -300,9 +222,6 @@ func (t *Cache) Bitmap(url string, size int) *ui.Bitmap {
 	return nil
 }
 
-// keyLocked derives the sized URL and sizeless base of a request, remembering
-// the answer so repeated lookups skip the regex work. The caller holds the
-// lock.
 func (t *Cache) keyLocked(url string, size int) thumbKeys {
 	request := thumbRequest{url: url, size: size}
 	if key, ok := t.keys[request]; ok {
@@ -317,9 +236,6 @@ func (t *Cache) keyLocked(url string, size int) thumbKeys {
 	return key
 }
 
-// retryDue reports whether a missing picture may be asked for again. A
-// permanent failure never may; a transient one waits out its backoff. The
-// caller holds the lock.
 func (t *Cache) retryDue(url string) bool {
 	failure, ok := t.failed[url]
 	if !ok {
@@ -331,7 +247,6 @@ func (t *Cache) retryDue(url string) bool {
 	return time.Since(failure.at) >= failure.wait()
 }
 
-// touch marks a bitmap as drawn now and returns it.
 func (t *Cache) touch(entry *thumb) *ui.Bitmap {
 	t.tick++
 	entry.used = t.tick
@@ -341,9 +256,6 @@ func (t *Cache) touch(entry *thumb) *ui.Bitmap {
 	return entry.bitmap
 }
 
-// source returns compressed bytes from memory and marks them recently used.
-// The returned bytes are immutable and remain valid if the entry is evicted.
-// The caller holds t.mu.
 func (t *Cache) source(url string) ([]byte, bool) {
 	entry, ok := t.sources[url]
 	if !ok {
@@ -354,14 +266,10 @@ func (t *Cache) source(url string) ([]byte, bool) {
 	return entry.data, true
 }
 
-// thumbFetches limits concurrent downloads and bitmap rebuilds.
 const thumbFetches = 6
 
-// thumbLimit is the largest picture the cache will take.
 const thumbLimit = 8 << 20
 
-// worker downloads and decodes one queued picture at a time. thumbFetches
-// workers run together, which bounds the cache's concurrent work.
 func (t *Cache) worker() {
 	for {
 		t.mu.Lock()
@@ -390,17 +298,12 @@ func (t *Cache) worker() {
 			t.failedFetch(job.keys.sized, err)
 			continue
 		}
-		// The picture is shown first and written to disk after, so the
-		// write's sync never holds it up, and a picture that does not decode
-		// is not kept.
 		if t.decode(job.keys, data, true) && store != nil {
 			store.Put(job.keys.fetch, data)
 		}
 	}
 }
 
-// enqueueLocked adds a picture to the work queue, dropping the least recently
-// wanted wait when the queue is full. The caller holds the lock.
 func (t *Cache) enqueueLocked(keys thumbKeys, source []byte) {
 	if _, queued := t.queue[keys.sized]; !queued && len(t.queue) >= thumbQueueLimit {
 		t.dropStaleLocked()
@@ -411,8 +314,6 @@ func (t *Cache) enqueueLocked(keys thumbKeys, source []byte) {
 	t.cond.Broadcast()
 }
 
-// popLocked takes the most recently wanted job, so visible pictures are not
-// starved by stale waits queued behind them. The caller holds the lock.
 func (t *Cache) popLocked() thumbJob {
 	url, found := "", false
 	for key, job := range t.queue {
@@ -425,9 +326,6 @@ func (t *Cache) popLocked() thumbJob {
 	return job
 }
 
-// dropStaleLocked forgets the least recently wanted wait and lets a later
-// frame ask for it again only if it is still wanted. The caller holds the
-// lock.
 func (t *Cache) dropStaleLocked() {
 	stale, found := "", false
 	for url, job := range t.queue {
@@ -442,15 +340,11 @@ func (t *Cache) dropStaleLocked() {
 	delete(t.pending, stale)
 }
 
-// download fetches the picture at url.
 func (t *Cache) download(url string) ([]byte, error) {
 	return t.downloadContext(context.Background(), url)
 }
 
-// downloadContext fetches the picture at url until ctx ends.
 func (t *Cache) downloadContext(ctx context.Context, url string) ([]byte, error) {
-	// Each download is bounded by the client's timeout; nothing cancels one
-	// sooner unless its caller cancels it.
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -463,8 +357,7 @@ func (t *Cache) downloadContext(ctx context.Context, url string) ([]byte, error)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, statusError{code: response.StatusCode}
 	}
-	// One byte more than the limit tells a picture that fits from one cut off.
-	size := 512 << 10
+	size := thumbDownloadBufferGuess
 	if n := response.ContentLength; n > thumbLimit {
 		return nil, errTooLarge
 	} else if n > 0 {
@@ -479,14 +372,10 @@ func (t *Cache) downloadContext(ctx context.Context, url string) ([]byte, error)
 	if len(data) > thumbLimit {
 		return nil, errTooLarge
 	}
-	// The buffer grew in doublings and the kept copy would carry its spare
-	// room, for as long as the source stays cached.
-	return bytes.Clone(data), nil
+	withoutSpareCapacity := bytes.Clone(data)
+	return withoutSpareCapacity, nil
 }
 
-// NotificationIcon fetches a fresh, opaque PNG for a track notification. The
-// solid background keeps a clear edge for covers that are transparent, and
-// stops a shell that tints template images from washing the cover out.
 func (t *Cache) NotificationIcon(ctx context.Context, url string) ([]byte, error) {
 	if url == "" {
 		return nil, errors.New("track has no artwork URL")
@@ -500,8 +389,6 @@ func (t *Cache) NotificationIcon(ctx context.Context, url string) ([]byte, error
 
 const notificationIconSize = 96
 
-// notificationIconPNG makes a square, opaque icon from a downloaded cover.
-// The solid background preserves a clear edge for transparent sources.
 func notificationIconPNG(data []byte) ([]byte, error) {
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
@@ -526,11 +413,6 @@ func notificationIconPNG(data []byte) ([]byte, error) {
 	return encoded.Bytes(), nil
 }
 
-// decode creates a bitmap, retaining downloaded source bytes, and reports
-// whether the picture decoded. The colour is taken later, when something asks
-// for it. Package ui registers the JPEG, PNG, GIF, WebP and BMP decoders with
-// image.Decode, and this package imports ui, so the artwork formats YouTube
-// serves all decode here.
 func (t *Cache) decode(keys thumbKeys, data []byte, keepSource bool) bool {
 	bitmap, err := decodeBitmap(data, keys.size)
 	if err != nil {
@@ -550,12 +432,6 @@ func (t *Cache) decode(keys thumbKeys, data []byte, keepSource bool) bool {
 	return true
 }
 
-// decodeBitmap makes the bitmap of a picture, cropped square and shrunk to
-// side pixels across when it is larger. A picture that is already that, as
-// the image host sends a cover asked for at a size, keeps only its
-// compressed bytes: a GPU renderer drops its pixels once it uploaded them,
-// so the texture alone holds them, and decodes them again when it needs
-// them.
 func decodeBitmap(data []byte, side int) (*ui.Bitmap, error) {
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
@@ -573,14 +449,9 @@ func decodeBitmap(data []byte, side int) (*ui.Bitmap, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Crop and shrink here; MyGo applies the display shape when it draws the
-	// bitmap, so cache entries do not vary with their corner radius.
 	return ui.NewBitmap(fit(img, side)), nil
 }
 
-// failedFetch notes a failed download or decode and schedules a redraw for
-// the next attempt. A permanent failure is never retried, and a transient one
-// waits out an ever longer backoff.
 func (t *Cache) failedFetch(url string, err error) {
 	t.mu.Lock()
 	delete(t.pending, url)
@@ -595,12 +466,9 @@ func (t *Cache) failedFetch(url string, err error) {
 	if permanent {
 		return
 	}
-	// Draw again once the wait is over, so the next frame tries again.
-	time.AfterFunc(wait+time.Second, t.notify)
+	time.AfterFunc(wait+thumbRedrawSlack, t.notify)
 }
 
-// pruneFailedLocked keeps the failure record small: it forgets failures whose
-// retry wait has passed, then the oldest ones. The caller holds the lock.
 func (t *Cache) pruneFailedLocked() {
 	if len(t.failed) <= thumbFailures {
 		return
@@ -625,8 +493,6 @@ func (t *Cache) pruneFailedLocked() {
 	}
 }
 
-// storeSource keeps compressed bytes under their own LRU budget. The caller
-// holds the lock.
 func (t *Cache) storeSource(url string, data []byte) {
 	if len(data) > thumbSourceBudget {
 		return
@@ -652,8 +518,6 @@ func (t *Cache) storeSource(url string, data []byte) {
 	}
 }
 
-// store keeps a bitmap that has landed, and drops the ones drawn least
-// recently while the cache is over its budget. The caller holds the lock.
 func (t *Cache) store(url string, entry *thumb) {
 	if old, ok := t.bitmaps[url]; ok {
 		t.forgetLocked(url, old)
@@ -669,8 +533,6 @@ func (t *Cache) store(url string, entry *thumb) {
 	}
 }
 
-// evictLeastRecent drops the bitmap that went longest without being drawn,
-// other than keep, which has only just landed.
 func (t *Cache) evictLeastRecent(keep string) {
 	for element := t.recent.Back(); element != nil; element = element.Prev() {
 		if entry, ok := element.Value.(*thumb); ok && entry.url != keep {
@@ -680,7 +542,6 @@ func (t *Cache) evictLeastRecent(keep string) {
 	}
 }
 
-// forgetLocked removes a bitmap from every index. The caller holds the lock.
 func (t *Cache) forgetLocked(url string, entry *thumb) {
 	t.held -= entry.bytes
 	delete(t.bitmaps, url)
@@ -706,9 +567,6 @@ var (
 	thumbnailScalePattern = regexp.MustCompile(`=s\d+`)
 )
 
-// thumbnailURL asks Google's image host for a picture size instead of the
-// one the response offered, which is often far larger than the element
-// showing it.
 func thumbnailURL(url string, size int) string {
 	if thumbnailSizePattern.MatchString(url) {
 		return thumbnailSizePattern.ReplaceAllString(url, "=w"+strconv.Itoa(size)+"-h"+strconv.Itoa(size))
@@ -737,7 +595,6 @@ func thumbnailURL(url string, size int) string {
 	return url
 }
 
-// youtubeThumbnailVariant finds a standard YouTube thumbnail filename.
 func youtubeThumbnailVariant(parsed *neturl.URL) (variant, ext string, ok bool) {
 	host := parsed.Hostname()
 	if host != "ytimg.com" && !strings.HasSuffix(host, ".ytimg.com") {
@@ -751,8 +608,6 @@ func youtubeThumbnailVariant(parsed *neturl.URL) (variant, ext string, ok bool) 
 	return variant, ext, youtubeVariantRank(variant) >= 0
 }
 
-// youtubeVariantRank orders the standard thumbnail sizes, from smallest to
-// largest, so requests only downgrade a source that is larger than needed.
 func youtubeVariantRank(variant string) int {
 	switch variant {
 	case "default":
@@ -772,7 +627,6 @@ func youtubeVariantRank(variant string) int {
 	}
 }
 
-// sizeless is url without the size Google's image host was asked for.
 func sizeless(url string) string {
 	if thumbnailSizePattern.MatchString(url) {
 		return thumbnailSizePattern.ReplaceAllString(url, "=")
@@ -791,13 +645,6 @@ func sizeless(url string) string {
 	return url
 }
 
-// Colour returns the colour that stands out in the artwork at url, once any
-// size of it has landed. A picture's colour does not depend on the size it was
-// asked for, and the views ask for the size they draw, so the colour comes
-// from whichever size is at hand. It is taken from the picture the first time
-// something asks, so covers that never need it never pay for it. It returns
-// ready false while the artwork or its colour is still on the way, and the
-// cache wakes the view when it lands.
 func (t *Cache) Colour(url string) (colour ui.Color, has, ready bool) {
 	if url == "" {
 		return ui.Color{}, false, true
@@ -813,8 +660,6 @@ func (t *Cache) Colour(url string) (colour ui.Color, has, ready bool) {
 		return ui.Color{}, false, false
 	}
 	if !t.colouring[base] {
-		// Decoding and quantizing is too much for a frame: do it on a
-		// worker and wake the view when it is done.
 		t.colouring[base] = true
 		data, _ := t.source(fetch)
 		go t.takeColour(base, fetch, data, t.disk)
@@ -822,8 +667,6 @@ func (t *Cache) Colour(url string) (colour ui.Color, has, ready bool) {
 	return ui.Color{}, false, false
 }
 
-// colourSourceLocked picks a size of the picture at base whose bytes are at
-// hand, in memory or on disk. The caller holds the lock.
 func (t *Cache) colourSourceLocked(base string) (string, bool) {
 	for _, fetch := range t.sizes[base] {
 		if _, ok := t.sources[fetch]; ok {
@@ -840,8 +683,6 @@ func (t *Cache) colourSourceLocked(base string) (string, bool) {
 	return "", false
 }
 
-// takeColour finds the colour of a picture off the main thread and files it
-// under the picture's URL without its size, so every size of it shares it.
 func (t *Cache) takeColour(base, fetch string, data []byte, store Store) {
 	var colour ui.Color
 	var has bool
@@ -861,9 +702,6 @@ func (t *Cache) takeColour(base, fetch string, data []byte, store Store) {
 	t.notify()
 }
 
-// dominantColour finds the colour of a picture that a theme should grow from:
-// the most vivid hue among the pixels that are neither near black nor near
-// white, weighted by how much of the picture it fills and how saturated it is.
 func dominantColour(img image.Image) (ui.Color, bool) {
 	const bins, grid = 24, 28
 	var weight [bins]float64
@@ -890,10 +728,10 @@ func dominantColour(img image.Image) (ui.Color, bool) {
 	}
 	best := -1
 	for i := range weight {
-		// A hue spreads over its neighbours, so a smooth gradient wins over
-		// one stray pixel.
-		w := weight[i] + 0.5*(weight[(i+1)%bins]+weight[(i+bins-1)%bins])
-		if w > 0 && (best < 0 || w > weight[best]+0.5*(weight[(best+1)%bins]+weight[(best+bins-1)%bins])) {
+		smoothed := func(bin int) float64 {
+			return weight[bin] + 0.5*(weight[(bin+1)%bins]+weight[(bin+bins-1)%bins])
+		}
+		if w := smoothed(i); w > 0 && (best < 0 || w > smoothed(best)) {
 			best = i
 		}
 	}
@@ -903,20 +741,12 @@ func dominantColour(img image.Image) (ui.Color, bool) {
 	return ui.RGB(uint8(sumR[best]/weight[best]), uint8(sumG[best]/weight[best]), uint8(sumB[best]/weight[best])), true
 }
 
-// Stats is how much the cache holds, for measuring that it stays bounded.
 type Stats struct {
-	// Bitmaps and Bytes are the decoded pictures kept, and their pixels.
-	Bitmaps, Bytes int
-	// Sources and SourceBytes are the compressed pictures kept for rebuilding
-	// evicted bitmaps.
-	Sources, SourceBytes int
-	// Queued, Failed, Keys and Colours are the sizes of the other indexes.
+	Bitmaps, Bytes                int
+	Sources, SourceBytes          int
 	Queued, Failed, Keys, Colours int
 }
 
-// Purge drops every bitmap and compressed picture, for a window that shows
-// none of them: a hidden one. Those asked for again come back from the disk
-// store, or are downloaded again.
 func (t *Cache) Purge() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -929,7 +759,6 @@ func (t *Cache) Purge() {
 	t.keys = make(map[thumbRequest]thumbKeys)
 }
 
-// Stats reports what the cache holds now.
 func (t *Cache) Stats() Stats {
 	t.mu.Lock()
 	defer t.mu.Unlock()

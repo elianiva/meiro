@@ -10,8 +10,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// libraryWrite is the last write the fake YouTube was asked for to a playlist's
-// like: its endpoint, and the playlist its target names.
 func libraryWrite() (endpoint, playlistID string) {
 	write := written()
 	return write.endpoint[strings.LastIndex(write.endpoint, "/like/"):], writtenPlaylist()
@@ -31,8 +29,6 @@ func TestSavingAnAlbumToTheLibraryAndTakingItOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	// The write names the album's audio playlist, which the page carried, and
-	// not the browse ID the page was opened with.
 	if endpoint, id := libraryWrite(); endpoint != "/like/like" || id != "OLAK5uy_test" || likeWrites.Load() != 1 {
 		t.Fatalf("saving wrote %s for %q (%d writes)", endpoint, id, likeWrites.Load())
 	}
@@ -40,7 +36,6 @@ func TestSavingAnAlbumToTheLibraryAndTakingItOut(t *testing.T) {
 		t.Fatalf("the page did not show the album saved: %q", tt.Texts())
 	}
 
-	// The library is read again, and holds the album.
 	libraryLoads.Store(0)
 	a.router.Push("/library")
 	tt.Frame()
@@ -48,7 +43,6 @@ func TestSavingAnAlbumToTheLibraryAndTakingItOut(t *testing.T) {
 		t.Fatalf("the library was read %d times, and shows: %q", libraryLoads.Load(), tt.Texts())
 	}
 
-	// The album page says what YouTube now says, and takes the album out.
 	a.router.Push("/album/MPREb_test")
 	tt.Frame()
 	if !tt.HasText("Remove from library") || a.page.library != (youtube.LibraryState{ID: "OLAK5uy_test", Saved: true}) {
@@ -117,7 +111,7 @@ func TestSignedOutHasNoLibraryButtons(t *testing.T) {
 	if tt.HasText("Save to library") || tt.HasText("Remove from library") {
 		t.Fatalf("a signed-out album page offers the library: %q", tt.Texts())
 	}
-	a.toggleLibrary(youtube.LibraryState{ID: fakeAlbumPlaylist}, "x") // nothing may reach YouTube
+	a.toggleLibrary(youtube.LibraryState{ID: fakeAlbumPlaylist}, "x")
 	if likeWrites.Load() != 0 {
 		t.Fatalf("a signed-out save wrote %d times", likeWrites.Load())
 	}
@@ -156,7 +150,6 @@ func TestTakingAPlaylistOutOfTheLibraryFromItsCard(t *testing.T) {
 	if !tt.HasText("Removed “Hype” from your library") {
 		t.Fatalf("the removal was not announced: %q", tt.Texts())
 	}
-	// The card with no way to save, as a playlist the account made, offers none.
 	card, _ = tt.Find("car radio")
 	tt.Move(card.X+card.W/2, card.Y+card.H/2)
 	tt.Frame()
@@ -222,5 +215,3 @@ func TestAddingASongRefreshesThePlaylist(t *testing.T) {
 		})
 	}
 }
-
-// A control that looks small still takes a press 48 DIPs wide and high.

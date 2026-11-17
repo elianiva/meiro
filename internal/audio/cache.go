@@ -1,6 +1,3 @@
-// Package audio gets the sound of a track to the player: it resolves the
-// track's direct audio URL, remembers recent ones, and keeps the audio of
-// recently played tracks on disk.
 package audio
 
 import (
@@ -23,18 +20,12 @@ import (
 	"github.com/elianiva/meiro/internal/proc"
 )
 
-// tempPrefix starts the name of the temporary directories downloads use.
 const tempPrefix = ".audio-"
 
-// DefaultLimit keeps a short run of recent songs for quick replay.
 const DefaultLimit = 10
 
-// cacheDir keeps cache files in an app-owned child directory, so choosing a
-// parent folder does not change that folder's permissions.
 func cacheDir(root string) string { return filepath.Join(root, "Meiro Audio Cache") }
 
-// Open opens the cache inside the folder root, which must exist, keeping at
-// most limit tracks. It returns the cache and root made absolute.
 func Open(root string, limit int) (*Cache, string, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, "", errors.New("cache directory is empty")
@@ -57,9 +48,6 @@ func Open(root string, limit int) (*Cache, string, error) {
 	return cache, absolute, nil
 }
 
-// Cache keeps completed audio files for recently played tracks. It is a
-// private app cache, not a user-facing download library. Its methods are safe
-// for concurrent use, and do nothing on a nil Cache.
 type Cache struct {
 	mu      sync.Mutex
 	dir     string
@@ -74,15 +62,11 @@ type Cache struct {
 	fetch   func(ctx context.Context, streamURL, dir string) (string, error)
 }
 
-// pendingDownload is a track waiting to be cached, and the direct audio URL
-// the app already resolved for it.
 type pendingDownload struct {
 	videoID   string
 	streamURL string
 }
 
-// openDir prepares a private directory and removes any files over the
-// limit left by an earlier run.
 func openDir(dir string, limit int) (*Cache, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -107,11 +91,8 @@ func openDir(dir string, limit int) (*Cache, error) {
 	return c, nil
 }
 
-// Dir is the directory the cache keeps its files in.
 func (c *Cache) Dir() string { return c.dir }
 
-// ValidLimit rejects negative cache sizes. The user may choose any
-// non-negative count; zero disables the cache.
 func ValidLimit(limit int) int {
 	if limit < 0 {
 		return DefaultLimit
@@ -119,7 +100,6 @@ func ValidLimit(limit int) int {
 	return limit
 }
 
-// SetLimit applies a new cache size and evicts old files immediately.
 func (c *Cache) SetLimit(limit int) {
 	if c == nil {
 		return
@@ -138,9 +118,6 @@ func (c *Cache) SetLimit(limit int) {
 	c.removeFiles(evicted)
 }
 
-// Warmable reports whether the cache keeps enough tracks for one downloaded
-// ahead of time to survive until it plays. At a limit of one, the warmed
-// track evicts the track that is playing, so nothing is gained.
 func (c *Cache) Warmable() bool {
 	if c == nil {
 		return false
@@ -150,7 +127,6 @@ func (c *Cache) Warmable() bool {
 	return !c.closed && c.limit > 1
 }
 
-// Get returns a cached file and moves it to the most-recently-used end.
 func (c *Cache) Get(videoID string) (string, bool) {
 	if c == nil || videoID == "" {
 		return "", false
@@ -169,14 +145,10 @@ func (c *Cache) Get(videoID string) (string, bool) {
 	file.used = now
 	c.files[file.key] = file
 	c.mu.Unlock()
-	// Touching the file keeps its least-recently-used order across restarts.
 	_ = os.Chtimes(file.path, now, now)
 	return file.path, true
 }
 
-// Add caches a track from the direct audio URL the app resolved for it, in
-// the background, unless the track is already cached or on its way. The URL
-// is downloaded as it is, so caching never resolves a track a second time.
 func (c *Cache) Add(videoID, streamURL string) {
 	if c == nil || videoID == "" || streamURL == "" {
 		return
@@ -206,8 +178,6 @@ func (c *Cache) Add(videoID, streamURL string) {
 	}()
 }
 
-// Close cancels the active download and waits for the worker to exit before
-// the app process shuts down.
 func (c *Cache) Close() {
 	if c == nil {
 		return
@@ -272,9 +242,6 @@ func (c *Cache) drain() {
 	}
 }
 
-// installLocked moves a completed temporary download into the cache and drops
-// the entries over the limit from the index. It returns the paths to delete;
-// the caller releases c.mu before deleting them. The caller holds c.mu.
 func (c *Cache) installLocked(videoID, temp string) ([]string, error) {
 	if temp == "" {
 		return nil, errors.New("the download left no audio file")
@@ -302,17 +269,11 @@ func (c *Cache) installLocked(videoID, temp string) ([]string, error) {
 	return c.trimLocked(key), nil
 }
 
-// findLocked returns the cache entry for videoID from the in-memory index. The
-// caller holds c.mu.
 func (c *Cache) findLocked(videoID string) (cachedFile, bool) {
 	file, cached := c.files[audioCacheKey(videoID)]
 	return file, cached
 }
 
-// trimLocked drops the least-recently-used entries from the index until the
-// cache is within its limit, except for keep, and returns their paths. It
-// updates only the index, so the caller can delete the paths after releasing
-// c.mu. The caller holds c.mu.
 func (c *Cache) trimLocked(keep string) []string {
 	excess := len(c.files) - c.limit
 	if excess <= 0 {
@@ -338,9 +299,6 @@ func (c *Cache) trimLocked(keep string) []string {
 	return evicted
 }
 
-// removeFiles deletes evicted files. It runs without c.mu held, so a large
-// eviction never blocks lookups or the UI's warmable check, and one file that
-// cannot be removed does not stop the rest.
 func (c *Cache) removeFiles(paths []string) {
 	for _, path := range paths {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -349,11 +307,6 @@ func (c *Cache) removeFiles(paths []string) {
 	}
 }
 
-// Purge deletes the files this cache owns, and then its directory when
-// nothing else is in it: downloaded audio named by key, and abandoned
-// temporary download folders. Anything else in the directory is left alone.
-// It is for a cache that has been replaced by one in another location, and
-// must run after close so no download is still writing.
 func (c *Cache) Purge() {
 	if c == nil {
 		return
@@ -373,12 +326,9 @@ func (c *Cache) Purge() {
 			}
 		}
 	}
-	// Remove fails on a directory that still holds the user's files.
 	_ = os.Remove(c.dir)
 }
 
-// isAudioCacheFile reports whether name is a file the cache itself writes: a
-// SHA-256 key followed by an audio extension.
 func isAudioCacheFile(name string) bool {
 	key, _, ok := strings.Cut(name, ".")
 	if !ok || len(key) != sha256.Size*2 || !audioCacheExtension(filepath.Ext(name)) {
@@ -394,9 +344,6 @@ type cachedFile struct {
 	used time.Time
 }
 
-// scanLocked builds the in-memory index from the cache directory. It runs once
-// when the cache is created, so later lookups and evictions need no directory
-// scan. The caller holds c.mu.
 func (c *Cache) scanLocked() {
 	proc.SweepStale(c.dir, nil, tempPrefix)
 	entries, err := os.ReadDir(c.dir)
@@ -421,8 +368,6 @@ func audioCacheKey(videoID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// audioCacheExtension accepts the containers yt-dlp saves an audio-only
-// format in: WebM audio arrives as .webm or .weba, MP4 audio as .m4a or .mp4.
 func audioCacheExtension(ext string) bool {
 	switch strings.ToLower(ext) {
 	case ".aac", ".flac", ".m4a", ".mkv", ".mp3", ".mp4", ".ogg", ".opus", ".wav", ".weba", ".webm":
@@ -432,26 +377,12 @@ func audioCacheExtension(ext string) bool {
 	}
 }
 
-// userAgent is what the cache sends when it fetches an audio
-// stream. YouTube's media servers answer some requests without a browser
-// User-Agent with an error, the same reason the player tells ffmpeg to send
-// one. The URL itself is already signed, so no cookie is needed.
-const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+const browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
-// Fetch saves the audio stream at streamURL into a new temporary directory
-// inside dir, whose name starts with a dot, and returns the file's path. Only a
-// complete file is returned. The caller moves the file where it belongs and
-// removes the temporary directory.
 func Fetch(ctx context.Context, streamURL, dir string) (string, error) {
 	return downloadURL(ctx, http.DefaultClient, streamURL, dir)
 }
 
-// downloadURL saves an audio stream the app already resolved for
-// playback into a temporary directory inside the cache. The direct URL
-// carries its own authentication and expiry, so no second yt-dlp run is
-// needed. A download that ends early, or an expired URL that no longer
-// answers, is discarded: only a complete file is returned, so an interrupted
-// stream never becomes a cache hit. The caller atomically installs the file.
 func downloadURL(ctx context.Context, client *http.Client, streamURL, cacheDir string) (string, error) {
 	if strings.TrimSpace(streamURL) == "" {
 		return "", errors.New("no resolved audio URL to cache")
@@ -468,14 +399,10 @@ func downloadURL(ctx context.Context, client *http.Client, streamURL, cacheDir s
 	return path, nil
 }
 
-// downloadRange is how many bytes of a stream one request asks for. YouTube
-// serves one request for a whole long file, such as a podcast episode, at
-// about twice the speed it plays, and bounded ranges at full speed.
 const downloadRange = 10 << 20
 
-// downloadRanges writes the stream at streamURL to base, a range at a time,
-// and names the file with the extension its media type calls for. It returns
-// the file's path.
+const defaultAudioExtension = ".webm"
+
 func downloadRanges(ctx context.Context, client *http.Client, streamURL, base string) (string, error) {
 	file, err := os.OpenFile(base, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -505,16 +432,12 @@ func downloadRanges(ctx context.Context, client *http.Client, streamURL, base st
 	return path, nil
 }
 
-// appendRange writes the bytes of streamURL from offset to file, at most
-// downloadRange of them. It returns how many it wrote, the length of the
-// whole stream and its media type. A server that ignores the range sends the
-// whole stream instead, which ends the download in one request.
 func appendRange(ctx context.Context, client *http.Client, streamURL string, offset int64, file io.Writer) (written, total int64, contentType string, err error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, streamURL, nil)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("prepare audio download: %w", err)
 	}
-	request.Header.Set("User-Agent", userAgent)
+	request.Header.Set("User-Agent", browserUserAgent)
 	request.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+downloadRange-1))
 	response, err := client.Do(request)
 	if err != nil {
@@ -530,16 +453,12 @@ func appendRange(ctx context.Context, client *http.Client, streamURL string, off
 		}
 	case response.StatusCode == http.StatusOK && offset == 0:
 	default:
-		// A signed URL that has expired answers with an error; the track is
-		// already playing, so the cache just skips it.
 		return 0, 0, "", fmt.Errorf("download audio: unexpected status %s", response.Status)
 	}
 	written, err = io.Copy(file, response.Body)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("download audio: %w", err)
 	}
-	// A stream cut short can end without an error, so the declared length is
-	// the only proof that every byte arrived.
 	if response.ContentLength >= 0 && written != response.ContentLength {
 		return 0, 0, "", fmt.Errorf("download audio: got %d of %d bytes", written, response.ContentLength)
 	}
@@ -552,14 +471,11 @@ func appendRange(ctx context.Context, client *http.Client, streamURL string, off
 	return written, total, response.Header.Get("Content-Type"), nil
 }
 
-// audioURLExtension picks the file extension for a downloaded audio stream
-// from the media type YouTube reports for it. ffmpeg reads a file by its
-// contents, so the extension only has to name a container the cache keeps.
 func audioURLExtension(contentType string) string {
 	mediaType, _, _ := strings.Cut(contentType, ";")
 	switch strings.ToLower(strings.TrimSpace(mediaType)) {
 	case "audio/webm", "video/webm":
-		return ".webm"
+		return defaultAudioExtension
 	case "audio/mp4", "video/mp4":
 		return ".m4a"
 	case "audio/ogg", "application/ogg":
@@ -575,8 +491,6 @@ func audioURLExtension(contentType string) string {
 	case "audio/mpeg":
 		return ".mp3"
 	default:
-		// YouTube Music serves most audio as Opus in WebM, which is the safe
-		// fallback when a media server reports no useful type.
-		return ".webm"
+		return defaultAudioExtension
 	}
 }

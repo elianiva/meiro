@@ -23,9 +23,6 @@ func (p playlistResponse) RoundTrip(request *http.Request) (*http.Response, erro
 	}, nil
 }
 
-// duplicatePlaylistResponse is what YouTube answers an add with when the
-// playlist holds the video already: a failed write that offers to add the
-// video anyway.
 const duplicatePlaylistResponse = `{"status":"STATUS_FAILED","actions":[{"addToToastAction":{"item":{"notificationActionRenderer":{"actionButton":{"buttonRenderer":{"command":{"playlistEditEndpoint":{"playlistId":"PL1","actions":[{"action":"ACTION_ADD_VIDEO","addedVideoId":"vid-1","dedupeOption":"DEDUPE_OPTION_SKIP"}]}}}}}}}}]}`
 
 func TestAddToPlaylistTellsADuplicateFromARefusal(t *testing.T) {
@@ -43,8 +40,6 @@ func TestAddToPlaylistTellsADuplicateFromARefusal(t *testing.T) {
 	if err := add(duplicatePlaylistResponse); !errors.Is(err, ErrAlreadyInPlaylist) {
 		t.Fatalf("a song the playlist holds already = %v", err)
 	}
-	// A refusal that offers no retry is not a duplicate, and is still a
-	// failure the app shows.
 	if err := add(`{"status":"STATUS_FAILED"}`); err == nil || errors.Is(err, ErrAlreadyInPlaylist) {
 		t.Fatalf("a plain refusal = %v", err)
 	}
@@ -95,7 +90,6 @@ func TestRemoveFromPlaylistRefusal(t *testing.T) {
 		CookieAuth: auth,
 		HTTPClient: &http.Client{Transport: playlistResponse(`{"status":"STATUS_INVALID_PLAYLIST_SET_VIDEO_ID"}`)},
 	})
-	// The refusal the player bar shows as a line is written whole to the log.
 	var logged strings.Builder
 	flags := log.Flags()
 	log.SetOutput(&logged)

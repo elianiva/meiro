@@ -7,8 +7,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// handleWidth counts the pixels the handle paints across, on a row above the
-// track: only the handle is that tall.
 func handleWidth(it *image.RGBA) int {
 	bounds := it.Bounds()
 	background := it.At(bounds.Min.X, bounds.Min.Y)
@@ -22,9 +20,6 @@ func handleWidth(it *image.RGBA) int {
 	return n
 }
 
-// The handle keeps one width as it travels, whatever the device's scale: at
-// 120% a handle four DIPs wide lands on 4.8 pixels, which rounded to five or
-// to four from one place to the next and made the bar look to flicker.
 func TestTheSliderHandleKeepsItsWidthAsItMoves(t *testing.T) {
 	value := 40.0
 	tt := ui.NewTester(func(c *ui.Context) {

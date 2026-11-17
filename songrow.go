@@ -8,49 +8,27 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// rowActionGap is the gap between a row's action buttons and its length. A 40
-// DIP icon button draws a 20 DIP icon, so its box leaves 10 DIP on each side;
-// a gap one DIP under that lands the drawn glyphs as far from the digits as
-// the menu button's dots sit on the other side.
 const rowActionGap float32 = 9
 
-// rowEdgeGap is the gap between the length and the row's menu button.
 const rowEdgeGap float32 = 4
 
-// songOptions shape a row of a song.
+const queueList = "queue"
+
 type songOptions struct {
-	// number shows a place in the list where the artwork would be.
-	number int
-	// list names the list the row belongs to, so that the same song in two
-	// lists, as in the queue behind a page of quick picks, is two rows with
-	// two keys rather than one shared menu.
-	list     string
-	position int
-	// track is the exact occurrence in the queue. It differs from position
-	// when a playlist search hides entries before this row.
-	track int
-	// inset puts the row in from the edges of the page, as the rows of a
-	// page of songs are; rows in a shelf sit flush.
-	inset bool
-	// directQueue plays the row's song from the list it is in, named source,
-	// rather than from the page.
+	number      int
+	list        string
+	position    int
+	track       int
+	inset       bool
 	directQueue bool
 	source      string
-	// compact fits queue rows in the tray mini player.
-	compact bool
-	// calls, when callsSet, are the keys and names the row's controls
-	// already know, so that a frame does not build them again. rowKey is
-	// the key the queue's selection knows the row by, and row its place in
-	// the queue's list.
-	calls    rowCalls
-	callsSet bool
-	rowKey   string
-	row      int
+	compact     bool
+	calls       rowCalls
+	callsSet    bool
+	rowKey      string
+	row         int
 }
 
-// rowCalls are the keys and names the controls of one song row use. A page
-// builds them with its rows, and the queue keeps the ones it drew lately; the
-// related list, made fresh every frame, builds them as it draws.
 type rowCalls struct {
 	key        string
 	menu       string
@@ -59,43 +37,32 @@ type rowCalls struct {
 	queueLabel string
 }
 
-// newRowCalls builds the controls' strings for a song at key in list.
 func newRowCalls(item youtube.MusicItem, key, list string) rowCalls {
 	calls := rowCalls{
 		key:       key,
 		menu:      key + "-menu",
 		menuLabel: "More options for " + item.Title,
 	}
-	if list == "queue" {
-		// A queue row shows its cross at rest, so its key and label are
-		// worth keeping. Every other row builds them as it shows the button.
+	if list == queueList {
 		calls.queue = key + "-remove"
 		calls.queueLabel = "Remove " + item.Title + " from queue"
 	}
 	return calls
 }
 
-// queueCallKey names a queued song at one place in the queue, which is what
-// its row's strings are built from.
 type queueCallKey struct {
 	videoID, title string
 	position       int
 	row            int
 }
 
-// queueRowView is what a queue row's controls read: the strings they use,
-// and the key the queue's selection knows the row by.
 type queueRowView struct {
 	calls  rowCalls
 	rowKey string
 }
 
-// queueViewsKept bounds the queue rows whose strings are kept for the frames
-// that draw them again. A queue's visible window is a few rows; this is more.
 const queueViewsKept = 64
 
-// queueRowCalls returns the strings of a queue row, keeping them for the
-// frames that draw the row again rather than building them every frame.
 func (a *app) queueRowCalls(item youtube.MusicItem, o songOptions, row int) (rowCalls, string) {
 	key := queueCallKey{item.VideoID, item.Title, o.position, row}
 	if view, ok := a.nowPlaying.queueViews[key]; ok {
@@ -112,35 +79,27 @@ func (a *app) queueRowCalls(item youtube.MusicItem, o songOptions, row int) (row
 	return view.calls, view.rowKey
 }
 
-// songKey identifies a row of a song in its list, for the element tree and
-// for the menu state that a row opens.
 func songKey(item youtube.MusicItem, o songOptions) string {
 	return itemKey("song", item) + "\x00" + strconv.Itoa(o.number) + "\x00" + o.list + "#" + strconv.Itoa(o.position)
 }
 
-// playingRow says whether a row is picked out as the one playing. In the
-// queue, which can hold the same song twice, it is the place that plays; in
-// every other list it is the song playing, by its own ID.
 func (a *app) playingRow(item youtube.MusicItem, o songOptions) bool {
 	if !item.IsTrack() {
 		return false
 	}
-	if o.list == "queue" {
+	if o.list == queueList {
 		return o.position == a.queue.index
 	}
 	return item.VideoID == a.current.VideoID
 }
 
-// songRow shows a song, an album, an artist or a playlist as a row: artwork,
-// name over details, and the length. The song playing is picked out in a
-// tonal container with dancing bars.
 func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicItem, o songOptions) {
 	sc := m3.Of(c).Scheme
 	isSong := item.IsTrack()
 	playing := a.playingRow(item, o)
 	selected := false
 	queueCursor := false
-	if o.list == "queue" {
+	if o.list == queueList {
 		rowKey := o.rowKey
 		if rowKey == "" {
 			rowKey = queueRowKey(&a.queue, o.row)
@@ -153,17 +112,11 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		calls = newRowCalls(item, songKey(item, o), o.list)
 	}
 	key := calls.key
-	// The track playing is the queue's, and stays in it, so its row offers
-	// nothing to take it out.
-	playingQueueRow := o.list == "queue" && o.position == a.queue.index
-	// The row takes the corner the list gives its rows, so that the row's
-	// fill, the list's and a swipe's action meet at the same corner.
+	playingQueueRow := o.list == queueList && o.position == a.queue.index
 	radius := c.Theme().Radius
 	height, artSize, padding, gap, iconSize := float32(rowHeight), float32(48), float32(8), float32(12), float32(24)
 	titleRole, subtitleRole := m3.BodyLarge, m3.BodyMedium
 	artPixels := 128
-	// An episode on its show's page says what it is about under its title,
-	// as YouTube Music's does, so its row is taller and its picture larger.
 	described := o.inset && item.Description != ""
 	switch {
 	case o.compact:
@@ -173,10 +126,6 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		height, artSize, gap, artPixels = 120, 96, 16, 256
 	}
 	row := ui.Row(c.Key(key))
-	// Clipping keeps a swiped row's content within the row as it slides.
-	// The menu button keeps the same distance from the row's content as the
-	// buttons inside it keep from the length (rowActionGap), and their 40 DIP
-	// boxes leave the same 10 DIP around each 20 DIP icon.
 	row.Height(height).Shrink(0).Padding(padding, 8).Gap(rowEdgeGap).AlignItems(ui.Center).Radius(radius).Clip()
 	if o.inset {
 		row.Margin(0, pageGutter-8)
@@ -193,8 +142,6 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		main.Grow(1).Basis(0).MinWidth(0).Height(height - 2*padding).Gap(gap).AlignItems(ui.Center).
 			Radius(radius).Cursor(ui.CursorPointer).Label(item.Title).Background(ui.Transparent)
 		row.Background(m3.StateFill(container, sc.OnSurface, hovered && !playing, main.Pressed(), false))
-		// The list already outlines an unselected cursor. Selected rows and
-		// the row's own button need one outline around the whole row instead.
 		if main.FocusVisible() || queueCursor && selected {
 			focusColor := sc.Primary
 			if selected && !playing {
@@ -255,29 +202,17 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 					m3.Text(c, subtitleRole, item.Subtitle).SingleLine().TextColor(subColour)
 				}
 			})
-			// The download mark belongs to the library, not to the queue,
-			// whose rows show only what plays next.
-			if isSong && o.list != "queue" && a.isDownloaded(item.VideoID) {
+			showsDownloadMark := isSong && o.list != queueList && a.isDownloaded(item.VideoID)
+			if showsDownloadMark {
 				ui.Icon(c, m3.IconDownloadDone).FontSize(18).TextColor(subColour).Label("Downloaded")
 			}
 			buttons := isSong && !o.compact && !playingQueueRow
 			switch {
 			case item.Duration != "" || buttons:
-				// The length sits between the row's actions and the menu, the
-				// same distance from each: the gap here and the row's own
-				// gap, with a 40 DIP button's 10 DIP of padding on both
-				// sides.
 				ui.Row(c).Shrink(0).Gap(rowActionGap).AlignItems(ui.Center).Children(func() {
-					// The buttons show under the pointer only: the row's menu
-					// offers the same actions to the keyboard, and a button
-					// that Tab reached while it was hidden would ring
-					// nothing. Their slots keep their width, so nothing
-					// beside them moves as the pointer comes. A queue row has
-					// the cross only; a list row adds a song next, beside the
-					// button that adds it to the end.
 					if buttons {
 						actions = ui.Row(c).Shrink(0).Gap(-5).Children(func() {
-							if o.list != "queue" {
+							if o.list != queueList {
 								ui.Row(c).Width(40).Shrink(0).Children(func() {
 									if hovered {
 										playNextButton = a.playNextRowButton(c, calls, item)
@@ -286,7 +221,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 							}
 							ui.Row(c).Width(40).Shrink(0).Children(func() {
 								if hovered {
-									queueButton = a.queueRowButton(c, calls, o.list == "queue", item)
+									queueButton = a.queueRowButton(c, calls, o.list == queueList, item)
 								}
 							})
 						})
@@ -299,12 +234,8 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			case !isSong:
 				ui.Icon(c, m3.IconChevronRight).FontSize(24).TextColor(sc.OnSurfaceVariant)
 			}
-			// A menu the pointer opened points at the pointer; one the menu
-			// button opened points at the button.
 			menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key)
 		})
-		// Keep the button in the focus order even while its dots are hidden.
-		// Removing it when the main button loses focus strands Tab here.
 		menuContainer := ui.Transparent
 		if selected && !playing {
 			menuContainer = sc.SurfaceContainerHighest
@@ -317,14 +248,11 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			menuButton.Opacity(0).PassThrough()
 		}
 	})
-	// A song row swipes sideways with Shift held: a row of a list adds its
-	// track to the queue, and a row of the queue takes it out.
 	if isSong && !o.compact && !playingQueueRow {
-		a.swipeRow(c, row, main, menuButton, actions, swipeRowOptions{key: key, remove: o.list == "queue", padding: 8, radius: radius}, func() { a.queueRowAction(item, o) })
+		a.swipeRow(c, row, main, menuButton, actions, swipeRowOptions{key: key, remove: o.list == queueList, padding: 8, radius: radius}, func() { a.queueRowAction(item, o) })
 	}
 	pointer := main.RightClicked() || menuButton.RightClicked()
 	if menuButton.Clicked() || pointer || main.Shortcut(ui.Shift, ui.KeyF10) {
-		// Read the pointer only when opening, so dragging the row still works.
 		x, y, _ := main.PointerPosition()
 		a.menu.show(key, pointer, x, y)
 	}
@@ -333,9 +261,6 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		if isSong {
 			a.songMenu(c, anchor, key, item, o)
 		} else {
-			// A row of an album, an artist or a playlist is a row of
-			// something that opens a page, as a card in a shelf is, and
-			// offers what that card's menu does.
 			a.cardMenu(c, anchor, key, item, queue)
 		}
 	}
@@ -348,7 +273,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		return
 	}
 	if main.Clicked() {
-		if o.list == "queue" {
+		if o.list == queueList {
 			mods := main.ClickModifiers()
 			if mods&(ui.Cmd|ui.Shift) != 0 {
 				a.selectQueueRow(o.position, mods)
@@ -364,8 +289,6 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		}
 		switch {
 		case o.directQueue && item.IsTrack():
-			// Only a song plays from the list; an album, a playlist, an
-			// artist or a show in it opens its page below.
 			index := o.track
 			if index < 0 {
 				index = indexOf(queue, item.VideoID)
@@ -379,19 +302,14 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	}
 }
 
-// queueRowAction adds a row's track to the queue, or takes the track out when
-// the row is a row of the queue.
 func (a *app) queueRowAction(item youtube.MusicItem, o songOptions) {
-	if o.list == "queue" {
+	if o.list == queueList {
 		a.removeFromQueue(o.position)
 		return
 	}
 	a.enqueue(item, false)
 }
 
-// playNextRowButton is the button a list row shows under the pointer beside
-// the one that adds the track to the queue: it queues the track to play after
-// the one playing.
 func (a *app) playNextRowButton(c *ui.Context, calls rowCalls, item youtube.MusicItem) ui.Element {
 	return m3.IconButton(c, m3.IconButtonSpec{
 		Icon: m3.IconNext, Label: "Play " + item.Title + " next", Key: calls.key + "-play-next",
@@ -399,8 +317,6 @@ func (a *app) playNextRowButton(c *ui.Context, calls rowCalls, item youtube.Musi
 	})
 }
 
-// queueRowButton is the button a row shows under the pointer: it adds the
-// track to the queue, or takes it out when the row is a row of the queue.
 func (a *app) queueRowButton(c *ui.Context, calls rowCalls, remove bool, item youtube.MusicItem) ui.Element {
 	if remove {
 		return m3.IconButton(c, m3.IconButtonSpec{
@@ -409,7 +325,6 @@ func (a *app) queueRowButton(c *ui.Context, calls rowCalls, remove bool, item yo
 	}
 	label, queueKey := calls.queueLabel, calls.queue
 	if queueKey == "" {
-		// The button shows under the pointer, so its strings are built then.
 		label, queueKey = "Add "+item.Title+" to queue", calls.key+"-queue"
 	}
 	return m3.IconButton(c, m3.IconButtonSpec{

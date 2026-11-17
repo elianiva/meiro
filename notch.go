@@ -25,8 +25,6 @@ const (
 	notchCollapseDelay = 2 * time.Second
 )
 
-// The player and fetched lyrics belong to app. Only presentation belongs to
-// this window; opening it never changes the main player's tab or scroll.
 type notchState struct {
 	cutout        mygo.Rectangle
 	expanded      bool
@@ -35,13 +33,9 @@ type notchState struct {
 	scrub         float64
 	scrubbing     bool
 	collapseAt    time.Time
-	// cover is the picture the notch showed last, kept while the next one
-	// loads. coverSmall is the same for its compact header, which asks for
-	// another size.
-	cover      coverState
-	coverSmall coverState
-	// interacting is rebuilt from the current pass's controls, never UI handles.
-	interacting bool
+	cover         coverState
+	coverSmall    coverState
+	interacting   bool
 }
 
 type notchWindow struct {
@@ -92,16 +86,12 @@ func (a *app) setNotchCutout(cutout mygo.Rectangle) {
 	a.syncDesktop()
 }
 
-// notchEnabled is the chosen desktop player, independent of whether a track
-// is loaded. Losing the display must not overwrite the saved preference.
 func (a *app) notchEnabled() bool {
 	return a.settings.ShowNotch && a.notch.cutout.Width > 0 && a.notch.cutout.Height > 0
 }
 
 func (n *notchState) bounds() mygo.Rectangle {
 	w, h := n.cutout.Width+2*notchWing, n.cutout.Height+6
-	// Keep the full canvas until the closing animation has finished. Only the
-	// painted panel changes size; text keeps its layout instead of stretching.
 	if n.expanded || n.transitioning {
 		w = max(w+2*notchOpenTarget, notchLyricsWidth)
 		h += notchLyricsHeight
@@ -160,8 +150,6 @@ func (d *desktop) closeNotch() {
 	d.notch.bounds = mygo.Rectangle{}
 }
 
-// Artwork loads can invalidate from a background worker. The native handle
-// itself stays owned by the main thread, just like the tray's mini player.
 func (d *desktop) invalidateNotch() {
 	if w := d.notch.win.Load(); w != nil {
 		w.Invalidate()
@@ -180,8 +168,6 @@ func (a *app) setNotchExpanded(open bool) {
 		a.loadLyrics()
 	}
 	a.syncNotch()
-	// Only an explicit expansion takes the keyboard. Closing gives it back
-	// before the shrinking animation finishes.
 	if a.desktop != nil {
 		if w := a.desktop.notch.win.Load(); w != nil {
 			if open {
@@ -200,15 +186,11 @@ func (a *app) notchView(c *ui.Context) {
 		return
 	}
 	white := ui.RGB(255, 255, 255)
-	// The black camera housing stays monochrome even with a light app theme.
-	// Copy the theme so controls in the main window keep their own colours.
 	theme := *a.resolveTheme(c)
 	theme.Scheme.OnSurface, theme.Scheme.OnSurfaceVariant = white, white.Alpha(0.8)
 	theme.Scheme.SurfaceContainerHighest = ui.RGB(32, 32, 32)
 	theme.Scheme.Primary, theme.Scheme.OnPrimary = white, ui.RGB(0, 0, 0)
 	m3.Provide(c, &theme)
-	// Provide sets the root background too; clear it afterwards so the
-	// pixels outside the rounded panel reveal the desktop.
 	c.Root().Background(ui.Transparent)
 	n := &a.notch
 	n.interacting = false
@@ -230,30 +212,22 @@ func (a *app) notchView(c *ui.Context) {
 	if open && !reduced {
 		fadeDuration, delay = 140*time.Millisecond, 100*time.Millisecond
 	}
-	// AnimateColor preserves short fades with Reduce Motion; AnimateTo snaps
-	// spatial changes to their target. Both retarget from the current frame.
 	fade := root.AnimateColor("content", white.Alpha(target), ui.Animation{Duration: fadeDuration, Delay: delay, Ease: ui.EaseInOut})
 	opacity := float32(fade.A) / 255
 	headerFade := root.AnimateColor("header", white.Alpha(target), ui.Animation{Duration: 100 * time.Millisecond, Ease: ui.EaseInOut})
 	headerOpacity := float32(headerFade.A) / 255
 	if reduced && !open && !root.Settled("content") {
-		// Fade in place before switching to the compact footprint.
 		size = 1
 	}
 	width := compactWidth + (fullWidth-compactWidth)*size
 	root.Size(width, headerHeight+notchLyricsHeight*size).Left((canvasWidth - width) / 2)
 	if n.transitioning && root.Settled("size") && root.Settled("content") && root.Settled("header") {
 		n.transitioning = false
-		// A guarded completion, not a timer: resize after the last frame. The
-		// update reads the latest target, so a quick reopen cannot be closed by
-		// an obsolete callback. No UI elements escape this build pass.
 		a.update(a.syncNotch)
 	}
 	root.Children(func() {
 		ui.Row(c.Key("notch-header")).Height(headerHeight).FillWidth().Shrink(0).Justify(ui.Center).Children(func() {
 			if open || n.transitioning {
-				// Keep the camera and the existing wings centred. This extra
-				// target fits in the space revealed to the left when expanded.
 				launch := ui.ButtonBase(c.Key("notch-open")).Absolute().
 					Left((width-compactWidth)/2-notchOpenTarget).Top((headerHeight-notchOpenTarget)/2).
 					Size(notchOpenTarget, notchOpenTarget).Center().Radius(8).
@@ -266,7 +240,6 @@ func (a *app) notchView(c *ui.Context) {
 				})
 				n.trackInteraction(launch)
 				if launch.Clicked() {
-					// Release the panel's keyboard focus before focusing the main window.
 					a.setNotchExpanded(false)
 					a.desktop.bringToFront()
 				}
@@ -286,7 +259,6 @@ func (a *app) notchView(c *ui.Context) {
 					ui.Icon(c, m3.IconExpandLess).FontSize(18).TextColor(white.Alpha(0.5))
 				})
 			})
-			// The camera occupies this area. Never place a title or a control here.
 			ui.Box(c.Key("camera")).Width(float32(n.cutout.Width)).Height(headerHeight).PassThrough()
 			indicator := ui.ButtonBase(c.Key("notch-indicator")).Size(notchWing, headerHeight).Center().Label(label + " from playback indicator").Cursor(ui.CursorPointer)
 			n.trackInteraction(indicator)
@@ -349,8 +321,6 @@ func (a *app) notchView(c *ui.Context) {
 	a.notchAutoCollapse(c, root)
 }
 
-// trackInteraction keeps keyboard focus and held controls from timing out.
-// A mouse click's retained focus alone must not keep the panel open forever.
 func (n *notchState) trackInteraction(control ui.Element) ui.Element {
 	n.interacting = control.FocusVisible() || control.Pressed() || n.interacting
 	return control
@@ -358,7 +328,7 @@ func (n *notchState) trackInteraction(control ui.Element) ui.Element {
 
 func (a *app) notchAutoCollapse(c *ui.Context, panel ui.Element) {
 	n := &a.notch
-	hovered := panel.Hovered() // Observe the whole panel, including gaps and children.
+	hovered := panel.Hovered()
 	if !n.expanded || n.transitioning || hovered || n.scrubbing || n.interacting {
 		n.collapseAt = time.Time{}
 		return
@@ -367,8 +337,6 @@ func (a *app) notchAutoCollapse(c *ui.Context, panel ui.Element) {
 		n.collapseAt = c.Now().Add(notchCollapseDelay)
 	}
 	if remaining := n.collapseAt.Sub(c.Now()); remaining > 0 {
-		// A wakeup only rebuilds the UI. Re-entry or a new interaction clears
-		// the deadline, so an old wakeup cannot close a reopened panel.
 		c.After(remaining)
 		return
 	}
@@ -398,8 +366,6 @@ func (a *app) notchTransport(c *ui.Context) {
 	})
 }
 
-// The thin track keeps SliderBase's keyboard and pointer behaviour. Its drag
-// preview belongs to this window, so a frame in the main player cannot end it.
 func (a *app) notchProgress(c *ui.Context) {
 	n := &a.notch
 	known := a.total > 0
@@ -416,7 +382,6 @@ func (a *app) notchProgress(c *ui.Context) {
 			Label("Notch position").Height(20).FillWidth().Shrink(0).Disabled(!known).Cursor(ui.CursorPointer)
 		n.trackInteraction(slider)
 		changed := slider.Changed()
-		// Arrow-key seeking may follow mouse focus without a visible focus ring.
 		n.interacting = changed || n.interacting
 		wasScrubbing := n.scrubbing
 		_, _, n.scrubbing = slider.Dragged()
@@ -449,8 +414,6 @@ func (a *app) notchProgress(c *ui.Context) {
 	})
 }
 
-// Five decorative bars; only their paint is animated, never audio analysis or
-// a background timer. The captured playing flag is refreshed on playback ticks.
 func notchBars(c *ui.Context, playing bool, color ui.Color) {
 	label := "Paused"
 	if playing {

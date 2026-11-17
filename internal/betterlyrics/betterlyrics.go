@@ -1,6 +1,3 @@
-// Package betterlyrics fetches song lyrics from https://api.betterlyrics.org,
-// the service behind the Better Lyrics extension, which times each word of a
-// line. It reads the TTML it answers with into lines with their words.
 package betterlyrics
 
 import (
@@ -20,24 +17,17 @@ import (
 	"github.com/elianiva/meiro/internal/lyrics"
 )
 
-// userAgent names the app, as the service asks of its clients.
 const userAgent = "Meiro (https://github.com/elianiva/meiro)"
 
-// maxBody bounds the answer read; lyrics are a few kilobytes.
 const maxBody = 1 << 20
 
-// Query names the track to look for. Album and Duration improve the match, and
-// the service keys its cache on them: a request without them often misses the
-// entry a fuller request finds.
 type Query struct {
 	Title, Artist, Album string
 	Duration             time.Duration
 }
 
-// Client asks Better Lyrics. The zero value uses the real service.
 type Client struct {
-	HTTP *http.Client
-	// BaseURL replaces https://api.betterlyrics.org, for tests.
+	HTTP    *http.Client
 	BaseURL string
 }
 
@@ -45,9 +35,6 @@ type response struct {
 	TTML string `json:"ttml"`
 }
 
-// Get finds the lyrics of a track, with the moment each word is sung. It
-// returns no lines and no error when the service has them not: a song it has
-// not cached needs an API key, which the service does not issue.
 func (c *Client) Get(ctx context.Context, q Query) ([]lyrics.Line, error) {
 	if q.Title == "" && q.Artist == "" {
 		return nil, nil
@@ -83,9 +70,6 @@ func (c *Client) Get(ctx context.Context, q Query) ([]lyrics.Line, error) {
 	case http.StatusOK:
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusUnprocessableEntity,
 		http.StatusTooManyRequests, http.StatusServiceUnavailable:
-		// No lyrics this time: the service has none, has not cached them,
-		// is rate limiting, or is serving cached ones only. The next source
-		// is tried.
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("betterlyrics: %s", got.Status)
@@ -105,12 +89,6 @@ func (c *Client) Get(ctx context.Context, q Query) ([]lyrics.Line, error) {
 	return lines, nil
 }
 
-// ParseTTML reads the lines of a TTML document, with the moment each word
-// starts: each <p> is a line and each <span> in it that starts at a time is
-// one of its words, or syllables. The text between the spans is the spacing
-// between them, which the document depends on, so it is kept with the word
-// before it. Spans that only group others, such as background vocals, are
-// read through, and a line with no timed span keeps the text it has.
 func ParseTTML(document string) []lyrics.Line {
 	if strings.TrimSpace(document) == "" {
 		return nil
@@ -137,7 +115,6 @@ func ParseTTML(document string) []lyrics.Line {
 	return lines
 }
 
-// readLine reads a <p>, up to and including its end, into a line.
 func readLine(decoder *xml.Decoder, start xml.StartElement) (lyrics.Line, bool, error) {
 	at, timed := clock(start, "begin")
 	reader := &spanReader{decoder: decoder}
@@ -148,25 +125,16 @@ func readLine(decoder *xml.Decoder, start xml.StartElement) (lyrics.Line, bool, 
 	if len(line.Words) > 0 && !timed {
 		line.At = line.Words[0].At
 	}
-	// A line with no time of its own and no word that has one cannot be
-	// followed, and only adds noise to a list of them.
 	return line, line.Text != "" && (timed || len(line.Words) > 0), nil
 }
 
-// spanReader collects the words and the text of a line.
 type spanReader struct {
 	decoder *xml.Decoder
-	// words are the timed spans met so far, with the text between them
-	// appended to the one before it.
-	words []lyrics.Word
-	// plain is every piece of text of the line, in order, whether it is
-	// timed or not.
-	plain strings.Builder
-	// lead is text before the first word, which would otherwise be lost.
-	lead string
+	words   []lyrics.Word
+	plain   strings.Builder
+	lead    string
 }
 
-// walk reads a line's text and words up to its end.
 func (r *spanReader) walk(end string) error {
 	for {
 		token, err := r.decoder.Token()
@@ -178,7 +146,6 @@ func (r *spanReader) walk(end string) error {
 			r.text(string(t))
 		case xml.StartElement:
 			if t.Name.Local != "span" {
-				// A line holds nothing else that matters: skip the subtree.
 				if err := r.decoder.Skip(); err != nil {
 					return err
 				}
@@ -194,8 +161,6 @@ func (r *spanReader) walk(end string) error {
 				r.lead = ""
 				continue
 			}
-			// A span that groups others, such as background vocals, is
-			// read through as if its words were the line's own.
 			if err := r.walk(t.Name.Local); err != nil {
 				return err
 			}
@@ -207,8 +172,6 @@ func (r *spanReader) walk(end string) error {
 	}
 }
 
-// text keeps text between spans with the word before it, which is how the
-// document spaces its words.
 func (r *spanReader) text(s string) {
 	r.plain.WriteString(s)
 	switch {
@@ -220,7 +183,6 @@ func (r *spanReader) text(s string) {
 	}
 }
 
-// spanText reads the text of a span, nested elements included, up to its end.
 func (r *spanReader) spanText(end string) (string, error) {
 	var text strings.Builder
 	for {
@@ -245,8 +207,6 @@ func (r *spanReader) spanText(end string) (string, error) {
 	}
 }
 
-// clock reads a time attribute of an element: "hh:mm:ss.mmm", "mm:ss.mmm" or
-// seconds.
 func clock(element xml.StartElement, name string) (time.Duration, bool) {
 	for _, attr := range element.Attr {
 		if attr.Name.Local == name {
@@ -256,7 +216,6 @@ func clock(element xml.StartElement, name string) (time.Duration, bool) {
 	return 0, false
 }
 
-// parseClock reads a clock time, as TTML writes one.
 func parseClock(value string) (time.Duration, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {

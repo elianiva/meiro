@@ -10,12 +10,8 @@ import (
 	"github.com/elianiva/meiro/internal/settings"
 )
 
-// contentSize is the size the view was given, in the window's DIPs.
 type contentSize struct{ w, h float32 }
 
-// sizedWindow builds the app in a window of the given size, and records the
-// size every frame gives the view: the window's, or the content's when the
-// interface is zoomed.
 func sizedWindow(t *testing.T, a *app, w, h int) (*ui.Tester, func() contentSize) {
 	t.Helper()
 	var last contentSize
@@ -34,7 +30,6 @@ func TestZoomShortcutsScaleTheWindow(t *testing.T) {
 		t.Fatalf("unzoomed content = %v, want 1000x700", got)
 	}
 
-	// The interface grows, so the same window holds fewer DIPs.
 	tt.Key(ui.Cmd, ui.KeyEqual)
 	tt.Frame()
 	if a.settings.Zoom != 110 {
@@ -63,7 +58,6 @@ func TestZoomShortcutsScaleTheWindow(t *testing.T) {
 		t.Errorf("after reset the content = %v, want 1000x700", got)
 	}
 
-	// The interface stops at the largest zoom it offers.
 	a.settings.Zoom = settings.MaxZoom
 	tt.Frame()
 	tt.Key(ui.Cmd, ui.KeyEqual)

@@ -6,8 +6,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// keyNames are the keys that can be bound, by the name the settings file
-// gives them. keyLabel is how they read on a keycap, where that differs.
 var keyNames = []struct {
 	key   ui.Key
 	name  string

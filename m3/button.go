@@ -4,37 +4,30 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// ButtonKind is the emphasis of a button, from the loudest to the quietest.
 type ButtonKind int
 
 const (
-	// Filled is the primary action of a screen.
 	Filled ButtonKind = iota
-	// Tonal is a secondary action that still deserves weight.
 	Tonal
-	// Elevated lifts a button off a busy surface.
 	Elevated
-	// Outlined is a medium-emphasis action.
 	Outlined
-	// TextOnly is the quietest: no container at all.
 	TextOnly
 )
 
-// ButtonSize is one of the five sizes of Material 3 Expressive buttons.
 type ButtonSize int
 
 const (
-	ExtraSmall32  ButtonSize = iota // 32 DIPs high
-	Small40                         // 40
-	Medium56                        // 56
-	Large96                         // 96
-	ExtraLarge136                   // 136
+	ExtraSmall32 ButtonSize = iota
+	Small40
+	Medium56
+	Large96
+	ExtraLarge136
 )
 
 type buttonDims struct {
 	height, pad, icon, gap float32
 	label                  Role
-	square, pressed        float32 // corner radius of the square shape, and of any shape while pressed
+	square, pressed        float32
 }
 
 func (s ButtonSize) dims() buttonDims {
@@ -51,33 +44,19 @@ func (s ButtonSize) dims() buttonDims {
 	return buttonDims{40, 16, 20, 8, LabelLarge, Medium, Small}
 }
 
-// ButtonSpec describes a button. The zero value is a small filled button.
 type ButtonSpec struct {
-	Label string
-	Icon  *ui.SVG
-	// IconRotation rotates the icon around its center without changing the
-	// button's layout. It is useful for controls whose icon reflects state.
-	IconRotation float32
-	Kind         ButtonKind
-	Size         ButtonSize
-	// Square gives the button the squarer shape; the default is a pill.
-	Square bool
-	// Padding overrides the room the label and the icon keep inside the
-	// shape. A button with no container of its own draws nothing but its
-	// content, so the size's padding reads as a gap between it and the
-	// controls beside it on a toolbar row.
-	Padding float32
-	// Toggle makes the button a toggle: Selected is its state, and a selected
-	// toggle swaps its shape, as Expressive buttons do, so that state shows in
-	// shape as well as in colour.
+	Label            string
+	Icon             *ui.SVG
+	IconRotation     float32
+	Kind             ButtonKind
+	Size             ButtonSize
+	Square           bool
+	Padding          float32
 	Toggle, Selected bool
 	Disabled         bool
-	// Key keeps the button's state with its item when siblings come and go.
-	Key any
+	Key              any
 }
 
-// containerColors returns the container and content colours of a kind in a
-// state, and its outline.
 func containerColors(s Scheme, kind ButtonKind, toggle, selected bool) (container, content, outline ui.Color) {
 	switch kind {
 	case Tonal:
@@ -104,7 +83,6 @@ func containerColors(s Scheme, kind ButtonKind, toggle, selected bool) (containe
 	return s.Primary, s.OnPrimary, ui.Transparent
 }
 
-// StateFill is a container with the state layer of its content colour on it.
 func StateFill(container, content ui.Color, hovered, pressed, focused bool) ui.Color {
 	var op float32
 	switch {
@@ -124,12 +102,8 @@ func StateFill(container, content ui.Color, hovered, pressed, focused bool) ui.C
 	return Layer(container, content, op)
 }
 
-// MinTarget is the smallest side of a pointer target in DIPs, as Material 3
-// asks of every control.
 const MinTarget = 48
 
-// slop is how far a control of the given side must reach past its drawn shape
-// on each side to make a target of MinTarget.
 func slop(side float32) float32 {
 	return max((MinTarget-side)/2, 0)
 }
@@ -141,7 +115,6 @@ func newButtonBase(c *ui.Context, key any) ui.Element {
 	return ui.ButtonBase(c)
 }
 
-// focusRing follows the visible shape, not the larger pointer target.
 func focusRing(c *ui.Context, owner, shape ui.Element, radius float32) {
 	owner.FocusRing(false)
 	if owner.FocusVisible() {
@@ -152,7 +125,8 @@ func focusRing(c *ui.Context, owner, shape ui.Element, radius float32) {
 	}
 }
 
-// buttonLabel builds a button's label text in the given role.
+const labelMeasureSlack = 4
+
 func buttonLabel(c *ui.Context, role Role, label string, emphasized bool, size float32) ui.Element {
 	if size <= 0 {
 		size = role.Size
@@ -162,14 +136,9 @@ func buttonLabel(c *ui.Context, role Role, label string, emphasized bool, size f
 		weight = role.Emphasis
 	}
 	width, _ := c.MeasureText(0, ui.Span{Text: label, Size: size, Weight: weight, LetterSpacing: role.Tracking})
-	// A little extra minimum width prevents small differences between a
-	// platform's measured and rendered glyph widths from adding an ellipsis.
-	return role.Style(ui.Text(c, label), emphasized).FontSize(size).MinWidth(width + 4)
+	return role.Style(ui.Text(c, label), emphasized).FontSize(size).MinWidth(width + labelMeasureSlack)
 }
 
-// Button builds a button: its label and icon sit in a container whose shape,
-// colour and state layers follow the active theme. A pressed button squares
-// off along a spring; a selected toggle settles into the other shape.
 func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 	sc := Of(c).Scheme
 	d := spec.Size.dims()
@@ -188,7 +157,7 @@ func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 	}
 	fill := StateFill(container, content, b.Hovered() && !spec.Disabled, b.Pressed(), b.FocusVisible())
 
-	round := spec.Square == (spec.Toggle && spec.Selected) // the shape a button rests in
+	round := spec.Square == (spec.Toggle && spec.Selected)
 	rest := d.height / 2
 	if !round {
 		rest = d.square
@@ -202,9 +171,6 @@ func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 	if spec.Label != "" {
 		b.Label(spec.Label)
 	}
-	// The drawn shape keeps its height; the pointer target around it is at
-	// least MinTarget high, and a negative margin keeps the extra out of the
-	// layout.
 	reachBy := slop(d.height)
 	b.Height(d.height+2*reachBy).Margin(-reachBy, 0)
 	iconRotation := Animate(b, "icon-rotation", spec.IconRotation, SpatialFast)
@@ -234,42 +200,29 @@ func Button(c *ui.Context, spec ButtonSpec) ui.Element {
 	return b
 }
 
-// IconButtonSpec describes an icon button.
 type IconButtonSpec struct {
-	Icon *ui.SVG
-	// Label names the button for assistive technology and its tooltip.
-	Label string
-	Kind  IconButtonKind
-	Size  ButtonSize
-	// Toggle makes the button a toggle with Selected as its state.
+	Icon             *ui.SVG
+	Label            string
+	Kind             IconButtonKind
+	Size             ButtonSize
 	Toggle, Selected bool
-	// Morph swaps the shape of a selected button without recolouring it: the
-	// play button that squares off while playing.
-	Morph    bool
-	Disabled bool
-	// Loading swaps the icon for the loading indicator and ignores presses,
-	// while the button's action is under way.
-	Loading bool
-	Key     any
-	// Container gives a standard icon button a resting container of its own.
-	Container ui.Color
-	// Dimension sets the button's side in DIPs where none of the five sizes
-	// fits, as a play button in a player bar.
-	Dimension float32
+	Morph            bool
+	Disabled         bool
+	Loading          bool
+	Key              any
+	Container        ui.Color
+	Dimension        float32
 }
 
-// IconButtonKind is the emphasis of an icon button.
 type IconButtonKind int
 
 const (
-	// StandardIcon has no container until it is hovered.
 	StandardIcon IconButtonKind = iota
 	FilledIcon
 	TonalIcon
 	OutlinedIcon
 )
 
-// IconButton builds a round button holding one icon.
 func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	sc := Of(c).Scheme
 	d := spec.Size.dims()
@@ -304,7 +257,6 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	}
 	fill := StateFill(container, content, b.Hovered() && !spec.Disabled, b.Pressed(), b.FocusVisible())
 
-	// A selected toggle or morph button rests in the squarer shape.
 	rest := d.height / 2
 	if spec.Selected && (spec.Toggle || spec.Morph) {
 		rest = d.square
@@ -314,8 +266,6 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	}
 	radius := max(Animate(b, "radius", rest, SpatialFast), 0)
 
-	// The drawn shape is d.height wide; the pointer target around it is at least
-	// MinTarget. A negative margin keeps the extra out of the layout.
 	side, reachBy := d.height, slop(d.height)
 	b.Center().Shrink(0).TextColor(content).Cursor(ui.CursorPointer).Transition(Fade(EffectsFast))
 	if reachBy > 0 {
@@ -346,28 +296,23 @@ func IconButton(c *ui.Context, spec IconButtonSpec) ui.Element {
 	return b
 }
 
-// FABSpec describes a floating action button.
 type FABSpec struct {
-	Icon  *ui.SVG
-	Label string // makes it an extended FAB
-	Size  FABSize
-	Tone  FABTone
-	Key   any
-	// Radius overrides the corner the size gives, for a button that sits on
-	// a surface whose own corners it should follow.
+	Icon   *ui.SVG
+	Label  string
+	Size   FABSize
+	Tone   FABTone
+	Key    any
 	Radius float32
 }
 
-// FABSize is the size of a floating action button.
 type FABSize int
 
 const (
-	FABMedium FABSize = iota // 56
-	FABSmall                 // 40
-	FABLarge                 // 96
+	FABMedium FABSize = iota
+	FABSmall
+	FABLarge
 )
 
-// FABTone is the colour pairing of a floating action button.
 type FABTone int
 
 const (
@@ -377,8 +322,6 @@ const (
 	FABPrimary
 )
 
-// FAB builds a floating action button, or an extended one when it has a
-// label. It sits at elevation 3 and rises to 4 under the pointer.
 func FAB(c *ui.Context, spec FABSpec) ui.Element {
 	sc := Of(c).Scheme
 	b := newButtonBase(c, spec.Key)
@@ -433,8 +376,6 @@ func FAB(c *ui.Context, spec FABSpec) ui.Element {
 	return b
 }
 
-// Chip builds a filter chip: outlined while off, tonal with a check when on.
-// It reports its click, so the caller owns the selection.
 func Chip(c *ui.Context, label string, selected bool, key any) ui.Element {
 	sc := Of(c).Scheme
 	b := newButtonBase(c, key)
@@ -462,11 +403,6 @@ func Chip(c *ui.Context, label string, selected bool, key any) ui.Element {
 	return b
 }
 
-// IconChip builds a square chip of one icon, for a control that acts on the row
-// of chips it sits in, as the one that clears their filters does. It is drawn
-// as the chips that are not chosen are, so that the chosen one of the row stays
-// the loudest of them; its label names the action for assistive technology
-// rather than showing it.
 func IconChip(c *ui.Context, icon *ui.SVG, label string, key any) ui.Element {
 	sc := Of(c).Scheme
 	b := newButtonBase(c, key)
@@ -483,10 +419,6 @@ func IconChip(c *ui.Context, icon *ui.SVG, label string, key any) ui.Element {
 	return b
 }
 
-// ButtonGroup builds a connected button group: a row of toggle buttons that
-// share one choice. The selected button rounds into a pill while its
-// neighbours square their inner corners, so the choice reads in shape first.
-// It reports whether the user changed the choice.
 func ButtonGroup(c *ui.Context, key any, selected *int, labels []string, icons []*ui.SVG) bool {
 	sc := Of(c).Scheme
 	group := ui.SegmentedBase(c.Key(key), selected, len(labels))

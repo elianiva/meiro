@@ -7,23 +7,16 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// upNextState is the queue YouTube Music generates after the chosen tracks.
 type upNextState struct {
 	load    task
 	options youtube.UpNextOptions
-	// fetched says the first page was asked for; token continues it, and
-	// seen holds the tokens already used, so a loop of pages ends.
 	fetched bool
 	token   string
 	seen    map[string]struct{}
 	err     string
-	// waiting says playback reached the end of the queue and waits for what
-	// YouTube Music has to follow it.
 	waiting bool
 }
 
-// resetUpNext forgets the recommendations of the queue being replaced, and
-// drops any request for them still on its way.
 func (a *app) resetUpNext(options youtube.UpNextOptions) {
 	u := &a.upNext
 	u.load.stop()
@@ -31,11 +24,8 @@ func (a *app) resetUpNext(options youtube.UpNextOptions) {
 	u.seen = map[string]struct{}{}
 }
 
-// upNextTimeout bounds one request for recommendations.
 const upNextTimeout = 45 * time.Second
 
-// ensureUpNext asks for the generated queue at once, then for another page
-// only when the generated part is almost played out.
 func (a *app) ensureUpNext() {
 	u := &a.upNext
 	if a.queue.playlistMore != "" || a.queueRest.busy() || !a.settings.AutoPlay || a.current.VideoID == "" || u.load.busy() || a.queue.len() == 0 {
@@ -46,10 +36,6 @@ func (a *app) ensureUpNext() {
 	if u.fetched {
 		switch {
 		case u.token == "":
-			// Everything the recommendations held has been played out, so
-			// there is nothing to continue. At the end of the queue that is
-			// where the music stopped: ask again from the track that is
-			// playing, which is what keeps the queue going.
 			if a.queue.remaining() > 0 {
 				return
 			}
@@ -97,7 +83,6 @@ func (a *app) ensureUpNext() {
 			u.options.PlaylistID = result.QueuePlaylistID
 		}
 		a.learnLikes(result.Items)
-		// The first page holds the track playing, with its full byline.
 		a.learnCredits(result.Items...)
 		u.token = result.ContinuationToken
 		if u.token == continuation {
@@ -105,7 +90,6 @@ func (a *app) ensureUpNext() {
 		}
 		a.clearQueueSelection()
 		a.queue.appendGenerated(a.visibleItems(result.Items))
-		// A recommended track can be the one that plays next, so warm it too.
 		a.warmNext()
 		if !u.waiting {
 			return
@@ -118,19 +102,17 @@ func (a *app) ensureUpNext() {
 		case a.settings.AutoSkipDisliked && u.token != "":
 			a.ensureUpNext()
 		case !a.settings.AutoSkipDisliked && continuation != "":
-			a.ensureUpNext() // the list had more to pull
+			a.ensureUpNext()
 		case a.settings.AutoSkipDisliked && a.queue.remaining() > 0:
 			u.waiting = false
-			a.advance() // all remaining tracks are disliked
+			a.advance()
 		default:
-			// A fresh request found nothing to follow the queue with.
 			u.waiting = false
 			a.stopAtQueueEnd()
 		}
 	})
 }
 
-// setAutoPlay changes whether generated tracks can follow the chosen queue.
 func (a *app) setAutoPlay(enabled bool) {
 	if a.settings.AutoPlay == enabled {
 		return

@@ -14,8 +14,6 @@ func TestPullFromTheTopLoadsThePageAgain(t *testing.T) {
 	tt.Frame()
 	homeLoads.Store(0)
 
-	// A pull that stops short of the threshold shows how far it came, and
-	// loads nothing.
 	tt.Scroll(500, 300, 0, -pullRefresh/2)
 	tt.Frame()
 	if got := homeLoads.Load(); got != 0 {
@@ -27,13 +25,11 @@ func TestPullFromTheTopLoadsThePageAgain(t *testing.T) {
 	if _, ok := tt.Find("Pull to refresh"); !ok {
 		t.Error("the pull shows nothing while it comes")
 	}
-	// The pull goes away with the scrolling that made it, a moment later.
 	tt.Advance(pullSettle)
 	if got := a.pull.distance; got != 0 {
 		t.Errorf("the pull stayed at %v after the scrolling stopped", got)
 	}
 
-	// A pull past the threshold loads the page again.
 	tt.Scroll(500, 300, 0, -pullRefresh)
 	tt.Frame()
 	if got := homeLoads.Load(); got != 1 {
@@ -43,7 +39,6 @@ func TestPullFromTheTopLoadsThePageAgain(t *testing.T) {
 		t.Errorf("the pull stayed at %v after loading the page", got)
 	}
 
-	// A mouse wheel pulls the same way, a notch at a time.
 	for range 3 {
 		tt.Wheel(500, 300, 0, -pullRefresh/3)
 	}
@@ -57,8 +52,6 @@ func TestScrollingBackToTheTopDoesNotLoadThePage(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)
 	a.router.Push("/home")
-	// A window shorter than the page, so that the page has somewhere to
-	// scroll away from its top.
 	tt := ui.NewTester(a.view, 1000, 300)
 	tt.Frame()
 	homeLoads.Store(0)
@@ -67,8 +60,6 @@ func TestScrollingBackToTheTopDoesNotLoadThePage(t *testing.T) {
 	if a.page.scroll.Y <= 0 {
 		t.Fatalf("the page did not scroll: Y = %v, MaxY = %v", a.page.scroll.Y, a.page.scroll.MaxY)
 	}
-	// Scrolling back up to the top is the list's own scroll, however far it
-	// comes, and not a pull.
 	tt.Scroll(500, 150, 0, -400)
 	tt.Frame()
 	if got := a.page.scroll.Y; got != 0 {
@@ -82,8 +73,6 @@ func TestScrollingBackToTheTopDoesNotLoadThePage(t *testing.T) {
 	}
 }
 
-// Shift turns the wheel sideways, so a pull must leave it to the shelf under
-// the pointer.
 func TestShiftScrollDoesNotPullThePage(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)
@@ -92,8 +81,6 @@ func TestShiftScrollDoesNotPullThePage(t *testing.T) {
 	tt.Frame()
 	homeLoads.Store(0)
 
-	// The tester's scroll sends no modifiers, so call the handler as the
-	// runtime would with Shift held.
 	if a.pullScroll(ui.InputEvent{Kind: ui.InputScroll, DY: -pullRefresh, Mods: ui.Shift}) {
 		t.Error("the pull took a Shift scroll")
 	}
@@ -104,7 +91,6 @@ func TestShiftScrollDoesNotPullThePage(t *testing.T) {
 		t.Errorf("a Shift scroll loaded the page %d times, want none", got)
 	}
 
-	// The same scroll without Shift is still a pull.
 	if !a.pullScroll(ui.InputEvent{Kind: ui.InputScroll, DY: -pullRefresh}) {
 		t.Error("the pull left an ordinary scroll")
 	}

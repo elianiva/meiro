@@ -9,8 +9,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// artistSongs is the playlist of all the songs of the artist page shown. The
-// page lists only a few of them, and its Songs shelf's title opens the rest.
 func (a *app) artistSongs() (youtube.MusicItem, bool) {
 	if r, _ := a.route(); r.target != youtube.TargetArtist {
 		return youtube.MusicItem{}, false
@@ -23,7 +21,6 @@ func (a *app) artistSongs() (youtube.MusicItem, bool) {
 	return youtube.MusicItem{}, false
 }
 
-// playShelf plays the songs of a shelf from its first song.
 func (a *app) playShelf(r row) {
 	if len(r.queue) == 0 {
 		return
@@ -35,8 +32,6 @@ func (a *app) playShelf(r row) {
 	a.playFrom(r.queue[0], r.queue, 0, options, source)
 }
 
-// playAll plays everything on the page shown. An artist's page plays all the
-// artist's songs, not only the few it lists.
 func (a *app) playAll() {
 	if list, ok := a.artistSongs(); ok {
 		a.playCollection(list, "hero-play", false)
@@ -49,8 +44,6 @@ func (a *app) playAll() {
 	a.playFrom(a.page.playable[0], a.page.playable, 0, options, source)
 }
 
-// shufflePage turns shuffle on and plays the page from a track drawn at
-// random, with the whole page arranged behind it.
 func (a *app) shufflePage() {
 	if list, ok := a.artistSongs(); ok {
 		a.playCollection(list, "hero-shuffle", true)
@@ -60,15 +53,11 @@ func (a *app) shufflePage() {
 		return
 	}
 	a.shuffle = true
-	// The position the playlist is read from goes with the draw, so the queue
-	// YouTube is asked for follows the same track.
 	start, tracks := drawFirst(a.page.playable)
 	options, source := a.queueContext(start)
 	a.playFrom(tracks[0], tracks, 0, options, source)
 }
 
-// startRadioPage plays a track drawn at random from the page shown and lets
-// YouTube Music generate the queue behind it, as the hero's Start radio does.
 func (a *app) startRadioPage() {
 	if len(a.page.playable) == 0 {
 		return
@@ -78,8 +67,6 @@ func (a *app) startRadioPage() {
 	a.playFrom(seed, nil, 0, youtube.UpNextOptions{}, source)
 }
 
-// drawFirst draws a track at random to open a queue on, with the rest
-// shuffled behind it, and says where the drawn track was.
 func drawFirst(tracks []youtube.MusicItem) (int, []youtube.MusicItem) {
 	start := rand.IntN(len(tracks))
 	out := make([]youtube.MusicItem, 0, len(tracks))
@@ -91,9 +78,6 @@ func drawFirst(tracks []youtube.MusicItem) (int, []youtube.MusicItem) {
 	return start, out
 }
 
-// queueContext is what playing from the page shown tells YouTube Music about
-// the queue, and the name of the page, for the queue's heading. A playlist
-// page adds where in the playlist the queue starts.
 func (a *app) queueContext(index int) (youtube.UpNextOptions, string) {
 	options := youtube.UpNextOptions{}
 	r, id := a.route()
@@ -108,12 +92,8 @@ func (a *app) queueContext(index int) (youtube.UpNextOptions, string) {
 	return options, source
 }
 
-// openTimeout bounds reading an album or a playlist to play it.
 const openTimeout = time.Minute
 
-// playCollection plays an album or a playlist without opening its page, as
-// the play button over its card does. With shuffle, a song is drawn to open
-// on and the rest are arranged behind it. key names the card pressed.
 func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 	if shuffle {
 		a.shuffle = true
@@ -124,8 +104,6 @@ func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 		return
 	}
 	a.withCollectionTracks(item, key, false, func(songs []youtube.MusicItem, token string) {
-		// What the playlist is read from follows the song drawn to open it,
-		// so the queue YouTube is asked for keeps the same place.
 		start := 0
 		if shuffle && len(songs) > 1 {
 			start, songs = drawFirst(songs)
@@ -139,9 +117,6 @@ func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 	})
 }
 
-// startRadio plays a seed from what the item names, either the track itself or one
-// drawn from the album, the playlist or the artist, and lets YouTube Music
-// generate the queue behind it, as the radio and mix entries of its menus do.
 func (a *app) startRadio(item youtube.MusicItem, key string) {
 	if target := item.Target(); target.Kind == youtube.TargetTrack {
 		a.playFrom(item, nil, 0, youtube.UpNextOptions{}, item.Title)
@@ -153,9 +128,6 @@ func (a *app) startRadio(item youtube.MusicItem, key string) {
 	})
 }
 
-// withCollectionTracks reads the page of the album, the playlist or the artist
-// an item names and hands its tracks and continuation to then. Downloads ask
-// for all pages; playback can start before the remaining songs arrive.
 func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool, then func([]youtube.MusicItem, string)) {
 	target := item.Target()
 	if target.Kind != youtube.TargetAlbum && target.Kind != youtube.TargetPlaylist && target.Kind != youtube.TargetArtist {
@@ -166,8 +138,6 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool,
 	}
 	a.openingKey = key
 	client := a.client()
-	// artistList is the playlist of all of an artist's songs, when the
-	// artist's page names one: the page lists only a few songs itself.
 	artistList := ""
 	startTask(a, &a.opening, openTimeout, func(ctx context.Context) (*youtube.BrowseResult, error) {
 		switch target.Kind {
@@ -190,8 +160,6 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool,
 			}
 			return page, nil
 		case youtube.TargetPlaylist, youtube.TargetTrack, youtube.TargetPodcast, youtube.TargetNone:
-			// The guard above leaves the playlist of the kinds that are not
-			// its own.
 		}
 		result, err := client.GetPlaylist(ctx, target.ID)
 		if err != nil || !all {
@@ -229,11 +197,8 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool,
 	})
 }
 
-// isOpening reports whether the card under key is being read to play.
 func (a *app) isOpening(key string) bool { return a.opening.busy() && a.openingKey == key }
 
-// tracksOf picks the tracks out of a page, in order, giving those without
-// artwork of their own the page's.
 func tracksOf(result *youtube.BrowseResult, art string) []youtube.MusicItem {
 	all := result.Items
 	if len(result.Sections) > 0 {
@@ -255,8 +220,6 @@ func tracksOf(result *youtube.BrowseResult, art string) []youtube.MusicItem {
 	return songs
 }
 
-// loadPlayingPlaylistRest lets an early play keep reading the playlist even
-// if its page is left. Replacing the queue cancels this work.
 func (a *app) loadPlayingPlaylistRest() {
 	token := a.queue.playlistMore
 	if token == "" || a.queueRest.busy() {

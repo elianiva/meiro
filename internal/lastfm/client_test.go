@@ -12,13 +12,10 @@ import (
 )
 
 func TestSignKnownAnswers(t *testing.T) {
-	// Expected values come from md5sum over the documented recipe: parameters
-	// in name order, name then value, then the secret.
 	got := Sign(url.Values{"token": {"yyy"}, "method": {"auth.getSession"}, "api_key": {"xxx"}}, "secret")
 	if want := "16f6531c029f18b4bef6b36971bbdf4c"; got != want {
 		t.Errorf("Sign = %s, want %s", got, want)
 	}
-	// format and callback are not signed, and the value is signed as UTF-8.
 	params := url.Values{
 		"api_key": {"k1"}, "method": {"track.scrobble"}, "sk": {"SK"},
 		"artist[0]": {"Beyoncé"}, "track[0]": {"Halo"}, "timestamp[0]": {"100"},
@@ -29,7 +26,6 @@ func TestSignKnownAnswers(t *testing.T) {
 	}
 }
 
-// fakeLastFM answers the API and records what it was sent.
 type fakeLastFM struct {
 	form  url.Values
 	reply string
@@ -111,7 +107,6 @@ func TestErrorClasses(t *testing.T) {
 			t.Errorf("%s: transient=%t invalid=%t, want %t %t", tc.name, Transient(err), InvalidSession(err), tc.transient, tc.invalid)
 		}
 	}
-	// No answer at all is the network failing.
 	c := &Client{Key: "k", Secret: "s", Root: "http://127.0.0.1:1/"}
 	if err := c.Scrobble(context.Background(), "SK", []Scrobble{{}}); !Transient(err) {
 		t.Errorf("connection refused: %v, want transient", err)

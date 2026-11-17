@@ -24,9 +24,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// These tests drive the whole app through its window, the way a user does:
-// real pages, real clicks, and a fake YouTube at the network edge.
-
 func TestAlbumCoverLoadsFromPlayerMetadata(t *testing.T) {
 	a, r := tonesApp(t, 600)
 	r.url = func(string, int) (string, error) { return r.file, nil }
@@ -63,7 +60,6 @@ func TestAlbumCoverLoadsFromPlayerMetadata(t *testing.T) {
 	t.Fatal("album artwork never replaced the placeholder")
 }
 
-// signedInApp is an app whose account client speaks for a saved session.
 func signedInApp(t *testing.T) *app {
 	t.Helper()
 	a := newTestApp(t)
@@ -97,7 +93,6 @@ func TestDiscordPresenceNamesEveryCreditedArtist(t *testing.T) {
 }
 
 func TestDiscordPresenceFallsBackToTheFirstArtistOfASavedQueue(t *testing.T) {
-	// A queue saved before the item named every artist has only the first.
 	item := youtube.MusicItem{
 		VideoID:  "track-2",
 		Title:    "Song",
@@ -111,8 +106,6 @@ func TestDiscordPresenceFallsBackToTheFirstArtistOfASavedQueue(t *testing.T) {
 }
 
 func TestDiscordPresenceShowsTheBylineWhenNoArtistIsLinked(t *testing.T) {
-	// A saved queue's row can link no artist, so the item credits none. The
-	// byline names Ado, and the player shows it.
 	item := youtube.MusicItem{
 		VideoID:  "track-3",
 		Title:    "きっとコースター - Kitto Coaster",
@@ -127,7 +120,6 @@ func TestDiscordPresenceShowsTheBylineWhenNoArtistIsLinked(t *testing.T) {
 }
 
 func TestDiscordPresenceKeepsAnEpisodeBylineOutOfTheArtistLine(t *testing.T) {
-	// An episode's second line names the show and its length, not an artist.
 	item := youtube.MusicItem{
 		VideoID:  "episode-1",
 		Title:    "Episode 4",
@@ -164,7 +156,6 @@ func TestEveryPageLoadsAndDraws(t *testing.T) {
 	}
 }
 
-// Settings' search button opens a local filter without changing pages.
 func TestSettingsSearchFiltersSettingsInPlace(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/home")
@@ -267,8 +258,6 @@ func TestSettingsSearchFiltersSettingsInPlace(t *testing.T) {
 		t.Errorf("the settings search button did not return: %q", tt.Texts())
 	}
 
-	// The same compact control appears nowhere on Stats; global music search
-	// remains available on a music page.
 	a.router.Push("/stats")
 	for range 3 {
 		tt.Frame()
@@ -348,8 +337,6 @@ func TestSearchFlow(t *testing.T) {
 		t.Errorf("the search was not remembered: %v", a.settings.Recent)
 	}
 
-	// The items the query matches are chosen the same way: the panel opens
-	// what it names.
 	if err := tt.Click(searchPlaceholder); err != nil {
 		t.Fatal(err)
 	}
@@ -364,10 +351,6 @@ func TestSearchFlow(t *testing.T) {
 	}
 }
 
-// An item of the panel under the search bar offers its menu on a right click,
-// as it does wherever else it appears: a song offers the queue and its link,
-// and anything that opens a page offers that. The panel stays open, and a
-// right click must not also choose the item under the menu.
 func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/search")
@@ -383,7 +366,6 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 		t.Fatalf("the items the query matches are missing: %q", tt.Texts())
 	}
 
-	// A song is the song it is anywhere: the queue actions, and its link.
 	if err := tt.RightClick("Suggested Song"); err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +381,6 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 	a.menu.close()
 	tt.Frame()
 
-	// An artist among the suggestions opens its page, or its link.
 	if err := tt.RightClick("16M monthly audience"); err != nil {
 		t.Fatal(err)
 	}
@@ -418,8 +399,6 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 		t.Error("the menu stayed open after one of its items was chosen")
 	}
 
-	// The panel stayed for the next item, and nothing was searched, opened or
-	// played under the menu.
 	if !tt.HasText("16M monthly audience") {
 		t.Errorf("the panel closed: %q", tt.Texts())
 	}
@@ -434,9 +413,6 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 	}
 }
 
-// A song's menu copies the song's title or every artist it credits, from a
-// right click or its menu button. A song whose byline links no artist has no
-// artist to offer.
 func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/playlist/VLPL_metadata")
@@ -465,7 +441,6 @@ func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
 		t.Error("the menu stayed open after Copy title")
 	}
 
-	// The menu button offers the same actions as the right click.
 	row, ok := tt.Find("Linked Track")
 	if !ok {
 		t.Fatalf("the song row is missing: %q", tt.Texts())
@@ -491,8 +466,6 @@ func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
 		t.Error("the menu stayed open after Copy artist")
 	}
 
-	// A song whose byline links no artist has a title to copy, but none to
-	// credit.
 	if err := tt.RightClick("Unlinked Track"); err != nil {
 		t.Fatal(err)
 	}
@@ -510,10 +483,6 @@ func TestASongsMenuCopiesItsTitleAndArtist(t *testing.T) {
 	a.menu.close()
 }
 
-// The search field is in the top bar of every page of YouTube Music, and
-// submitting it there shows the search page with what it ran.
-// A suggested query is chosen to see what it searches, from whichever page the
-// field was typed in: choosing one shows the search page, as Enter does.
 func TestChoosingASuggestionFromAnotherPageShowsTheSearch(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/explore")
@@ -543,9 +512,6 @@ func TestChoosingASuggestionFromAnotherPageShowsTheSearch(t *testing.T) {
 	}
 }
 
-// A song chosen among the suggestions plays on its own, followed by the mix
-// YouTube Music generates for it: the other songs the text matched are not
-// queued around it, and the page the field was typed on lends it nothing.
 func TestChoosingASuggestedSongStartsItsRadio(t *testing.T) {
 	for _, page := range []string{"/search", "/playlist/VLPL_songs"} {
 		t.Run(page, func(t *testing.T) {
@@ -558,7 +524,6 @@ func TestChoosingASuggestedSongStartsItsRadio(t *testing.T) {
 				for i := 0; i < 20 && !tt.HasText("Meteorite"); i++ {
 					tt.Frame()
 				}
-				// The playlist was playing before the field was typed in.
 				if err := tt.Click("Meteorite"); err != nil {
 					t.Fatal(err)
 				}
@@ -601,7 +566,6 @@ func TestChoosingASuggestedSongStartsItsRadio(t *testing.T) {
 				t.Error("the suggestions stayed open after a song was chosen")
 			}
 
-			// The menu still queues a suggestion when asked to.
 			if err := tt.Click(searchPlaceholder); err != nil {
 				t.Fatal(err)
 			}
@@ -622,8 +586,6 @@ func TestChoosingASuggestedSongStartsItsRadio(t *testing.T) {
 	}
 }
 
-// An episode top result exposes Play and resolves the video ID carried by its
-// episode-page browse ID.
 func TestSearchEpisodeTopResultPlays(t *testing.T) {
 	a, streams := playbackApp(t)
 	a.router.Push("/search")
@@ -676,15 +638,11 @@ func TestSearchShowsYouTubesFilters(t *testing.T) {
 	}
 }
 
-// A search shows the pages of its results itself as its list reaches the end of
-// what it has, rather than offering the button that asks.
 func TestSearchLoadsTheNextPageItself(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/search")
 	a.runSearch("yor", "")
 	searchesMore.Store(0)
-	// The list reaching the end of what it has is what asks for the page
-	// after it: the frame that lays the results out is enough.
 	tt := ui.NewTester(a.view, 1000, 700)
 	if searchesMore.Load() == 0 {
 		t.Fatal("the search did not ask for the page after its results")
@@ -700,10 +658,6 @@ func TestSearchLoadsTheNextPageItself(t *testing.T) {
 	}
 }
 
-// Right-clicking a search result opens its menu, whatever the result is: the
-// top result and a row of an album, an artist or a playlist open the page
-// they name, and a song offers the queue. A right click must not also open or
-// play what it opened the menu for.
 func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.router.Push("/search")
@@ -725,11 +679,11 @@ func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
 		result string
 		offer  string
 	}{
-		{"Mixed Album", "Open album"},  // the top result
-		{"Row Album", "Open album"},    // an album among the rows
-		{"Row Artist", "Go to artist"}, // an artist among the rows
+		{"Mixed Album", "Open album"},
+		{"Row Album", "Open album"},
+		{"Row Artist", "Go to artist"},
 		{"Row Playlist", "Open playlist"},
-		{"Row Song", "Add to queue"}, // a song among the rows
+		{"Row Song", "Add to queue"},
 	} {
 		if tt.HasText(c.offer) {
 			t.Fatalf("%q is on screen before right-clicking %q: %q", c.offer, c.result, tt.Texts())
@@ -748,7 +702,6 @@ func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
 		tt.Frame()
 	}
 
-	// Opening a menu is not opening the page, or playing the song, under it.
 	if r, _ := a.route(); r.id != routeSearch {
 		t.Errorf("a right click left the search page for %q", r.id)
 	}
@@ -757,8 +710,6 @@ func TestRightClickingASearchResultOffersItsMenu(t *testing.T) {
 	}
 }
 
-// A menu the hero's artwork opened opens again once it has closed: the mark
-// it leaves where the pointer pressed must not take the next right click.
 func TestTheHeroMenuOpensAgainAfterItCloses(t *testing.T) {
 	a, _ := playbackApp(t)
 	tt := open(a, "/playlist/VLPL_songs")
@@ -776,12 +727,9 @@ func TestTheHeroMenuOpensAgainAfterItCloses(t *testing.T) {
 	}
 }
 
-// A playlist page can sort the songs that Play, Shuffle and activation use.
 func TestAPlaylistPageCanBeSorted(t *testing.T) {
 	a, _ := playbackApp(t)
 	tt := open(a, "/playlist/VLPL_songs")
-	// The control closes the menu it opened when it is pressed again, as the
-	// account menu's does.
 	if err := tt.Click("Sort: Original order"); err != nil {
 		t.Fatal(err)
 	}
@@ -800,8 +748,6 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 		t.Errorf("the closed menu is still on screen: %q", tt.Texts())
 	}
 
-	// The direction is the page's, not a field's, so it works before a field
-	// is chosen: descending reads the playlist backwards.
 	if err := tt.Click("Sort descending"); err != nil {
 		t.Fatalf("the original order has no direction button: %v", err)
 	}
@@ -817,7 +763,6 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 		t.Fatalf("the original order queued %v, want the playlist's own order", got)
 	}
 
-	// A field sorts the page, and the button reverses it.
 	if err := tt.Click("Sort: Original order"); err != nil {
 		t.Fatal(err)
 	}
@@ -840,7 +785,6 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 		t.Fatalf("title descending sort queued %v, want song-two, song-three, song-one", got)
 	}
 
-	// Choosing another field keeps the direction it was given.
 	if err := tt.Click("Sort: Title"); err != nil {
 		t.Fatal(err)
 	}
@@ -863,8 +807,6 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 		t.Fatalf("direction toggle = %#v, want ascending artist", a.detailSort)
 	}
 
-	// The original order comes back with the direction the page holds, so a
-	// page read backwards keeps reading backwards.
 	if err := tt.Click("Sort descending"); err != nil {
 		t.Fatal(err)
 	}
@@ -888,10 +830,6 @@ func TestAPlaylistPageCanBeSorted(t *testing.T) {
 	}
 }
 
-// A playlist page shows what YouTube suggests under it as it opens, under a
-// heading of its own and five at a time. Those songs are not the playlist: they
-// never join its songs or its queue, and the button under them shows the next
-// ones.
 func TestAPlaylistShowsItsSuggestionsFiveAtATime(t *testing.T) {
 	resetFakes()
 	a, _ := playbackApp(t)
@@ -915,7 +853,6 @@ func TestAPlaylistShowsItsSuggestionsFiveAtATime(t *testing.T) {
 	if got := ids(a.page.playable); !slices.Equal(got, []string{"song-one", "song-two", "song-three"}) {
 		t.Errorf("the playlist holds %v, want only its own songs", got)
 	}
-	// A suggestion plays from the suggestions alone, never with the playlist.
 	if err := tt.Click("Suggestion One"); err != nil {
 		t.Fatal(err)
 	}
@@ -928,7 +865,6 @@ func TestAPlaylistShowsItsSuggestionsFiveAtATime(t *testing.T) {
 			t.Fatalf("the queue holds the playlist's %q: %v", id, ids(a.queue.items))
 		}
 	}
-	// The button shows more of them.
 	if err := tt.Click("Show more"); err != nil {
 		t.Fatalf("the suggestions have no Show more button: %v", err)
 	}
@@ -987,8 +923,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	if len(a.page.playable) != 3 {
 		t.Fatalf("the playlist page holds %d songs, want 3", len(a.page.playable))
 	}
-	// The search is a button that opens, not a bar that is always there,
-	// and it sits with Sort above the songs rather than in the hero.
 	if _, ok := tt.Find("Search in this playlist"); !ok {
 		t.Fatalf("the playlist page has no search button: %q", tt.Texts())
 	}
@@ -1006,8 +940,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	if searchButton.Y >= sortControl.Y+sortControl.H || searchButton.Y+searchButton.H <= sortControl.Y {
 		t.Fatalf("the search button is not on the Sort row: search %v, Sort %v", searchButton, sortControl)
 	}
-	// shown counts the playlist's own rows: a row of the suggestions that
-	// YouTube keeps under the page plays from its own list.
 	shown := func() int {
 		n := 0
 		for _, r := range a.page.rows {
@@ -1017,8 +949,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 		}
 		return n
 	}
-	// search opens the bar and types a query into it, emptying whatever the
-	// last one left.
 	search := func(query string) {
 		t.Helper()
 		if !a.detailSearchOpen {
@@ -1040,8 +970,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 
 	search("ameiro")
-	// The bar grows in place on the row that sorts the songs, away from the
-	// hero: opening it must not move it to a row of its own.
 	play, ok := tt.Find("Play")
 	if !ok {
 		t.Fatalf("the page has no Play button: %q", tt.Texts())
@@ -1076,7 +1004,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 		t.Errorf("the search left %d songs to play, want the whole playlist's 3", len(a.page.playable))
 	}
 
-	// A matching song plays from its own place in the whole playlist.
 	if err := tt.Click("Ameiro Two"); err != nil {
 		t.Fatal(err)
 	}
@@ -1084,8 +1011,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	for range 2 {
 		tt.Frame()
 	}
-	// The search field loses focus when activating its filtered row; closing
-	// it verifies the playback path leaves the playlist page usable.
 	if err := tt.Click("Close the search"); err != nil {
 		t.Fatal(err)
 	}
@@ -1097,7 +1022,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 		t.Errorf("the match played at %d as %q, want song-three in its own place", a.queue.index, a.current.VideoID)
 	}
 
-	// The artist beside a song is searched too.
 	search("kaori")
 	if shown() != 1 || !tt.HasText("Meteorite") {
 		t.Errorf("the artist search shows %d songs (%q), want the one that matches", shown(), tt.Texts())
@@ -1111,8 +1035,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 		t.Errorf("a search that matches nothing has no empty-state row: %#v", a.page.rows)
 	}
 
-	// Closing the bar puts the page back to its whole list, and the button
-	// back in its place.
 	if a.detailSearchOpen {
 		if err := tt.Click("Close the search"); err != nil {
 			t.Fatal(err)
@@ -1135,8 +1057,6 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 }
 
-// The songs toolbar heads the list of songs, so it stays at the top of the
-// list while the page scrolls under it, and the songs keep their own sort.
 func TestTheSongsToolbarStaysOnScreen(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.router.Push("/playlist/VLPL_songs")
@@ -1148,8 +1068,6 @@ func TestTheSongsToolbarStaysOnScreen(t *testing.T) {
 	if _, ok := tt.Find("Sort: Original order"); !ok {
 		t.Fatalf("the page has no sort control: %q", tt.Texts())
 	}
-	// Far enough that the hero and the songs are behind the toolbar: only a
-	// pinned row can still be on screen here.
 	tt.Scroll(700, 500, 0, 900)
 	for range 3 {
 		tt.Frame()
@@ -1162,14 +1080,9 @@ func TestTheSongsToolbarStaysOnScreen(t *testing.T) {
 	if !ok {
 		t.Fatalf("the songs toolbar left the screen: %q", tt.Texts())
 	}
-	// It sits at the top of the list, which starts under the top bar.
-	// A row scrolled out of the list keeps its label with a zero-height box,
-	// so the toolbar is on screen only if it is still drawn.
 	if sortControl.H == 0 || sortControl.Y < 60 || sortControl.Y > 200 {
 		t.Fatalf("the songs toolbar is at %v, not at the top of the list", sortControl.Y)
 	}
-	// The songs it heads are behind it by now: what is on screen under the
-	// toolbar is the next section, not the list of songs.
 	next, ok := tt.Find("Similar songs")
 	if !ok {
 		t.Fatalf("the page has no suggestions section: %q", tt.Texts())
@@ -1227,8 +1140,6 @@ func TestPlaylistHeaderFollowsTheScroll(t *testing.T) {
 	if !ok {
 		t.Fatalf("the page has no global search: %q", tt.Texts())
 	}
-	// Scroll the page until the hero is gone: the top bar takes its artwork,
-	// name and actions while the search stays in the song toolbar.
 	tt.Scroll(700, 500, 0, 900)
 	for range 2 {
 		tt.Frame()
@@ -1249,8 +1160,6 @@ func TestPlaylistHeaderFollowsTheScroll(t *testing.T) {
 	if searchAfter, ok := tt.Find(searchPlaceholder); !ok || searchAfter != searchBefore {
 		t.Fatalf("the global search moved or changed with the compact header: before %v, after %v", searchBefore, searchAfter)
 	}
-	// Scrolling back to the top puts the hero back and takes the compact
-	// header away.
 	tt.Scroll(700, 500, 0, -2000)
 	for range 2 {
 		tt.Frame()
@@ -1284,11 +1193,8 @@ func TestBrowsingFromHomeIntoAnAlbum(t *testing.T) {
 	}
 }
 
-// TestAnAlbumCoverFliesFromItsCard checks that the page's cover starts at the
-// card that opened it and lands in the hero, rather than appearing there.
 func TestAnAlbumCoverFliesFromItsCard(t *testing.T) {
 	a := newTestApp(t)
-	// Pages do not move in this test, so the cover's box is the flight's.
 	a.router.Transition = ui.TransitionNone
 	a.router.Push("/home")
 	tt := ui.NewTester(a.view, 1000, 700)
@@ -1297,8 +1203,6 @@ func TestAnAlbumCoverFliesFromItsCard(t *testing.T) {
 	if !ok {
 		t.Fatalf("no album card: %q", tt.Texts())
 	}
-	// Learn where the hero puts the cover: the first opening tells, and the
-	// second one is measured against it.
 	if err := tt.Click("Deep Focus"); err != nil {
 		t.Fatal(err)
 	}
@@ -1323,7 +1227,6 @@ func TestAnAlbumCoverFliesFromItsCard(t *testing.T) {
 	if !ok {
 		t.Fatalf("no cover while the page opens: %q", tt.Texts())
 	}
-	// The cover is still where the card was, not in the hero's place.
 	if flying.X < card.X-30 || flying.X > card.X+30 {
 		t.Fatalf("the cover started at x=%.0f, not at its card's x=%.0f: the hero did not fly it in", flying.X, card.X)
 	}
@@ -1340,8 +1243,6 @@ func TestAnAlbumCoverFliesFromItsCard(t *testing.T) {
 	}
 }
 
-// Home leads with its songs in columns of four, and a Play all button that
-// starts the shelf.
 func TestHomeLeadsWithSongColumns(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/home")
@@ -1395,8 +1296,6 @@ func TestHomeLeadsWithSongColumns(t *testing.T) {
 	}
 }
 
-// The suggestions under the search bar read as a list of options, and the
-// option the arrows are on is the field's active descendant.
 func TestSearchSuggestionsReadAsAList(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/home")
@@ -1603,14 +1502,12 @@ func TestRefusedSessionStaysSignedOut(t *testing.T) {
 	}
 }
 
-// Plays recorded while the history is still being read are kept, in front of
-// nothing lost and behind what the file held.
 func TestHistoryLoadMergesPendingPlays(t *testing.T) {
 	a := newTestApp(t)
 	a.historyPath = filepath.Join(t.TempDir(), "history.json")
-	t.Cleanup(a.historyWriter.Wait) // the merged history is written in the background
+	t.Cleanup(a.historyWriter.Wait)
 	var finish func()
-	a.run = func(work func()) { finish = work } // the read is held back
+	a.run = func(work func()) { finish = work }
 	a.loadHistory()
 	a.recordHistory(youtube.MusicItem{VideoID: "new", Title: "New"})
 	if err := os.WriteFile(a.historyPath, []byte(`[{"videoId":"old","playedAt":"2026-01-01T00:00:00Z"}]`), 0o600); err != nil {
@@ -1623,8 +1520,6 @@ func TestHistoryLoadMergesPendingPlays(t *testing.T) {
 	}
 }
 
-// Clear history asks again, then empties the history in memory and on disk,
-// and the stats page shows nothing played.
 func TestClearHistoryFromSettings(t *testing.T) {
 	a := newTestApp(t)
 	a.historyPath = filepath.Join(t.TempDir(), "history.json")
@@ -1676,8 +1571,6 @@ func TestClearHistoryFromSettings(t *testing.T) {
 	}
 }
 
-// Clearing while the history is still being read must not let the read bring
-// the old plays back.
 func TestClearHistoryWhileItLoads(t *testing.T) {
 	a := newTestApp(t)
 	a.historyPath = filepath.Join(t.TempDir(), "history.json")
@@ -1685,7 +1578,7 @@ func TestClearHistoryWhileItLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	var finish func()
-	a.run = func(work func()) { finish = work } // the read is held back
+	a.run = func(work func()) { finish = work }
 	a.loadHistory()
 	a.clearHistory()
 	a.run = func(work func()) { work() }
@@ -1696,8 +1589,6 @@ func TestClearHistoryWhileItLoads(t *testing.T) {
 	}
 }
 
-// Report a problem opens the issue form with the versions filled in, and
-// never carries the account.
 func TestReportProblemOpensPrefilledIssue(t *testing.T) {
 	a := signedInApp(t)
 	var opened []string
@@ -1735,7 +1626,6 @@ func TestReportProblemOpensPrefilledIssue(t *testing.T) {
 	}
 }
 
-// Ko-fi opens the project's tip page from Settings.
 func TestSupportCardOpensKoFi(t *testing.T) {
 	a := newTestApp(t)
 	var opened []string
@@ -1756,8 +1646,6 @@ func TestSupportCardOpensKoFi(t *testing.T) {
 	}
 }
 
-// rejectingMusic answers every request the way YouTube answers a session it
-// no longer accepts.
 type rejectingMusic struct{}
 
 func (rejectingMusic) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -1802,8 +1690,6 @@ func TestRejectedSessionAsksToSignInAgain(t *testing.T) {
 	}
 }
 
-// A browser that cannot be read leaves the sign-in dialog pointing at the
-// Cookie header, with where to copy it from, and a pasted one signs in.
 func TestFailedBrowserImportOffersPastingTheCookieHeader(t *testing.T) {
 	a := newTestApp(t)
 	a.account.sources = func() []cookies.Source {
@@ -1853,8 +1739,6 @@ func TestFailedBrowserImportOffersPastingTheCookieHeader(t *testing.T) {
 	}
 }
 
-// A window shorter than the dialog used to clip it, with the actions past
-// the bottom and no way to reach them. The dialog scrolls instead.
 func TestSignInDialogScrollsInAShortWindow(t *testing.T) {
 	a := newTestApp(t)
 	a.openSignIn()
@@ -1867,16 +1751,10 @@ func TestSignInDialogScrollsInAShortWindow(t *testing.T) {
 	if !ok || panel.Y < 0 || panel.Y+panel.H > height {
 		t.Fatalf("the dialog is not inside the window: %+v", panel)
 	}
-	// A text the panel clips keeps its label and loses its box. A window
-	// tall enough for the dialog would show the note already, and the test
-	// would be passing for lack of anything to scroll.
 	const note = "Meiro saves the session in a file in its data folder that only your user can read. Sign out to remove Meiro's saved copy."
 	if r, ok := tt.Find(note); ok && r.H > 0 {
 		t.Fatal("the end of the dialog is already in view, so the window is not shorter than it")
 	}
-	// Cancel is past the panel too. A click uses the element's own box, so
-	// one that lands while the button is clipped says the panel did not
-	// scroll it into reach.
 	cancel, ok := tt.Find("Cancel")
 	if !ok || cancel.H > 0 && cancel.Y+cancel.H <= panel.Y+panel.H {
 		t.Fatalf("Cancel is already inside the panel, at %+v; panel %+v", cancel, panel)
@@ -1896,17 +1774,12 @@ func TestSignInDialogScrollsInAShortWindow(t *testing.T) {
 	}
 }
 
-// Escape closes the dialog and leaves the player. The dialog's Escape is an
-// overlay shortcut, which must take the key rather than let the player's
-// own Escape run.
 func TestEscapeClosesTheDialogAndLeavesThePlayer(t *testing.T) {
 	a := newTestApp(t)
 	a.current.VideoID = "vid-3"
 	a.account.signIn.open = true
 	tt := ui.NewTester(a.view, 800, 700)
 	tt.Frame()
-	// Opening the player before the first frame does not last: that frame
-	// navigates, and a navigation closes the player.
 	a.nowPlaying.open = true
 	tt.Frame()
 	tt.Key(0, ui.KeyEscape)
@@ -1918,8 +1791,6 @@ func TestEscapeClosesTheDialogAndLeavesThePlayer(t *testing.T) {
 	}
 }
 
-// Escape closes the browser menu the dialog opened, and leaves the dialog.
-// The menu is the overlay on top, so it has to take the key.
 func TestEscapeClosesTheBrowserMenuBeforeTheDialog(t *testing.T) {
 	a := newTestApp(t)
 	a.account.sources = func() []cookies.Source {
@@ -1946,8 +1817,6 @@ func TestEscapeClosesTheBrowserMenuBeforeTheDialog(t *testing.T) {
 	}
 }
 
-// The browser window signs in without naming a browser, so nothing re-reads
-// the user's own browser for it later, and a window that fails says why.
 func TestSignInWithABrowserWindow(t *testing.T) {
 	a := newTestApp(t)
 	a.account.newClient = func(auth *youtube.CookieAuth) *youtube.Client {
@@ -1958,7 +1827,6 @@ func TestSignInWithABrowserWindow(t *testing.T) {
 		})
 	}
 	a.account.window = func(context.Context) (string, error) { return "", cookies.ErrWindowClosed }
-	// An earlier import from a browser must not outlive a window sign-in.
 	a.settings.SignInSource = "Fakefox"
 	a.openSignIn()
 	tt := ui.NewTester(a.view, 1000, 900)
@@ -1987,8 +1855,6 @@ func TestSignInWithABrowserWindow(t *testing.T) {
 	}
 }
 
-// A Flatpak that may not start the browser shows the command that lets it,
-// and copies it, and a window that then works clears it.
 func TestSignInWindowShowsTheFlatpakOverride(t *testing.T) {
 	a := newTestApp(t)
 	a.account.window = func(context.Context) (string, error) { return "", cookies.ErrNeedsHostAccess }
@@ -2039,8 +1905,6 @@ func TestGoingBackRestoresWhereAPageWasScrolled(t *testing.T) {
 	}
 }
 
-// holdsPlaylist says whether the page's feed still lists the playlist with
-// this ID.
 func holdsPlaylist(a *app, id string) bool {
 	held := func(items []youtube.MusicItem) bool {
 		return slices.ContainsFunc(items, func(item youtube.MusicItem) bool {
@@ -2055,8 +1919,6 @@ func holdsPlaylist(a *app, id string) bool {
 	})
 }
 
-// Deleting a playlist asks first: the question names the playlist, a cancel
-// writes nothing, and only the answer deletes it and takes it off the page.
 func TestDeletingAPlaylistAsksFirst(t *testing.T) {
 	resetFakes()
 	a := signedInApp(t)
@@ -2080,7 +1942,6 @@ func TestDeletingAPlaylistAsksFirst(t *testing.T) {
 		t.Fatal("the question deleted the playlist before it was answered")
 	}
 
-	// A cancel leaves the playlist where it was, and writes nothing.
 	if err := tt.Click("Cancel"); err != nil {
 		t.Fatal(err)
 	}
@@ -2089,7 +1950,6 @@ func TestDeletingAPlaylistAsksFirst(t *testing.T) {
 		t.Fatalf("Cancel wrote %d deletes, and the page holds the playlist: %v", playlistDeletes.Load(), holdsPlaylist(a, "PLhype"))
 	}
 
-	// The answer deletes the playlist, and takes it off the page.
 	if err := tt.RightClick("Hype"); err != nil {
 		t.Fatal(err)
 	}
@@ -2113,8 +1973,6 @@ func TestDeletingAPlaylistAsksFirst(t *testing.T) {
 	}
 }
 
-// A delete YouTube refuses keeps its question up, with what YouTube said, and
-// leaves the playlist where it was.
 func TestADeclinedPlaylistDeleteKeepsItsQuestion(t *testing.T) {
 	resetFakes()
 	refuseWrites.Store(true)
@@ -2141,8 +1999,6 @@ func TestADeclinedPlaylistDeleteKeepsItsQuestion(t *testing.T) {
 	}
 }
 
-// The tab of the page already showing has nothing to open, so with the player
-// over the page it puts the player away instead of doing nothing.
 func TestTheCurrentTabPutsThePlayerAway(t *testing.T) {
 	a, _ := playbackApp(t)
 	tt := open(a, "/home")
@@ -2182,8 +2038,6 @@ func TestAPlaylistLoadsSongsFromItsShelfBeforeSuggestions(t *testing.T) {
 	}
 }
 
-// YouTube appends the pages after a playlist's first one rather than wrapping
-// them in a shelf, which is what a playlist of a few hundred songs looks like.
 func TestAPlaylistLoadsEveryAppendedContinuation(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)
@@ -2200,7 +2054,6 @@ func TestAPlaylistLoadsEveryAppendedContinuation(t *testing.T) {
 	}
 }
 
-// A playlist whose later pages are still arriving says so under its songs.
 func TestAPlaylistShowsItsNextPageLoading(t *testing.T) {
 	resetFakes()
 	a := newTestApp(t)
@@ -2228,7 +2081,6 @@ func TestAPlaylistShowsItsNextPageLoading(t *testing.T) {
 	}
 }
 
-// hasRowKind reports whether the page's rows include one of kind.
 func hasRowKind(rows []row, kind rowKind) bool {
 	for _, r := range rows {
 		if r.kind == kind {
@@ -2290,7 +2142,6 @@ func TestPlayingBeforeThePlaylistLoadsKeepsItsRemainingSongs(t *testing.T) {
 				}
 				tt.Frame()
 			}
-			// Leaving the page must not lose its queue's pending songs.
 			a.router.Push("/album/MPREb_test")
 			tt.Frame()
 			if scenario.replace {
@@ -2461,7 +2312,6 @@ func TestLatePlaylistSongsJoinTheShuffle(t *testing.T) {
 	for i := 100; i < 146; i++ {
 		original = append(original, youtube.MusicItem{VideoID: "track-" + strconv.Itoa(i)})
 	}
-	// Leave the playlist hero so Shuffle names the player's toggle.
 	a.router.Push("/search")
 	tt.Frame()
 	if err := tt.Click("Shuffle"); err != nil {

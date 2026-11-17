@@ -1,7 +1,3 @@
-// Package applog keeps the app's log in a file: a size-capped file in the
-// logs folder that rolls over to a few older ones, with a header of the
-// versions in use at the top of each, and with the secrets a log line could
-// carry replaced before they are written.
 package applog
 
 import (
@@ -15,18 +11,11 @@ import (
 )
 
 const (
-	// FileName is the log being written. The older ones are FileName.1, the
-	// newest, up to FileName.N for the oldest kept.
 	FileName = "meiro.log"
-	// MaxSize is how large a log file grows before the next one starts.
-	MaxSize = 1 << 20
-	// Keep is how many older files are kept next to the current one.
-	Keep = 3
+	MaxSize  = 1 << 20
+	Keep     = 3
 )
 
-// File is a log file that rolls over when it reaches its size cap. It is an
-// io.Writer that is safe for concurrent use; every line it is given has its
-// secrets redacted first.
 type File struct {
 	mu     sync.Mutex
 	dir    string
@@ -37,10 +26,6 @@ type File struct {
 	size   int64
 }
 
-// Open opens dir/meiro.log for appending, creating dir for the user alone.
-// header is called whenever a file is started, new or after a rollover, and
-// what it returns is written first. A file left over from the last run is
-// continued, and gets no second header.
 func Open(dir string, header func() string) (*File, error) {
 	return open(dir, MaxSize, Keep, header)
 }
@@ -56,14 +41,10 @@ func open(dir string, maxSize int64, keep int, header func() string) (*File, err
 	return f, nil
 }
 
-// Dir is the folder the logs are in.
 func (f *File) Dir() string { return f.dir }
 
-// Path is the file being written.
 func (f *File) Path() string { return filepath.Join(f.dir, FileName) }
 
-// start opens the current file. With roll set, the files are shifted one
-// place older first.
 func (f *File) start(roll bool) error {
 	path := f.Path()
 	if roll {
@@ -86,8 +67,6 @@ func (f *File) start(roll bool) error {
 	return nil
 }
 
-// shift renames meiro.log to meiro.log.1, meiro.log.1 to meiro.log.2, and so
-// on, and drops the one that falls off the end.
 func (f *File) shift(path string) {
 	_ = os.Remove(fmt.Sprintf("%s.%d", path, f.keep))
 	for i := f.keep - 1; i >= 1; i-- {
@@ -100,9 +79,6 @@ func (f *File) shift(path string) {
 	}
 }
 
-// Write redacts p and appends it, starting the next file first when it would
-// not fit. It never fails: a log that cannot be written must not take the
-// app down with it, and the caller has no better place to report that.
 func (f *File) Write(p []byte) (int, error) {
 	line := redactBytes(p)
 	f.mu.Lock()
@@ -122,7 +98,6 @@ func (f *File) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Close closes the file. Writes after it are dropped.
 func (f *File) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -134,16 +109,10 @@ func (f *File) Close() error {
 	return err
 }
 
-// Install sends the standard logger, and so slog's default handler, which
-// writes through it, to f as well as to the writer they used until now.
 func Install(f *File) {
 	log.SetOutput(tee{f: f, other: log.Writer()})
 }
 
-// tee writes to the file first, and then to the writer the logger used
-// before. That writer can fail for good: an app opened from the desktop has no
-// standard error, and io.MultiWriter stops at the first writer that fails, so
-// the file would never see a line. Its failure is ignored for the same reason.
 type tee struct {
 	f     *File
 	other io.Writer
@@ -155,19 +124,14 @@ func (t tee) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// secretPatterns match what must never reach a log: cookie and authorization
-// headers whole, the values of the session cookies YouTube uses, and
-// key=value pairs that name a token or a password.
 var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b((?:set-)?cookie|authorization|proxy-authorization)(\s*[:=]\s*)[^\r\n]*`),
 	regexp.MustCompile(`\b((?:__Secure-|__Host-)?(?:[1-3]P)?(?:SAPISID|APISID|SID|HSID|SSID|SIDCC|LOGIN_INFO|PSID|PSIDCC|PSIDTS|PAPISID))(=)[^;\s"']+`),
 	regexp.MustCompile(`(?i)\b(SAPISIDHASH|[\w-]*(?:token|secret|password|passwd|api[_-]?key))(\s*[:=]\s*)[^\s,;"'&]+`),
 }
 
-// Redacted is what stands in for a secret.
 const Redacted = "<redacted>"
 
-// Redact returns s with its secrets replaced.
 func Redact(s string) string {
 	for _, re := range secretPatterns {
 		s = re.ReplaceAllString(s, "${1}${2}"+Redacted)

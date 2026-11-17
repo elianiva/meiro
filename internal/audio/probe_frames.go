@@ -6,8 +6,21 @@ import (
 	"time"
 )
 
+const (
+	id3HeaderSize = 10
+	id3FooterSize = 10
+)
+
+const (
+	layerI   = 3
+	layerII  = 2
+	layerIII = 1
+)
+
+const mpeg1 = 3
+
 func skipID3(f *os.File, size int64) int64 {
-	var header [10]byte
+	var header [id3HeaderSize]byte
 	if size >= int64(len(header)) && readAt(f, 0, header[:]) && string(header[:3]) == "ID3" {
 		for _, b := range header[6:10] {
 			if b&0x80 != 0 {
@@ -16,12 +29,12 @@ func skipID3(f *os.File, size int64) int64 {
 		}
 		length := int64(header[6])<<21 | int64(header[7])<<14 | int64(header[8])<<7 | int64(header[9])
 		if header[5]&0x10 != 0 {
-			length += 10 // ID3v2.4 footer
+			length += id3FooterSize
 		}
-		if length+10 > size {
+		if length+id3HeaderSize > size {
 			return 0
 		}
-		return length + 10
+		return length + id3HeaderSize
 	}
 	return 0
 }
@@ -53,7 +66,7 @@ func probeAAC(ctx context.Context, f *os.File, size int64) (time.Duration, bool)
 		rate := rates[frequencyIndex]
 		frameLength := int64(h[3]&0x03)<<11 | int64(h[4])<<3 | int64(h[5]>>5)
 		headerLength := int64(7)
-		if h[1]&1 == 0 { // CRC follows the fixed header.
+		if h[1]&1 == 0 {
 			headerLength += 2
 		}
 		if frameLength < headerLength || offset+frameLength > size {
@@ -102,7 +115,6 @@ func probeMP3(ctx context.Context, f *os.File, size int64) time.Duration {
 	if frames == 0 {
 		return 0
 	}
-	// Sum each frame's duration because a legal stream can change sample rate.
 	return durationFromSeconds(seconds)
 }
 
@@ -143,16 +155,16 @@ func mp3Frame(h [4]byte) (sampleRate, frameLength, samples int, ok bool) {
 	bitrate := bitrateTables[3-layer][bitrateIndex] * 1000
 	padding := int((h[2] >> 1) & 1)
 	switch layer {
-	case 3: // Layer I
+	case layerI:
 		frameLength = (12*bitrate/rate + padding) * 4
 		samples = 384
-	case 2: // Layer II
+	case layerII:
 		frameLength = 144*bitrate/rate + padding
 		samples = 1152
-	case 1: // Layer III
+	case layerIII:
 		coefficient := 144
 		samples = 1152
-		if version != 3 {
+		if version != mpeg1 {
 			coefficient = 72
 			samples = 576
 		}

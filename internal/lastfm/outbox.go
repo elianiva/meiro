@@ -13,21 +13,17 @@ import (
 )
 
 const (
-	// MaxPending is how many undelivered plays are kept; the oldest go first.
 	MaxPending = 2000
-	// MaxAge is how old a play may be and still be sent: Last.fm ignores
-	// scrobbles from more than two weeks ago.
-	MaxAge = 13 * 24 * time.Hour
+	MaxAge     = 13 * 24 * time.Hour
 )
 
-// stored is a pending play as it is written to disk.
 type stored struct {
-	Artist   string `json:"artist"`
-	Title    string `json:"title"`
-	Album    string `json:"album,omitempty"`
-	Duration int    `json:"duration,omitempty"` // seconds
-	Started  int64  `json:"started"`            // Unix seconds
-	Chosen   bool   `json:"chosen,omitempty"`
+	Artist          string `json:"artist"`
+	Title           string `json:"title"`
+	Album           string `json:"album,omitempty"`
+	DurationSeconds int    `json:"duration,omitempty"`
+	StartedUnix     int64  `json:"started"`
+	Chosen          bool   `json:"chosen,omitempty"`
 }
 
 func store(s Scrobble) stored {
@@ -36,18 +32,12 @@ func store(s Scrobble) stored {
 
 func (s stored) scrobble() Scrobble {
 	return Scrobble{
-		Track:   Track{Artist: s.Artist, Title: s.Title, Album: s.Album, Duration: time.Duration(s.Duration) * time.Second},
-		Started: time.Unix(s.Started, 0),
+		Track:   Track{Artist: s.Artist, Title: s.Title, Album: s.Album, Duration: time.Duration(s.DurationSeconds) * time.Second},
+		Started: time.Unix(s.StartedUnix, 0),
 		Chosen:  s.Chosen,
 	}
 }
 
-// Outbox keeps the plays that qualified until Last.fm has them, on disk, so
-// that they survive a restart. Each keeps the time its playback began.
-//
-// Changes are in memory at once and written by a goroutine of the outbox's
-// own, so callers never wait on the disk. It is safe for concurrent use. The
-// zero value holds plays in memory only.
 type Outbox struct {
 	path string
 
@@ -58,8 +48,6 @@ type Outbox struct {
 	done    chan struct{}
 }
 
-// OpenOutbox reads the outbox kept at path. A file that is missing or not
-// readable is an empty outbox.
 func OpenOutbox(path string) *Outbox {
 	o := &Outbox{path: path}
 	if path == "" {
@@ -79,7 +67,6 @@ func OpenOutbox(path string) *Outbox {
 	return o
 }
 
-// Add keeps a play to send.
 func (o *Outbox) Add(s Scrobble) {
 	o.mu.Lock()
 	o.items = append(o.items, store(s))
@@ -90,21 +77,18 @@ func (o *Outbox) Add(s Scrobble) {
 	o.mu.Unlock()
 }
 
-// Len is how many plays wait.
 func (o *Outbox) Len() int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return len(o.items)
 }
 
-// Batch is the oldest plays waiting, up to Last.fm's limit, to send now. Plays
-// too old for Last.fm to take are dropped first.
 func (o *Outbox) Batch(now time.Time) []Scrobble {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	cutoff := now.Add(-MaxAge).Unix()
 	if n := len(o.items); n > 0 {
-		o.items = slices.DeleteFunc(o.items, func(s stored) bool { return s.Started < cutoff })
+		o.items = slices.DeleteFunc(o.items, func(s stored) bool { return s.StartedUnix < cutoff })
 		if len(o.items) != n {
 			o.changedLocked()
 		}
@@ -116,7 +100,6 @@ func (o *Outbox) Batch(now time.Time) []Scrobble {
 	return batch
 }
 
-// Done removes the n oldest plays: they were delivered, or can never be.
 func (o *Outbox) Done(n int) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -128,7 +111,6 @@ func (o *Outbox) Done(n int) {
 	o.changedLocked()
 }
 
-// Clear drops every waiting play.
 func (o *Outbox) Clear() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -139,7 +121,6 @@ func (o *Outbox) Clear() {
 	o.changedLocked()
 }
 
-// changedLocked schedules a write. o.mu is held.
 func (o *Outbox) changedLocked() {
 	if o.path == "" {
 		return
@@ -165,7 +146,7 @@ func (o *Outbox) drain(done chan struct{}) {
 		o.dirty = false
 		o.mu.Unlock()
 		if items == nil {
-			items = []stored{} // "[]", not "null"
+			items = []stored{}
 		}
 		data, err := json.Marshal(items)
 		if err == nil {
@@ -177,7 +158,6 @@ func (o *Outbox) drain(done chan struct{}) {
 	}
 }
 
-// Wait returns once what changed so far is on disk.
 func (o *Outbox) Wait() {
 	o.mu.Lock()
 	done := o.done

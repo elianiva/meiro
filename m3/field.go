@@ -4,55 +4,28 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// SearchSpec describes a search bar.
 type SearchSpec struct {
-	Value       *string
-	Placeholder string
-	// Key keeps the field's focus and caret across frames.
-	Key any
-	// Focus binds the field to a handle, so that Focus on it moves the
-	// keyboard to the field, waiting while the bar is hidden.
-	Focus *ui.Handle
-	// Height is 56 by default, the Material search bar; 48 suits a toolbar.
-	Height float32
-	// MaxWidth keeps a wide bar from stretching across the window.
-	MaxWidth float32
-	// Container overrides the neutral resting fill, for a bar that should
-	// take the colour of the page behind it.
-	Container ui.Color
-	// TrailingPadding reserves room at the end of the input for an overlaid
-	// control, without shifting the control itself.
+	Value           *string
+	Placeholder     string
+	Key             any
+	Focus           *ui.Handle
+	Height          float32
+	MaxWidth        float32
+	Container       ui.Color
 	TrailingPadding float32
-	// Dismiss leads the bar with a back arrow that closes it, for a bar that
-	// opens over the page it narrows rather than standing on a page of its
-	// own.
-	Dismiss bool
-	// Underline draws the bar as a line under the field, with no container
-	// around it: for a search that narrows the list in place, where a
-	// second pill beside the page's controls would be too much.
-	Underline bool
-	// NoClear leaves out the button that empties the field, for a filter
-	// whose text is cleared by closing the search instead.
-	NoClear bool
+	Dismiss         bool
+	Underline       bool
+	NoClear         bool
 }
 
-// SearchResult is what happened to a search bar this frame.
 type SearchResult struct {
-	// Focused is true while the bar or one of its controls owns focus.
-	Focused bool
-	// Submitted is Enter pressed: the one moment a search should run.
+	Focused   bool
 	Submitted bool
 	Changed   bool
 	Cleared   bool
-	// Dismissed is the back arrow pressed: the search is over.
 	Dismissed bool
 }
 
-// SearchBar builds a search field. It never searches by itself: typing only
-// edits the text, and Submitted reports Enter. bar is the bar, for anchoring
-// what opens under it, as the suggestions do, and field the text field, for
-// what assistive technology reads of the panel below. The bar is a filled pill
-// by default, or a single line under the field with Underline.
 func SearchBar(c *ui.Context, spec SearchSpec) (result SearchResult, bar, field ui.Element) {
 	sc := Of(c).Scheme
 	height := spec.Height

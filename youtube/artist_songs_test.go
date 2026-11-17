@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// An artist's page lists a few songs under a Songs shelf whose title opens the
-// playlist of all of them. The section keeps that playlist, so that playing the
-// artist can play more than the few songs the page lists.
 func TestArtistSongsShelfKeepsTheListItsTitleOpens(t *testing.T) {
 	const page = `{"contents":{"sectionListRenderer":{"contents":[
 		{"musicShelfRenderer":{

@@ -7,8 +7,6 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// fit crops img to the square its Cover fit would show and shrinks it to side
-// pixels across when it is larger. A picture smaller than side is not enlarged.
 func fit(img image.Image, side int) *image.RGBA {
 	b := img.Bounds()
 	crop := min(b.Dx(), b.Dy())

@@ -17,8 +17,6 @@ func playlist(id string, tracks ...string) Collection {
 	return Collection{Item: youtube.MusicItem{BrowseID: id, Kind: youtube.KindPlaylist}, Tracks: tracks}
 }
 
-// Removing a playlist removes the songs downloaded only for it, and keeps the
-// ones downloaded by themselves or held by another downloaded playlist.
 func TestRemovingACollectionKeepsSongsWantedElsewhere(t *testing.T) {
 	var lib Library
 	for _, s := range []Song{song("only", false), song("single", true), song("shared", false), song("other", false)} {
@@ -41,9 +39,6 @@ func TestRemovingACollectionKeepsSongsWantedElsewhere(t *testing.T) {
 	}
 }
 
-// The library survives a restart, and files a stopped download left behind,
-// which it does not list, are deleted while everything else in the folder
-// stays.
 func TestReadKeepsListedSongsAndSweepsUnlistedAudio(t *testing.T) {
 	dir := t.TempDir()
 	listed := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webm"

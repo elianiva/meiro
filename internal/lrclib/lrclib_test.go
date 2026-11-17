@@ -71,7 +71,6 @@ func TestParseLRCKeepsTheOriginalOfARomanisedCopy(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
-	// With no difference between copies the first stays.
 	got = ParseLRC("[00:01.00] one\n[00:40.00] two\n[00:01.00] uno\n[00:40.00] dos")
 	if len(got) != 2 || got[0].Text != "one" {
 		t.Fatalf("got %v", got)

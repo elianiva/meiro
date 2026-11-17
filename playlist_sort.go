@@ -9,7 +9,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// playlistSortField is the value the playlist page orders its tracks by.
 type playlistSortField uint8
 
 const (
@@ -19,8 +18,6 @@ const (
 	playlistSortDuration
 )
 
-// playlistSort is one playlist page's ordering choice. Original is the zero
-// value, so an untouched page keeps YouTube Music's order.
 type playlistSort struct {
 	field playlistSortField
 	desc  bool
@@ -28,9 +25,6 @@ type playlistSort struct {
 
 func (s playlistSort) active() bool { return s.field != playlistSortOriginal }
 
-// ordered reports whether the page shows its tracks in an order other than the
-// one YouTube Music gave: a field is sorted by, or the original order is read
-// backwards.
 func (s playlistSort) ordered() bool { return s.active() || s.desc }
 
 func (s playlistSort) label() string {
@@ -47,19 +41,14 @@ func (s playlistSort) label() string {
 	return "Original order"
 }
 
-// choose picks the field the page orders its tracks by. The direction belongs
-// to the button beside the control, so picking a field keeps it.
 func (s *playlistSort) choose(field playlistSortField) {
 	s.field = field
 }
 
-// flip reverses the direction, of the original order as well as a field's.
 func (s *playlistSort) flip() {
 	s.desc = !s.desc
 }
 
-// sortPlaylistSections sorts track slots independently within each section.
-// Section metadata and non-track items stay where YouTube placed them.
 func sortPlaylistSections(sections []youtube.MusicSection, s playlistSort) []youtube.MusicSection {
 	if !s.ordered() {
 		return sections
@@ -69,9 +58,6 @@ func sortPlaylistSections(sections []youtube.MusicSection, s playlistSort) []you
 		sorted[i] = section
 		sorted[i].Items = append([]youtube.MusicItem(nil), section.Items...)
 	}
-	// The original order has nothing to compare, so its descending direction
-	// reads the whole playlist backwards: the tracks reverse across the
-	// sections, and the headings and the non-track items keep their places.
 	if !s.active() {
 		tracks := make([]youtube.MusicItem, 0)
 		for _, section := range sorted {
@@ -93,10 +79,6 @@ func sortPlaylistSections(sections []youtube.MusicSection, s playlistSort) []you
 		}
 		return sorted
 	}
-	// A field sorts the tracks within their own section: a section is a shelf
-	// YouTube Music placed, and its heading names what is in it. The keys are
-	// worked out once per track rather than once per comparison, which keeps
-	// a long playlist's sort within a frame.
 	var keys []sortKey
 	for i, section := range sections {
 		keys = keys[:0]
@@ -122,8 +104,6 @@ func sortPlaylistSections(sections []youtube.MusicSection, s playlistSort) []you
 	return sorted
 }
 
-// sortKey is what a track is ordered by, worked out once: by the field, then
-// by title, whatever their case. at is the track's place in its section.
 type sortKey struct {
 	field   string
 	seconds time.Duration
@@ -151,9 +131,6 @@ func (k sortKey) compare(other sortKey) int {
 	)
 }
 
-// playlistArtist is the artist a track is sorted under: the start of its
-// byline, up to the first " • ", so that a track whose byline links no artist
-// still sorts by the name it shows.
 func playlistArtist(item youtube.MusicItem) string {
 	artist, _, _ := strings.Cut(item.Subtitle, " • ")
 	return strings.TrimSpace(artist)

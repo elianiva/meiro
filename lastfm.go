@@ -13,8 +13,6 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// lastFMCard is where the user connects Last.fm, pauses scrobbling and
-// disconnects. Connecting is the user's choice: nothing is sent before it.
 func (a *app) lastFMCard(c *ui.Context) {
 	s := &a.scrobble
 	sc := m3.Of(c).Scheme
@@ -46,7 +44,6 @@ func (a *app) lastFMCard(c *ui.Context) {
 	})
 }
 
-// lastFMConnected is the card of an account that is connected.
 func (a *app) lastFMConnected(c *ui.Context) {
 	s := &a.scrobble
 	sc := m3.Of(c).Scheme
@@ -78,10 +75,6 @@ func (a *app) lastFMConnected(c *ui.Context) {
 	})
 }
 
-// connectLastFM starts the authorization: a token is requested, Last.fm's
-// page for it is opened in the browser, and the token is exchanged for a
-// session as soon as the user approves it there. The user's password is
-// never asked for.
 func (a *app) connectLastFM() {
 	s := &a.scrobble
 	if !s.client.Configured() || s.connect.busy() {
@@ -104,8 +97,6 @@ func (a *app) connectLastFM() {
 	})
 }
 
-// awaitApproval exchanges the token for a session until the user has approved
-// it, or the time is up.
 func (a *app) awaitApproval(client *lastfm.Client, token string) {
 	s := &a.scrobble
 	sleep := a.sleep
@@ -131,8 +122,6 @@ func (a *app) awaitApproval(client *lastfm.Client, token string) {
 	})
 }
 
-// finishConnect keeps the session the user approved: the key in the store
-// that only the user can read, the account's name in the settings.
 func (a *app) finishConnect(session lastfm.Session) {
 	s := &a.scrobble
 	store := s.store
@@ -147,8 +136,9 @@ func (a *app) finishConnect(session lastfm.Session) {
 			s.connectErr = "Meiro could not keep the Last.fm session safely, so it did not connect."
 			return
 		}
-		if a.settings.LastFMUser != session.Name {
-			s.outbox.Clear() // plays that were for another account
+		connectedAnotherAccount := a.settings.LastFMUser != session.Name
+		if connectedAnotherAccount {
+			s.outbox.Clear()
 		}
 		s.session, s.reconnect, s.connectErr = session.Key, false, ""
 		a.settings.LastFMUser, a.settings.LastFMPaused = session.Name, false
@@ -159,14 +149,11 @@ func (a *app) finishConnect(session lastfm.Session) {
 	})
 }
 
-// cancelLastFMConnect gives up waiting for the user's approval.
 func (a *app) cancelLastFMConnect() {
 	a.scrobble.connect.stop()
 	a.scrobble.connectErr = ""
 }
 
-// disconnectLastFM forgets the account: its session key leaves the disk, the
-// plays that were waiting for it are dropped, and nothing more is sent.
 func (a *app) disconnectLastFM() {
 	s := &a.scrobble
 	s.connect.stop()
@@ -191,8 +178,6 @@ func (a *app) disconnectLastFM() {
 	})
 }
 
-// setLastFMPaused stops or resumes scrobbling without disconnecting. The
-// play in progress is left out either way: it was not followed from its start.
 func (a *app) setLastFMPaused(paused bool) {
 	if a.settings.LastFMUser == "" || a.settings.LastFMPaused == paused {
 		return

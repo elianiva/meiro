@@ -1,15 +1,3 @@
-// Meiro is a small desktop client for YouTube Music, drawn by MyGo itself in
-// Material 3 Expressive.
-//
-// It browses the public catalogue with the youtube package, and the
-// account's library once the user signs in with their YouTube Music session.
-// Playback resolves a stream URL and decodes it in a child ffmpeg; see
-// package player. The interface is built from the components of package m3,
-// which take their colours, shapes and motion from one theme.
-//
-// The main package is the app itself: its state, the pages and the views
-// that draw them. Everything that can stand on its own lives under internal.
-// See AGENTS.md for the conventions the package keeps.
 package main
 
 import (
@@ -39,23 +27,20 @@ import (
 	"github.com/elianiva/meiro/systemmedia"
 )
 
+const (
+	gcPercentForArtworkHeavyHeap = 50
+	freeOSMemoryInterval         = 30 * time.Second
+)
+
 func main() {
-	// The heap is mostly artwork, which lives as long as the user browses and
-	// then goes at once. The default lets the heap grow to twice what is live
-	// before a collection; half as much costs a little time and saves tens of
-	// megabytes.
-	debug.SetGCPercent(50)
+	debug.SetGCPercent(gcPercentForArtworkHeavyHeap)
 	stopMemprof := memprof.Start(15 * time.Second)
 	proc.ExtendPath()
 	proc.SweepTemp()
-	// A second launch hands its work to the running app instead of starting
-	// another player with its own audio.
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
 	logsDir, closeLog := openLog()
-	// Signed auto-updates with the updater's native window: in builds made
-	// without update signing it stays idle and says so when asked.
 	mygo.Use(native.Plugin)
 	a := newApp()
 	a.logsDir = logsDir
@@ -82,29 +67,20 @@ func main() {
 			a.media = session
 		}
 		a.setupDesktop()
-		// A hidden window shows no artwork: what the artwork held goes back
-		// to the system while the music plays on.
 		a.desktop.win.OnHide(a.releaseArtwork)
 		a.desktop.win.OnMinimize(a.releaseArtwork)
 		a.syncSystemMedia()
-		// Background work reaches the window through the desktop, so it
-		// starts only once the window is there.
 		a.restoreAccount()
 		a.loadScrobbleSession()
 		a.loadHistory()
 		a.startPrivacy()
 		a.startTicker()
 		a.every(persistInterval, func() { a.update(a.persistPlayback) })
-		// Browsing decodes and drops pictures in bursts, and the runtime
-		// keeps the freed memory for a while before it gives it back.
-		a.every(30*time.Second, debug.FreeOSMemory)
+		a.every(freeOSMemoryInterval, debug.FreeOSMemory)
 		a.watchSettings()
 		a.watchSession()
 		a.every(flushInterval, func() { a.update(a.flushScrobbles) })
 		a.desktop.win.OnClosed(a.stopTicking)
-		// The OS can end the session while the app runs, on macOS and
-		// Windows. OnQuit is the last hook then, so the state is saved before
-		// the process may end; the call after Run is the normal path.
 		mygo.App.OnQuit(a.shutdown)
 	})
 	err := mygo.App.Run()
@@ -119,14 +95,11 @@ func main() {
 	closeLog()
 }
 
-// releaseArtwork drops the decoded artwork and returns the memory to the
-// system.
 func (a *app) releaseArtwork() {
 	a.thumbs.Purge()
 	a.run(debug.FreeOSMemory)
 }
 
-// displayScale is the largest scale of the displays, 2 when none says.
 func displayScale() float32 {
 	scale := 0.0
 	for _, d := range mygo.Screen.Displays() {
@@ -138,10 +111,6 @@ func displayScale() float32 {
 	return float32(scale)
 }
 
-// openLog sends the standard logger, and slog, to the log file as well as to
-// standard error, and returns the folder the log is in and what closes the
-// file. A log that cannot be
-// opened is not worth stopping for: the app runs without one.
 func openLog() (dir string, closeLog func()) {
 	dir, err := mygo.App.Path(mygo.PathLogs)
 	if err != nil {
@@ -155,19 +124,14 @@ func openLog() (dir string, closeLog func()) {
 		return "", func() {}
 	}
 	applog.Install(file)
-	// The tools are asked after the log is open, so launch does not wait on
-	// them; the answer goes into the log, and into the header of the next file.
 	tools.Start(toolVersions, func(v string) { log.Print("tools: ", v) })
 	return dir, func() { _ = file.Close() }
 }
 
-// toolVersions asks ffmpeg for its version. yt-dlp's is left to a report:
-// asking it starts Python, some 50 MB for a moment, on every launch.
 func toolVersions() string {
 	return "ffmpeg " + report.FFmpeg(context.Background())
 }
 
-// logHeader names the versions in use, for the top of each log file.
 func logHeader(tools *applog.Lazy) func() string {
 	return func() string {
 		version := mygo.App.Version()
@@ -179,7 +143,6 @@ func logHeader(tools *applog.Lazy) func() string {
 	}
 }
 
-// playerOptions decode with the ffmpeg the app ships, when there is one.
 func playerOptions() []player.Option {
 	if ffmpeg, err := proc.Tool("ffmpeg"); err == nil {
 		return []player.Option{player.WithFFmpeg(ffmpeg)}
@@ -187,12 +150,8 @@ func playerOptions() []player.Option {
 	return nil
 }
 
-// credentialsKey is the one key the saved sessions are encrypted with, so
-// that macOS asks for it once after an update, not once per session.
 const credentialsKey = "credentials-key"
 
-// setup reads the settings, opens the audio cache and the credential store,
-// and makes the public client.
 func (a *app) setup() {
 	if directory, err := mygo.App.Path(mygo.PathUserData); err == nil {
 		a.saver.Path = filepath.Join(directory, "settings.json")
@@ -217,14 +176,8 @@ func (a *app) setup() {
 	a.openArtworkCache()
 }
 
-// artworkCacheLimit is how much downloaded artwork is kept on disk.
 const artworkCacheLimit = 256 << 20
 
-// openArtworkCache keeps downloaded artwork in the cache folder, so covers
-// that leave memory are read back instead of downloaded again. Opening reads
-// the details of every file in the folder, thousands of them once it is full,
-// so it goes off the main thread: covers asked for before it is done are
-// downloaded, as they are without a cache.
 func (a *app) openArtworkCache() {
 	root, err := mygo.App.Path(mygo.PathCache)
 	if err != nil {
@@ -241,8 +194,6 @@ func (a *app) openArtworkCache() {
 	})
 }
 
-// openAudioCache opens the audio cache where the settings say, or at the
-// default location when that folder is gone.
 func (a *app) openAudioCache() {
 	defaultRoot, err := mygo.App.Path(mygo.PathCache)
 	if err != nil {
@@ -268,9 +219,6 @@ func (a *app) openAudioCache() {
 	a.replaceAudioCache(cache)
 }
 
-// shutdown flushes the settings, then closes what belongs to the app. It is
-// called when the event loop stops, and again by the normal exit; it runs
-// once.
 func (a *app) shutdown() {
 	a.shutdownOnce.Do(func() {
 		a.aiCheck.stop()
@@ -298,11 +246,8 @@ func (a *app) shutdown() {
 	})
 }
 
-// stopTicking ends the periodic work. The window closing and the app exiting
-// both call it.
 func (a *app) stopTicking() { a.stopOnce.Do(func() { close(a.stop) }) }
 
-// every runs fn once per interval off the main thread, until the app stops.
 func (a *app) every(interval time.Duration, fn func()) {
 	go func() {
 		ticker := time.NewTicker(interval)

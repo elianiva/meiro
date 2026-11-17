@@ -1,5 +1,3 @@
-// Package memprof records memory use for diagnosing RAM growth. It does
-// nothing unless asked to by the environment.
 package memprof
 
 import (
@@ -12,13 +10,8 @@ import (
 	"time"
 )
 
-// Env names the directory that receives the log and heap profiles.
 const Env = "MEIRO_MEMPROF"
 
-// Start begins sampling when MEIRO_MEMPROF is set to a directory. Every
-// interval it appends one line of runtime.MemStats to memstats.log and
-// writes heap-N.pprof there. A final profile is written by the returned
-// stop function. Without the variable it returns a no-op.
 func Start(interval time.Duration) (stop func()) {
 	dir := os.Getenv(Env)
 	if dir == "" {

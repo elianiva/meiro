@@ -9,18 +9,8 @@ import (
 	"strings"
 )
 
-// playlistPrivacy keeps a new playlist to the account that made it. YouTube
-// Music's own client asks which of three to use; Meiro does not ask yet, and
-// the one that publishes nothing is the one to take without asking.
 const playlistPrivacy = "PRIVATE"
 
-// CreatePlaylist makes a playlist named title, private to the account, holding
-// the videos given, and returns the ID YouTube gives it.
-//
-// A write counts only when YouTube answers with the new playlist's ID. An
-// account it will not let make one is answered with a 200 and a panel that
-// asks for the feature instead of an error, so a response without an ID is a
-// refusal, not a playlist.
 func (c *Client) CreatePlaylist(ctx context.Context, title string, videos ...string) (string, error) {
 	if c.cookieAuth == nil {
 		return "", errors.New("youtube: CreatePlaylist requires cookie authentication")
@@ -34,8 +24,6 @@ func (c *Client) CreatePlaylist(ctx context.Context, title string, videos ...str
 		"description":   "",
 		"privacyStatus": playlistPrivacy,
 	}
-	// Seeding the videos in the same write spares a fresh playlist the first
-	// edit, which YouTube refuses until the playlist settles.
 	if seeded := videoIDs(videos); len(seeded) > 0 {
 		payload["videoIds"] = seeded
 	}
@@ -55,24 +43,13 @@ func (c *Client) CreatePlaylist(ctx context.Context, title string, videos ...str
 	return response.PlaylistID, nil
 }
 
-// ErrAlreadyInPlaylist is the refusal YouTube answers an add with when the
-// playlist holds the video already. Nothing was written, and nothing is wrong:
-// YouTube offers to add the video anyway instead of making the write, so the
-// app can say the song is already there.
 var ErrAlreadyInPlaylist = errors.New("youtube: the video is already in the playlist")
 
-// AddToPlaylist adds one video to a playlist. playlistID is taken with or
-// without the "VL" prefix a browse ID carries, because a write wants it
-// without: reads add that prefix, writes take it off.
-//
-// YouTube refuses the whole write when the video is already in the playlist,
-// and says so in the status of an otherwise ordinary response, so a status
-// that does not say it succeeded is a refusal.
 func (c *Client) AddToPlaylist(ctx context.Context, playlistID, videoID string) error {
 	if c.cookieAuth == nil {
 		return errors.New("youtube: AddToPlaylist requires cookie authentication")
 	}
-	playlistID = strings.TrimPrefix(strings.TrimSpace(playlistID), "VL")
+	playlistID = strings.TrimPrefix(strings.TrimSpace(playlistID), browsePlaylistPrefix)
 	videoID = strings.TrimSpace(videoID)
 	switch {
 	case playlistID == "":
@@ -96,9 +73,6 @@ func (c *Client) AddToPlaylist(ctx context.Context, playlistID, videoID string) 
 		return fmt.Errorf("youtube: decode browse/edit_playlist response: %w", err)
 	}
 	if !strings.Contains(response.Status, "SUCCEEDED") {
-		// YouTube answers a write it will not make with a reason only it can
-		// read, and the app shows a line of it. The whole answer goes to the
-		// log, which is where a refusal can be read in full.
 		log.Printf("playlist: add refused playlist_id=%s video_id=%s status=%q body=%s", playlistID, videoID, response.Status, raw)
 		if alreadyInPlaylist(raw, videoID) {
 			return ErrAlreadyInPlaylist
@@ -111,10 +85,6 @@ func (c *Client) AddToPlaylist(ctx context.Context, playlistID, videoID string) 
 	return nil
 }
 
-// alreadyInPlaylist reports a refusal that says the playlist holds the video
-// already. YouTube answers that one with an offer to add the video anyway, and
-// the offer is what is read: the notice beside it is translated, its dedupe
-// option is not.
 func alreadyInPlaylist(raw json.RawMessage, videoID string) bool {
 	retry := findRenderer(decodeResponse(raw), "playlistEditEndpoint")
 	actions, _ := retry.get("actions").([]any)
@@ -129,15 +99,11 @@ func alreadyInPlaylist(raw json.RawMessage, videoID string) bool {
 	return false
 }
 
-// DeletePlaylist deletes a playlist of the account. The write takes the ID
-// with or without the "VL" prefix, as the other writes do. YouTube answers a
-// delete with a body that carries nothing on its own, so only a panel asking
-// the account for something first is read as a refusal.
 func (c *Client) DeletePlaylist(ctx context.Context, playlistID string) error {
 	if c.cookieAuth == nil {
 		return errors.New("youtube: DeletePlaylist requires cookie authentication")
 	}
-	playlistID = strings.TrimPrefix(strings.TrimSpace(playlistID), "VL")
+	playlistID = strings.TrimPrefix(strings.TrimSpace(playlistID), browsePlaylistPrefix)
 	if playlistID == "" {
 		return errors.New("youtube: DeletePlaylist needs a playlist")
 	}
@@ -158,13 +124,11 @@ func (c *Client) DeletePlaylist(ctx context.Context, playlistID string) error {
 	return nil
 }
 
-// RemoveFromPlaylist removes one occurrence of a video from a playlist. The
-// playlist-set ID names the occurrence, so duplicate songs remain distinct.
 func (c *Client) RemoveFromPlaylist(ctx context.Context, playlistID, playlistSetID string) error {
 	if c.cookieAuth == nil {
 		return errors.New("youtube: RemoveFromPlaylist requires cookie authentication")
 	}
-	playlistID = strings.TrimPrefix(strings.TrimSpace(playlistID), "VL")
+	playlistID = strings.TrimPrefix(strings.TrimSpace(playlistID), browsePlaylistPrefix)
 	playlistSetID = strings.TrimSpace(playlistSetID)
 	switch {
 	case playlistID == "":
@@ -188,7 +152,6 @@ func (c *Client) RemoveFromPlaylist(ctx context.Context, playlistID, playlistSet
 		return fmt.Errorf("youtube: decode browse/edit_playlist response: %w", err)
 	}
 	if !strings.Contains(response.Status, "SUCCEEDED") {
-		// A refusal is read in full here, as one from the add path is.
 		log.Printf("playlist: remove refused playlist_id=%s playlist_set_id=%s status=%q body=%s", playlistID, playlistSetID, response.Status, raw)
 		if response.Status != "" {
 			return fmt.Errorf("youtube: the playlist refused to remove the song (%s)", response.Status)
@@ -198,7 +161,6 @@ func (c *Client) RemoveFromPlaylist(ctx context.Context, playlistID, playlistSet
 	return nil
 }
 
-// videoIDs returns the videos of a write, without the blanks and the repeats.
 func videoIDs(videos []string) []string {
 	var ids []string
 	seen := make(map[string]struct{}, len(videos))
@@ -216,9 +178,6 @@ func videoIDs(videos []string) []string {
 	return ids
 }
 
-// playlistTitle checks a name YouTube Music will take, and returns it without
-// the whitespace around it. It refuses the two characters its own client
-// refuses, which name an element rather than a playlist.
 func playlistTitle(title string) (string, error) {
 	title = strings.TrimSpace(title)
 	switch {
@@ -230,9 +189,6 @@ func playlistTitle(title string) (string, error) {
 	return title, nil
 }
 
-// refusedWrite reports a write YouTube answered without making. A refusal can
-// name the feature the account is asked for first, in a panel it shows
-// instead; one that names nothing is still a refusal.
 func refusedWrite(endpoint string, raw json.RawMessage) error {
 	var response struct {
 		Actions []struct {

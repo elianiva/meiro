@@ -17,45 +17,30 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// downloadTimeout bounds finding and saving one track: a long podcast
-// episode takes a while even at full speed.
 const downloadTimeout = 30 * time.Minute
 
-// downloads is the music saved to play offline, and the tracks on their way
-// there, one at a time. It belongs to the main thread.
 type downloads struct {
-	// dir is the folder that holds the files and their index; empty when
-	// there is none, which turns downloading off.
-	dir    string
-	lib    offline.Library
-	writer offline.Writer
-	// queue is the tracks waiting, and active the one being downloaded.
-	queue  []pendingSong
-	active pendingSong
-	job    task
-	// release lets the app run at full speed again once the queue drains.
-	// It is set while a download is queued or running, and nil otherwise.
+	dir     string
+	lib     offline.Library
+	writer  offline.Writer
+	queue   []pendingSong
+	active  pendingSong
+	job     task
 	release func()
-	// version counts the changes to the library, so the Downloads page
-	// knows when to read it again.
 	version int
 }
 
-// pendingSong is a track waiting to be downloaded. single says the user
-// asked for it by itself rather than with an album or a playlist.
 type pendingSong struct {
 	item   youtube.MusicItem
 	single bool
 }
 
-// openDownloads reads what was downloaded into dir.
 func (a *app) openDownloads(dir string) {
 	a.downloads.dir = dir
 	a.downloads.lib = offline.Read(dir)
 	a.downloads.version++
 }
 
-// downloaded is the file of a downloaded track, or "".
 func (a *app) downloaded(videoID string) string {
 	d := &a.downloads
 	song, ok := d.lib.Song(videoID)
@@ -65,13 +50,11 @@ func (a *app) downloaded(videoID string) string {
 	return filepath.Join(d.dir, song.File)
 }
 
-// isDownloaded reports whether a track is downloaded.
 func (a *app) isDownloaded(videoID string) bool {
 	_, ok := a.downloads.lib.Song(videoID)
 	return ok
 }
 
-// downloading reports whether a track is waiting or being downloaded.
 func (a *app) downloading(videoID string) bool {
 	d := &a.downloads
 	if d.job.busy() && d.active.item.VideoID == videoID {
@@ -80,19 +63,14 @@ func (a *app) downloading(videoID string) bool {
 	return slices.ContainsFunc(d.queue, func(p pendingSong) bool { return p.item.VideoID == videoID })
 }
 
-// canDownload reports whether a song can be downloaded or removed.
 func (a *app) canDownload(item youtube.MusicItem) bool {
 	return a.downloads.dir != "" && item.VideoID != "" && item.IsTrack()
 }
 
-// downloadSong saves a track to play offline.
 func (a *app) downloadSong(item youtube.MusicItem) {
 	a.queueDownloads([]youtube.MusicItem{item}, true)
 }
 
-// downloadCollection saves the album or playlist item names, and every track
-// of it, to play offline. Tracks without artwork of their own take the
-// collection's.
 func (a *app) downloadCollection(item youtube.MusicItem, tracks []youtube.MusicItem) {
 	d := &a.downloads
 	if d.dir == "" || len(tracks) == 0 {
@@ -115,9 +93,6 @@ func (a *app) downloadCollection(item youtube.MusicItem, tracks []youtube.MusicI
 	a.queueDownloads(songs, false)
 }
 
-// syncCollectionDownload downloads the tracks a downloaded album or playlist
-// gained since it was downloaded. It only adds to the saved list, so the part
-// of a playlist that has loaded can be synced before the rest arrives.
 func (a *app) syncCollectionDownload(p *pageData, r *route, id string) {
 	d := &a.downloads
 	if d.dir == "" || (r.id != routeAlbum && r.id != routePlaylist) || p.feed.loading || p.feed.err != "" {
@@ -146,7 +121,6 @@ func (a *app) syncCollectionDownload(p *pageData, r *route, id string) {
 	if len(added) == 0 {
 		return
 	}
-	// The playlist's own order, then any saved track it no longer lists.
 	for _, videoID := range collection.Tracks {
 		if !slices.Contains(ids, videoID) {
 			ids = append(ids, videoID)
@@ -157,8 +131,6 @@ func (a *app) syncCollectionDownload(p *pageData, r *route, id string) {
 	a.queueDownloads(added, false)
 }
 
-// pageTracks is the songs an album or playlist page lists, in its own order,
-// without the suggestions under a playlist.
 func pageTracks(feed pageState) []youtube.MusicItem {
 	sections := feed.sections
 	if len(sections) == 0 {
@@ -175,7 +147,6 @@ func pageTracks(feed pageState) []youtube.MusicItem {
 	return tracks
 }
 
-// queueDownloads puts the tracks that are not downloaded yet in the queue.
 func (a *app) queueDownloads(items []youtube.MusicItem, single bool) {
 	d := &a.downloads
 	if d.dir == "" {
@@ -206,9 +177,6 @@ func (a *app) queueDownloads(items []youtube.MusicItem, single bool) {
 	a.nextDownload()
 }
 
-// holdDownloadPower keeps the app at full speed while a download is queued or
-// running, even with no window shown: macOS would otherwise slow a hidden
-// app's downloads through App Nap. It lets go when the queue drains.
 func (a *app) holdDownloadPower() {
 	d := &a.downloads
 	running := d.job.busy() || d.active.item.VideoID != "" || len(d.queue) > 0
@@ -221,8 +189,6 @@ func (a *app) holdDownloadPower() {
 	}
 }
 
-// nextDownload starts the download of the track first in the queue, unless
-// one is under way.
 func (a *app) nextDownload() {
 	d := &a.downloads
 	if d.job.busy() || len(d.queue) == 0 {
@@ -231,8 +197,6 @@ func (a *app) nextDownload() {
 	}
 	d.active = d.queue[0]
 	d.queue = slices.Delete(d.queue, 0, 1)
-	// The hold starts before the work does: a download that finishes at once,
-	// as a test's does, must still hold it while it runs.
 	a.holdDownloadPower()
 	item, dir, streams := d.active.item, d.dir, a.streams
 	startTask(a, &d.job, downloadTimeout, func(ctx context.Context) (string, error) {
@@ -242,8 +206,6 @@ func (a *app) nextDownload() {
 		}
 		file, err := offline.Download(ctx, dir, item.VideoID, url)
 		if err != nil {
-			// A URL kept from earlier may have expired: the next try
-			// resolves the track again.
 			streams.Forget(item.VideoID)
 		}
 		return file, err
@@ -261,8 +223,6 @@ func (a *app) nextDownload() {
 	})
 }
 
-// removeDownload deletes a downloaded track, or stops it from being
-// downloaded.
 func (a *app) removeDownload(videoID string) {
 	d := &a.downloads
 	d.queue = slices.DeleteFunc(d.queue, func(p pendingSong) bool { return p.item.VideoID == videoID })
@@ -278,8 +238,6 @@ func (a *app) removeDownload(videoID string) {
 	a.nextDownload()
 }
 
-// removeCollectionDownload deletes a downloaded album or playlist, with the
-// tracks that were downloaded only for it, and stops the ones still waiting.
 func (a *app) removeCollectionDownload(id string) {
 	d := &a.downloads
 	collection, ok := d.lib.Collection(id)
@@ -287,7 +245,6 @@ func (a *app) removeCollectionDownload(id string) {
 		return
 	}
 	files := d.lib.RemoveCollection(id)
-	// A track waiting only for this collection is not wanted any more.
 	unwanted := func(p pendingSong) bool {
 		return !p.single && slices.Contains(collection.Tracks, p.item.VideoID) && !d.lib.InCollection(p.item.VideoID)
 	}
@@ -302,8 +259,6 @@ func (a *app) removeCollectionDownload(id string) {
 	a.nextDownload()
 }
 
-// collectionDownload says how much of a collection's tracks are downloaded,
-// whether it was downloaded at all, and whether any of them are on their way.
 func (a *app) collectionDownload(id string) (done, total int, saved, busy bool) {
 	d := &a.downloads
 	collection, ok := d.lib.Collection(id)
@@ -320,8 +275,6 @@ func (a *app) collectionDownload(id string) (done, total int, saved, busy bool) 
 	return done, len(collection.Tracks), true, busy
 }
 
-// deleteDownloadFiles deletes the files of removed tracks, off the main
-// thread.
 func (a *app) deleteDownloadFiles(files []string) {
 	dir := a.downloads.dir
 	if len(files) == 0 || dir == "" {
@@ -336,15 +289,12 @@ func (a *app) deleteDownloadFiles(files []string) {
 	})
 }
 
-// saveDownloads writes the library's index, and tells the Downloads page.
 func (a *app) saveDownloads() {
 	d := &a.downloads
 	d.version++
 	d.writer.Save(d.dir, d.lib)
 }
 
-// offlinePage is the downloaded copy of an album or a playlist, for its page
-// and its play button while the network is out of reach.
 func (a *app) offlinePage(id string) (*youtube.BrowseResult, bool) {
 	d := &a.downloads
 	collection, ok := d.lib.Collection(id)
@@ -358,8 +308,6 @@ func (a *app) offlinePage(id string) (*youtube.BrowseResult, bool) {
 	}, true
 }
 
-// syncDownloadsPage fills the Downloads page with what is downloaded, when
-// that changed since the page last read it.
 func (a *app) syncDownloadsPage() {
 	d := &a.downloads
 	p := a.page
@@ -385,7 +333,6 @@ func (a *app) syncDownloadsPage() {
 	p.feed = pageState{sections: sections}
 }
 
-// pageDownloadState is what the download control for the page shows.
 type pageDownloadState struct {
 	label          string
 	icon           *ui.SVG
@@ -394,8 +341,6 @@ type pageDownloadState struct {
 	busy, complete bool
 }
 
-// pageDownload returns the state of the download control for the page shown,
-// the collection its ID names, and whether the page offers one at all.
 func (a *app) pageDownload() (pageDownloadState, string, bool) {
 	r, id := a.route()
 	if a.downloads.dir == "" || r.id != routeAlbum && r.id != routePlaylist {
@@ -411,14 +356,10 @@ func (a *app) pageDownload() (pageDownloadState, string, bool) {
 	case complete:
 		state.label, state.icon, state.kind = "Downloaded", m3.IconDownloadDone, m3.Outlined
 	}
-	// A playlist's songs past its first page are still on their way while
-	// the rest of it loads, and a download now would leave them out.
 	state.disabled = !busy && !complete && (len(a.page.playable) == 0 || a.pageSimilar.busy() || a.page.feed.loading)
 	return state, id, true
 }
 
-// togglePageDownload downloads the page shown, or removes its download when
-// one is done or under way.
 func (a *app) togglePageDownload(id string, state pageDownloadState) {
 	if state.busy || state.complete {
 		a.removeCollectionDownload(id)
@@ -433,8 +374,6 @@ func (a *app) togglePageDownload(id string, state pageDownloadState) {
 	a.downloadCollection(youtube.MusicItem{BrowseID: id, Title: d.title, Subtitle: d.subtitle, Thumbnail: d.art, Kind: kindOf}, a.page.playable)
 }
 
-// downloadButton is the hero's button that downloads an album or a playlist,
-// says how far that has got, and removes the download again.
 func (a *app) downloadButton(c *ui.Context) {
 	state, id, ok := a.pageDownload()
 	if !ok {

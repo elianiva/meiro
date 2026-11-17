@@ -1,5 +1,3 @@
-// Package cookies finds the cookie of a signed-in YouTube session, in a
-// browser or in what the user pasted, and keeps it between runs.
 package cookies
 
 import (
@@ -17,14 +15,11 @@ import (
 	"github.com/elianiva/meiro/internal/ytdlp"
 )
 
-// Source is a browser the sign-in can take the session from.
 type Source struct {
 	Label string
-	// Read gives the Cookie header of the browser's YouTube session.
-	Read func(ctx context.Context) (string, error)
+	Read  func(ctx context.Context) (string, error)
 }
 
-// Find is the source named by label, when this machine still offers it.
 func Find(sources []Source, label string) (Source, bool) {
 	if label == "" {
 		return Source{}, false
@@ -37,16 +32,11 @@ func Find(sources []Source, label string) (Source, bool) {
 	return Source{}, false
 }
 
-// browserImport describes the profile selectors of one browser. Its selectors
-// are tried in order so a signed-in secondary profile wins over an unsigned
-// default profile.
 type browserImport struct {
 	label     string
 	selectors func() []string
 }
 
-// Sources lists the browsers to offer and keeps profile discovery shared
-// across Chromium- and Firefox-based browsers.
 func Sources() []Source {
 	var sources []Source
 	for _, browser := range browserImports() {
@@ -60,11 +50,6 @@ func Sources() []Source {
 	return sources
 }
 
-// heliumSource offers Helium when one of its profiles is on this machine.
-// yt-dlp does not know it by name. On macOS Helium keeps its cookie key under
-// a name yt-dlp does not look under, so the app reads its database itself. On
-// Linux it keeps its key, and its profiles, the way Chromium does, so yt-dlp
-// reads them once it is told the profile and the keyring.
 func heliumSource() (Source, bool) {
 	dir := heliumDir()
 	if dir == "" {
@@ -88,8 +73,6 @@ func heliumSource() (Source, bool) {
 	}}, true
 }
 
-// heliumDir is where Helium keeps its profiles, and the empty string on a
-// system it does not run on.
 func heliumDir() string {
 	switch runtime.GOOS {
 	case "darwin":
@@ -108,17 +91,6 @@ func heliumDir() string {
 	return ""
 }
 
-// ytDlpKeyring names the keyring to tell yt-dlp to use, given the session's
-// environment, and is the empty string when yt-dlp's own choice is right.
-//
-// yt-dlp reads the desktop environment to find the keyring that holds a
-// Chromium browser's cookie key, and on a session it cannot place, a bare
-// Wayland compositor for one, it settles on plain text: it never looks in a
-// keyring, and reports that it could not decrypt the cookies. A browser on
-// such a session keeps that key in the Secret Service, which is what to name.
-// A KDE session keeps a wallet of its own, which yt-dlp does know how to open,
-// and it names it in more than one variable, so any of them leaves the choice
-// to yt-dlp.
 func ytDlpKeyring(env func(string) string) string {
 	if kdeSession(env) {
 		return ""
@@ -126,9 +98,6 @@ func ytDlpKeyring(env func(string) string) string {
 	return "gnomekeyring"
 }
 
-// kdeSession reports whether the environment names a KDE session, by the signs
-// yt-dlp reads: KDE in XDG_CURRENT_DESKTOP, KDE_FULL_SESSION, or
-// DESKTOP_SESSION, with KDE_SESSION_VERSION telling its wallets apart.
 func kdeSession(env func(string) string) bool {
 	if env("KDE_FULL_SESSION") != "" || env("KDE_SESSION_VERSION") != "" {
 		return true
@@ -145,11 +114,8 @@ func kdeSession(env func(string) string) bool {
 	return false
 }
 
-// sessionKeyring is ytDlpKeyring for the session this app runs in.
 func sessionKeyring() string { return ytDlpKeyring(os.Getenv) }
 
-// chromiumSpec names a Chromium browser for yt-dlp, with the keyring that
-// holds its cookie key.
 func chromiumSpec(id, keyring string) string {
 	if keyring == "" {
 		return id
@@ -175,9 +141,6 @@ func chromiumBrowserSelectors(browser string) []string {
 	}
 	config := userConfigDir(home)
 	root := chromiumProfileRoot(browser, home, config, os.Getenv("LOCALAPPDATA"), runtime.GOOS)
-	// yt-dlp does not find the key a Chromium browser encrypts its cookies
-	// with under its own default on Linux, so the keyring that holds it goes
-	// with the browser.
 	return profileSelectors(chromiumSpec(browser, sessionKeyring()), chromiumProfiles(root), true)
 }
 
@@ -199,8 +162,6 @@ func zenBrowserSelectors() []string {
 	return profileSelectors("firefox", firefoxProfiles(zenProfileRoots(home, config, runtime.GOOS)), false)
 }
 
-// profileSelectors gives yt-dlp one explicit profile at a time. The native
-// selector remains as a fallback for browsers yt-dlp can locate itself.
 func profileSelectors(browser string, profiles []string, fallback bool) []string {
 	selectors := make([]string, 0, len(profiles)+1)
 	for _, profile := range profiles {
@@ -212,8 +173,6 @@ func profileSelectors(browser string, profiles []string, fallback bool) []string
 	return uniquePaths(selectors)
 }
 
-// chromiumProfileRoot returns the user-data directory that contains Default
-// and Profile * directories for a Chromium-based browser.
 func chromiumProfileRoot(browser, home, config, local, goos string) string {
 	if config == "" && goos == "linux" {
 		config = filepath.Join(home, ".config")
@@ -245,7 +204,6 @@ func chromiumProfileRoot(browser, home, config, local, goos string) string {
 	return path
 }
 
-// firefoxProfileRoots lists the Firefox data roots supported by yt-dlp.
 func firefoxProfileRoots(home, config, goos string) []string {
 	if config == "" && goos == "linux" {
 		config = filepath.Join(home, ".config")
@@ -268,15 +226,10 @@ func firefoxProfileRoots(home, config, goos string) []string {
 	return uniquePaths(roots)
 }
 
-// zenFlatpak is the Flatpak application ID of Zen. Flatpak maps the
-// sandbox's ~/.zen to the host's ~/.var/app/<id>/.zen.
 const zenFlatpak = "app.zen_browser.zen"
 
-// signinProfilePrefix names the throwaway profiles the sign-in window makes,
-// so an import never offers a leftover one of them as a browser session.
 const signinProfilePrefix = "signin-"
 
-// zenProfileRoots lists the data roots Zen uses on each desktop platform.
 func zenProfileRoots(home, config, goos string) []string {
 	var roots []string
 	switch goos {
@@ -296,8 +249,6 @@ func zenProfileRoots(home, config, goos string) []string {
 	return uniquePaths(roots)
 }
 
-// firefoxProfiles returns all profiles below the browser's data roots that
-// have a Firefox cookie database.
 func firefoxProfiles(roots []string) []string {
 	var profiles []string
 	for _, root := range roots {
@@ -323,9 +274,6 @@ func firefoxProfiles(roots []string) []string {
 	return uniquePaths(profiles)
 }
 
-// chromiumProfiles returns the directories of the profiles in a Chromium
-// browser's data directory that have a cookie database, the default profile
-// first.
 func chromiumProfiles(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -342,7 +290,6 @@ func chromiumProfiles(dir string) []string {
 			profiles = append(profiles, profile)
 		}
 	}
-	// ReadDir sorts by name, which puts "Default" first.
 	return profiles
 }
 
@@ -371,8 +318,6 @@ func uniquePaths(paths []string) []string {
 	return out
 }
 
-// firstSession tries each place a browser may keep its session, a profile or
-// the browser itself, and returns the cookie of the first signed in.
 func firstSession(ctx context.Context, label string, places []string, read func(ctx context.Context, place string) (string, error)) (string, error) {
 	var failure error
 	for _, place := range places {
@@ -393,16 +338,12 @@ func firstSession(ctx context.Context, label string, places []string, read func(
 	return "", fmt.Errorf("%s has no YouTube session; sign in at music.youtube.com there first", label)
 }
 
-// ytDlpCookie has yt-dlp read the cookies of one browser, or profile.
 func ytDlpCookie(ctx context.Context, spec string) (string, error) {
 	return ytdlp.BrowserCookie(ctx, spec, func(netscape string) (string, error) {
 		return fromNetscape(netscape, time.Now())
 	})
 }
 
-// fromNetscape builds the Cookie header a request to
-// music.youtube.com carries from a cookies.txt file: the cookies of
-// youtube.com and its subdomains that have not expired.
 func fromNetscape(text string, now time.Time) (string, error) {
 	var pairs []string
 	seen := map[string]int{}
@@ -410,7 +351,6 @@ func fromNetscape(text string, now time.Time) (string, error) {
 	scanner.Buffer(make([]byte, 0, 64*1024), len(text)+1)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		// A cookie only HTTP can read is written as a comment with a marker.
 		line = strings.TrimPrefix(line, "#HttpOnly_")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

@@ -20,12 +20,13 @@ import (
 )
 
 const (
-	busNamePrefix    = "org.mpris.MediaPlayer2.meiro"
-	objectPath       = dbus.ObjectPath("/org/mpris/MediaPlayer2")
-	rootInterface    = "org.mpris.MediaPlayer2"
-	playerInterface  = "org.mpris.MediaPlayer2.Player"
-	volumeInterval   = 50 * time.Millisecond
-	mprisArtworkSize = 1024
+	busNamePrefix     = "org.mpris.MediaPlayer2.meiro"
+	objectPath        = dbus.ObjectPath("/org/mpris/MediaPlayer2")
+	rootInterface     = "org.mpris.MediaPlayer2"
+	playerInterface   = "org.mpris.MediaPlayer2.Player"
+	seekJumpThreshold = 3 * time.Second
+	volumeInterval    = 50 * time.Millisecond
+	mprisArtworkSize  = 1024
 )
 
 var (
@@ -33,7 +34,6 @@ var (
 	mprisArtworkScale      = regexp.MustCompile(`=s\d+`)
 )
 
-// valid reports whether l is one of the supported loop modes.
 func (l Loop) valid() bool { return l == LoopNone || l == LoopTrack || l == LoopPlaylist }
 
 type linuxSession struct {
@@ -49,7 +49,6 @@ type linuxSession struct {
 	err         error
 }
 
-// New registers Meiro as an MPRIS player on the current user's D-Bus session.
 func New(controls Controls) (Session, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
@@ -226,9 +225,6 @@ func (s *linuxSession) Update(state State) error {
 		}
 	}
 	if metadataChanged {
-		// prop.Properties updates map values in place, preserving keys that a
-		// subsequent track omits. Send the complete replacement explicitly;
-		// mprisProperties serves the same snapshot to property readers.
 		if err := s.conn.Emit(objectPath, "org.freedesktop.DBus.Properties.PropertiesChanged",
 			playerInterface, map[string]dbus.Variant{"Metadata": dbus.MakeVariant(trackMetadata(state))}, []string{}); err != nil {
 			return s.fail(fmt.Errorf("publish MPRIS metadata: %w", err))
@@ -241,8 +237,6 @@ func (s *linuxSession) Update(state State) error {
 			}
 		}
 	} else if state.Volume != s.state.Volume && s.volumeTimer == nil {
-		// Do not reset the timer during a drag: continuously changing volume
-		// must still reach the OS within one interval, including its final value.
 		s.volumeTimer = time.AfterFunc(volumeInterval, s.publishVolume)
 	}
 	if (!s.hasState || state.Shuffle != s.state.Shuffle) && state.Shuffle != s.props.GetMust(playerInterface, "Shuffle") {
@@ -269,7 +263,7 @@ func (s *linuxSession) Update(state State) error {
 	}
 	seeked := s.hasState && state.SeekVersion != s.state.SeekVersion
 	positionChangedWhilePaused := state.Status != Playing && state.Position != s.state.Position
-	if !s.hasState || statusChanged || seeked || positionChangedWhilePaused || durationDistance(state.Position, s.state.Position) > 3*time.Second || time.Since(s.lastPos) >= time.Second {
+	if !s.hasState || statusChanged || seeked || positionChangedWhilePaused || durationDistance(state.Position, s.state.Position) > seekJumpThreshold || time.Since(s.lastPos) >= time.Second {
 		if err := s.setProperty("Position", int64(state.Position/time.Microsecond)); err != nil {
 			return s.fail(err)
 		}
@@ -285,9 +279,6 @@ func (s *linuxSession) Update(state State) error {
 	return nil
 }
 
-// setProperty turns prop.Properties.SetMust's documented error panic into a
-// normal update failure. Runtime and non-error panics still signal
-// programming bugs.
 func (s *linuxSession) setProperty(property string, value any) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -314,15 +305,11 @@ func (s *linuxSession) publishVolume() {
 	s.volumeTimer = nil
 	if !s.closed && s.state.Volume != s.props.GetMust(playerInterface, "Volume") {
 		if err := s.setProperty("Volume", s.state.Volume); err != nil {
-			// No caller is waiting on a timer; the next Update reports it.
 			s.err = err
 		}
 	}
 }
 
-// mprisProperties delegates scalar properties to prop.Properties but returns
-// freshly constructed metadata, so optional fields from an earlier track do
-// not survive a later Get or GetAll request.
 type mprisProperties struct {
 	*prop.Properties
 	session *linuxSession
@@ -369,8 +356,6 @@ func trackMetadata(state State) map[string]dbus.Variant {
 	return metadata
 }
 
-// mprisArtworkURL asks Google's image host for a larger cover than the
-// in-app thumbnails, so desktop widgets have enough detail when enlarged.
 func mprisArtworkURL(url string) string {
 	if mprisArtworkDimensions.MatchString(url) {
 		return mprisArtworkDimensions.ReplaceAllString(url, fmt.Sprintf("=w%d-h%d", mprisArtworkSize, mprisArtworkSize))
@@ -424,16 +409,12 @@ func (api *mprisPlayer) Stop() *dbus.Error      { call(api.controls.Stop); retur
 func (api *mprisPlayer) Play() *dbus.Error      { call(api.controls.Play); return nil }
 func (api *mprisPlayer) SeekBy(offset int64) *dbus.Error {
 	state := api.state()
-	// Work in microseconds, the unit D-Bus uses, and bound the offset so the
-	// sum cannot overflow before it is clamped to the track.
 	const bound = 1 << 62
 	offset = max(-bound, min(bound, offset))
 	api.seek(clampPosition(state.Position.Microseconds()+offset, state.Duration))
 	return nil
 }
 
-// SetPosition follows the MPRIS rule that a position outside the track, or one
-// for a track that is no longer current, does nothing.
 func (api *mprisPlayer) SetPosition(trackID dbus.ObjectPath, position int64) *dbus.Error {
 	state := api.state()
 	if trackID != trackPath(state) || position < 0 || (state.Duration > 0 && position > state.Duration.Microseconds()) {
@@ -443,7 +424,6 @@ func (api *mprisPlayer) SetPosition(trackID dbus.ObjectPath, position int64) *db
 	return nil
 }
 
-// clampPosition turns a position in microseconds into one inside the track.
 func clampPosition(micros int64, duration time.Duration) time.Duration {
 	if micros < 0 {
 		return 0

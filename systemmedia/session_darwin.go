@@ -38,7 +38,6 @@ type macSession struct {
 	closed        bool
 }
 
-// New registers metadata and transport commands with macOS Now Playing.
 func New(controls Controls) (Session, error) {
 	if err := objc.Load(objc.Foundation, mediaPlayerFramework); err != nil {
 		return nil, err
@@ -58,6 +57,13 @@ func New(controls Controls) (Session, error) {
 	return s, nil
 }
 
+const (
+	mpRemoteCommandHandlerStatusSuccess = 0
+	nowPlayingPlaybackStatePlaying      = 1
+	nowPlayingPlaybackStatePaused       = 2
+	nowPlayingPlaybackStateStopped      = 3
+)
+
 func (s *macSession) addCommand(remote objc.ID, selector string, action func(), seek func(time.Duration)) {
 	command := remote.Send(objc.Sel(selector))
 	if command == 0 || (action == nil && seek == nil) {
@@ -70,7 +76,7 @@ func (s *macSession) addCommand(remote objc.ID, selector string, action func(), 
 		} else {
 			action()
 		}
-		return 0 // MPRemoteCommandHandlerStatusSuccess
+		return mpRemoteCommandHandlerStatusSuccess
 	})
 	token := command.Send(objc.Sel("addTargetWithHandler:"), block)
 	s.commands = append(s.commands, macCommand{command: command, token: token, block: block})
@@ -115,22 +121,20 @@ func (s *macSession) Update(state State) error {
 		statusChanged := !s.hasState || state.Status != s.state.Status
 		positionChangedWhilePaused := state.Status != Playing && state.Position != s.state.Position
 		seeked := s.hasState && state.SeekVersion != s.state.SeekVersion
-		// Correct non-linear progress such as buffering, without publishing
-		// again while the OS's extrapolated clock still agrees with the player.
 		drifted := s.hasState && state.Status == Playing &&
-			durationDistance(state.Position, s.infoPosition+time.Since(s.infoAt)) > time.Second
+			durationDistance(state.Position, s.infoPosition+time.Since(s.infoAt)) > positionDriftTolerance
 		if metadataChanged || statusChanged || positionChangedWhilePaused || seeked || drifted {
 			s.publishInfo(state)
 		}
 		if statusChanged {
-			playbackState := 3 // MPNowPlayingPlaybackStateStopped
+			playbackState := nowPlayingPlaybackStateStopped
 			switch state.Status {
 			case Playing:
-				playbackState = 1
+				playbackState = nowPlayingPlaybackStatePlaying
 			case Paused:
-				playbackState = 2
+				playbackState = nowPlayingPlaybackStatePaused
 			case Stopped:
-				playbackState = 3
+				playbackState = nowPlayingPlaybackStateStopped
 			}
 			s.center.Send(objc.Sel("setPlaybackState:"), playbackState)
 		}
@@ -151,8 +155,6 @@ func (s *macSession) setEnabled(selector string, enabled, previous bool) {
 	}
 }
 
-// publishInfo runs under mu. macOS advances elapsed time from playbackRate,
-// so ordinary progress does not need another dictionary.
 func (s *macSession) publishInfo(state State) {
 	s.infoPosition, s.infoAt = state.Position, time.Now()
 	if state.VideoID == "" {
@@ -191,8 +193,6 @@ func number(value float64) objc.ID {
 func (s *macSession) fetchArtwork(ctx context.Context, url string, generation uint64) {
 	data, err := loadArtwork(ctx, url)
 	if err != nil {
-		// Artwork failures are intentionally not retried: the next track or URL
-		// change starts a new request, avoiding repeated background traffic.
 		if ctx.Err() == nil {
 			log.Printf("load system media artwork: %v", err)
 		}
@@ -242,7 +242,7 @@ func newMacArtwork(data []byte) objc.ID {
 		}
 		return image
 	})
-	defer block.Release() // The initializer copies its escaping request handler.
+	defer block.Release()
 	return objc.ClassID("MPMediaItemArtwork").Send(objc.Sel("alloc")).
 		Send(objc.Sel("initWithBoundsSize:requestHandler:"), size, block)
 }

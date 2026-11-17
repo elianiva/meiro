@@ -13,89 +13,53 @@ import (
 )
 
 const (
-	// pageCacheLimit is how many recent pages are kept, with what they
-	// loaded, so going back to one shows it at once.
 	pageCacheLimit = 12
-	// pageCacheTTL is how long a kept page is shown before it loads again.
-	pageCacheTTL = 5 * time.Minute
+	pageCacheTTL   = 5 * time.Minute
 )
 
-// detail is the heading of the album, playlist or artist page shown. The
-// action that opens such a page seeds it with what it had at hand; the page
-// replaces it with its own once it loads.
 type detail struct {
-	title    string
-	subtitle string
-	art      string
-	// description is what a podcast show says of itself.
+	title       string
+	subtitle    string
+	art         string
 	description string
 }
 
-// pageState is what a page has loaded, whichever page it is.
 type pageState struct {
-	loading bool
-	err     string
-	// offline says err is the network being out of reach, not a page that
-	// failed: the message tells the user to check the connection.
-	offline  bool
-	sections []youtube.MusicSection
-	items    []youtube.MusicItem
-	more     string
-	// moreErr is why the last request for more failed. The page keeps what it
-	// has, and the button to ask again.
-	moreErr string
-	// partial says the page shows what has loaded of it so far, and more of
-	// it is still on the way.
-	partial bool
-	// similar is what YouTube suggests under a playlist, which the page shows
-	// after it under a heading of its own: shown is how many of them it shows,
-	// and similarMore is the continuation for more.
+	loading      bool
+	err          string
+	offline      bool
+	sections     []youtube.MusicSection
+	items        []youtube.MusicItem
+	more         string
+	moreErr      string
+	partial      bool
 	similar      []youtube.MusicItem
 	similarShown int
 	similarMore  string
-	// shape is the hash of sections the rows were last keyed by, and shaped
-	// says it is current. A page computes it after a change, not every
-	// frame: folding every section of a long page costs its length.
-	shape  uint64
-	shaped bool
+	shape        uint64
+	shaped       bool
 }
 
-// pageData is everything the app holds for a page: what it loaded, its
-// heading, and the rows built from them. The page cache keeps it whole, so a
-// field added here is cached and restored with the rest.
 type pageData struct {
-	feed   pageState
-	detail detail
-	// library is whether an album or a playlist page is in the library.
-	library youtube.LibraryState
-	// subscription is whether an artist's page is followed.
+	feed         pageState
+	detail       detail
+	library      youtube.LibraryState
 	subscription youtube.Subscription
 	loadedAt     time.Time
 	rows         []row
 	playable     []youtube.MusicItem
 	playlistMore string
-	// rowsDirty marks the rows stale. A change of the page's data sets it,
-	// and the next frame rebuilds them; otherwise they are reused. rowsKey
-	// is the shape they were built from, so a change a caller did not mark
-	// still rebuilds them.
-	rowsDirty bool
-	rowsKey   rowsKey
-	// downloads is the version of the downloads the Downloads page shows.
-	downloads int
-	// list is where the page is scrolled to, kept with it so that going back
-	// to a page shows it where it was left.
-	list *ui.ListState
-	// scroll is how far the list is scrolled, which the pull to refresh reads
-	// to tell a pull from a scroll back to the top.
-	scroll *ui.ScrollState
+	rowsDirty    bool
+	rowsKey      rowsKey
+	downloads    int
+	list         *ui.ListState
+	scroll       *ui.ScrollState
 }
 
-// fresh reports whether a kept page can be shown as it is.
 func (p *pageData) fresh(now time.Time) bool {
 	return !p.loadedAt.IsZero() && now.Sub(p.loadedAt) < pageCacheTTL && !p.feed.loading && !p.feed.partial && p.feed.err == ""
 }
 
-// routed is the route of a location, kept until the router moves on.
 type routed struct {
 	location string
 	path     string
@@ -103,11 +67,6 @@ type routed struct {
 	id       string
 }
 
-// route is the route of the page the router shows, and the ID its path
-// names. The view asks for it several times a frame, and the router only
-// moves between frames, so the match is kept until the location changes.
-// The location is compared rather than the path, which the router parses
-// out of it on every call.
 func (a *app) route() (*route, string) {
 	if location := a.router.Location(); a.routed.route == nil || a.routed.location != location {
 		path := a.router.Path()
@@ -117,15 +76,11 @@ func (a *app) route() (*route, string) {
 	return a.routed.route, a.routed.id
 }
 
-// path is the path of the page the router shows.
 func (a *app) path() string {
 	a.route()
 	return a.routed.path
 }
 
-// syncLocation notices a new location, once: the router also moves on its
-// own, by the keyboard's back and forward keys, so the view checks it every
-// frame.
 func (a *app) syncLocation() {
 	if location := a.router.Location(); location != a.location {
 		a.onNavigate()
@@ -133,15 +88,10 @@ func (a *app) syncLocation() {
 	}
 }
 
-// onNavigate keeps the page being left, and shows the new one: from the
-// page cache when it is fresh there, or loaded anew.
 func (a *app) onNavigate() {
 	if a.location != "" {
 		a.pages.Put(a.location, a.page)
 	}
-	// A playlist page opens unfiltered, with its search closed: the search
-	// belongs to the visit, not the page. A page kept from before rebuilds
-	// its rows, since the search is part of the rows' key.
 	a.detailFilter, a.detailSearchOpen, a.detailSearchHadFocus, a.detailSort, a.detailSortOpen = "", false, false, playlistSort{}, false
 	a.detailCompact = false
 	a.closeSettingsSearch()
@@ -149,16 +99,12 @@ func (a *app) onNavigate() {
 	a.pageMore.stop()
 	a.nowPlaying.open, a.nowPlaying.closing = false, false
 	a.nowPlaying.navigateToSet = false
-	// A pull to refresh belongs to the visit of the page it pulls.
 	a.pull = pullState{}
 	location := a.router.Location()
 	r, id := a.route()
 	if r.open != nil {
 		r.open(a)
 	}
-	// The suggestions follow the text being typed, wherever the user is: a
-	// navigation closes the panel they open, and the search page focuses the
-	// bar only when it has no results to show.
 	a.cancelSuggestions()
 	if r.id == routeSearch {
 		if a.search.submitted == "" {
@@ -166,14 +112,9 @@ func (a *app) onNavigate() {
 		}
 	}
 	if page, ok := a.pages.Get(location); ok && (r.id == routeSearch || r.load == nil || page.fresh(time.Now())) {
-		// A page kept comes back where it was scrolled to. One with nothing
-		// to load has nothing to go stale.
 		a.page, a.list = page, page.list
 		return
 	}
-	// The list is shared by every page, so a new page starts at its top.
-	// A new state, not a reset one: the frame of the old one is still read by
-	// the accessibility tree built from the last frame.
 	a.list = &ui.ListState{}
 	a.list.ScrollTo(0, ui.Start)
 	a.page = &pageData{rowsDirty: true, list: a.list, scroll: &ui.ScrollState{}}
@@ -186,9 +127,6 @@ func (a *app) onNavigate() {
 	}
 }
 
-// openTarget opens the page of an album, a playlist or an artist, with the
-// heading the item that opened it had. When it comes from the mini player,
-// it closes the flyout and brings the main window forward.
 func (a *app) openTarget(target youtube.Target, heading detail) {
 	path, ok := targetPath(target)
 	if !ok {
@@ -203,13 +141,9 @@ func (a *app) openTarget(target youtube.Target, heading detail) {
 	}
 }
 
-// loadPage loads the page shown with its route's loader. The client is the
-// one in use when the load began, since the app's own may change meanwhile.
 func (a *app) loadPage(r *route, id string) {
 	client := a.client()
 	path := a.path()
-	// The result goes to the page that asked for it, wherever the router
-	// has moved since.
 	p := a.page
 	p.feed.loading, p.feed.err, p.feed.offline = true, "", false
 	p.rowsDirty = true
@@ -217,7 +151,6 @@ func (a *app) loadPage(r *route, id string) {
 	startProgress(a, &a.pageLoad, noTimeout, func(ctx context.Context, progress func(func())) (*youtube.BrowseResult, error) {
 		return r.load(ctx, client, id, func(partial *youtube.BrowseResult) {
 			progress(func() {
-				// A page that finished ignores what was still on its way.
 				if p.feed.loading || p.feed.partial {
 					a.applyPage(p, r, path, client, partial, true)
 				}
@@ -226,15 +159,11 @@ func (a *app) loadPage(r *route, id string) {
 	}, func(result *youtube.BrowseResult, err error) {
 		feed := &p.feed
 		if err != nil && feed.partial && result != nil {
-			// Some of the page is already there: keep it, and say the rest
-			// did not come.
 			log.Printf("loading the rest of %s: %v", path, err)
 			a.applyPage(p, r, path, client, result, false)
 			feed.more, feed.moreErr = "", ""
 			return
 		}
-		// Offline, a downloaded album or playlist shows what was downloaded
-		// of it.
 		if downloaded, ok := a.offlinePage(id); ok && r.isDetail() && errors.Is(err, youtube.ErrUnreachable) {
 			a.applyPage(p, r, path, client, downloaded, false)
 			return
@@ -243,20 +172,13 @@ func (a *app) loadPage(r *route, id string) {
 			p.rowsDirty = true
 			feed.loading, feed.partial = false, false
 			feed.err, feed.offline = failure(err)
-			// A rejected session is not a page that failed: ask whether the
-			// account is still there, and say so when it is not.
 			if cur := a.account.session; errors.Is(err, youtube.ErrUnauthorized) && cur != nil && cur.client == client {
 				a.checkSession()
 			}
 			return
 		}
 		a.applyPage(p, r, path, client, result, false)
-		// A downloaded album or playlist picks up the songs it gained since,
-		// from the part of the page that has loaded; the rest adds its own
-		// when it arrives.
 		a.syncCollectionDownload(p, r, id)
-		// A playlist page shows its whole playlist and what YouTube suggests
-		// under it, so the page asks for both as it opens.
 		if r.id == routePlaylist {
 			token, suggestions := playlistContinuations(feed.sections, feed.more)
 			p.playlistMore = token
@@ -266,10 +188,6 @@ func (a *app) loadPage(r *route, id string) {
 	})
 }
 
-// loadPlaylistRest follows a playlist page's continuation: the songs of the
-// playlist that came after its first page join it, and the first answer that
-// is a shelf is what YouTube suggests under the playlist, which the page shows
-// after it, a few at a time.
 func (a *app) loadPlaylistRest(p *pageData, r *route, id string, client *youtube.Client, token, suggestions string) {
 	if token == "" || a.pageSimilar.busy() {
 		return
@@ -311,8 +229,6 @@ func (a *app) loadPlaylistRest(p *pageData, r *route, id string, client *youtube
 	})
 }
 
-// playlistContinuations keeps the playlist's songs ahead of suggestions,
-// whether YouTube puts the next token on the song shelf or the page.
 func playlistContinuations(sections []youtube.MusicSection, pageToken string) (songs, suggestions string) {
 	for _, section := range sections {
 		if (section.Kind == "musicPlaylistShelfRenderer" || section.Kind == "playlistVideoListRenderer") && section.ContinuationToken != "" {
@@ -322,15 +238,12 @@ func playlistContinuations(sections []youtube.MusicSection, pageToken string) (s
 	return pageToken, ""
 }
 
-// readPlaylistRest follows the playlist's continuation until YouTube returns
-// its suggestions. Playlist-list continuation renderers are more songs, not
-// suggestions; their section token keeps the playlist moving.
 func readPlaylistRest(ctx context.Context, token string, continueBrowse func(context.Context, string) (*youtube.BrowseResult, error)) (moreItems, error) {
 	var tracks []youtube.MusicItem
 	seen := make(map[string]struct{})
 	for token != "" {
-		if _, exists := seen[token]; exists {
-			break // a repeated token must not keep the page loading forever
+		if _, tokenRepeated := seen[token]; tokenRepeated {
+			break
 		}
 		seen[token] = struct{}{}
 		result, err := continueBrowse(ctx, token)
@@ -375,8 +288,6 @@ func readPlaylistRest(ctx context.Context, token string, continueBrowse func(con
 	return moreItems{items: tracks}, nil
 }
 
-// isPlaylistContinuation reports whether a browse section continues the
-// playlist's own list, rather than listing recommendations beside it.
 func isPlaylistContinuation(kind string) bool {
 	switch kind {
 	case "playlistVideoListContinuation", "musicPlaylistShelfContinuation":
@@ -386,15 +297,9 @@ func isPlaylistContinuation(kind string) bool {
 	}
 }
 
-// applyPage shows a result on page p. A partial one is the start of a page
-// that is still loading: it is shown at once, without the button that asks
-// for more, since the rest is already on its way.
 func (a *app) applyPage(p *pageData, r *route, path string, client *youtube.Client, result *youtube.BrowseResult, partial bool) {
 	p.rowsDirty = true
 	p.feed.loading, p.feed.partial = false, partial
-	// A page over its own content takes the name and the picture from what
-	// it loaded; what the caller seeded is only what it had at hand when the
-	// page was opened.
 	if r.isDetail() {
 		if result.Title != "" {
 			p.detail.title = result.Title
@@ -414,9 +319,6 @@ func (a *app) applyPage(p *pageData, r *route, path string, client *youtube.Clie
 		}
 	}
 	p.feed.sections = result.Sections
-	// Items are the page's songs, cards and rows all together, which its
-	// sections already hold; they are only a page by themselves when it has
-	// no sections.
 	p.feed.items = nil
 	if len(result.Sections) == 0 {
 		p.feed.items = result.Items
@@ -431,7 +333,6 @@ func (a *app) applyPage(p *pageData, r *route, path string, client *youtube.Clie
 	}
 }
 
-// pageState returns what the page the router shows has loaded.
 func (a *app) pageState() *pageState {
 	if r, _ := a.route(); r.id == routeSearch {
 		return &a.search.pageState
@@ -439,24 +340,17 @@ func (a *app) pageState() *pageState {
 	return &a.page.feed
 }
 
-// moreTimeout bounds a request for the next part of a page.
 const moreTimeout = time.Minute
 
-// moreItems is the next part of a page, and the token for the part after.
 type moreItems struct {
 	items    []youtube.MusicItem
 	sections []youtube.MusicSection
 	next     string
 }
 
-// loadMore appends the next part of the page shown. A page load that begins
-// meanwhile, or a navigation, drops it; asking for more does not itself
-// cancel a load in flight.
 func (a *app) loadMore() {
 	s := a.pageState()
 	r, _ := a.route()
-	// Once a playlist page shows what YouTube suggests under it, its request
-	// for more asks for more suggestions.
 	suggestions := r.id == routePlaylist && len(s.similar) > 0
 	token := s.more
 	if suggestions {
@@ -504,9 +398,6 @@ func (a *app) loadMore() {
 		case home && len(more.sections) > 0:
 			s.sections = append(s.sections, more.sections...)
 		case r.id == routePlaylist && len(more.sections) > 0:
-			// A playlist page's continuation holds what YouTube suggests under
-			// the playlist, not more of the playlist: those songs belong after
-			// it, under a heading of their own.
 			for _, section := range more.sections {
 				s.similar = append(s.similar, section.Items...)
 			}
@@ -524,12 +415,8 @@ func (a *app) loadMore() {
 	})
 }
 
-// suggestionsShown is how many of the songs a playlist page suggests it shows
-// at once; the button under them shows as many again.
 const suggestionsShown = 5
 
-// moreSimilar shows the next songs a playlist page suggests, asking YouTube for
-// more of them when the page has shown all it holds.
 func (a *app) moreSimilar() {
 	s := a.pageState()
 	if s.similarShown < len(s.similar) {
@@ -540,13 +427,10 @@ func (a *app) moreSimilar() {
 	a.loadMore()
 }
 
-// failure is how a failed load is shown: the first line of what went wrong,
-// and whether it was the network being out of reach.
 func failure(err error) (msg string, offline bool) {
 	return firstLine(err.Error()), errors.Is(err, youtube.ErrUnreachable)
 }
 
-// retry loads the page shown again.
 func (a *app) retry() {
 	if r, _ := a.route(); r.id == routeSearch {
 		a.runSearch(a.search.submitted, a.search.params)
@@ -555,7 +439,6 @@ func (a *app) retry() {
 	a.reloadPage()
 }
 
-// reloadPage loads the page shown again, bypassing the page cache.
 func (a *app) reloadPage() {
 	location := a.router.Location()
 	a.pages.Delete(location)
@@ -564,8 +447,6 @@ func (a *app) reloadPage() {
 	a.location = location
 }
 
-// activate opens what an item is: a song plays from its place in tracks,
-// and the others open their page.
 func (a *app) activate(item youtube.MusicItem, tracks []youtube.MusicItem) {
 	a.activateAt(item, tracks, indexOf(tracks, item.VideoID))
 }
@@ -583,7 +464,6 @@ func (a *app) activateAt(item youtube.MusicItem, tracks []youtube.MusicItem, ind
 	}
 }
 
-// indexOf is the place of a track among tracks, or -1.
 func indexOf(tracks []youtube.MusicItem, videoID string) int {
 	for i := range tracks {
 		if tracks[i].VideoID == videoID {
@@ -593,7 +473,6 @@ func indexOf(tracks []youtube.MusicItem, videoID string) int {
 	return -1
 }
 
-// firstLine trims a long error to something a message can hold.
 func firstLine(text string) string {
 	text, _, _ = strings.Cut(text, "\n")
 	return text

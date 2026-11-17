@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// writeClient is a signed-in client whose requests are answered with status
-// and body, and whose last request's path and payload are recorded.
 func writeClient(t *testing.T, status int, body string) (*Client, *string, *map[string]any) {
 	t.Helper()
 	auth, err := NewCookieAuth("SAPISID=test", CookieOptions{})

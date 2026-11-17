@@ -27,66 +27,43 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// artworkTransport supplies controlled cover responses without network access.
 type artworkTransport func(*http.Request) (*http.Response, error)
 
 func (f artworkTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// searches counts the search requests the fake YouTube has answered,
-// searchesMore the continuations of them, searchAsked is the last search
-// request's body, fakePageID records the channel a request acted as, and the
-// playlist counters count the library landings served and the playlists made.
 var (
-	searches         atomic.Int32
-	searchesMore     atomic.Int32
-	homeMoreRequests atomic.Int32
-	searchAsked      atomic.Value
-	fakePageID       atomic.Value
-	libraryLoads     atomic.Int32
-	playlistCreates  atomic.Int32
-	// playlistDeletes counts the playlists the fake has been asked to delete.
-	playlistDeletes atomic.Int32
-	// likeWrites counts the like writes the fake has been asked for, and
-	// refuseWrites makes it answer them, and the library and subscription
-	// writes after them, as YouTube answers a request it rejects: with a 400.
-	likeWrites atomic.Int32
-	// subscribeWrites counts the subscription writes, refused the same way.
-	subscribeWrites atomic.Int32
-	refuseWrites    atomic.Bool
-	// aiChecks counts the player-page lookups for AI labels.
-	aiChecks atomic.Int32
-	// duplicateWrites makes the fake answer an add to a playlist the way
-	// YouTube answers one for a song the playlist holds already.
-	duplicateWrites atomic.Bool
-	hypeSongAdded   atomic.Bool
-	// fakePlaylistGrows adds a second song to the growing playlist's page, as
-	// YouTube does when the user adds one elsewhere.
+	searches          atomic.Int32
+	searchesMore      atomic.Int32
+	homeMoreRequests  atomic.Int32
+	searchAsked       atomic.Value
+	fakePageID        atomic.Value
+	libraryLoads      atomic.Int32
+	playlistCreates   atomic.Int32
+	playlistDeletes   atomic.Int32
+	likeWrites        atomic.Int32
+	subscribeWrites   atomic.Int32
+	refuseWrites      atomic.Bool
+	aiChecks          atomic.Int32
+	duplicateWrites   atomic.Bool
+	hypeSongAdded     atomic.Bool
 	fakePlaylistGrows atomic.Bool
-	fakeLikeState     atomic.Value // what /next says of vid-3, as a string; "" says nothing
-	pickNextAsked     atomic.Value // the last /next request for a pick- song, as a string
-	// fakeAI holds the video IDs the fake's player page labels as made with AI.
-	fakeAI sync.Map
-	// lastWrite is the last playlist write the fake YouTube was asked for:
-	// which endpoint, and the fields of its body.
-	lastWrite atomic.Value
-	// homeLoads counts the home feeds the fake has answered.
-	homeLoads atomic.Int32
+	fakeLikeState     atomic.Value
+	pickNextAsked     atomic.Value
+	fakeAI            sync.Map
+	lastWrite         atomic.Value
+	homeLoads         atomic.Int32
 )
 
-// searchBody is the last search request the fake YouTube was asked for.
 func searchBody() string {
 	body, _ := searchAsked.Load().(string)
 	return body
 }
 
-// playlistWrite is one write the fake YouTube was asked to make.
 type playlistWrite struct {
 	endpoint string
 	body     map[string]any
 }
 
-// fakeMusic answers the InnerTube endpoints with canned responses, so the
-// app's tests need no network.
 type fakeMusic struct{}
 
 func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -257,25 +234,17 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// fakeLikes is the like the fake's /next reports for vid-3, as YouTube names
-// it, or "".
 func fakeLikes() string {
 	status, _ := fakeLikeState.Load().(string)
 	return status
 }
 
-// likeResponse is what YouTube answers a like it took: the toast its own
-// client shows. Meiro reads nothing from it.
 const likeResponse = `{"responseContext":{},"actions":[{"addToToastAction":{"item":{"notificationActionRenderer":{"responseText":{"runs":[{"text":"Added to liked songs"}]}}}}}]}`
 
-// subscribeResponse is what YouTube answers a subscription it took.
 const subscribeResponse = `{"responseContext":{},"actions":[{"updateSubscribeButtonAction":{"subscribed":true}}]}`
 
-// rejectedResponse is what YouTube answers a write it rejects.
 const rejectedResponse = `{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}`
 
-// nextResponse is what YouTube answers for the track vid-3 in the player: the
-// track itself, first in the panel, with the like button its menu carries.
 func nextResponse(like string) string {
 	return `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"playlistId":"RDAMVM","contents":[
 		{"playlistPanelVideoRenderer":{"videoId":"vid-3","title":{"runs":[{"text":"Album Track One"}]},
@@ -283,7 +252,6 @@ func nextResponse(like string) string {
 	]}}}}}}]}}}}}`
 }
 
-// nextVideoID reads the video a WEB watch-page request is about.
 func nextVideoID(asked string) string {
 	var body struct {
 		VideoID string `json:"videoId"`
@@ -292,7 +260,6 @@ func nextVideoID(asked string) string {
 	return body.VideoID
 }
 
-// markFakeAI makes the fake's WEB watch page label videoID as made with AI.
 func markFakeAI(videoID string) {
 	fakeAI.Store(videoID, true)
 }
@@ -302,8 +269,6 @@ func fakeMarksAI(videoID string) bool {
 	return marked == true
 }
 
-// webNextResponse is the regular YouTube watch page. It always carries an AI
-// badge on an unrelated related video, which the parser must ignore.
 func webNextResponse(videoID string) string {
 	badges := `"badges":[]`
 	if fakeMarksAI(videoID) {
@@ -316,15 +281,11 @@ func webNextResponse(videoID string) string {
 	]}}}`, badges)
 }
 
-// episodeNextResponse is what YouTube answers for the episode ep-1 in the
-// player: its tabs, with Details where a song has Lyrics.
 const episodeNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
 	{"tabRenderer":{"title":"Up next"}},
 	{"tabRenderer":{"title":"Details","endpoint":{"browseEndpoint":{"browseId":"MPPEep-1","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_DETAILS"}}}}}}
 ]}}}}}`
 
-// episodeDetailsResponse is the Details tab of ep-1: a description with a
-// link, a chapter at the start, which names no time, and one further in.
 const episodeDetailsResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicDescriptionShelfRenderer":{
 	"header":{"runs":[{"text":"Reality Checking Productivity"}]},
 	"subheader":{"runs":[{"text":"Deep Questions","navigationEndpoint":{"browseEndpoint":{"browseId":"MPSPPLshow"}}}]},
@@ -340,12 +301,8 @@ const episodeDetailsResponse = `{"contents":{"sectionListRenderer":{"contents":[
 	]}
 }}]}}}`
 
-// newTestApp builds an app whose work runs inline, and whose YouTube and
-// artwork requests are answered without the network.
 func newTestApp(t testing.TB) *app {
 	a := newApp()
-	// No sound card: the player decodes with the real ffmpeg and listens
-	// to the result on the null device.
 	options := []player.Option{player.WithNullAudio()}
 	if ffmpeg, err := proc.Tool("ffmpeg"); err == nil {
 		options = append(options, player.WithFFmpeg(ffmpeg))
@@ -353,16 +310,11 @@ func newTestApp(t testing.TB) *app {
 	a.player = player.New(options...)
 	a.player.SetVolume(a.volume / 100)
 	a.run = func(work func()) { work() }
-	// MyGo's power service needs its event loop, which a tester does not run.
 	a.keepRunning = func(string) func() { return func() {} }
-	// Delayed work runs at once, so a frame sees the suggestion request's
-	// answer without waiting.
 	a.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
-	a.thumbs.Close() // newApp made one that downloads from the network
+	a.thumbs.Close()
 	a.thumbs = artwork.New(&http.Client{Transport: noArtwork{}}, func() {})
 	t.Cleanup(a.thumbs.Close)
-	// Playing a track must not run the real yt-dlp: it takes seconds, and
-	// needs the network.
 	a.streams = audio.NewURLs(func(context.Context, string) (string, time.Duration, error) {
 		return "", 0, errors.New("no network in tests")
 	})
@@ -370,7 +322,6 @@ func newTestApp(t testing.TB) *app {
 	a.collectInfo = func(_ context.Context, version string) report.Info {
 		return report.Info{App: version, OS: runtime.GOOS, Arch: runtime.GOARCH, YtDlp: "2026.01.01", FFmpeg: "7.1"}
 	}
-	// MyGo's answer needs its event loop, which a tester does not run.
 	a.notifications = func() bool { return true }
 	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) { return nil, nil }
 	a.betterLyrics = func(context.Context, betterlyrics.Query) ([]lyrics.Line, error) { return nil, nil }
@@ -379,7 +330,6 @@ func newTestApp(t testing.TB) *app {
 	return a
 }
 
-// newFakeClient is a YouTube client answered by fakeMusic.
 func newFakeClient(auth *youtube.CookieAuth) *youtube.Client {
 	return youtube.NewClient(youtube.Options{
 		APIKey:     "test",
@@ -388,8 +338,6 @@ func newFakeClient(auth *youtube.CookieAuth) *youtube.Client {
 	})
 }
 
-// noArtwork answers every picture with a 404, which the artwork cache never
-// asks for again.
 type noArtwork struct{}
 
 func (noArtwork) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -445,15 +393,11 @@ const exploreResponse = `{"contents":{"sectionListRenderer":{"contents":[
 	}}
 ]}}}`
 
-// songRelatedNextResponse is what YouTube answers for the song song-related
-// in the player: its Related tab.
 const songRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
 	{"tabRenderer":{"title":"Up next"}},
 	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPTRsong-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_TRACK_RELATED"}}}}}}
 ]}}}}}`
 
-// songRelatedResponse is the Related tab of song-related: a song, and a
-// playlist to open, in the carousels YouTube Music gives them.
 const songRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
 	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
 	"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Related Song"}]},"subtitle":{"runs":[{"text":"Some Artist"}]},
@@ -464,9 +408,6 @@ const songRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"m
 		"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_songs","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_PLAYLIST"}}}}}}]
 }}]}}}`
 
-// albumPage is an album as YouTube Music answers one: a header with the
-// button that saves it, and the rows of its tracks. The button says whether the
-// fake account has the album saved.
 func albumPage() string {
 	return `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Deep Focus"}]},"buttons":[` + libraryToggleButton(fakeAlbumPlaylist) + `]}},` +
 		`"contents":{"musicShelfRenderer":{"contents":[
@@ -480,8 +421,6 @@ func albumPage() string {
 ]}}}`
 }
 
-// aiAlbumPage is an album for checking the AI filter: one labelled song before
-// one that must play.
 const aiAlbumPage = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Generated and Human"}]}}},
 "contents":{"musicShelfRenderer":{"contents":[
 	{"musicResponsiveListItemRenderer":{
@@ -500,8 +439,6 @@ const aiAlbumPage = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs"
 	}}
 ]}}}`
 
-// aiRunAlbumPage has more labelled songs than the playback failure limit,
-// followed by one song that must still play.
 func aiRunAlbumPage() string {
 	var items []string
 	for _, id := range []string{"ai-one", "ai-two", "ai-three", "ai-four", "human"} {
@@ -510,9 +447,6 @@ func aiRunAlbumPage() string {
 	return `{"contents":{"musicShelfRenderer":{"contents":[` + strings.Join(items, ",") + `]}}}`
 }
 
-// aiQueueMusic supplies batches of fresh AI recommendations, with an optional
-// allowed song at the end of one batch. An empty fourth batch keeps a broken
-// exclusion loop from hanging the test.
 type aiQueueMusic struct {
 	batches    int
 	humanBatch int
@@ -537,8 +471,6 @@ func (s *aiQueueMusic) RoundTrip(request *http.Request) (*http.Response, error) 
 	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(response)), Request: request}, nil
 }
 
-// nestedAlbumResponse follows the current album layout: the page header is in
-// the primary tab, with a separate artist portrait; tracks are in the second column.
 const nestedAlbumResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 "tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
 {"musicResponsiveHeaderRenderer":{
@@ -554,8 +486,6 @@ const nestedAlbumResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 ]}}]}}
 }}}`
 
-// metadataPlaylistResponse includes individually linked artists and a separate
-// album column, as well as a track whose credits have no browse endpoints.
 const metadataPlaylistResponse = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Linked credits"}]}}},
 "contents":{"musicShelfRenderer":{"contents":[
 {"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"linked-track"},"flexColumns":[
@@ -571,8 +501,6 @@ const metadataPlaylistResponse = `{"header":{"musicResponsiveHeaderRenderer":{"t
 ],"lengthText":{"simpleText":"0:30"}}}
 ]}}}`
 
-// podcastResponse is a podcast show: its heading among its contents, and a
-// shelf of two episodes, newest first.
 const podcastResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 	"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Slow Talk"}]},"description":{"musicDescriptionShelfRenderer":{"description":{"runs":[{"text":"Two people, talking slowly."}]}}}}}]}}}}],
 	"secondaryContents":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[
@@ -583,24 +511,17 @@ const podcastResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 	]}}]}}
 }}}`
 
-// episodeRelatedNextResponse is what YouTube answers for the episode
-// ep-related in the player: a Related tab of the page type episodes have,
-// which is not the one songs have.
 const episodeRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
 	{"tabRenderer":{"title":"Up next"}},
 	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPPRep-related","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_RELATED"}}}}}}
 ]}}}}}`
 
-// episodeRelatedResponse is the Related tab of ep-related: other episodes,
-// in the carousel YouTube Music gives them.
 const episodeRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
 	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
 	"contents":[{"musicMultiRowListItemRenderer":{"title":{"runs":[{"text":"Another Deep Episode"}]},"subtitle":{"runs":[{"text":"3d ago • 1 hr 9 min"}]},
 		"onTap":{"watchEndpoint":{"videoId":"ep-9","watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_PODCAST_EPISODE"}}}}}}]
 }}]}}}`
 
-// playlistPage is a playlist the account does not own: a header with the
-// button that saves it, and its videos.
 func playlistPage() string {
 	return `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Road Trip"}]},"buttons":[` + libraryToggleButton(fakePlaylist) + `]}},` +
 		`"contents":{"playlistVideoListRenderer":{"contents":[
@@ -608,9 +529,6 @@ func playlistPage() string {
 ]}}}`
 }
 
-// growingPlaylistResponse is a playlist page of one song, which gains a second
-// one when fakePlaylistGrows is set, as a playlist the user added to elsewhere
-// does.
 func growingPlaylistResponse() string {
 	second := ""
 	if fakePlaylistGrows.Load() {
@@ -633,8 +551,6 @@ func growingPlaylistResponse() string {
 	]}}}`
 }
 
-// playlistSongsResponse is a playlist page of three songs, each with an artist
-// beside it, for searching the page.
 const playlistSongsResponse = `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Ameiro Playlist"}]},"subtitle":{"runs":[{"text":"Playlist"},{"text":" • "},{"text":"Nova"},{"text":" • "},{"text":"3 songs"}]},"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/ameiro.png"}]}}}}},"contents":{"playlistVideoListRenderer":{"contents":[
 	{"musicResponsiveListItemRenderer":{
 		"playlistItemData":{"videoId":"song-one"},
@@ -660,21 +576,13 @@ const playlistSongsResponse = `{"header":{"musicResponsiveHeaderRenderer":{"titl
 ]}},
 "continuations":[{"nextContinuationData":{"continuation":"playlist-more"}}]}`
 
-// The playlists the fake's pages offer to save. An album is saved as its audio
-// playlist, which is not its browse ID.
 const (
 	fakeAlbumPlaylist = "OLAK5uy_test"
 	fakePlaylist      = "PL_video"
 )
 
-// fakeLibrary is what the fake account has saved or follows, by playlist ID
-// or channel ID. The fake's writes change it, and its pages read it, as
-// YouTube's do.
 var fakeLibrary sync.Map
 
-// resetFakes puts the fake YouTube back as a test found it: no write refused,
-// nothing counted, and the library holding the two playlists its landing page
-// starts with.
 func resetFakes() {
 	likeWrites.Store(0)
 	playlistDeletes.Store(0)
@@ -700,23 +608,18 @@ func fakeSaved(id string) bool {
 	return saved == true
 }
 
-// writtenPlaylist is the playlist the last write named as its target, or "".
 func writtenPlaylist() string {
 	target, _ := written().body["target"].(map[string]any)
 	id, _ := target["playlistId"].(string)
 	return id
 }
 
-// libraryToggleButton is the save button of a header, a toggle that likes the
-// playlist and says whether it is toggled.
 func libraryToggleButton(id string) string {
 	return fmt.Sprintf(`{"toggleButtonRenderer":{"isToggled":%t,
 		"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"playlistId":%q}}},
 		"toggledServiceEndpoint":{"likeEndpoint":{"status":"INDIFFERENT","target":{"playlistId":%q}}}}}`, fakeSaved(id), id, id)
 }
 
-// libraryToggleMenu is the menu of a card that can be saved: an item whose
-// default endpoint is the write the item offers now.
 func libraryToggleMenu(id string) string {
 	offered, other := "LIKE", "INDIFFERENT"
 	if fakeSaved(id) {
@@ -727,18 +630,13 @@ func libraryToggleMenu(id string) string {
 		"toggledServiceEndpoint":{"likeEndpoint":{"status":%q,"target":{"playlistId":%q}}}}}]}}`, offered, id, other, id)
 }
 
-// fakeArtist is the channel of the artist the fake's artist page is about.
 const fakeArtist = "UCartist"
 
-// mixedRelatedNextResponse is what YouTube answers for the song song-mixed
-// in the player: its Related tab.
 const mixedRelatedNextResponse = `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[
 	{"tabRenderer":{"title":"Up next"}},
 	{"tabRenderer":{"title":"Related","endpoint":{"browseEndpoint":{"browseId":"MPTRsong-mixed","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_TRACK_RELATED"}}}}}}
 ]}}}}}`
 
-// mixedRelatedResponse is the Related tab of song-mixed: songs, with a
-// playlist and an artist between them, as YouTube Music mixes them.
 const mixedRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
 	"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"You might also like"}]}}},
 	"contents":[
@@ -749,9 +647,6 @@ const mixedRelatedResponse = `{"contents":{"sectionListRenderer":{"contents":[{"
 	]
 }}]}}}`
 
-// artistPage carries the heading an artist page puts over its content, with
-// the subscribe button in it, which says whether the fake account follows the
-// artist.
 func artistPage() string {
 	return `{"header":{"musicImmersiveHeaderRenderer":{
 	"title":{"runs":[{"text":"Aurora Vale"}]},
@@ -768,9 +663,6 @@ func artistPage() string {
 ]}}}`
 }
 
-// searchResponse is a search page as YouTube Music answers one: the filters it
-// offers for the query, the card the results lead with, the rows of the
-// results, and the token of the page after them.
 const searchResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
 	"header":{"chipCloudRenderer":{"chips":[
 		{"chipCloudChipRenderer":{"text":{"runs":[{"text":"Songs"}]},"navigationEndpoint":{"searchEndpoint":{"query":"yor","params":"EgWKAQIIAWoSEAUQAxAJ"}}}},
@@ -799,16 +691,12 @@ const searchResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"ta
 		}}
 	]}}}}]}}}`
 
-// searchEpisodeResponse is a search whose top result links to an episode page
-// ID that carries the playable video ID rather than a watch endpoint.
 const searchEpisodeResponse = `{"contents":{"musicCardShelfRenderer":{
 	"title":{"runs":[{"text":"Find Me feat.Hina from miolly","navigationEndpoint":{"browseEndpoint":{"browseId":"MPEDUZ83quirqLA"}}}]},
 	"subtitle":{"runs":[{"text":"Episode"},{"text":" • "},{"text":"18h ago"},{"text":" • "},{"text":"*Luna"}]},
 	"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.test/find-me"}]}}}
 }}}`
 
-// searchMixedResponse is a search that found one of everything: a top result,
-// and a row each for an album, an artist, a playlist and a song.
 const searchMixedResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
 	"contents":[
 		{"musicCardShelfRenderer":{
@@ -845,8 +733,6 @@ const searchMixedResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":
 		]}}
 	]}}}}]}}}`
 
-// searchFilteredResponse is a search narrowed to one of its filters: the chip
-// that clears them leads the row, and the results are the ones of the filter.
 const searchFilteredResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
 	"header":{"chipCloudRenderer":{"chips":[
 		{"chipCloudChipRenderer":{"navigationEndpoint":{"searchEndpoint":{"query":"yor"}}}},
@@ -862,8 +748,6 @@ const searchFilteredResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tab
 			]}}]}}
 	]}}}}]}}}`
 
-// searchMoreResponse is the page after the first: the rows a search adds as its
-// list reaches the end of what it has.
 const searchMoreResponse = `{"contents":{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{
 	"playlistItemData":{"videoId":"vid-6"},
 	"flexColumns":[
@@ -871,9 +755,6 @@ const searchMoreResponse = `{"contents":{"musicShelfRenderer":{"contents":[{"mus
 		{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"0:59"}]}}}
 	]}}]}}}`
 
-// playlistSuggestionsResponse is what YouTube answers a playlist's
-// continuation with: the songs it suggests under the playlist, in a shelf of
-// their own. Seven of them, so a page that shows five has more to show.
 const playlistSuggestionsResponse = `{"contents":{"musicShelfRenderer":{
 	"title":{"runs":[{"text":"Suggestions"}]},
 	"contents":[
@@ -900,8 +781,6 @@ const playlistSuggestionsResponse = `{"contents":{"musicShelfRenderer":{
 			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Someone"},{"text":" • "},{"text":"3:00"}]}}}]}}
 	]}}}`
 
-// suggestionsResponse is what a query being typed is answered with: the
-// completed queries, and the items the partial query already matches.
 const suggestionsResponse = `{"contents":[
 	{"searchSuggestionsSectionRenderer":{"contents":[
 		{"searchSuggestionRenderer":{"suggestion":{"runs":[{"text":"Yorushika"}]}}},
@@ -923,8 +802,6 @@ const suggestionsResponse = `{"contents":[
 	]}}
 ]}`
 
-// pickSuggestionsResponse is what a query starting with "pick" is answered
-// with: two songs and an album it already matches.
 const pickSuggestionsResponse = `{"contents":[
 	{"searchSuggestionsSectionRenderer":{"contents":[
 		{"musicResponsiveListItemRenderer":{
@@ -942,8 +819,6 @@ const pickSuggestionsResponse = `{"contents":[
 	]}}
 ]}`
 
-// pickRadioResponse is the mix YouTube Music generates for pick-two on its
-// own: the song first, then what it recommends after it.
 const pickRadioResponse = `{"contents":{"playlistPanelRenderer":{"playlistId":"RDAMVMpick-two","contents":[
 	{"playlistPanelVideoRenderer":{"videoId":"pick-two","title":{"runs":[{"text":"Pick Two"}]}}},
 	{"playlistPanelVideoRenderer":{"videoId":"radio-one","title":{"runs":[{"text":"Radio One"}]}}},
@@ -957,8 +832,6 @@ const accountsResponse = `{"accountSectionListRenderer":{"contents":[{"accountIt
 	{"accountItemRenderer":{"accountName":{"simpleText":"Studio channel"},"hasChannel":true,"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"pageIdToken":{"pageId":"UC-studio"}}]}}}}
 ]}}]}}`
 
-// multiAccountMusic distinguishes Google accounts that share the same cookies.
-// Both primary channels have empty channel IDs: only X-Goog-Authuser separates them.
 type multiAccountMusic struct {
 	fresh             string
 	swapped           bool
@@ -1009,9 +882,6 @@ const multiAccountsResponse = `{"sections":[{"accountSectionListRenderer":{"head
 	{"accountItemRenderer":{"accountName":{"simpleText":"Music brand"},"channelHandle":{"simpleText":"@music-brand"},"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"accountSigninToken":{"signinUrl":"/signin?authuser=1"}},{"pageIdToken":{"pageId":"UC-music-brand"}}]}}}}
 ]}}]}}]}`
 
-// refusingMusic answers the account menu the way YouTube answers for a session
-// it has stopped accepting, until it is asked with the cookie the browser
-// holds.
 type refusingMusic struct {
 	fresh string
 }
@@ -1029,23 +899,14 @@ func (m refusingMusic) RoundTrip(request *http.Request) (*http.Response, error) 
 	}, nil
 }
 
-// signedInAccountMenu names the account, which is what tells an answer from a
-// signed-in session from one YouTube has forgotten.
 const signedInAccountMenu = `{"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{"header":{"activeAccountHeaderRenderer":{"accountName":{"runs":[{"text":"Me"}]}}}}}}}]}`
 
-// signedOutAccountMenu is what a session YouTube has forgotten is answered
-// with: a page with no account in it.
 const signedOutAccountMenu = `{"contents":{}}`
 
-// createPlaylistResponse is what YouTube answers a playlist it made with.
 const createPlaylistResponse = `{"playlistId":"PLnew"}`
 
-// editPlaylistResponse is what YouTube answers an edit it made.
 const editPlaylistResponse = `{"status":"STATUS_SUCCEEDED"}`
 
-// duplicatePlaylistResponse is what YouTube answers an add with when the
-// playlist holds the video already: a failed write that offers to add the
-// video anyway.
 func duplicatePlaylistResponse(asked string) string {
 	var body struct {
 		Actions []struct {
@@ -1058,22 +919,17 @@ func duplicatePlaylistResponse(asked string) string {
 	return `{"status":"STATUS_FAILED","actions":[{"addToToastAction":{"item":{"notificationActionRenderer":{"actionButton":{"buttonRenderer":{"command":{"playlistEditEndpoint":{"actions":[{"action":"ACTION_ADD_VIDEO","addedVideoId":"` + body.Actions[0].AddedVideoID + `","dedupeOption":"DEDUPE_OPTION_SKIP"}]}}}}}}}}]}`
 }
 
-// recordWrite remembers the body of a playlist write, so a test can say what
-// the app asked YouTube to do.
 func recordWrite(endpoint, body string) {
 	var fields map[string]any
 	_ = json.Unmarshal([]byte(body), &fields)
 	lastWrite.Store(playlistWrite{endpoint: endpoint, body: fields})
 }
 
-// written is the last playlist write the fake YouTube was asked for.
 func written() playlistWrite {
 	value, _ := lastWrite.Load().(playlistWrite)
 	return value
 }
 
-// libraryResponse is a library landing page: the playlist a thumb fills, two
-// playlists, and an artist.
 func libraryPage() string {
 	album := ""
 	if fakeSaved(fakeAlbumPlaylist) {
@@ -1122,7 +978,6 @@ func libraryPage() string {
 }}}`
 }
 
-// memoryStore is a cookie store held in memory.
 type memoryStore struct {
 	cookie string
 }
@@ -1144,7 +999,6 @@ func (m *memoryStore) Delete(context.Context) error {
 	return nil
 }
 
-// lastFMSession is where a test app keeps its Last.fm session key.
 func lastFMSession(dir string) secretfile.File {
 	return secretfile.File{Path: filepath.Join(dir, "session"), Keychain: secretfile.NoKeychain{}, Name: "lastfm-session"}
 }
@@ -1161,9 +1015,6 @@ func paginatedPlaylistResponse(start, end int, next, suggestions string) string 
 	return fmt.Sprintf(`{"contents":{"%s":{"contents":[%s],"continuations":[{"nextContinuationData":{"continuation":%q}}]}},"continuations":[{"nextContinuationData":{"continuation":%q}}]}`, kind, strings.Join(items, ","), next, suggestions)
 }
 
-// appendedPlaylistResponse is a playlist page in the shape YouTube answers
-// today: the songs of the first page sit in a shelf, and each later page is an
-// onResponseReceivedActions list that ends with a continuationItemRenderer.
 func appendedPlaylistResponse(start, end int, next string) string {
 	var items []string
 	for i := start; i < end; i++ {

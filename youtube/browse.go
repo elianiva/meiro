@@ -10,34 +10,18 @@ import (
 	"sync"
 )
 
-// BrowseResult represents a Music browse page such as an artist, album,
-// playlist, home feed, explore page, library, or account settings.
 type BrowseResult struct {
-	// Title and Thumbnail are the page's own heading, the name and picture it
-	// puts over its content, as an artist's does.
-	Title     string `json:"title,omitempty"`
-	Thumbnail string `json:"thumbnail,omitempty"`
-	// Description is what a podcast show says of itself, on one line.
+	Title             string         `json:"title,omitempty"`
+	Thumbnail         string         `json:"thumbnail,omitempty"`
 	Description       string         `json:"description,omitempty"`
 	Items             []MusicItem    `json:"items"`
 	Sections          []MusicSection `json:"sections,omitempty"`
 	ContinuationToken string         `json:"continuationToken,omitempty"`
-	// Library is the save button of an album's or a playlist's header: whether
-	// the page is in the library, and what to write to change it. Its ID is
-	// empty for a page that offers none.
-	Library LibraryState `json:"-"`
-	// Subscription is the subscribe button of an artist's header: whether the
-	// account follows the artist, and the channel to write. Its ChannelID is
-	// empty for a page that offers none.
-	Subscription Subscription `json:"-"`
-	// QueuePlaylistID is the playlist panel's ID, used to continue radio queues.
-	QueuePlaylistID string `json:"queuePlaylistId,omitempty"`
+	Library           LibraryState   `json:"-"`
+	Subscription      Subscription   `json:"-"`
+	QueuePlaylistID   string         `json:"queuePlaylistId,omitempty"`
 }
 
-// pageHeading reads the heading an artist, album or playlist puts over its
-// content. Older pages put it at the top level; current albums put a responsive
-// header in the primary tab. Only the header's thumbnail belongs to the page,
-// not its artist portrait or a picture from the tracks and recommendations.
 func pageHeading(root any) (title, thumbnail string) {
 	object, ok := root.(*jsonObject)
 	if !ok {
@@ -72,19 +56,12 @@ func pageHeading(root any) (title, thumbnail string) {
 	return "", ""
 }
 
-// MusicSection is a shelf or grid in a browse response. A continuation response
-// without an owning shelf is represented as a synthetic section with an empty
-// Title and its continuation renderer as Kind. ContinuationToken can be passed
-// to ContinueBrowse to load more items in that section.
-
 type MusicSection struct {
 	Title             string      `json:"title,omitempty"`
 	Kind              string      `json:"kind"`
 	Items             []MusicItem `json:"items"`
 	ContinuationToken string      `json:"continuationToken,omitempty"`
-	// MoreID is the playlist the shelf's title opens, when it opens one: an
-	// artist's Songs shelf shows a few songs, and its title opens all of them.
-	MoreID string `json:"moreId,omitempty"`
+	MoreID            string      `json:"moreId,omitempty"`
 }
 
 func (c *Client) GetHomeFeed(ctx context.Context) (*BrowseResult, error) {
@@ -99,12 +76,6 @@ func (c *Client) GetLibrary(ctx context.Context) (*BrowseResult, error) {
 	return c.browse(ctx, "FEmusic_library_landing")
 }
 
-// StreamLibrary loads the library landing page and every continuation page
-// YouTube offers, and calls progress
-// with what it has so far: once for the landing page, then after each level
-// of continuation pages. Each call gets a snapshot that the caller may keep
-// and read while the rest loads. The final result is the last snapshot, with
-// the tokens that asked for more cleared; progress is not called again for it.
 func (c *Client) StreamLibrary(ctx context.Context, progress func(*BrowseResult)) (*BrowseResult, error) {
 	result, err := c.GetLibrary(ctx)
 	if err != nil {
@@ -119,9 +90,6 @@ func (c *Client) StreamLibrary(ctx context.Context, progress func(*BrowseResult)
 	return result, nil
 }
 
-// snapshot copies what a later page could still change: the lists of items
-// and sections, though not the items themselves, which only ever grow at their
-// end.
 func (r *BrowseResult) snapshot() *BrowseResult {
 	copied := *r
 	copied.Items = slices.Clip(r.Items)
@@ -132,17 +100,8 @@ func (r *BrowseResult) snapshot() *BrowseResult {
 	return &copied
 }
 
-// drainConcurrency is how many continuation pages are asked for at once.
 const drainConcurrency = 4
 
-// drainBrowse folds every continuation page reachable from result into it.
-// label names the page in the error a runaway result produces.
-//
-// The pages are read a level at a time: those a level names are asked for
-// together, and folded in the order they were named, so the result is the one
-// a walk that asked for one page after another would give. A library's shelves
-// each have their own chain of pages, and asking for them one by one made the
-// page wait for every round trip in turn.
 func (c *Client) drainBrowse(ctx context.Context, result *BrowseResult, label string, progress func(*BrowseResult)) error {
 	queue := browseContinuationQueue(result)
 	seen := make(map[string]struct{})
@@ -201,8 +160,6 @@ func (c *Client) drainBrowse(ctx context.Context, result *BrowseResult, label st
 	return nil
 }
 
-// continueAll asks for the pages of several continuations at once, a few at a
-// time, and gives each answer or error at the place of its continuation.
 func (c *Client) continueAll(ctx context.Context, continuations []browseContinuation) ([]*BrowseResult, []error) {
 	pages := make([]*BrowseResult, len(continuations))
 	errs := make([]error, len(continuations))
@@ -224,7 +181,6 @@ func (c *Client) continueAll(ctx context.Context, continuations []browseContinua
 	return pages, errs
 }
 
-// ContinueBrowse requests the next page for a browse or library section.
 func (c *Client) ContinueBrowse(ctx context.Context, token string) (*BrowseResult, error) {
 	if strings.TrimSpace(token) == "" {
 		return nil, errors.New("youtube: browse continuation token is required")
@@ -254,15 +210,12 @@ func (c *Client) GetPlaylist(ctx context.Context, playlistID string) (*BrowseRes
 	if playlistID == "" {
 		return nil, errors.New("youtube: playlist ID is required")
 	}
-	if !strings.HasPrefix(playlistID, "VL") {
-		playlistID = "VL" + playlistID
+	if !strings.HasPrefix(playlistID, browsePlaylistPrefix) {
+		playlistID = browsePlaylistPrefix + playlistID
 	}
 	return c.browse(ctx, playlistID)
 }
 
-// GetPodcast reads a podcast show's page: its episodes, newest first, in one
-// shelf. The page's continuation reads the next of them, as ContinuePodcast
-// does.
 func (c *Client) GetPodcast(ctx context.Context, showID string) (*BrowseResult, error) {
 	if !isPodcastID(showID) {
 		return nil, fmt.Errorf("youtube: invalid podcast ID %q", showID)
@@ -273,7 +226,6 @@ func (c *Client) GetPodcast(ctx context.Context, showID string) (*BrowseResult, 
 	}
 	root := decodeResponse(raw)
 	result := episodePage(browseResult(root))
-	// A show puts its heading among its contents, not over them.
 	if header := findRenderer(root, "musicResponsiveHeaderRenderer"); header != nil {
 		if result.Title == "" {
 			result.Title = rendererText(header.get("title"))
@@ -286,8 +238,6 @@ func (c *Client) GetPodcast(ctx context.Context, showID string) (*BrowseResult, 
 	return result, nil
 }
 
-// ContinuePodcast reads the next episodes of a show from a token GetPodcast or
-// ContinuePodcast returned.
 func (c *Client) ContinuePodcast(ctx context.Context, token string) (*BrowseResult, error) {
 	result, err := c.ContinueBrowse(ctx, token)
 	if err != nil {
@@ -296,9 +246,6 @@ func (c *Client) ContinuePodcast(ctx context.Context, token string) (*BrowseResu
 	return episodePage(result), nil
 }
 
-// episodePage makes the continuation of a show's episode shelf the page's
-// own. The shelf is what goes on; the token the page holds besides reloads
-// the shelf under one of its filters.
 func episodePage(result *BrowseResult) *BrowseResult {
 	result.ContinuationToken = ""
 	if len(result.Sections) > 0 {
@@ -307,14 +254,10 @@ func episodePage(result *BrowseResult) *BrowseResult {
 	return result
 }
 
-// newBrowseResult reads a browse response. The response is parsed once, and
-// everything taken from it is read off that one tree.
 func (c *Client) newBrowseResult(raw json.RawMessage) *BrowseResult {
 	return browseResult(decodeResponse(raw))
 }
 
-// browseResult reads a decoded browse response into the page's items, sections
-// and continuation.
 func browseResult(root any) *BrowseResult {
 	items, sections, _ := browseParts(root, false)
 	title, thumbnail := pageHeading(root)
@@ -345,14 +288,7 @@ func browseContinuationQueue(result *BrowseResult) []browseContinuation {
 	return continuations
 }
 
-// pageContinuationToken returns only continuations that extend the whole
-// browse response. Shelf continuations are owned by their renderer and must
-// remain available on the corresponding MusicSection instead.
 func pageContinuationToken(root any) string {
-	// YouTube continues a playlist, a show or a shelf in an appended list
-	// rather than in a continuation renderer: it answers the next page with
-	// the items themselves and a trailing continuationItemRenderer, under no
-	// shelf at all. The token is the page's own, and so are the items.
 	if token := appendedContinuationToken(root); token != "" {
 		return token
 	}
@@ -383,10 +319,6 @@ func pageContinuationToken(root any) string {
 	return walk(root)
 }
 
-// appendedContinuationToken reads the token of a page YouTube appends items
-// to: onResponseReceivedActions[0].appendContinuationItemsAction. The action
-// lists the items, and a trailing continuationItemRenderer asks for the page
-// after them.
 func appendedContinuationToken(root any) string {
 	object, ok := root.(*jsonObject)
 	if !ok {

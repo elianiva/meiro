@@ -59,9 +59,6 @@ func TestParseAudioStreamRejectsUnplayableOrCipheredResponses(t *testing.T) {
 	}
 }
 
-// The player answers a request without a visitor with a bot check, so a
-// client that has not browsed yet asks for a visitor first and sends it. The
-// URL is only handed on once the media server serves it.
 func TestAudioStreamAsksAsAVisitorOfTheVisionOSClient(t *testing.T) {
 	var media string
 	var refuse atomic.Bool
@@ -101,7 +98,6 @@ func TestAudioStreamAsksAsAVisitorOfTheVisionOSClient(t *testing.T) {
 	if err != nil || url != media || length != 2*time.Second {
 		t.Fatalf("AudioStream() = %q, %v, %v; want %s, 2s, nil", url, length, err, media)
 	}
-	// A URL the media server refuses is no answer: the caller falls back.
 	refuse.Store(true)
 	if url, _, err := client.AudioStream(context.Background(), "abc"); err == nil {
 		t.Fatalf("AudioStream() = %q, nil with the media server refusing; want an error", url)

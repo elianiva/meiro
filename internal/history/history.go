@@ -1,5 +1,3 @@
-// Package history keeps what was played on this device, and sums it up for
-// the stats page.
 package history
 
 import (
@@ -15,11 +13,8 @@ import (
 	"github.com/elianiva/meiro/internal/fsutil"
 )
 
-// MaxEntries caps the history: about a year of heavy listening. Old entries
-// go first when it overflows.
 const MaxEntries = 5000
 
-// Entry is one played track.
 type Entry struct {
 	VideoID  string    `json:"videoId"`
 	Title    string    `json:"title,omitempty"`
@@ -27,20 +22,14 @@ type Entry struct {
 	PlayedAt time.Time `json:"playedAt"`
 }
 
-// Append adds entries to the end of a history and drops its oldest entries
-// beyond MaxEntries, in place.
 func Append(history []Entry, entries ...Entry) []Entry {
 	history = append(history, entries...)
 	if len(history) > MaxEntries {
-		// Slide the newest entries down in place: reallocating the whole
-		// history on every play once it is full copied it all each time.
 		history = slices.Delete(history, 0, len(history)-MaxEntries)
 	}
 	return history
 }
 
-// Read reads a history file. A missing or unreadable file is an empty
-// history rather than an error the user must see.
 func Read(path string) []Entry {
 	if path == "" {
 		return nil
@@ -60,10 +49,9 @@ func Read(path string) []Entry {
 	return entries
 }
 
-// Write replaces a history file atomically.
 func Write(path string, entries []Entry) error {
 	if entries == nil {
-		entries = []Entry{} // "[]", not "null"
+		entries = []Entry{}
 	}
 	data, err := json.Marshal(entries)
 	if err != nil {
@@ -72,10 +60,6 @@ func Write(path string, entries []Entry) error {
 	return fsutil.WriteFileAtomic(path, data, 0o600)
 }
 
-// Writer writes the history off the main thread, one write at a time, so that
-// the writes of two quick plays cannot land out of order and leave the older
-// one on disk. A save asked for while another is being written replaces what
-// waits behind it. The zero value is ready to use.
 type Writer struct {
 	mu      sync.Mutex
 	path    string
@@ -85,8 +69,6 @@ type Writer struct {
 	done    chan struct{}
 }
 
-// Save writes entries to path soon. It keeps its own copy of them. Saving
-// no entries writes an empty history, which is how the history is cleared.
 func (w *Writer) Save(path string, entries []Entry) {
 	if path == "" {
 		return
@@ -123,7 +105,6 @@ func (w *Writer) drain(done chan struct{}) {
 	}
 }
 
-// Wait returns when every save asked for so far is on disk.
 func (w *Writer) Wait() {
 	w.mu.Lock()
 	if !w.running {
@@ -135,20 +116,17 @@ func (w *Writer) Wait() {
 	<-done
 }
 
-// Day is one day of listening.
 type Day struct {
 	Day   time.Time
 	Plays int
 }
 
-// Count is the plays of one track or artist.
 type Count struct {
 	Title  string
 	Artist string
 	Plays  int
 }
 
-// Summary is what the stats page shows.
 type Summary struct {
 	Plays      int
 	Artists    int
@@ -157,8 +135,6 @@ type Summary struct {
 	TopArtists []Count
 }
 
-// Summarize folds entries into totals, daily counts for the days days ending
-// on the day of now, and the five most played tracks and artists.
 func Summarize(entries []Entry, now time.Time, days int) Summary {
 	var summary Summary
 	tracks := make(map[string]*Count)
@@ -168,8 +144,6 @@ func Summarize(entries []Entry, now time.Time, days int) Summary {
 	for d := range summary.ByDay {
 		summary.ByDay[d].Day = cutoff.AddDate(0, 0, d)
 	}
-	// Days are told apart by their calendar number, so placing a play costs
-	// arithmetic instead of formatting its date into a string to look up.
 	firstDay := CalendarDay(cutoff)
 	for _, e := range entries {
 		if e.PlayedAt.Before(cutoff) {
@@ -204,14 +178,11 @@ func Summarize(entries []Entry, now time.Time, days int) Summary {
 	return summary
 }
 
-// CalendarDay numbers the day t falls on, in its own zone, counting from a
-// fixed origin, so consecutive days differ by one whatever the zone's offset.
 func CalendarDay(t time.Time) int {
 	y, m, d := t.Date()
 	return int(time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix() / 86400)
 }
 
-// top keeps the n highest counts, most plays first.
 func top(counts map[string]*Count, n int) []Count {
 	all := make([]Count, 0, len(counts))
 	for _, c := range counts {
@@ -226,7 +197,6 @@ func top(counts map[string]*Count, n int) []Count {
 	return all[:min(len(all), n)]
 }
 
-// startOfDay is midnight of the day t falls on, in its own zone.
 func startOfDay(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())

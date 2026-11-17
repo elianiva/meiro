@@ -7,9 +7,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// The queue's invariants hold through what playback does to it: the place
-// stays on the current track, and the boundary of the generated tracks stays
-// on the first of them.
 func TestQueueKeepsItsPlaceThroughChanges(t *testing.T) {
 	q := newQueue()
 	chosen := tracks("a", "b", "c")
@@ -18,12 +15,11 @@ func TestQueueKeepsItsPlaceThroughChanges(t *testing.T) {
 		t.Fatalf("replace: current %q, recStart %d", cur.VideoID, q.recStart)
 	}
 
-	q.appendGenerated(tracks("c", "r1", "r2")) // c is already queued
+	q.appendGenerated(tracks("c", "r1", "r2"))
 	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "c", "r1", "r2"}) || q.recStart != 3 {
 		t.Fatalf("generated: %v, recStart %d", got, q.recStart)
 	}
 
-	// A chosen track goes ahead of the generated ones; play-next goes next.
 	q.insert(youtube.MusicItem{VideoID: "x"}, false, true)
 	q.insert(youtube.MusicItem{VideoID: "y"}, true, true)
 	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "y", "c", "x", "r1", "r2"}) || q.recStart != 5 {
@@ -33,8 +29,7 @@ func TestQueueKeepsItsPlaceThroughChanges(t *testing.T) {
 		t.Fatalf("next = %d, %v", next, ok)
 	}
 
-	// With auto-play off the queue ends before the generated tracks.
-	q.moveTo(4) // x
+	q.moveTo(4)
 	if _, ok := q.next(false, repeatOff); ok {
 		t.Error("auto-play off played into the generated tracks")
 	}
@@ -42,8 +37,6 @@ func TestQueueKeepsItsPlaceThroughChanges(t *testing.T) {
 		t.Errorf("repeating the queue went to %d, %v", next, ok)
 	}
 
-	// Dragging the current track keeps it current, and the divider row is
-	// not a track.
 	before := q.rows()
 	if !q.moveRows([]int{q.rowOf(4)}, 0) {
 		t.Fatal("the drag moved nothing")
@@ -59,8 +52,6 @@ func TestQueueKeepsItsPlaceThroughChanges(t *testing.T) {
 	}
 }
 
-// Adding to the queue while auto-play already plays a generated track puts
-// the added tracks after it, not behind it in the original queue.
 func TestQueueAddsAfterAGeneratedCurrent(t *testing.T) {
 	q := newQueue()
 	chosen := tracks("a", "b", "c")
@@ -82,8 +73,6 @@ func TestQueueAddsAfterAGeneratedCurrent(t *testing.T) {
 	}
 }
 
-// A recommendation that has played is no longer a recommendation: it folds
-// into the queue, and only the ones still to come stay under the heading.
 func TestPlayedRecommendationsFoldIntoTheQueue(t *testing.T) {
 	q := newQueue()
 	chosen := tracks("a", "b")
@@ -101,15 +90,12 @@ func TestPlayedRecommendationsFoldIntoTheQueue(t *testing.T) {
 	if q.recStart != -1 || q.hasDivider() {
 		t.Fatalf("playing the last recommendation left recStart %d", q.recStart)
 	}
-	// Recommendations that arrive later start the section again.
 	q.appendGenerated(tracks("r4", "r5"))
 	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "r1", "r2", "r3", "r4", "r5"}) || q.recStart != 5 {
 		t.Fatalf("new recommendations: %v, recStart %d", got, q.recStart)
 	}
 }
 
-// A queue that would hold more generated tracks than the limit drops played
-// tracks first, and never more than the limit.
 func TestQueueBoundsGeneratedTracks(t *testing.T) {
 	q := newQueue()
 	q.replace(tracks("a")[0], tracks("a"), 0, "")
@@ -128,14 +114,10 @@ func TestQueueBoundsGeneratedTracks(t *testing.T) {
 	}
 }
 
-// Turning shuffle on arranges the whole queue behind the track that is
-// playing, which moves to the top, so the songs before it are not left out.
-// Turning it off puts the queue back in the order it held, with the track
-// playing where it was.
 func TestShuffleArrangesTheWholeQueueAndPutsItBack(t *testing.T) {
 	q := newQueue()
 	chosen := tracks("a", "b", "c", "d", "e")
-	q.replace(chosen[3], chosen, 3, "Album") // playing d, with songs before it
+	q.replace(chosen[3], chosen, 3, "Album")
 	q.shuffleQueue()
 	if cur := q.current(); cur.VideoID != "d" || q.index != 0 {
 		t.Fatalf("after the shuffle: playing %q at %d, want d at the top", cur.VideoID, q.index)
@@ -160,9 +142,6 @@ func TestShuffleArrangesTheWholeQueueAndPutsItBack(t *testing.T) {
 	}
 }
 
-// The generated tracks keep their place at the end when the queue is arranged
-// and put back, and the boundary of the chosen tracks stays on the first of
-// them.
 func TestShuffleKeepsTheGeneratedTracksAtTheEnd(t *testing.T) {
 	q := newQueue()
 	chosen := tracks("a", "b", "c")
@@ -231,7 +210,7 @@ func TestQueueRemoveKeepsItsPlace(t *testing.T) {
 	chosen := tracks("a", "b", "c", "d")
 	q.replace(chosen[2], chosen, 2, "")
 	q.appendGenerated(tracks("r1", "r2"))
-	q.insert(youtube.MusicItem{VideoID: "n"}, true, true) // a b c n d r1 r2
+	q.insert(youtube.MusicItem{VideoID: "n"}, true, true)
 
 	if q.remove(q.index) {
 		t.Error("removed the track playing")
@@ -268,8 +247,6 @@ func TestQueueShiftAndClear(t *testing.T) {
 	if q.shift(0, -1) || q.shift(4, 1) {
 		t.Error("moved past an end")
 	}
-	// Down past the divider makes the track the first of the generated ones'
-	// neighbours: the boundary stays on the generated tracks.
 	q.shift(2, 1)
 	if q.at(q.recStart).VideoID != "r1" || q.current().VideoID != "a" {
 		t.Errorf("across the divider: %v, recStart %d", ids(q.items), q.recStart)
@@ -291,9 +268,8 @@ func TestQueueDragKeepsPlayNextAndBoundary(t *testing.T) {
 	chosen := tracks("a", "b", "c", "d")
 	q.replace(chosen[0], chosen, 0, "")
 	q.appendGenerated(tracks("r1", "r2"))
-	q.insert(youtube.MusicItem{VideoID: "n"}, true, true) // a n b c d r1 r2
+	q.insert(youtube.MusicItem{VideoID: "n"}, true, true)
 
-	// Drag d, the last chosen track, to the top of the upcoming tracks.
 	if !q.moveRows([]int{q.rowOf(4)}, q.rowOf(1)) || !slices.Equal(ids(q.items), []string{"a", "d", "n", "b", "c", "r1", "r2"}) {
 		t.Fatalf("drag: %v", ids(q.items))
 	}
@@ -307,7 +283,6 @@ func TestQueueDragKeepsPlayNextAndBoundary(t *testing.T) {
 		t.Errorf("boundary on %q, place %d", q.at(q.recStart).VideoID, q.index)
 	}
 
-	// A generated track dragged among the chosen ones stays generated.
 	if !q.moveRows([]int{q.rowOf(6)}, 1) || q.hasDivider() == false {
 		t.Fatalf("drag generated: %v, recStart %d", ids(q.items), q.recStart)
 	}
@@ -316,39 +291,33 @@ func TestQueueDragKeepsPlayNextAndBoundary(t *testing.T) {
 	}
 }
 
-// YouTube Music recommends a song's music video and its audio upload as two
-// tracks; only one of them is queued.
 func TestAppendGeneratedSkipsOtherUploadsOfSameSong(t *testing.T) {
 	q := newQueue()
 	q.replace(youtube.MusicItem{VideoID: "a", Title: "A", Duration: "1:00"}, nil, 0, "")
 	q.appendGenerated([]youtube.MusicItem{
 		{VideoID: "r1", Title: "Nostalgia", Duration: "3:17"},
-		{VideoID: "r2", Title: "Nostalgia", Duration: "3:16"}, // same song
-		{VideoID: "r3", Title: "Nostalgia", Duration: "5:30"}, // a different length: another song
-		{VideoID: "r4", Title: "A", Duration: "1:02"},         // the playing song
+		{VideoID: "r2", Title: "Nostalgia", Duration: "3:16"},
+		{VideoID: "r3", Title: "Nostalgia", Duration: "5:30"},
+		{VideoID: "r4", Title: "A", Duration: "1:02"},
 	})
 	if got := ids(q.items); !slices.Equal(got, []string{"a", "r1", "r3"}) {
 		t.Fatalf("queue %v", got)
 	}
 }
 
-// The same song listed twice is skipped even when the titles differ in case
-// or punctuation, or when one listing has no length.
 func TestAppendGeneratedSkipsSameTitleAndArtist(t *testing.T) {
 	q := newQueue()
 	q.replace(youtube.MusicItem{VideoID: "a", Title: "A", Duration: "1:00"}, nil, 0, "")
 	q.appendGenerated([]youtube.MusicItem{
 		{VideoID: "r1", Title: "Nostalgia", Artist: "Kenshi", Duration: "3:17"},
 		{VideoID: "r2", Title: "NOSTALGIA!", Artist: "kenshi", Duration: ""},
-		{VideoID: "r3", Title: "Nostalgia", Artist: "Another", Duration: "3:17"}, // another artist
+		{VideoID: "r3", Title: "Nostalgia", Artist: "Another", Duration: "3:17"},
 	})
 	if got := ids(q.items); !slices.Equal(got, []string{"a", "r1", "r3"}) {
 		t.Fatalf("queue %v", got)
 	}
 }
 
-// Videos are skipped; song recommendations keep the order they had relative
-// to the other song recommendations.
 func TestAppendGeneratedKeepsAudioOrderWhenSkippingVideos(t *testing.T) {
 	q := newQueue()
 	q.replace(youtube.MusicItem{VideoID: "a", Title: "A", Duration: "1:00"}, nil, 0, "")
@@ -431,9 +400,6 @@ func TestDroppingMarkedAITracksKeepsTheQueueConsistent(t *testing.T) {
 	}
 }
 
-// The queue can hold the same song twice, and only the copy at the queue's
-// place is picked out as playing. Every other list picks the song playing out
-// by its own ID.
 func TestTheSameSongTwiceInTheQueuePlaysFromOneRow(t *testing.T) {
 	a := newTestApp(t)
 	song := youtube.MusicItem{VideoID: "vid-3", Title: "Album Track One"}

@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// Loudness is the per-track loudness metadata returned by YouTube's web player.
-// LoudnessDB is measured in decibels relative to the reference level.
 type Loudness struct {
 	LoudnessDB float64
 }
@@ -47,9 +45,6 @@ func parseLoudness(raw json.RawMessage) (Loudness, error) {
 	return Loudness{}, errors.New("youtube: player response has no loudness metadata")
 }
 
-// Loudness asks the web player for the loudness metadata of videoID. YouTube
-// only returns this metadata for sessions it accepts, so an unavailable value
-// is reported as an error and can be retried later.
 func (c *Client) Loudness(ctx context.Context, videoID string) (Loudness, error) {
 	if c.cookieAuth == nil {
 		return Loudness{}, errors.New("youtube: loudness requires a signed-in session")
@@ -67,10 +62,6 @@ func (c *Client) Loudness(ctx context.Context, videoID string) (Loudness, error)
 	return parseLoudness(raw)
 }
 
-// AudioStream returns a direct URL of the best audio of videoID and the
-// track's length, as yt-dlp resolves it with its visionOS client, without
-// running yt-dlp. It asks anonymously, as a visitor: a client with a
-// signed-in session is refused.
 func (c *Client) AudioStream(ctx context.Context, videoID string) (string, time.Duration, error) {
 	if c.cookieAuth != nil {
 		return "", 0, errors.New("youtube: audio streams are resolved anonymously")
@@ -78,7 +69,6 @@ func (c *Client) AudioStream(ctx context.Context, videoID string) (string, time.
 	if strings.TrimSpace(videoID) == "" {
 		return "", 0, errors.New("youtube: audio stream requires a video ID")
 	}
-	// The player answers a request without a visitor with a bot check.
 	if c.currentVisitorData() == "" {
 		if _, err := c.executeAs(ctx, musicClient, false, "visitor_id", map[string]any{}); err != nil {
 			return "", 0, err
@@ -94,22 +84,20 @@ func (c *Client) AudioStream(ctx context.Context, videoID string) (string, time.
 	if err != nil {
 		return "", 0, err
 	}
-	// The media server now and then refuses a URL the player just gave out.
-	// Asking for its first byte finds that out here, where the caller can
-	// still resolve it another way, rather than in the player.
 	if err := c.probe(ctx, stream); err != nil {
 		return "", 0, err
 	}
 	return stream, length, nil
 }
 
-// probe asks for the first byte of a media URL, as the player asks for it.
+const firstByteRange = "bytes=0-0"
+
 func (c *Client) probe(ctx context.Context, media string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, media, nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Range", "bytes=0-0")
+	req.Header.Set("Range", firstByteRange)
 	req.Header.Set("User-Agent", browserUserAgent)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -122,10 +110,6 @@ func (c *Client) probe(ctx context.Context, media string) error {
 	return nil
 }
 
-// parseAudioStream picks the audio-only format of the highest bitrate that
-// has a direct URL, as yt-dlp's bestaudio does: of the track's own language,
-// and with its dynamic range left as it was mixed rather than compressed
-// (DRC), which YouTube lists beside it at a slightly higher bitrate.
 func parseAudioStream(raw json.RawMessage) (string, time.Duration, error) {
 	var response struct {
 		PlayabilityStatus struct {
@@ -153,8 +137,9 @@ func parseAudioStream(raw json.RawMessage) (string, time.Duration, error) {
 	}
 	best, bitrate, length := "", -1, time.Duration(0)
 	for _, format := range response.StreamingData.AdaptiveFormats {
-		if !strings.HasPrefix(format.MimeType, "audio/") || format.URL == "" || format.Bitrate <= bitrate ||
-			format.IsDrc || format.AudioTrack != nil && !format.AudioTrack.AudioIsDefault {
+		isAudioOnly := strings.HasPrefix(format.MimeType, "audio/")
+		isOtherLanguage := format.AudioTrack != nil && !format.AudioTrack.AudioIsDefault
+		if !isAudioOnly || format.URL == "" || format.Bitrate <= bitrate || format.IsDrc || isOtherLanguage {
 			continue
 		}
 		best, bitrate = format.URL, format.Bitrate
@@ -167,20 +152,11 @@ func parseAudioStream(raw json.RawMessage) (string, time.Duration, error) {
 	return best, length, nil
 }
 
-// ReportPlayback tells YouTube Music that the account started playing a track,
-// as its own player does. That is what puts the track in the listening
-// history, and the history is what the recommendations are made from; Meiro
-// plays through yt-dlp, so nothing else reports it. It needs a signed-in
-// session, and does nothing without one.
 func (c *Client) ReportPlayback(ctx context.Context, videoID string) error {
 	_, err := c.reportPlayback(ctx, videoID, 0, 0, false)
 	return err
 }
 
-// PlaybackSession is YouTube's tracking session for one authenticated
-// podcast episode. Its nonce and watch-time URL must stay together: YouTube
-// drops progress pings that do not belong to the playback ping that started
-// the session.
 type PlaybackSession struct {
 	client       *Client
 	watchtimeURL *url.URL
@@ -188,9 +164,6 @@ type PlaybackSession struct {
 	startedAt    time.Time
 }
 
-// BeginEpisodePlayback starts an authenticated tracking session for an
-// episode at position. ReportWatchtime sends intervals through this same
-// session so YouTube can update the account's episode progress.
 func (c *Client) BeginEpisodePlayback(ctx context.Context, videoID string, position, duration time.Duration) (*PlaybackSession, error) {
 	return c.reportPlayback(ctx, videoID, position, duration, true)
 }
@@ -239,9 +212,6 @@ func (c *Client) reportPlayback(ctx context.Context, videoID string, position, d
 	return &PlaybackSession{client: c, watchtimeURL: watchtimeURL, cpn: cpn, startedAt: time.Now()}, nil
 }
 
-// ReportWatchtime reports the newly played interval. Positions use seconds
-// from the episode's start; seeking is handled by starting a new interval at
-// the position reached, never by reporting the skipped section.
 func (s *PlaybackSession) ReportWatchtime(ctx context.Context, from, to, duration time.Duration, state string, final bool) error {
 	if s == nil || s.client == nil || s.watchtimeURL == nil {
 		return nil
@@ -281,8 +251,6 @@ func (c *Client) pingTracking(ctx context.Context, target *url.URL, params url.V
 		return errors.New("youtube: refusing to send cookie authentication to a non-YouTube or non-HTTPS URL")
 	}
 	query := target.Query()
-	// Keep the session's tracking parameters as YouTube returned them, while
-	// replacing the values that identify this client playback.
 	for key, values := range params {
 		query.Del(key)
 		for _, value := range values {
@@ -313,14 +281,14 @@ func seconds(d time.Duration) string {
 	return strconv.FormatFloat(d.Seconds(), 'f', 3, 64)
 }
 
-// clientPlaybackNonce is the 16 characters the player sends to tell one
-// playback from another.
+const playbackNonceLength = 16
+
 func clientPlaybackNonce() string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
-	b := make([]byte, 16)
+	b := make([]byte, playbackNonceLength)
 	_, _ = rand.Read(b)
 	for i := range b {
-		b[i] = alphabet[b[i]&63]
+		b[i] = alphabet[b[i]%byte(len(alphabet))]
 	}
 	return string(b)
 }

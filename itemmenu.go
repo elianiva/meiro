@@ -9,30 +9,18 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// itemMenu is the state of the one item menu a window shows at a time: which
-// item opened it and where it points. Cards, song rows and the player's
-// artwork all share it, so their menus open, close and anchor alike.
 type itemMenu struct {
-	open bool
-	key  string
-	// atPointer marks a menu the secondary button opened, whose anchor is the
-	// pointer rather than the item's menu button; x and y are where the
-	// pointer was, in the box of the item clicked.
+	open      bool
+	key       string
 	atPointer bool
 	x, y      float32
-	// copying shows a song menu's copy entries in place of its other ones.
-	copying bool
+	copying   bool
 }
 
-// opened says whether the menu is open on the item with this key.
 func (m *itemMenu) opened(key string) bool { return m.open && m.key == key }
 
-// owns says whether the menu was last opened on the item with this key, open
-// or not: the item keeps building the menu until it has played its exit.
 func (m *itemMenu) owns(key string) bool { return m.key == key }
 
-// show opens the menu on the item with this key. A menu opened by the pointer
-// points at x, y rather than at the item's menu button.
 func (m *itemMenu) show(key string, atPointer bool, x, y float32) {
 	m.key, m.open, m.atPointer, m.copying = key, true, atPointer, false
 	if atPointer {
@@ -42,13 +30,6 @@ func (m *itemMenu) show(key string, atPointer bool, x, y float32) {
 
 func (m *itemMenu) close() { m.open = false }
 
-// pointerAnchor is a box at where the pointer was, in the layout of the item
-// the menu was opened on, if the secondary button opened the menu on the item
-// with this key. It must be built inside that item.
-//
-// The box has no size on purpose: it only places the menu. A box with a size
-// would sit over the spot the pointer pressed, and take the next right-click
-// there for itself, so the item under it would never open its menu again.
 func (m *itemMenu) pointerAnchor(c *ui.Context, key string) (ui.Element, bool) {
 	if !m.atPointer || m.key != key {
 		return ui.Element{}, false
@@ -56,8 +37,6 @@ func (m *itemMenu) pointerAnchor(c *ui.Context, key string) (ui.Element, bool) {
 	return ui.Box(c).Size(0, 0).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).Left(m.x).Top(m.y), true
 }
 
-// anchor picks what the menu points at: the pointer's box if there is one,
-// else the item's menu button.
 func (m *itemMenu) anchor(button, pointer ui.Element, hasPointer bool) ui.Element {
 	if m.atPointer && hasPointer {
 		return pointer
@@ -65,15 +44,10 @@ func (m *itemMenu) anchor(button, pointer ui.Element, hasPointer bool) ui.Elemen
 	return button
 }
 
-// cardMenu offers actions that make sense for a card. Songs share their
-// queue and artist actions with song rows; other cards can open their page or
-// copy its link.
 func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtube.MusicItem, queue []youtube.MusicItem) {
 	if !a.menu.owns(key) {
 		return
 	}
-	// A page opened from a card's menu flies the card's cover too: the menu
-	// key names the card it belongs to.
 	a.rememberCover(strings.TrimSuffix(key, "-menu"), item)
 	target := item.Target()
 	if target.Kind == youtube.TargetTrack {
@@ -137,7 +111,6 @@ func (a *app) cardMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 	})
 }
 
-// songMenu offers local queue actions and read-only actions for a track.
 func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtube.MusicItem, o songOptions) {
 	if !a.menu.owns(key) {
 		return
@@ -217,8 +190,6 @@ func (a *app) songMenu(c *ui.Context, anchor ui.Element, key string, item youtub
 	})
 }
 
-// copyMenuPage is the song menu's second page: what it can copy, under a
-// header that goes back to the first.
 func (a *app) copyMenuPage(c *ui.Context, entry func(string, *ui.SVG) ui.Element, item youtube.MusicItem, close func()) {
 	sc := m3.Of(c).Scheme
 	ui.Row(c).Height(48).Gap(4).AlignItems(ui.Center).Children(func() {
@@ -250,9 +221,6 @@ func (a *app) copyMenuPage(c *ui.Context, entry func(string, *ui.SVG) ui.Element
 	}
 }
 
-// queueMenuItems are the edits a row of the queue offers for the track at a
-// place in it. The track playing stays where it is. They share the song
-// menu's entry height, so their gaps match the actions around them.
 func (a *app) queueMenuItems(index int, entry func(string, *ui.SVG) ui.Element, close func()) {
 	q := &a.queue
 	if selected := a.selectedQueueIndices(); len(selected) > 1 {
@@ -288,9 +256,6 @@ func (a *app) queueMenuItems(index int, entry func(string, *ui.SVG) ui.Element, 
 	})
 }
 
-// heroMenu offers what YouTube Music's menu on the artwork of an album, a
-// playlist or an artist does: start its radio, shuffle it, or copy the page's
-// link.
 func (a *app) heroMenu(c *ui.Context, anchor ui.Element) {
 	if !a.menu.owns("hero") {
 		return

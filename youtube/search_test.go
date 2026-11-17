@@ -8,12 +8,6 @@ import (
 	"testing"
 )
 
-// searchPageResponse is a page of search results as YouTube Music answers one.
-// The filter bar sits in the header of the shelf, the card the results lead
-// with comes first, and every other row is a musicResponsiveListItemRenderer
-// that names its own page in its navigation endpoint: the artist a row credits
-// sits beside it in a run of the second column. The chip that clears the
-// filters carries no parameters.
 const searchPageResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{
 	"header":{"chipCloudRenderer":{"chips":[
 		{"chipCloudChipRenderer":{"text":{"runs":[{"text":"Songs"}]},"navigationEndpoint":{"searchEndpoint":{"query":"ambient","params":"EgWKAQIIAWoSEAUQAxAJ"}}}},
@@ -60,7 +54,6 @@ const searchPageResponse = `{"contents":{"tabbedSearchResultsRenderer":{"tabs":[
 		]}}]}}
 ]}}}}]}}}`
 
-// searchItem is the item of a result whose title is given.
 func searchItem(t *testing.T, result *SearchResult, title string) MusicItem {
 	t.Helper()
 	for _, item := range result.Items {
@@ -72,7 +65,6 @@ func searchItem(t *testing.T, result *SearchResult, title string) MusicItem {
 	return MusicItem{}
 }
 
-// searchServer answers every request with body, and hands back what was asked.
 func searchServer(t *testing.T, body string, asked *map[string]any) *Client {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +77,6 @@ func searchServer(t *testing.T, body string, asked *map[string]any) *Client {
 	return NewClient(Options{BaseURL: server.URL, APIKey: "k"})
 }
 
-// A search row opens what it names: an album, a playlist or a podcast keeps its own page
-// although the row credits the artist beside it, and a song still plays and
-// still knows its artist.
 func TestSearchRowsOpenWhatTheyName(t *testing.T) {
 	result, err := searchServer(t, searchPageResponse, nil).Search(context.Background(), "ambient", SearchOptions{})
 	if err != nil {
@@ -120,10 +109,6 @@ func TestSearchRowsOpenWhatTheyName(t *testing.T) {
 	}
 }
 
-// podcastShowResponse is a podcast show's page as YouTube Music answers one:
-// the heading sits among the contents, the filter chips' reload token comes
-// before the shelf, and each episode is a multi-row item that keeps its length
-// beside its progress. The continuation answer goes on with the same shelf.
 const podcastShowResponse = `{"contents":{"twoColumnBrowseResultsRenderer":{
 	"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicResponsiveHeaderRenderer":{
 		"title":{"runs":[{"text":"Ambient Talk"}]},
@@ -161,10 +146,6 @@ const podcastMoreResponse = `{"continuationContents":{"musicShelfContinuation":{
 	"continuations":[{"nextContinuationData":{"continuation":"show-more-2"}}]
 }}}`
 
-// A podcast show lists its episodes, newest first, as tracks that play, with
-// the length beside the date and what each is about on one line. Its next
-// episodes follow from the shelf's continuation, not from the token that
-// reloads the shelf under a filter.
 func TestPodcastShowListsItsEpisodes(t *testing.T) {
 	ctx := context.Background()
 	show, err := searchServer(t, podcastShowResponse, nil).GetPodcast(ctx, "MPSPPLambient")
@@ -207,8 +188,6 @@ func TestPodcastShowListsItsEpisodes(t *testing.T) {
 	}
 }
 
-// The card a search leads with is its top result, drawn as a card rather than a
-// row, and the songs it lists are still rows of the results.
 func TestSearchTopResultIsTheCard(t *testing.T) {
 	result, err := searchServer(t, searchPageResponse, nil).Search(context.Background(), "ambient", SearchOptions{})
 	if err != nil {
@@ -231,8 +210,6 @@ func TestSearchTopResultIsTheCard(t *testing.T) {
 	}
 }
 
-// The card of a song plays its video, and says as much rather than claiming to
-// be a page.
 func TestSearchTopResultOfASongPlaysIt(t *testing.T) {
 	const body = `{"contents":{"musicCardShelfRenderer":{
 		"title":{"runs":[{"text":"Creep","navigationEndpoint":{"watchEndpoint":{"videoId":"vid-creep"}}}]},

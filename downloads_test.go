@@ -15,8 +15,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// downloadTone serves a short tone for a download to save, and skips a test
-// when ffmpeg is not there to make it.
 func downloadTone(t *testing.T) string {
 	t.Helper()
 	ffmpeg, err := exec.LookPath("ffmpeg")
@@ -35,14 +33,12 @@ func downloadTone(t *testing.T) string {
 	return media.URL + "/audio"
 }
 
-// unreachable fails every request, as a machine with no network does.
 type unreachable struct{}
 
 func (unreachable) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errors.New("dial tcp: no route to host")
 }
 
-// audioFiles lists the files in the downloads folder other than its index.
 func audioFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -58,8 +54,6 @@ func audioFiles(t *testing.T, dir string) []string {
 	return names
 }
 
-// A download holds the app at full speed while it runs, once for the whole
-// queue, and lets go when the last track is done.
 func TestDownloadsKeepTheAppRunning(t *testing.T) {
 	mediaURL := downloadTone(t)
 	a, r := playbackApp(t)
@@ -89,8 +83,6 @@ func TestDownloadsKeepTheAppRunning(t *testing.T) {
 	}
 }
 
-// An album downloaded from its page opens, lists and plays with no network,
-// and removing the download deletes its audio.
 func TestADownloadedAlbumPlaysOffline(t *testing.T) {
 	mediaURL := downloadTone(t)
 	a, r := playbackApp(t)
@@ -104,14 +96,10 @@ func TestADownloadedAlbumPlaysOffline(t *testing.T) {
 		t.Fatalf("%v: %q", err, tt.Texts())
 	}
 	tt.Frame()
-	// The index is written off the main thread, and a write under way keeps
-	// its own temporary file in the folder, so wait for it before counting.
 	a.downloads.writer.Wait()
 	if !tt.HasText("Downloaded") || len(audioFiles(t, dir)) != 1 {
 		t.Fatalf("the album did not download: files=%q texts=%q", audioFiles(t, dir), tt.Texts())
 	}
-	// The Downloads page lists the album, and leaves the album's own page as
-	// it was.
 	if err := tt.Click("Downloads"); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +110,6 @@ func TestADownloadedAlbumPlaysOffline(t *testing.T) {
 		t.Fatalf("the album page took the Downloads page's content: path=%q texts=%q", a.path(), tt.Texts())
 	}
 
-	// The network goes away, and the app starts again from what it saved.
 	a.player.Stop()
 	a, r = playbackApp(t)
 	a.openDownloads(dir)
@@ -160,8 +147,6 @@ func TestADownloadedAlbumPlaysOffline(t *testing.T) {
 	}
 }
 
-// A playlist downloaded once picks up a song added to it afterwards, the next
-// time its page opens, and holds it offline with the rest.
 func TestADownloadedPlaylistPicksUpASongAddedLater(t *testing.T) {
 	mediaURL := downloadTone(t)
 	fakePlaylistGrows.Store(false)
@@ -175,7 +160,6 @@ func TestADownloadedPlaylistPicksUpASongAddedLater(t *testing.T) {
 	a.router.Push("/playlist/VLPL_grows")
 	tt := ui.NewTester(a.view, 1000, 700)
 	tt.Frame()
-	// Opening a playlist that was never downloaded saves nothing.
 	if files := audioFiles(t, dir); len(files) != 0 {
 		t.Fatalf("opening an undownloaded playlist saved %q", files)
 	}
@@ -188,7 +172,6 @@ func TestADownloadedPlaylistPicksUpASongAddedLater(t *testing.T) {
 		t.Fatalf("the playlist did not download: files=%q texts=%q", audioFiles(t, dir), tt.Texts())
 	}
 
-	// A song joins the playlist elsewhere, and the page opens again.
 	fakePlaylistGrows.Store(true)
 	if err := tt.Click("Downloads"); err != nil {
 		t.Fatal(err)
@@ -214,7 +197,6 @@ func TestADownloadedPlaylistPicksUpASongAddedLater(t *testing.T) {
 		t.Errorf("the song downloaded before was fetched %d times, want once", n)
 	}
 
-	// Offline, the playlist's page holds both songs.
 	page, ok := a.offlinePage("VLPL_grows")
 	if !ok {
 		t.Fatal("the playlist has no offline page")

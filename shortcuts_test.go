@@ -67,7 +67,6 @@ func TestRecordingANewShortcut(t *testing.T) {
 		t.Fatalf("not recording: %q", tt.Texts())
 	}
 
-	// A key another action has is refused, and says whose it is.
 	tt.Key(ui.Cmd, ui.KeyComma)
 	tt.Frame()
 	if a.keyboard.recording != keymap.Search || a.router.Path() != "/settings" || len(a.settings.Shortcuts) != 0 {
@@ -82,7 +81,6 @@ func TestRecordingANewShortcut(t *testing.T) {
 	if a.keyboard.recording != "" || a.settings.Shortcuts["search"] != "Shift+Cmd+Y" {
 		t.Fatalf("not kept: %q %v", a.keyboard.recording, a.settings.Shortcuts)
 	}
-	// Pressing it did not do what the old shortcuts do, and now it does.
 	tt.Key(ui.Cmd, ui.KeyK)
 	tt.Frame()
 	if a.router.Path() != "/settings" {
@@ -136,8 +134,6 @@ func TestHoldingTheModifierShowsTheKeysOverTheControls(t *testing.T) {
 		if hasTextExactly(tt, "Space") {
 			t.Error("the overlay advertises Space even though it does not use the held modifier")
 		}
-		// The rail and the player each name the key, as changed, not the
-		// modifier that is already down.
 		for _, hint := range []string{"P", "1", "2", "3", "J", "R"} {
 			if !hasTextExactly(tt, hint) {
 				t.Errorf("holding %v: no %q over its control: %q", mods, hint, tt.Texts())
@@ -155,7 +151,6 @@ func hasTextExactly(tt *ui.Tester, want string) bool {
 	return slices.Contains(tt.Texts(), want)
 }
 
-// A short press of Ctrl, as in Ctrl+C, does not flash the overlay.
 func tabTo(t *testing.T, tt *ui.Tester, label string) {
 	t.Helper()
 	for range 160 {
@@ -204,7 +199,6 @@ func TestKeyboardMenusKeepFocusAndRunActions(t *testing.T) {
 			}
 			tt.Key(0, ui.KeyEnter)
 			if item.last == "Copy" {
-				// A song's copy actions sit on a second page.
 				if err := tt.Click("Copy link"); err != nil {
 					t.Fatal(err)
 				}
@@ -273,7 +267,6 @@ func TestKeyboardPlayerTabsAndQueue(t *testing.T) {
 			t.Fatalf("%v did not select and focus %s", step.key, step.label)
 		}
 	}
-	// Tab enters the queue list. Home and Down choose the second track.
 	tabTo(t, tt, "Track a")
 	tt.Key(0, ui.KeyHome)
 	tt.Key(0, ui.KeyDown)
@@ -330,9 +323,6 @@ func TestKeyboardOpensTheCoverMenu(t *testing.T) {
 	}
 }
 
-// Space plays and pauses wherever the focus is: a click leaves it on the
-// control it pressed, and that control would take Space as a click of its own.
-// Enter still presses it, and a text field still takes Space as typing.
 func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
 	a, _ := playbackApp(t)
 	a.router.Push("/album/MPREb_test")
@@ -351,7 +341,6 @@ func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
 	tt.Key(0, ui.KeySpace)
 	untilPlaying(t, a, tt)
 
-	// Enter still presses the control the click focused.
 	if err := tt.Click("Repeat"); err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +352,6 @@ func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
 		t.Fatal("Enter no longer presses the control the click focused")
 	}
 
-	// Space is reserved from every shell control, including a switch.
 	a.router.Push("/settings")
 	tt.Frame()
 	if err := tt.Click("Equaliser on"); err != nil {
@@ -384,7 +372,6 @@ func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
 		t.Fatal("Space toggled the focused switch while resuming playback")
 	}
 
-	// A text field keeps Space as text input; dialogs sit outside the shell.
 	a.router.Push("/search")
 	tt.Frame()
 	if err := tt.Click(searchPlaceholder); err != nil {
@@ -398,7 +385,6 @@ func TestSpacePlaysAndPausesAfterAClick(t *testing.T) {
 	}
 }
 
-// untilPlaying waits for the track to start, which takes a moment.
 func untilPlaying(t *testing.T, a *app, tt *ui.Tester) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -412,8 +398,6 @@ func untilPlaying(t *testing.T, a *app, tt *ui.Tester) {
 	}
 }
 
-// typeInSearch types query into the top bar's search field and waits for the
-// panel under it.
 func typeInSearch(t *testing.T, a *app, query string) *ui.Tester {
 	t.Helper()
 	tt := ui.NewTester(a.view, 1000, 700)
@@ -426,15 +410,12 @@ func typeInSearch(t *testing.T, a *app, query string) *ui.Tester {
 	return tt
 }
 
-// pressKeys presses each key with no modifier.
 func pressKeys(tt *ui.Tester, keys ...ui.Key) {
 	for _, key := range keys {
 		tt.Key(0, key)
 	}
 }
 
-// wantSearched fails unless the app searched for query once, and nothing else
-// happened.
 func wantSearched(t *testing.T, a *app, query string) {
 	t.Helper()
 	if n := searches.Load(); n != 1 || a.search.submitted != query || a.search.query != query {
@@ -445,18 +426,14 @@ func wantSearched(t *testing.T, a *app, query string) {
 	}
 }
 
-// The panel under the search bar lists the completed queries, then the items
-// the text matches. Down from the field goes to the first entry and Up to the
-// last; past either end the highlight returns to the text typed. Enter
-// chooses the entry highlighted as a click does, or searches the text typed.
 func TestArrowKeysChooseASearchSuggestion(t *testing.T) {
 	down, up := ui.KeyDown, ui.KeyUp
 	for _, tc := range []struct {
 		name   string
 		keys   []ui.Key
-		search string // the search Enter runs
-		path   string // or the page it opens
-		video  string // or the song it plays
+		search string
+		path   string
+		video  string
 	}{
 		{name: "down picks the first query", keys: []ui.Key{down}, search: "Yorushika"},
 		{name: "down walks the queries in order", keys: []ui.Key{down, down}, search: "Yorushika songs"},
@@ -504,10 +481,6 @@ func TestArrowKeysChooseASearchSuggestion(t *testing.T) {
 	}
 }
 
-// The arrows act only while the panel shows something to walk: without
-// suggestions, or once Escape closes the panel, Enter searches the text
-// typed. Typing, and keys the field edits with, still reach the field, and a
-// change to the text forgets the highlight.
 func TestSearchSuggestionKeysLeaveTheFieldItsKeys(t *testing.T) {
 	t.Run("escape closes the panel and keeps the text", func(t *testing.T) {
 		a := newTestApp(t)

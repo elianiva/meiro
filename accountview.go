@@ -9,13 +9,11 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// accountButton is the account's picture in the top bar, which opens a menu
-// of the account, the settings and the sign-in.
 func (a *app) accountButton(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	button := ui.ButtonBase(c.Key("account"))
 	button.Size(48, 48).Radius(m3.Full).Center().Cursor(ui.CursorPointer).Label("Account").Tooltip("Account")
-	if button.Hovered() || a.menuOpen {
+	if button.Hovered() || a.accountMenuOpen {
 		button.Background(sc.OnSurface.Alpha(m3.StateHover))
 	}
 	current := a.account.session
@@ -29,9 +27,9 @@ func (a *app) accountButton(c *ui.Context) {
 		})
 	})
 	if button.Clicked() {
-		a.menuOpen = !a.menuOpen
+		a.accountMenuOpen = !a.accountMenuOpen
 	}
-	m3.Menu(c, button, &a.menuOpen, 280, func() {
+	m3.Menu(c, button, &a.accountMenuOpen, 280, func() {
 		if current != nil {
 			ui.Column(c).Padding(12, 12, 8).Gap(2).Children(func() {
 				m3.EmphasizedText(c, m3.TitleSmall, current.name()).SingleLine()
@@ -43,23 +41,21 @@ func (a *app) accountButton(c *ui.Context) {
 			a.channelItems(c, current)
 		}
 		if m3.MenuItem(c, "Settings", m3.IconSettings).Clicked() {
-			a.menuOpen = false
+			a.accountMenuOpen = false
 			a.navigate(routeSettings)
 		}
 		if current != nil {
 			if m3.MenuItem(c, "Sign out", m3.IconLogout).Clicked() {
-				a.menuOpen = false
+				a.accountMenuOpen = false
 				a.signOut()
 			}
 		} else if m3.MenuItem(c, "Sign in", m3.IconLogin).Clicked() {
-			a.menuOpen = false
+			a.accountMenuOpen = false
 			a.openSignIn()
 		}
 	})
 }
 
-// channelItems lists the channels the account can act as. It shows nothing
-// when there is only one, and marks the one in use.
 func (a *app) channelItems(c *ui.Context, current *session) {
 	if len(current.channels) < 2 {
 		return
@@ -88,14 +84,13 @@ func (a *app) channelItems(c *ui.Context, current *session) {
 			m3.Text(c, m3.BodyLarge, name).Grow(1).SingleLine().TextColor(sc.OnSurface)
 		})
 		if row.Clicked() && !selected {
-			a.menuOpen = false
+			a.accountMenuOpen = false
 			a.switchChannel(channel, hasSelectedChannel)
 		}
 	}
 	ui.Divider(c)
 }
 
-// channelName is what a channel row is called.
 func channelName(channel youtube.AccountChannel) string {
 	if channel.Name != "" {
 		return channel.Name
@@ -106,9 +101,6 @@ func channelName(channel youtube.AccountChannel) string {
 	return "that channel"
 }
 
-// accountChannelSelected uses YouTube's selected bit when it gives one. An
-// account can omit channel IDs, so an empty ID must never make every row look
-// selected just because the session uses its default channel.
 func accountChannelSelected(channel youtube.AccountChannel, hasSelectedChannel bool, current string) bool {
 	if hasSelectedChannel {
 		return channel.Selected
@@ -116,8 +108,6 @@ func accountChannelSelected(channel youtube.AccountChannel, hasSelectedChannel b
 	return current != "" && channel.ChannelID == current
 }
 
-// advancedIcon points down while the advanced sign-in options are folded away
-// and up while they show.
 func advancedIcon(open bool) *ui.SVG {
 	if open {
 		return m3.IconExpandLess

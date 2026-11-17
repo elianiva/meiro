@@ -105,8 +105,6 @@ func TestContinueBrowseReusesIssuedVisitorData(t *testing.T) {
 	}
 }
 
-// A page YouTube appends its items to carries the token of the page after it
-// in a trailing continuationItemRenderer, not in a shelf.
 func TestBrowseReadsTheTokenYouTubeAppendsWithItsItems(t *testing.T) {
 	const page = `{"onResponseReceivedActions":[{"appendContinuationItemsAction":{"continuationItems":[
 		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"track-1"},"flexColumns":[
@@ -130,8 +128,6 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// A request that gets no answer is told apart from YouTube answering badly,
-// so the app can say the network is out of reach.
 func TestUnreachableIsToldFromABadAnswer(t *testing.T) {
 	status := http.StatusInternalServerError
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

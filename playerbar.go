@@ -10,10 +10,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// transport builds the controls that start, stop and move through the queue:
-// shuffle, previous, play or pause, next and repeat. The play button is a
-// circle that squares off while the music plays, so the state shows in its
-// shape. size is the play button's side.
 func (a *app) transport(c *ui.Context, size float32, gap float32) {
 	small := m3.IconButtonSpec{Size: m3.Small40}
 	ui.Row(c).Gap(gap).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
@@ -68,9 +64,6 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 	})
 }
 
-// scrubber is the position slider: a wave that travels while the music plays
-// and goes flat when it stops. It follows the player until the user takes it,
-// and seeks when they let go. Times stand at both ends.
 func (a *app) scrubber(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	known := a.total > 0
@@ -92,14 +85,12 @@ func (a *app) scrubber(c *ui.Context) {
 			a.scrubbing = false
 			a.seek(time.Duration(a.scrub * float64(time.Second)))
 		} else if slider.Changed() && !slider.Pressed() {
-			// Arrow keys, Home and End change the value without a pointer press.
 			a.seek(time.Duration(a.scrub * float64(time.Second)))
 		}
 		m3.Text(c, m3.LabelMedium, clock(a.total)).MinWidth(40).NoWrap().Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 	})
 }
 
-// volumeIcon is the speaker shape for the current volume.
 func (a *app) volumeIcon() *ui.SVG {
 	icon := m3.IconVolumeUp
 	switch {
@@ -111,7 +102,6 @@ func (a *app) volumeIcon() *ui.SVG {
 	return icon
 }
 
-// muteButton is the speaker button, which mutes or restores the volume.
 func (a *app) muteButton(c *ui.Context) ui.Element {
 	button := m3.IconButton(c, m3.IconButtonSpec{Icon: a.volumeIcon(), Label: "Mute", Key: "mute"})
 	if button.Clicked() {
@@ -120,15 +110,12 @@ func (a *app) muteButton(c *ui.Context) ui.Element {
 	return button
 }
 
-// volumeSlider is the volume setting, horizontal in the player bar and
-// vertical in the narrow bar's hover panel.
 func (a *app) volumeSlider(c *ui.Context, vertical bool) ui.Element {
 	a.nowPlaying.volumeDraft = a.volume
 	slider := m3.Slider(c, &a.nowPlaying.volumeDraft, 0, 100, m3.SliderSpec{Label: "Volume", Key: "volume", Vertical: vertical})
 	if slider.Changed() {
 		a.setVolume(a.nowPlaying.volumeDraft)
 	}
-	// Save after a pointer drag, or after each keyboard edit.
 	switch {
 	case slider.Pressed():
 		a.nowPlaying.volumeHeld = true
@@ -141,7 +128,6 @@ func (a *app) volumeSlider(c *ui.Context, vertical bool) ui.Element {
 	return slider
 }
 
-// volumeControl is the speaker button, which mutes, and the slider beside it.
 func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 	a.nowPlaying.volumePopup = false
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
@@ -159,8 +145,6 @@ func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 	})
 }
 
-// compactVolumeControl keeps the mute button in the narrow player bar and
-// reveals an upright volume slider while the button or its panel is hovered.
 func (a *app) compactVolumeControl(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	ui.Row(c).Shrink(0).Children(func() {
@@ -186,27 +170,19 @@ func (a *app) compactVolumeControl(c *ui.Context) {
 	})
 }
 
-// speedLabel names a playback speed as "1.5×".
 func speedLabel(speed float64) string {
 	return strconv.FormatFloat(speed, 'f', -1, 64) + "×"
 }
 
-// speedButton is the player's overflow menu: a kebab whose menu leads to how
-// fast the current track plays. The speed is not a button of its own, so it
-// does not take a place in the bar, and the kebab's tooltip names the one in
-// force. key tells the players' buttons apart.
 func (a *app) speedButton(c *ui.Context, key string) {
 	speed := a.speedFor(a.current)
 	anchor := m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconMore, Label: "Playback speed: " + speedLabel(speed), Key: key})
-	// A menu ignores the press that lands on the button that opened it, so
-	// the button closes it, as the account menu's button does.
 	if anchor.Clicked() {
 		if a.nowPlaying.speedMenu == key {
 			a.nowPlaying.speedMenu = ""
 		} else {
 			a.nowPlaying.speedMenu = key
 		}
-		// The menu always opens on the row that leads to the speeds.
 		a.nowPlaying.speedChoices = false
 	}
 	open := a.nowPlaying.speedMenu == key
@@ -225,8 +201,6 @@ func (a *app) speedButton(c *ui.Context, key string) {
 	}
 }
 
-// speedMenuRow is the menu's first page: one row that leads to the speeds,
-// with the one in force beside it, so the menu stays short.
 func (a *app) speedMenuRow(c *ui.Context, key string, speed float64) {
 	sc := m3.Of(c).Scheme
 	row := ui.ButtonBase(c.Key(key + "-choices"))
@@ -254,8 +228,6 @@ func (a *app) speedMenuRow(c *ui.Context, key string, speed float64) {
 	}
 }
 
-// speedChoices is the menu's second page: every speed, under a header that
-// goes back to the row that led here.
 func (a *app) speedChoices(c *ui.Context, key string, speed float64, open *bool) {
 	sc := m3.Of(c).Scheme
 	ui.Row(c).Height(48).Gap(4).AlignItems(ui.Center).Children(func() {
@@ -290,16 +262,11 @@ func (a *app) speedChoices(c *ui.Context, key string, speed float64, open *bool)
 	}
 }
 
-// bylineKey identifies the byline of a track: the text and links it is built
-// from. The pointer is part of the key, since a byline once parsed never
-// changes.
 type bylineKey struct {
 	videoID, artist, subtitle string
 	byline                    *youtube.TrackByline
 }
 
-// playerByline returns the byline of the track playing, kept between frames:
-// the parts only change with the track or its credits, not every frame.
 func (a *app) playerByline() []youtube.BylinePart {
 	key := bylineKey{a.current.VideoID, a.current.Artist, a.current.Subtitle, a.current.Byline}
 	if key != a.bylineFor || a.bylineParts == nil {
@@ -308,8 +275,6 @@ func (a *app) playerByline() []youtube.BylinePart {
 	return a.bylineParts
 }
 
-// trackLine is the name of the current track over who made it, or the
-// reason it does not play.
 func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.Element {
 	sc := m3.Of(c).Scheme
 	return ui.Column(c).Gap(1).MinWidth(0).Children(func() {
@@ -343,8 +308,6 @@ func (a *app) trackLine(c *ui.Context, title, subtitle m3.Role, links bool) ui.E
 	})
 }
 
-// openPlayerLink keeps audio and the queue untouched. The full player finishes
-// its closing animation before navigating; the bar opens the page directly.
 func (a *app) openPlayerLink(part youtube.BylinePart) {
 	if a.nowPlaying.open {
 		a.nowPlaying.navigateTo = part
@@ -355,8 +318,6 @@ func (a *app) openPlayerLink(part youtube.BylinePart) {
 	a.openTarget(part.Target(), detail{title: part.Text})
 }
 
-// playerBar is the floating player: what plays on the left, the transport and
-// the scrubber in the middle, volume and the full-screen player on the right.
 func (a *app) playerBar(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	w, _ := c.Size()
@@ -388,9 +349,6 @@ func (a *app) playerBar(c *ui.Context) {
 			a.loadPanel()
 		}
 
-		// In a narrow window the track keeps its share: the transport takes
-		// what it needs and the buttons on the right take no more than they
-		// are wide.
 		transportGrow := float32(2)
 		if !roomy {
 			transportGrow = 1
@@ -400,8 +358,6 @@ func (a *app) playerBar(c *ui.Context) {
 			a.scrubber(c)
 		})
 
-		// The buttons on the right never overflow the bar: when their share is
-		// too narrow for them, the track's share gives way.
 		end := ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(8)
 		if roomy {
 			end.Grow(1).Basis(0)

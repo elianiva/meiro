@@ -12,10 +12,8 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// switchable is a fake YouTube that can be told to fail or to answer with
-// nothing, and then to recover, as a network that comes back.
 type switchable struct {
-	mode string // "", "offline", "server" or "empty"
+	mode string
 	asks int
 }
 
@@ -32,7 +30,6 @@ func (s *switchable) RoundTrip(request *http.Request) (*http.Response, error) {
 	return fakeMusic{}.RoundTrip(request)
 }
 
-// stateApp is a test app, signed in or not, whose YouTube answers through s.
 func stateApp(t *testing.T, s *switchable, signedIn bool) *app {
 	t.Helper()
 	a := newTestApp(t)
@@ -51,8 +48,6 @@ func stateApp(t *testing.T, s *switchable, signedIn bool) *app {
 	return a
 }
 
-// pageCases are the pages that load their content, and what each shows when
-// it has loaded. search is run from the bar, so it is not among them.
 var pageCases = []struct {
 	name, path string
 	signedIn   bool
@@ -67,7 +62,6 @@ var pageCases = []struct {
 	{"artist", "/artist/UCartist", false, "Artist Track", "Nothing here yet"},
 }
 
-// open shows a page in a window.
 func open(a *app, path string) *ui.Tester {
 	a.router.Push(path)
 	tt := ui.NewTester(a.view, 1000, 700)
@@ -75,7 +69,6 @@ func open(a *app, path string) *ui.Tester {
 	return tt
 }
 
-// search runs a search from the bar of a window.
 func search(t *testing.T, a *app, tt *ui.Tester, query string) {
 	t.Helper()
 	a.router.Push("/search")
@@ -88,7 +81,6 @@ func search(t *testing.T, a *app, tt *ui.Tester, query string) {
 	tt.Frame()
 }
 
-// mustShow fails the test unless the window shows every text.
 func mustShow(t *testing.T, tt *ui.Tester, texts ...string) {
 	t.Helper()
 	for _, text := range texts {
@@ -107,7 +99,6 @@ func mustNotShow(t *testing.T, tt *ui.Tester, texts ...string) {
 	}
 }
 
-// With no network, every page that loads says so, and offers Retry.
 func TestOfflinePagesSayWhyAndOfferRetry(t *testing.T) {
 	for _, p := range pageCases {
 		t.Run(p.name, func(t *testing.T) {
@@ -125,8 +116,6 @@ func TestOfflinePagesSayWhyAndOfferRetry(t *testing.T) {
 	})
 }
 
-// When YouTube answers badly, the page says it could not load, with what it
-// was told, and offers Retry.
 func TestFailedPagesShowTheErrorAndOfferRetry(t *testing.T) {
 	for _, p := range pageCases {
 		t.Run(p.name, func(t *testing.T) {
@@ -144,7 +133,6 @@ func TestFailedPagesShowTheErrorAndOfferRetry(t *testing.T) {
 	})
 }
 
-// A page that loaded with nothing on it says so, and offers Retry.
 func TestEmptyPagesSayWhatIsMissingAndOfferRetry(t *testing.T) {
 	for _, p := range pageCases {
 		t.Run(p.name, func(t *testing.T) {
@@ -169,8 +157,6 @@ func TestEmptyPagesSayWhatIsMissingAndOfferRetry(t *testing.T) {
 	})
 }
 
-// Retry goes through the page's own load: once the network is back, it shows
-// the page and the message is gone.
 func TestRetryRecoversAndClearsTheMessage(t *testing.T) {
 	for _, mode := range []string{"offline", "server", "empty"} {
 		for _, p := range pageCases {
@@ -219,24 +205,21 @@ func TestRetryRecoversAndClearsTheMessage(t *testing.T) {
 	})
 }
 
-// A failure belongs to the page that asked: one that comes back after the
-// user moved on is dropped, and the page now shown keeps its own content.
 func TestStaleErrorDoesNotReachAnotherPage(t *testing.T) {
 	s := &switchable{mode: "offline"}
 	a := stateApp(t, s, false)
 	var held []func()
 	a.run = func(work func()) { held = append(held, work) }
-	tt := open(a, "/home") // the home load is held back
+	tt := open(a, "/home")
 	s.mode = ""
 	a.router.Push("/explore")
-	tt.Frame() // the explore load is held back too
+	tt.Frame()
 	for _, work := range held {
-		work() // home fails now, after explore began
+		work()
 	}
 	tt.Frame()
 	mustShow(t, tt, "Moods")
 	mustNotShow(t, tt, "You are offline", "Retry")
-	// Going back to home loads it afresh rather than showing the dropped error.
 	a.run = func(work func()) { work() }
 	a.router.Push("/home")
 	tt.Frame()

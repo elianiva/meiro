@@ -7,63 +7,45 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// rowKind says what a row of a page's list holds.
+const (
+	noTrack            = -1
+	minSongsForColumns = 3
+)
+
 type rowKind uint8
 
 const (
-	rowHero      rowKind = iota // the heading of an album, playlist or artist
-	rowTopResult                // the card a search's results lead with
-	rowHeading                  // the name of a section, with arrows for its shelf
-	rowCards                    // a shelf of cards that scrolls sideways
-	rowColumns                  // a shelf of songs in columns that scrolls sideways
-	rowGrid                     // one line of cards in a grid that wraps across the page
-	rowTrack                    // one song, album, artist or playlist in a column of rows
-	rowMore                     // the button that asks for the next page
-	rowSimilar                  // a divider and the heading over a playlist's suggestions
-	rowLoading                  // the page is loading
-	rowError                    // the page failed
-	rowEmpty                    // the page has nothing on it
-	rowStreaming                // the rest of the page is still loading
+	rowHero rowKind = iota
+	rowTopResult
+	rowHeading
+	rowCards
+	rowColumns
+	rowGrid
+	rowTrack
+	rowMore
+	rowSimilar
+	rowLoading
+	rowError
+	rowEmpty
+	rowStreaming
 )
 
-// row is one line of a page's list.
 type row struct {
-	title string
-	// body is the line under an empty page's title.
-	body string
-	// shelf names the carousel a heading steers, and a shelf draws.
-	shelf string
-	// items are the cards or songs of a shelf. A track row whose item is a
-	// song keeps only its place in playable, or in queue for a related shelf,
-	// so a page does not hold the song twice; one whose item is not a song
-	// keeps it here.
-	items []youtube.MusicItem
-	// queue is what playing from this row plays: the songs of its shelf.
-	// Track rows play from the page's songs.
-	queue []youtube.MusicItem
-	// calls are the keys and names of the row's controls, built with the
-	// row so that a frame reads them rather than building the same strings
-	// for every row it draws.
-	calls rowCalls
-	// cards are the identities and labels of a shelf's cards, built with it.
-	cards []cardView
-	// track is the place of a song among the page's songs, or -1.
+	title    string
+	body     string
+	shelf    string
+	items    []youtube.MusicItem
+	queue    []youtube.MusicItem
+	calls    rowCalls
+	cards    []cardView
 	track    int
 	position int
-	// The small fields come last, so the words above do not need padding
-	// between them.
-	kind rowKind
-	// numbered says the row shows its place in the list in place of artwork
-	// it has none of.
+	kind     rowKind
 	numbered bool
-	// offline says an error row is the network being out of reach.
-	offline bool
-	// playAll says a shelf's heading leads with a Play all button.
-	playAll bool
+	offline  bool
+	playAll  bool
 }
 
-// key identifies a row across frames, so the list keeps its place when the
-// rows change.
 func (r row) key() any {
 	switch r.kind {
 	case rowTrack:
@@ -84,21 +66,17 @@ func (r row) key() any {
 	return strconv.Itoa(int(r.kind)) + ":" + r.title
 }
 
-// prepareTrackRow builds the keys and names of a song row once, so a frame
-// draws the row without building them again.
 func prepareTrackRow(r *row, item youtube.MusicItem) {
 	number := 0
-	if r.track >= 0 && item.Thumbnail == "" {
+	if r.track != noTrack && item.Thumbnail == "" {
 		number = r.track + 1
 	}
 	r.numbered = number > 0
 	r.calls = newRowCalls(item, songKey(item, songOptions{number: number, list: r.shelf, position: r.position}), r.shelf)
 }
 
-// trackItem returns the item a track row draws: the one at its place in the
-// queue it plays from, or the one it holds itself.
 func (r row) trackItem(queue []youtube.MusicItem) (youtube.MusicItem, bool) {
-	if r.track >= 0 && r.track < len(queue) {
+	if r.track != noTrack && r.track < len(queue) {
 		return queue[r.track], true
 	}
 	if len(r.items) > 0 {
@@ -107,7 +85,6 @@ func (r row) trackItem(queue []youtube.MusicItem) (youtube.MusicItem, bool) {
 	return youtube.MusicItem{}, false
 }
 
-// number is the place shown beside a song that has no artwork of its own.
 func (r row) number() int {
 	if !r.numbered {
 		return 0
@@ -115,62 +92,36 @@ func (r row) number() int {
 	return r.track + 1
 }
 
-// rowsKey summarises what buildRows reads, cheaply. Comparing it each frame
-// rebuilds the rows whenever the page's shape changes, even when a caller did
-// not mark them stale; a content change within the same shape still marks
-// them with rowsDirty.
 type rowsKey struct {
-	path    string
-	detail  detail
-	loading bool
-	err     string
-	offline bool
-	more    string
-	moreErr string
-	// moreBusy says the next part of the page is on its way, which the list
-	// shows a spinner for. restBusy says the same of a playlist's later
-	// pages, which load on their own rather than from Show more.
-	moreBusy bool
-	restBusy bool
-	// similar is how many songs a playlist page suggests and how many of them
-	// it shows; both are zero on a page without suggestions.
+	path         string
+	detail       detail
+	loading      bool
+	err          string
+	offline      bool
+	more         string
+	moreErr      string
+	moreBusy     bool
+	restBusy     bool
 	similar      int
 	similarShown int
-	// shelves folds the sections' titles and item counts into one number, and
-	// loose is how many items a page without sections holds.
-	shelves uint64
-	loose   int
-	partial bool
-	// columns is how many cards a line of the page's grid holds; it is zero
-	// on a page without one.
-	columns int
-	// submitted is the search the rows show the results of, and top the card
-	// those results lead with.
-	submitted string
-	top       youtube.MusicItem
-	// aiVersion changes when a track's AI label is learned, so a filter
-	// inside the rows' build function gets a fresh build.
-	aiVersion uint64
-	// excludeAI is part of the key so cached pages rebuild when the user
-	// changes the setting.
-	excludeAI bool
-	// filter is the playlist search the rows show the matches of.
-	filter string
-	sort   playlistSort
+	shelves      uint64
+	loose        int
+	partial      bool
+	columns      int
+	submitted    string
+	top          youtube.MusicItem
+	aiVersion    uint64
+	excludeAI    bool
+	filter       string
+	sort         playlistSort
 }
 
-// syncRows rebuilds the rows when the page's data changed since the last
-// build, so an idle page reuses them frame after frame.
 func (a *app) syncRows() {
 	r, _ := a.route()
-	// A click that opens the Downloads page builds rows in the same frame,
-	// while the page held is still the one being left: only once the app
-	// has caught up with the router is the page the Downloads page's own.
 	if r.id == routeDownloads && a.location == a.router.Location() {
 		a.syncDownloadsPage()
 	}
 	s := a.pageState()
-	// A change in the page's data asks for its sections to be folded again.
 	if a.page.rowsDirty {
 		s.shaped = false
 	}
@@ -185,20 +136,15 @@ func (a *app) syncRows() {
 		key.submitted, key.top = a.search.submitted, a.search.top
 	}
 	if r.id == routePlaylist {
-		// Playlist-local controls are not page data, so the key carries them:
-		// changing either one asks for rows again.
 		key.filter, key.sort = a.detailFilter, a.detailSort
 		key.restBusy = a.pageSimilar.busy()
 	}
 	if a.page.rows == nil || a.page.rowsDirty || key != a.page.rowsKey {
 		a.page.rowsKey, a.page.rowsDirty = key, false
-		// Each page owns its rows alone, so the new ones reuse their memory.
 		a.page.rows, a.page.playable = buildRows(a.page.rows[:0], a.page.playable[:0], r, s, a.page.detail, key.top, key, a.excludesItem)
 	}
 }
 
-// shelfShape returns the shape of the page's sections, folding them again only
-// after the page's data changed.
 func (s *pageState) shelfShape() uint64 {
 	if !s.shaped {
 		s.shape, s.shaped = shelfShape(s.sections), true
@@ -206,8 +152,6 @@ func (s *pageState) shelfShape() uint64 {
 	return s.shape
 }
 
-// shelfShape folds each section's title and item count into one number, as
-// FNV-1a: a cheap stand-in for the sections themselves.
 func shelfShape(sections []youtube.MusicSection) uint64 {
 	shape := uint64(14695981039346656037)
 	for _, section := range sections {
@@ -220,19 +164,15 @@ func shelfShape(sections []youtube.MusicSection) uint64 {
 	return shape
 }
 
-// buildRows flattens a loaded page into the rows its list shows, appended to
-// rows, and collects the songs that playing the page would queue, appended
-// to playable. It reads nothing but its arguments, which key summarises. top
-// is the card a search's results lead with, which no other page has.
 func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState, heading detail, top youtube.MusicItem, key rowsKey, exclude func(youtube.MusicItem) bool) ([]row, []youtube.MusicItem) {
 	if r.isDetail() {
-		rows = append(rows, row{kind: rowHero, title: heading.title, track: -1})
+		rows = append(rows, row{kind: rowHero, title: heading.title, track: noTrack})
 	}
 	switch {
 	case s.loading:
-		return append(rows, row{kind: rowLoading, track: -1}), playable
+		return append(rows, row{kind: rowLoading, track: noTrack}), playable
 	case s.err != "":
-		return append(rows, row{kind: rowError, title: s.err, offline: s.offline, track: -1}), playable
+		return append(rows, row{kind: rowError, title: s.err, offline: s.offline, track: noTrack}), playable
 	}
 	hiddenAI := false
 	keep := func(item youtube.MusicItem) bool {
@@ -243,11 +183,9 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		return true
 	}
 	if top.Title != "" && keep(top) {
-		rows = append(rows, row{kind: rowTopResult, items: []youtube.MusicItem{top}, track: -1})
+		rows = append(rows, row{kind: rowTopResult, items: []youtube.MusicItem{top}, track: noTrack})
 	}
 
-	// Songs on an album or playlist page carry no artwork of their own: the
-	// page's is what they belong to, and what the player shows.
 	collection := r.isDetail() && r.target != youtube.TargetArtist
 	fallback := ""
 	if collection {
@@ -284,18 +222,12 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			}
 		}
 		if hasTracks {
-			rows = append(rows, row{kind: rowHeading, title: "Songs", shelf: "playlist-sort-header", track: -1})
+			rows = append(rows, row{kind: rowHeading, title: "Songs", shelf: "playlist-sort-header", track: noTrack})
 		}
 	}
 	vertical := collection || r.id == routeSearch || r.id == routeDownloads
-	// A playlist narrowed to a search shows only the songs that match, and
-	// the queue it gathers is still the whole playlist: playing a match
-	// plays the playlist from that song's own place in it.
 	searching := r.id == routePlaylist && key.filter != ""
 	needle := strings.ToLower(strings.TrimSpace(key.filter))
-	// placed says whether the library has led with its tile yet. firstShelf
-	// says the section is the first one the page will show, which Home leads
-	// with as a column of songs.
 	placed := false
 	firstShelf := true
 	for index, section := range sections {
@@ -305,10 +237,8 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		topShelf := firstShelf
 		shelf := key.path + "#" + strconv.Itoa(index)
 		shown := section.Items
-		var places []int // where each shown song sits in playable, when searching
+		var places []int
 		if searching {
-			// Every song of the playlist goes into the queue, whether or not
-			// the search shows it.
 			shown = make([]youtube.MusicItem, 0, len(section.Items))
 			for _, item := range section.Items {
 				if !item.IsTrack() {
@@ -338,19 +268,16 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		heading := -1
 		if section.Title != "" {
 			heading = len(rows)
-			rows = append(rows, row{kind: rowHeading, title: section.Title, shelf: shelf, track: -1})
+			rows = append(rows, row{kind: rowHeading, title: section.Title, shelf: shelf, track: noTrack})
 		}
 		if vertical || (r.isDetail() && mostlySongs) {
 			for position, item := range shown {
-				rw := row{kind: rowTrack, shelf: shelf, title: item.Title, track: -1, position: position}
+				rw := row{kind: rowTrack, shelf: shelf, title: item.Title, track: noTrack, position: position}
 				if item.IsTrack() {
 					if item.Thumbnail == "" {
 						item.Thumbnail = fallback
 					}
 					if searching {
-						// The song keeps its place in the whole playlist,
-						// which the queue already holds, even when the
-						// playlist lists the same video twice.
 						rw.track = places[position]
 					} else {
 						rw.track = len(playable)
@@ -371,28 +298,21 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			}
 		}
 		kind := rowCards
-		if mostlySongs && len(section.Items) >= 3 && section.Items[0].Duration != "" {
+		if mostlySongs && len(section.Items) >= minSongsForColumns && section.Items[0].Duration != "" {
 			kind = rowColumns
 		}
-		// Home leads with a shelf of songs in columns, as YouTube Music's
-		// first shelf does, even when its songs carry no length.
-		if topShelf && r.id == routeHome && songs >= 3 && songs == len(shown) {
+		if topShelf && r.id == routeHome && songs >= minSongsForColumns && songs == len(shown) {
 			kind = rowColumns
 		}
 		items := section.Items
 		if r.grid && kind == rowCards {
 			kind = rowGrid
 		}
-		// The library leads with making a playlist, before the Liked Music
-		// that the rest of it usually starts with.
 		if r.id == routeLibrary && !placed && (kind == rowGrid || kind == rowCards) {
 			items = append([]youtube.MusicItem{newPlaylistItem}, items...)
 			placed = true
 		}
 		if kind == rowGrid {
-			// A grid is laid out a line to a row, so the list builds only the
-			// lines in view. Building the whole grid as one row put every card
-			// of a library, and a request for its artwork, in every frame.
 			perLine := max(key.columns, 1)
 			for start := 0; start < len(items); start += perLine {
 				line := items[start:min(start+perLine, len(items))]
@@ -400,31 +320,26 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 				for i := range line {
 					cards[i] = newCardView(line[i], shelf, start+i)
 				}
-				rows = append(rows, row{kind: rowGrid, shelf: shelf, items: line, cards: cards, queue: tracks, track: -1, position: start})
+				rows = append(rows, row{kind: rowGrid, shelf: shelf, items: line, cards: cards, queue: tracks, track: noTrack, position: start})
 			}
 			continue
 		}
 		if heading >= 0 && topShelf && kind == rowColumns {
-			// Home's first shelf carries Play all beside its title.
 			rows[heading].playAll = true
 			rows[heading].queue = tracks
 		}
 		var cards []cardView
 		if kind == rowCards {
-			// Cards keep the strings their controls use, so a frame reads
-			// them instead of building them for every card it draws.
 			cards = make([]cardView, len(items))
 			for i := range items {
 				cards[i] = newCardView(items[i], shelf, i)
 			}
 		}
-		rows = append(rows, row{kind: kind, shelf: shelf, items: items, cards: cards, queue: tracks, track: -1})
+		rows = append(rows, row{kind: kind, shelf: shelf, items: items, cards: cards, queue: tracks, track: noTrack})
 	}
 	if s.partial {
-		rows = append(rows, row{kind: rowStreaming, track: -1})
+		rows = append(rows, row{kind: rowStreaming, track: noTrack})
 	}
-	// A playlist page shows what YouTube suggests under it after its own
-	// songs, a few at a time, under a heading of its own.
 	similar := s.similar
 	if exclude != nil {
 		similar = make([]youtube.MusicItem, 0, len(s.similar))
@@ -435,26 +350,23 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		}
 	}
 	if r.id == routePlaylist && len(similar) > 0 && key.filter == "" {
-		rows = append(rows, row{kind: rowSimilar, title: "Similar songs", track: -1})
+		rows = append(rows, row{kind: rowSimilar, title: "Similar songs", track: noTrack})
 		for i, item := range similar[:min(s.similarShown, len(similar))] {
 			rw := row{kind: rowTrack, title: item.Title, queue: similar, track: i}
 			prepareTrackRow(&rw, item)
 			rows = append(rows, rw)
 		}
 		if s.similarShown < len(similar) || s.similarMore != "" {
-			rows = append(rows, row{kind: rowMore, title: "Show more", shelf: "similar", track: -1})
+			rows = append(rows, row{kind: rowMore, title: "Show more", shelf: "similar", track: noTrack})
 		}
 	}
-	// A search asks for the next part of its results itself, as its list
-	// reaches the end of what it has, the way YouTube Music does. Every other
-	// page keeps the button that asks.
 	switch {
 	case s.moreErr != "":
-		rows = append(rows, row{kind: rowMore, title: "Could not load more. Try again", track: -1})
+		rows = append(rows, row{kind: rowMore, title: "Could not load more. Try again", track: noTrack})
 	case key.moreBusy || key.restBusy:
-		rows = append(rows, row{kind: rowStreaming, title: "more", track: -1})
+		rows = append(rows, row{kind: rowStreaming, title: "more", track: noTrack})
 	case s.more != "" && r.id != routeSearch && r.id != routePlaylist:
-		rows = append(rows, row{kind: rowMore, title: "Show more", track: -1})
+		rows = append(rows, row{kind: rowMore, title: "Show more", track: noTrack})
 	}
 	if len(rows) == 0 || (len(rows) == 1 && rows[0].kind == rowHero) ||
 		(searching && len(rows) == 2 && rows[0].kind == rowHero && rows[1].shelf == "playlist-sort-header") {
@@ -467,13 +379,11 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 		case searching:
 			title, body = "No songs match “"+key.filter+"”", ""
 		}
-		rows = append(rows, row{kind: rowEmpty, title: title, body: body, track: -1})
+		rows = append(rows, row{kind: rowEmpty, title: title, body: body, track: noTrack})
 	}
 	return rows, playable
 }
 
-// matchesSearch says whether a song is one a playlist search names: its title
-// or its byline holds needle, which is the search in lower case.
 func matchesSearch(item youtube.MusicItem, needle string) bool {
 	if needle == "" {
 		return true

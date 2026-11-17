@@ -34,7 +34,7 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 	w.Save(&s)
 	s.Seed = "#d81b78"
 	w.Save(&s)
-	s.Seed = "not a colour" // a change after the last save is not written
+	s.Seed = "not a colour"
 	w.Wait()
 
 	got := Load(path)
@@ -42,8 +42,6 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 		t.Errorf("loaded %+v", got)
 	}
 
-	// A file with values out of range comes back with the defaults for them,
-	// and a field it lacks takes its default.
 	if err := os.WriteFile(path, []byte(`{"volume":500,"seed":"red","cacheSongs":-1}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +59,7 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 
 func TestClampZoomKeepsTheInterfaceReadable(t *testing.T) {
 	for _, tc := range []struct{ in, want int }{
-		{0, DefaultZoom}, // a settings file from before the field
+		{0, DefaultZoom},
 		{50, MinZoom},
 		{120, 120},
 		{500, MaxZoom},
@@ -71,8 +69,6 @@ func TestClampZoomKeepsTheInterfaceReadable(t *testing.T) {
 		}
 	}
 
-	// A file's zoom comes back within the range, and one without the field
-	// takes the default.
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(path, []byte(`{"zoom":900}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -103,7 +99,6 @@ func TestRememberKeepsRecentSearchesUniqueAndBounded(t *testing.T) {
 }
 
 func TestParseColorsReadsMatugenOutputAndRefusesTypos(t *testing.T) {
-	// A trimmed colors.json as matugen writes it from the README's template.
 	colors, err := ParseColors([]byte(`{
   "light": {"primary": "#006a60", "on_primary": "#ffffff", "surface_container_high": "#e4e9e6"},
   "dark": {"primary": "#82d5c8", "inverse_primary": "#006a60"}

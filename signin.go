@@ -13,46 +13,27 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// signInState is the sign-in dialog, while it is open.
 type signInState struct {
-	open bool
-	err  string
-	// attempt is the credential attempt this dialog owns.
-	attempt uint64
-	// cookie is the text the user pasted.
-	cookie string
-	// browsers is the menu of browsers to import from.
-	browsers bool
-	// importFailed is the browser a session could not be imported from, so the
-	// dialog points at pasting the Cookie header instead; "" otherwise.
+	open         bool
+	err          string
+	attempt      uint64
+	cookie       string
+	browsers     bool
 	importFailed string
-	// try checks a pasted, imported or window session; it is busy while it
-	// does.
-	try task
-	// inWindow is set while the browser window waits for the user.
-	inWindow bool
-	// hostAccess is set when the Flatpak could not open a browser window, so
-	// the dialog shows the command that lets it.
-	hostAccess bool
-	// advanced shows the ways to sign in that copy a session from a browser
-	// the user keeps using: importing it, and pasting its Cookie header.
-	advanced bool
-	// accounts waits for an explicit choice before an imported session is saved.
-	accounts []youtube.AccountChannel
-	imported string
-	source   string
+	try          task
+	inWindow     bool
+	hostAccess   bool
+	advanced     bool
+	accounts     []youtube.AccountChannel
+	imported     string
+	source       string
 }
 
-// reset empties the dialog. Its task is the caller's to stop.
 func (s *signInState) reset() {
 	s.open, s.err, s.attempt, s.cookie, s.browsers, s.importFailed, s.inWindow, s.hostAccess, s.advanced = false, "", 0, "", false, "", false, false, false
 	s.accounts, s.imported, s.source = nil, "", ""
 }
 
-// openSignIn opens the dialog that takes the cookie of the user's browser
-// session. YouTube Music does not let another app sign in to it: the
-// account's home page and library are only served to a request that carries
-// the cookie of a signed-in browser.
 func (a *app) openSignIn() {
 	acc := &a.account
 	if acc.signIn.open {
@@ -66,8 +47,6 @@ func (a *app) openSignIn() {
 	acc.signIn.open, acc.signIn.attempt = true, acc.creds.attempt.Add(1)
 }
 
-// syncSignInDialog notices a dialog the user closed, by its scrim or the
-// Escape key, and dismisses what it left behind.
 func (a *app) syncSignInDialog() {
 	s := &a.account.signIn
 	if !s.open && (s.attempt != 0 || s.try.busy() || s.cookie != "") {
@@ -75,9 +54,6 @@ func (a *app) syncSignInDialog() {
 	}
 }
 
-// dismissSignIn closes the dialog, stops its check and drops the pasted
-// cookie. A session saved by a check that lost this race is removed in the
-// background, without touching a newer sign-in.
 func (a *app) dismissSignIn() {
 	acc := &a.account
 	attempt := acc.signIn.attempt
@@ -94,7 +70,6 @@ func (a *app) dismissSignIn() {
 	})
 }
 
-// submitSignIn tries the pasted cookie.
 func (a *app) submitSignIn() {
 	s := &a.account.signIn
 	if s.try.busy() {
@@ -105,14 +80,9 @@ func (a *app) submitSignIn() {
 		s.err = "That is not the cookie of a signed-in session: it has no SAPISID. Copy the whole value of the Cookie header."
 		return
 	}
-	// A pasted session came from no browser, so it names none.
 	a.trySignIn(sessionSource{channel: a.settings.Channel}, signInTimeout, func(context.Context) (string, error) { return cookie, nil })
 }
 
-// windowSignIn has the user sign in in a browser window that Meiro opens, and
-// takes the session from it. The session names no browser: the window is gone
-// once it is read, so there is nowhere to read it from again, and nothing
-// else renews its cookies.
 func (a *app) windowSignIn() {
 	s := &a.account.signIn
 	if s.try.busy() {
@@ -122,7 +92,6 @@ func (a *app) windowSignIn() {
 	a.trySignIn(sessionSource{channel: a.settings.Channel}, cookies.SignInTimeout+signInTimeout, a.account.window)
 }
 
-// importSignIn reads the browser's accounts without choosing or saving one.
 func (a *app) importSignIn(browser cookies.Source) {
 	s := &a.account.signIn
 	if s.try.busy() {
@@ -159,8 +128,6 @@ func (a *app) importSignIn(browser cookies.Source) {
 	})
 }
 
-// trySignIn reads a cookie, asks YouTube whom it signs in, and keeps it as
-// the sign-in when YouTube takes it. timeout bounds the read and the check.
 func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(context.Context) (string, error)) {
 	acc := &a.account
 	s := &acc.signIn
@@ -185,14 +152,10 @@ func (a *app) trySignIn(from sessionSource, timeout time.Duration, read func(con
 			return
 		}
 		s.reset()
-		// The browser the session came from is where it is read again once
-		// YouTube retires its cookie. A pasted session names none, which is
-		// also what forgets a browser the user has moved on from.
 		a.useSession(opened, from)
 	})
 }
 
-// signInDialog asks for the cookie of the user's browser session.
 func (a *app) signInDialog(c *ui.Context) {
 	s := &a.account.signIn
 	if !s.open {
@@ -267,8 +230,6 @@ func (a *app) signInDialog(c *ui.Context) {
 			if m3.Button(c, m3.ButtonSpec{Label: "Cancel", Kind: m3.TextOnly, Key: "cancel-sign-in"}).Clicked() {
 				a.dismissSignIn()
 			}
-			// Only the pasted Cookie header needs a button of its own: the
-			// window and an import start as soon as they are picked.
 			if s.advanced && m3.Button(c, m3.ButtonSpec{Label: "Sign in", Disabled: busy || strings.TrimSpace(s.cookie) == "", Key: "submit-sign-in"}).Clicked() {
 				a.submitSignIn()
 			}
@@ -276,8 +237,6 @@ func (a *app) signInDialog(c *ui.Context) {
 	})
 }
 
-// signInAccountPicker keeps the browser session private until the user chooses
-// the Google account and channel Meiro should act as.
 func (a *app) signInAccountPicker(c *ui.Context) {
 	s := &a.account.signIn
 	busy := s.try.busy()
@@ -327,6 +286,4 @@ func (a *app) signInAccountPicker(c *ui.Context) {
 	})
 }
 
-// musicURL is where the user signs in, and the page whose requests carry the
-// cookie the app needs.
 const musicURL = "https://music.youtube.com"

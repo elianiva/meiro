@@ -2,8 +2,6 @@ package youtube
 
 import "strings"
 
-// cardArtistBrowseID reads the artist a card's subtitle names. navigationID
-// cannot: it would return the mix queue of the card's menu entries first.
 func cardArtistBrowseID(renderer *jsonObject) string {
 	subtitle, ok := renderer.get("subtitle").(*jsonObject)
 	if !ok {
@@ -31,8 +29,6 @@ func cardArtistBrowseID(renderer *jsonObject) string {
 	return ""
 }
 
-// rendererArtistBrowseID reads an artist browse endpoint from a track's
-// subtitle, byline or second flex column, without treating album links as artists.
 func rendererArtistBrowseID(renderer *jsonObject) string {
 	for _, byline := range []string{"subtitle", "longBylineText", "shortBylineText"} {
 		if id := artistBrowseEndpoint(renderer.get(byline)); id != "" {
@@ -46,11 +42,6 @@ func rendererArtistBrowseID(renderer *jsonObject) string {
 	return artistBrowseEndpoint(columns[1])
 }
 
-// rendererCredits reads the artists and the album a track's byline links: the
-// subtitle of a two-row item, the second flex column of a list row, and the
-// bylines of a queue's panel item. It returns the first source that names an
-// artist. Only linked runs count, so text that is merely shown beside the
-// artist, such as the kind of item or a year, is never taken for a name.
 func rendererCredits(renderer *jsonObject) (artists []string, album string) {
 	sources := []any{renderer.get("subtitle"), renderer.get("longBylineText"), renderer.get("shortBylineText")}
 	if columns, ok := renderer.get("flexColumns").([]any); ok && len(columns) >= 2 {
@@ -70,9 +61,6 @@ func rendererCredits(renderer *jsonObject) (artists []string, album string) {
 	return nil, album
 }
 
-// bylineCredits reads the artists and the album linked from the runs of a
-// byline, in the order it links them. A separator run links nothing, so it is
-// not a name.
 func bylineCredits(byline any) (artists []string, album string) {
 	object, ok := byline.(*jsonObject)
 	if !ok {
@@ -126,9 +114,6 @@ func artistBrowseEndpoint(value any) string {
 	return ""
 }
 
-// setDisplayByline keeps the row's text and the player's byline in step, from
-// the displayed runs rather than by matching artist names inside a flattened
-// string. An album may live in a separate column.
 func (item *MusicItem) setDisplayByline(renderer *jsonObject) {
 	if item.IsEpisode() {
 		return
@@ -142,16 +127,14 @@ func (item *MusicItem) setDisplayByline(renderer *jsonObject) {
 			}
 		}
 	}
-	// The runs read so far are the row's own metadata column, which starts
-	// with the kind of item. The bylines that follow start with who made it.
-	metadata := 1
+	metadataSourceCount := 1
 	if len(columns) > 0 {
 		sources = append(sources, columns[0])
-		metadata = len(sources)
+		metadataSourceCount = len(sources)
 	}
 	sources = append(sources, renderer.get("longBylineText"), renderer.get("shortBylineText"))
 	parts := []BylinePart{{Text: item.Subtitle}}
-	kind := false
+	startsWithKind := false
 	for i, source := range sources {
 		text := rendererText(source)
 		if text == "" || item.Subtitle == "" {
@@ -159,22 +142,18 @@ func (item *MusicItem) setDisplayByline(renderer *jsonObject) {
 		}
 		if text == item.Subtitle || strings.TrimSuffix(text, " • "+item.Duration) == item.Subtitle {
 			parts = bylineParts(source, len(item.Subtitle))
-			kind = i < metadata
+			startsWithKind = i < metadataSourceCount
 			break
 		}
 	}
-	if kind {
+	if startsWithKind {
 		var dropped int
 		parts, dropped = dropKindPrefix(parts)
 		item.Subtitle = item.Subtitle[min(dropped, len(item.Subtitle)):]
 	}
 	if item.VideoID == "" {
-		// A row that opens an album, an artist or a playlist plays nothing,
-		// so it needs no links.
 		return
 	}
-	// Some list renderers put the album in their own flex column, while the
-	// visible subtitle contains only artists. Keep its real destination too.
 	hasAlbum := false
 	for _, part := range parts {
 		hasAlbum = hasAlbum || part.Target().Kind == TargetAlbum
@@ -207,14 +186,6 @@ func (item *MusicItem) setDisplayByline(renderer *jsonObject) {
 	}
 }
 
-// dropKindPrefix removes the runs a row opens with to say what kind of item it
-// is when the run that follows opens a page: the row shows who made the track,
-// not what it is. The kind links nothing, so a run that links before any other
-// run is a name, as the artist of an artist card is, and stays. Only an artist
-// after the label says the label is a label: when an album comes first the text
-// before it is a name YouTube shows without linking, and dropping it would show
-// the album as the row's byline. It returns the runs that remain and how much
-// text went with the ones it dropped.
 func dropKindPrefix(parts []BylinePart) ([]BylinePart, int) {
 	first := 0
 	for first < len(parts) && !parts[first].Target().Opens() {
@@ -230,7 +201,6 @@ func dropKindPrefix(parts []BylinePart) ([]BylinePart, int) {
 	return parts[first:], dropped
 }
 
-// limit excludes a trailing duration already removed from Subtitle.
 func bylineParts(source any, limit int) []BylinePart {
 	object, ok := source.(*jsonObject)
 	if !ok {

@@ -19,19 +19,6 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// Windows puts Previous, Play or Pause, and Next under the thumbnail that
-// shows when the pointer rests on the taskbar button, the way Spotify does.
-// Keyboard media keys (Play/Pause, Next, Previous, Stop) are handled both
-// globally via RegisterHotKey and through WM_APPCOMMAND when focused. The
-// system's media controls show the track too; see mediaTransport.
-//
-// Explorer makes the taskbar button when the window first shows, and again
-// when the window shows after hiding or when Explorer restarts, and each
-// time sends the window TaskbarButtonCreated. A new button has no toolbar,
-// so the buttons are added again then. The clicks arrive as WM_COMMAND on
-// the window, which the session subclasses to hear them. Everything runs on
-// the UI thread, which owns the window and the taskbar's COM object.
-
 var (
 	user32   = windows.NewLazySystemDLL("user32.dll")
 	ole32    = windows.NewLazySystemDLL("ole32.dll")
@@ -51,24 +38,21 @@ var (
 	procDefSubclassProc             = comctl32.NewProc("DefSubclassProc")
 
 	clsidTaskbarList = windows.GUID{Data1: 0x56fdf344, Data2: 0xfd6d, Data3: 0x11d0, Data4: [8]byte{0x95, 0x8a, 0x00, 0x60, 0x97, 0xc9, 0xa0, 0x90}}
-	// ITaskbarList4 rather than ITaskbarList3, which it extends with the
-	// thumbnail toolbar's methods in the same places: Windows 10 22H2 has
-	// been seen to answer E_NOINTERFACE to the ITaskbarList3 ID while it
-	// answers to this one.
 	iidITaskbarList4 = windows.GUID{Data1: 0xc43dc798, Data2: 0x95d1, Data3: 0x4bea, Data4: [8]byte{0x90, 0x30, 0xbb, 0x99, 0xe2, 0x98, 0x3a, 0x1a}}
 )
 
 const (
-	wmCommand       = 0x0111
-	wmSettingChange = 0x001A
-	wmNCDestroy     = 0x0082
-	wmHotkey        = 0x0312
-	wmAppCommand    = 0x0319
-	thbnClicked     = 0x1800
-	clsctxInproc    = 0x1
-	smCxSmIcon      = 49
-	subclassID      = 0x4d45_4952 // "MEIR"
-	msgfltAllow     = 1
+	wmCommand          = 0x0111
+	wmSettingChange    = 0x001A
+	wmNCDestroy        = 0x0082
+	wmHotkey           = 0x0312
+	wmAppCommand       = 0x0319
+	thbnClicked        = 0x1800
+	clsctxInproc       = 0x1
+	smCxSmIcon         = 49
+	themeChangeSetting = "ImmersiveColorSet"
+	subclassID         = 0x4d45_4952
+	msgfltAllow        = 1
 
 	modNoRepeat = 0x4000
 
@@ -97,14 +81,14 @@ const (
 	thbfDisabled = 0x1
 )
 
-// taskbarList is an ITaskbarList4: what COM hands back is a pointer to a
-// pointer to its table of methods.
+const (
+	darkTaskbarIcons = iota
+	lightTaskbarIcons
+	taskbarThemeCount
+)
+
 type taskbarList struct{ vtbl *taskbarListVtbl }
 
-// taskbarListVtbl is the start of ITaskbarList4's method table, in the
-// order ShObjIdl_core.h declares the interfaces it extends: IUnknown,
-// ITaskbarList, ITaskbarList2, then ITaskbarList3, which ends with the
-// thumbnail toolbar's methods. ITaskbarList4 only adds one after them.
 type taskbarListVtbl struct {
 	QueryInterface, AddRef, Release                       uintptr
 	HrInit, AddTab, DeleteTab, ActivateTab, SetActiveAlt  uintptr
@@ -114,7 +98,6 @@ type taskbarListVtbl struct {
 	ThumbBarAddButtons, ThumbBarUpdateButtons             uintptr
 }
 
-// call calls one of t's methods, which take t itself first.
 func (t *taskbarList) call(method uintptr, args ...uintptr) error {
 	hr, _, _ := syscall.SyscallN(method, append([]uintptr{uintptr(unsafe.Pointer(t))}, args...)...)
 	if int32(uint32(hr)) < 0 {
@@ -134,7 +117,6 @@ func (t *taskbarList) ThumbBarUpdateButtons(hwnd uintptr, buttons []thumbButton)
 	return t.call(t.vtbl.ThumbBarUpdateButtons, hwnd, uintptr(len(buttons)), uintptr(unsafe.Pointer(&buttons[0])))
 }
 
-// thumbButton is THUMBBUTTON, laid out as on 64-bit Windows.
 type thumbButton struct {
 	Mask   uint32
 	ID     uint32
@@ -144,7 +126,6 @@ type thumbButton struct {
 	Flags  uint32
 }
 
-// The buttons, by their ID, in the order they show.
 const (
 	buttonPrevious = iota
 	buttonPlayPause
@@ -162,8 +143,6 @@ const (
 	glyphCount
 )
 
-// glyphs are Material's previous, play, pause and next icons on their 24×24
-// grid, as polygons.
 var glyphs = [glyphCount][][][2]float32{
 	glyphPrevious: {{{6, 6}, {8, 6}, {8, 18}, {6, 18}}, {{9.5, 12}, {18, 18}, {18, 6}}},
 	glyphPlay:     {{{8, 5}, {8, 19}, {19, 12}}},
@@ -175,23 +154,16 @@ type windowsSession struct {
 	controls Controls
 	hwnd     uintptr
 	taskbar  *taskbarList
-	// added is set once the current taskbar button has the toolbar.
-	added bool
-	state State
-	// light is whether the taskbar is light, which takes dark icons.
-	light bool
-	// icons are made once per theme and kept while the toolbar may show them.
-	icons [2][glyphCount]uintptr
-	// shown is what the toolbar last showed, to skip identical updates.
-	shown [buttonCount]thumbButton
-	// hotkeys are the IDs successfully registered with RegisterHotKey.
-	hotkeys []int
-	// media is the system's media controls.
-	media *mediaTransport
+	added    bool
+	state    State
+	light    bool
+	icons    [taskbarThemeCount][glyphCount]uintptr
+	shown    [buttonCount]thumbButton
+	hotkeys  []int
+	media    *mediaTransport
 }
 
 var (
-	// sessions are the subclassed windows, touched only on the UI thread.
 	sessions             = map[uintptr]*windowsSession{}
 	subclassCallback     uintptr
 	taskbarButtonCreated uint32
@@ -199,8 +171,6 @@ var (
 	errNoWindow          = errors.New("the Windows taskbar controls need a window")
 )
 
-// New adds media buttons to the taskbar thumbnail of controls.Window. It
-// must run on the window's UI thread, and so must the session's methods.
 func New(controls Controls) (Session, error) {
 	if controls.Window == 0 {
 		return nil, errNoWindow
@@ -232,12 +202,9 @@ func New(controls Controls) (Session, error) {
 	sessions[s.hwnd] = s
 	s.media = newMediaTransport(mygo.NowPlaying, controls, loadArtwork)
 	s.registerHotKeys()
-	// An elevated Meiro would not hear Explorer, which runs unelevated.
 	for _, msg := range []uint32{taskbarButtonCreated, wmCommand, wmHotkey, wmAppCommand} {
 		_, _, _ = procChangeWindowMessageFilterEx.Call(s.hwnd, uintptr(msg), msgfltAllow, 0)
 	}
-	// The button may already be there, with its TaskbarButtonCreated gone
-	// before the subclass could hear it.
 	s.apply()
 	return s, nil
 }
@@ -262,8 +229,6 @@ func (s *windowsSession) Close() error {
 	return nil
 }
 
-// release lets go of the taskbar, registered hotkeys and icons once the window
-// is gone or the session closes.
 func (s *windowsSession) release() {
 	delete(sessions, s.hwnd)
 	if s.media != nil {
@@ -313,8 +278,6 @@ func subclassProc(hwnd, msg, wParam, lParam, _, _ uintptr) uintptr {
 	if s := sessions[hwnd]; s != nil {
 		switch {
 		case uint32(msg) == taskbarButtonCreated && taskbarButtonCreated != 0:
-			// A new button, without a toolbar. MyGo hears it too, for the
-			// progress bar.
 			s.added = false
 			s.shown = [buttonCount]thumbButton{}
 			s.apply()
@@ -329,7 +292,7 @@ func subclassProc(hwnd, msg, wParam, lParam, _, _ uintptr) uintptr {
 				return 1
 			}
 		case msg == wmSettingChange && lParam != 0 &&
-			windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam))) == "ImmersiveColorSet": //nolint:govet // the system's string, not Go memory
+			settingNameAt(lParam) == themeChangeSetting:
 			if light := lightTaskbar(); light != s.light {
 				s.light = light
 				s.apply()
@@ -404,7 +367,6 @@ func (s *windowsSession) click(id int) {
 	}
 }
 
-// apply shows the state's buttons on the taskbar button's toolbar.
 func (s *windowsSession) apply() {
 	if s.taskbar == nil {
 		return
@@ -422,11 +384,8 @@ func (s *windowsSession) apply() {
 		return
 	}
 	if !s.added {
-		// Adding fails when the button already has a toolbar, for a
-		// TaskbarButtonCreated that came after the first add.
 		if s.taskbar.ThumbBarAddButtons(s.hwnd, buttons[:]) != nil &&
 			s.taskbar.ThumbBarUpdateButtons(s.hwnd, buttons[:]) != nil {
-			// No button yet: TaskbarButtonCreated adds the toolbar later.
 			return
 		}
 		s.added = true
@@ -446,11 +405,10 @@ func (s *windowsSession) button(id int, g glyph, tip string, enabled bool) thumb
 	return b
 }
 
-// icon returns the glyph's icon in the taskbar theme's colour.
 func (s *windowsSession) icon(g glyph) uintptr {
-	theme := 0
+	theme := darkTaskbarIcons
 	if s.light {
-		theme = 1
+		theme = lightTaskbarIcons
 	}
 	if s.icons[theme][g] == 0 {
 		fill := color.RGBA{0xff, 0xff, 0xff, 0xff}
@@ -468,8 +426,6 @@ func (s *windowsSession) icon(g glyph) uintptr {
 	return s.icons[theme][g]
 }
 
-// glyphPNG draws the glyph, size pixels square, as a PNG, which
-// CreateIconFromResourceEx takes as an icon image.
 func glyphPNG(g glyph, size int, fill color.RGBA) []byte {
 	scale := float32(size) / 24
 	var z vector.Rasterizer
@@ -488,8 +444,6 @@ func glyphPNG(g glyph, size int, fill color.RGBA) []byte {
 	return buf.Bytes()
 }
 
-// lightTaskbar reads whether the taskbar, and with it the thumbnail, is
-// light. Windows before the setting existed has a dark taskbar.
 func lightTaskbar() bool {
 	key, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, registry.QUERY_VALUE)
 	if err != nil {
@@ -498,4 +452,8 @@ func lightTaskbar() bool {
 	defer key.Close()
 	light, _, err := key.GetIntegerValue("SystemUsesLightTheme")
 	return err == nil && light != 0
+}
+
+func settingNameAt(address uintptr) string {
+	return windows.UTF16PtrToString(*(**uint16)(unsafe.Pointer(&address)))
 }

@@ -7,8 +7,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// hoverRow puts the pointer in the middle of the row labeled title, which shows
-// what the row offers under it.
 func hoverRow(t *testing.T, tt *ui.Tester, title string) ui.Rect {
 	t.Helper()
 	row, ok := tt.Find(title)
@@ -20,10 +18,6 @@ func hoverRow(t *testing.T, tt *ui.Tester, title string) ui.Rect {
 	return row
 }
 
-// swipeRowGesture drags the row sideways by dx and lets it go, as the pointer
-// swipes it. The tester sends no modifiers with the pointer, so the gesture's
-// gate is cleared for it; TestADragWithoutTheModifierLeavesTheQueueAlone
-// checks that gate.
 func swipeRowGesture(t *testing.T, a *app, tt *ui.Tester, row ui.Rect, dx float32) {
 	t.Helper()
 	a.swipeMods = 0
@@ -38,8 +32,6 @@ func swipeRowGesture(t *testing.T, a *app, tt *ui.Tester, row ui.Rect, dx float3
 	tt.Frame()
 }
 
-// dragRow drags the row sideways by dx as it is, without touching the gate:
-// the modifier the swipe asks for is not held.
 func dragRow(t *testing.T, tt *ui.Tester, row ui.Rect, dx float32) {
 	t.Helper()
 	x, y := row.X+row.W/2, row.Y+row.H/2
@@ -51,8 +43,6 @@ func dragRow(t *testing.T, tt *ui.Tester, row ui.Rect, dx float32) {
 	tt.Frame()
 }
 
-// A row of a list adds its track to the queue from the button under the
-// pointer, without playing it.
 func TestASongsRowAddsItsTrackToTheQueueFromItsButton(t *testing.T) {
 	a, _ := playbackApp(t)
 	playing := tracks("a")
@@ -74,8 +64,6 @@ func TestASongsRowAddsItsTrackToTheQueueFromItsButton(t *testing.T) {
 	}
 }
 
-// A row of the queue takes its track out from the button under the pointer.
-// The track playing is the queue's, and stays in it.
 func TestAQueueRowRemovesItsTrackFromTheButton(t *testing.T) {
 	a, _ := playbackApp(t)
 	queue := tracks("a", "b", "c")
@@ -100,8 +88,6 @@ func TestAQueueRowRemovesItsTrackFromTheButton(t *testing.T) {
 	}
 }
 
-// Swiping a row of a list adds its track to the queue, and the row does not
-// play.
 func TestSwipingASongRowAddsItToTheQueue(t *testing.T) {
 	a, _ := playbackApp(t)
 	playing := tracks("a")
@@ -117,8 +103,6 @@ func TestSwipingASongRowAddsItToTheQueue(t *testing.T) {
 	}
 }
 
-// Swiping a row of the queue takes its track out, whether the row goes left or
-// right.
 func TestSwipingAQueueRowRemovesItFromTheQueue(t *testing.T) {
 	for _, dx := range []float32{140, -140} {
 		a, _ := playbackApp(t)
@@ -138,8 +122,6 @@ func TestSwipingAQueueRowRemovesItFromTheQueue(t *testing.T) {
 	}
 }
 
-// A swipe short of what the gesture asks leaves the queue alone: the row
-// springs back.
 func TestAShortSwipeLeavesTheQueueAlone(t *testing.T) {
 	a, _ := playbackApp(t)
 	playing := tracks("a")
@@ -152,8 +134,6 @@ func TestAShortSwipeLeavesTheQueueAlone(t *testing.T) {
 	}
 }
 
-// A drag without the modifier the swipe asks for leaves the queue as it was:
-// the gesture does not act on an ordinary press and drag.
 func TestADragWithoutTheModifierLeavesTheQueueAlone(t *testing.T) {
 	a, _ := playbackApp(t)
 	queue := tracks("a", "b", "c")

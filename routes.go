@@ -13,7 +13,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// routeID names a page of the app.
 type routeID uint8
 
 const (
@@ -31,90 +30,48 @@ const (
 	routePodcast
 )
 
-// loader reads a page's content. partial, when the loader can use it, shows
-// the start of a page that is still loading.
 type loader func(ctx context.Context, client *youtube.Client, id string, partial func(*youtube.BrowseResult)) (*youtube.BrowseResult, error)
 
-// signInPrompt is what a page that needs an account shows without one.
 type signInPrompt struct {
 	icon        *ui.SVG
 	title, body string
-	// what is what the account shows, for asking to sign in again.
-	what string
+	what        string
 }
 
-// route is everything the app knows about one page. A page is added by
-// adding its route to routes, and nowhere else: the router's view, the rail,
-// the top bar, loading, reloading on a change of account and the name of a
-// queue played from the page all read it from here.
 type route struct {
-	id routeID
-	// pattern is the page's path, with {id} standing for the ID of what a
-	// detail page shows.
-	pattern string
-	// title names the page in the router's history.
-	title string
-	// heading is what the top bar says; detail pages leave it to their hero.
-	heading func(now time.Time) string
-	// rail, when set, lists the page as a destination of the navigation rail,
-	// in the order of routes.
-	rail *railEntry
-	// nav is the rail destination the page belongs to, if any.
-	nav routeID
-	// source names a queue played from the page; detail pages use the title
-	// of what they show.
-	source string
-	// target is the kind of item a detail page shows, and TargetNone for the
-	// other pages. Detail pages get a hero, a back button and a heading of
-	// their own.
-	target youtube.TargetKind
-	// load reads the page's content as it opens; pages without content of
-	// their own leave it nil.
-	load loader
-	// open, when set, runs each time the page is navigated to: the place to
-	// start work the page needs, since building its view must start none.
-	open func(a *app)
-	// view builds the page; nil builds the page's list of rows.
-	view func(a *app, c *ui.Context)
-	// empty is what the page says when it loaded and has nothing on it.
-	empty emptyMessage
-	// needsAccount, when set, is shown instead of the page to a signed-out
-	// user, and the page loads nothing until one signs in.
+	id           routeID
+	pattern      string
+	title        string
+	heading      func(now time.Time) string
+	rail         *railEntry
+	nav          routeID
+	source       string
+	target       youtube.TargetKind
+	load         loader
+	open         func(a *app)
+	view         func(a *app, c *ui.Context)
+	empty        emptyMessage
 	needsAccount *signInPrompt
-	// grid lays the page's cards out in lines that wrap, rather than in
-	// shelves that scroll sideways.
-	grid bool
-	// bare pages are the app's own, not YouTube Music's: the top bar omits the
-	// search field, which finds music and nothing here, and the account, which
-	// the settings already offer as a card. Settings has its own local filter.
-	bare bool
+	grid         bool
+	appOwned     bool
 }
 
-// refreshable pages load their content, which can change under them.
 func (r route) refreshable() bool { return r.load != nil && !r.isDetail() }
 
-// emptyMessage is the title and the line under it of a page with no content.
 type emptyMessage struct{ title, body string }
 
-// railEntry is how the navigation rail shows a destination.
 type railEntry struct {
 	label        string
-	icon, filled *ui.SVG // the icon at rest, and when the page is shown
-	footer       bool    // at the foot of the rail, not among the destinations
-	// withAccount offers the destination only to a signed-in user.
-	withAccount bool
-	// action is the shortcut that opens the destination, shown over it while
-	// the modifier is held.
-	action keymap.Action
+	icon, filled *ui.SVG
+	footer       bool
+	withAccount  bool
+	action       keymap.Action
 }
 
 func heading(text string) func(time.Time) string {
 	return func(time.Time) string { return text }
 }
 
-// routes is every page of the app. The order is the order patterns are
-// matched in. It is filled in init, because the views it names reach back to
-// it.
 var routes []route
 
 func init() { routes = appRoutes() }
@@ -139,23 +96,20 @@ func appRoutes() []route {
 		},
 		{
 			id: routeLibrary, empty: emptyMessage{"Your library is empty", "Songs, albums and playlists you save will show up here."}, pattern: "/library", title: "Library", rail: &railEntry{label: "Library", action: keymap.Library, icon: m3.IconLibrary, filled: m3.IconLibraryFilled}, heading: heading("Library"), nav: routeLibrary, source: "Your library", grid: true,
-			// The library shows once, whole: a grid that fills in as the rest
-			// arrives redraws every card and its artwork a second time.
 			load: func(ctx context.Context, c *youtube.Client, _ string, _ func(*youtube.BrowseResult)) (*youtube.BrowseResult, error) {
 				return c.StreamLibrary(ctx, nil)
 			},
 			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists.", "your songs, albums and playlists"},
 		},
 		{
-			// Downloads are read from disk, not loaded: the page works offline.
-			id: routeDownloads, empty: emptyMessage{"No downloads yet", "Download songs, albums and playlists to play them offline."}, pattern: "/downloads", title: "Downloads", rail: &railEntry{label: "Downloads", icon: m3.IconDownload, filled: m3.IconDownloadFilled}, heading: heading("Downloads"), nav: routeDownloads, source: "Downloads", bare: true,
+			id: routeDownloads, empty: emptyMessage{"No downloads yet", "Download songs, albums and playlists to play them offline."}, pattern: "/downloads", title: "Downloads", rail: &railEntry{label: "Downloads", icon: m3.IconDownload, filled: m3.IconDownloadFilled}, heading: heading("Downloads"), nav: routeDownloads, source: "Downloads", appOwned: true,
 		},
 		{
-			id: routeSettings, pattern: "/settings", title: "Settings", rail: &railEntry{label: "Settings", action: keymap.Settings, icon: m3.IconSettings, filled: m3.IconSettings, footer: true}, heading: heading("Settings"), nav: routeSettings, bare: true,
+			id: routeSettings, pattern: "/settings", title: "Settings", rail: &railEntry{label: "Settings", action: keymap.Settings, icon: m3.IconSettings, filled: m3.IconSettings, footer: true}, heading: heading("Settings"), nav: routeSettings, appOwned: true,
 			view: (*app).settingsPage, open: (*app).loadToolVersions,
 		},
 		{
-			id: routeStats, pattern: "/stats", title: "Stats", heading: heading("Listening stats"), nav: routeSettings, bare: true,
+			id: routeStats, pattern: "/stats", title: "Stats", heading: heading("Listening stats"), nav: routeSettings, appOwned: true,
 			view: (*app).statsPage, open: (*app).loadHistory,
 		},
 		{
@@ -185,7 +139,6 @@ func appRoutes() []route {
 	}
 }
 
-// notFound is the page of a path no route matches.
 var notFound = route{
 	id: routeNotFound, title: "Not found", heading: heading(""),
 	view: func(a *app, c *ui.Context) {
@@ -195,7 +148,6 @@ var notFound = route{
 	},
 }
 
-// routeByID returns the route with an ID. Every ID but routeNotFound has one.
 func routeByID(id routeID) *route {
 	for i := range routes {
 		if routes[i].id == id {
@@ -205,8 +157,6 @@ func routeByID(id routeID) *route {
 	return &notFound
 }
 
-// matchRoute returns the route a path shows, and the ID a detail page's path
-// names.
 func matchRoute(path string) (*route, string) {
 	for i := range routes {
 		if id, ok := matchPattern(routes[i].pattern, path); ok {
@@ -216,10 +166,6 @@ func matchRoute(path string) (*route, string) {
 	return &notFound, ""
 }
 
-// matchPattern matches a path against a route pattern of fixed parts and at
-// most one {id}, as the router's own Route.Match does, and returns the ID,
-// unescaped. It allocates nothing unless the ID is escaped: the view asks
-// for the route several times a frame.
 func matchPattern(pattern, path string) (string, bool) {
 	pattern, path = strings.Trim(pattern, "/"), strings.Trim(path, "/")
 	id := ""
@@ -246,15 +192,12 @@ func matchPattern(pattern, path string) (string, bool) {
 	return id, true
 }
 
-// path is where a route's page is: its pattern, with id for a detail page.
 func (r *route) path(id string) string {
 	return strings.Replace(r.pattern, "{id}", url.PathEscape(id), 1)
 }
 
-// isDetail reports whether the page shows one album, playlist or artist.
 func (r *route) isDetail() bool { return r.target != youtube.TargetNone }
 
-// detailRoute is the page that shows an item of a kind, if it has one.
 func detailRoute(kind youtube.TargetKind) (*route, bool) {
 	for i := range routes {
 		if routes[i].target == kind && kind != youtube.TargetNone {
@@ -264,7 +207,6 @@ func detailRoute(kind youtube.TargetKind) (*route, bool) {
 	return nil, false
 }
 
-// targetPath is the page that shows an album, a playlist or an artist.
 func targetPath(target youtube.Target) (string, bool) {
 	r, ok := detailRoute(target.Kind)
 	if !ok || target.ID == "" {
@@ -273,7 +215,6 @@ func targetPath(target youtube.Target) (string, bool) {
 	return r.path(target.ID), true
 }
 
-// greeting names the part of the day.
 func greeting(now time.Time) string {
 	switch h := now.Hour(); {
 	case h < 5:

@@ -5,10 +5,6 @@ import (
 	"strings"
 )
 
-// playErrorRules turn what yt-dlp, ffmpeg and the network say into a reason
-// the listener can act on. The first rule whose phrase the raw error holds
-// wins, so the narrower reasons come before the general ones. The raw error
-// goes to the log.
 var playErrorRules = []struct {
 	phrases []string
 	message string
@@ -63,19 +59,13 @@ var playErrorRules = []struct {
 	},
 }
 
-// formatUnavailablePhrases are what yt-dlp says when YouTube gave it no audio
-// to take, which an old yt-dlp is the usual reason for.
 var formatUnavailablePhrases = []string{"requested format is not available", "no video formats found"}
 
-// isFormatUnavailable reports whether raw is yt-dlp finding no audio format.
 func isFormatUnavailable(raw string) bool {
 	lower := strings.ToLower(raw)
 	return slices.ContainsFunc(formatUnavailablePhrases, func(p string) bool { return strings.Contains(lower, p) })
 }
 
-// playErrorMessage is the short reason a track did not play, for raw, what
-// resolving or playing it reported. An error it does not know is shown as
-// its first line.
 func playErrorMessage(raw string) string {
 	lower := strings.ToLower(raw)
 	for _, rule := range playErrorRules {

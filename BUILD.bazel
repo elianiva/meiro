@@ -286,6 +286,7 @@ go_test(
         "//internal/lastfm",
         "//internal/lrclib",
         "//internal/lyrics",
+        "//internal/offline",
         "//internal/playstate",
         "//internal/proc",
         "//internal/report",

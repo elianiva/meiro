@@ -4,69 +4,50 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// NavItem is a destination of a navigation rail.
 type NavItem struct {
-	ID    string
-	Label string
-	// Icon is drawn while the destination is idle, Selected while it is
-	// chosen: Material fills the icon of the current destination.
+	ID             string
+	Label          string
 	Icon, Selected *ui.SVG
-	// Hint, when set, is shown over the destination's icon as the key that
-	// opens it.
-	Hint []KeyPart
+	Hint           []KeyPart
 }
 
-// Rail widths, in DIPs.
 const (
 	RailCollapsed float32 = 96
 	RailExpanded  float32 = 236
 )
 
-// railInset is the space either side of an expanded destination: the
-// collapsed indicator's left edge, which the expanded pill grows from.
-// railIconInset puts the icon on the collapsed icon's centre line.
 const (
 	railInset     float32 = 20
 	railIconInset float32 = 16
 )
 
-// railSpring moves the rail's width: critically damped, and slower than the
-// default spatial spring so the labels have frames to fade in and out.
+const (
+	navRowHeight             = 64
+	collapsedIndicatorHeight = 32
+	expandedIndicatorHeight  = 56
+)
+
 var railSpring = Spring{260, 1}
 
-// railFadeGain sets how much of the travel the labels are hidden for: they
-// are opaque once the rail is 1/railFadeGain of the way from the midpoint.
 const railFadeGain = 3
 
-// RailSpec describes a navigation rail.
 type RailSpec struct {
 	Items    []NavItem
-	Footer   []NavItem // destinations pinned to the bottom
+	Footer   []NavItem
 	Selected string
 	Expanded bool
-	// TopInset keeps the rail clear of the window controls of a window with
-	// a hidden title bar, and lets the band they sit in drag the window.
 	TopInset float32
 }
 
-// RailEvent is what the user did to a rail this frame.
 type RailEvent struct {
-	Item   string // the destination chosen, or ""
-	Toggle bool   // the menu button was pressed
+	Item   string
+	Toggle bool
 }
 
-// Rail builds a navigation rail, collapsed to icons over labels or expanded to
-// icons beside labels. Its width follows a spring when it changes, and the
-// pill behind each icon grows with it.
 func Rail(c *ui.Context, spec RailSpec) RailEvent {
 	var event RailEvent
 	sc := Of(c).Scheme
 	rail := ui.Column(c.Key("m3-rail"))
-	// One progress drives the width and the layout, so they stay in step:
-	// labels fade between two fixed layouts while the toggle glyph rotates
-	// through its change and the selected pill grows with the rail.
-	// The spring does not overshoot: a rail that rings past its width
-	// re-lays out the whole page on every frame of the wobble.
 	p := Animate(rail, "expand", pick(spec.Expanded, float32(1), 0), railSpring)
 	p = min(max(p, 0), 1)
 	railWidth := RailCollapsed + (RailExpanded-RailCollapsed)*p
@@ -79,10 +60,6 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 			ui.Box(c).Height(spec.TopInset).FillWidth().Shrink(0).DragWindow()
 		}
 		menu := railMenu(c, p, expanded)
-		// The button sits on the collapsed icon's centre line at every width:
-		// centring it in the rail would slide it while the rail grows.
-		// Its pointer target is MinTarget wide and its shape is
-		// narrower, so it reaches past the shape without moving it.
 		reachBy := slop(32)
 		menu.Margin(-reachBy, -reachBy, -reachBy, RailCollapsed/2-MinTarget/2)
 		if menu.Clicked() {
@@ -104,9 +81,6 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 	return event
 }
 
-// railMenu rotates the old and new glyphs through the transition, without
-// changing the button's hit target or moving it off the collapsed icon's
-// centre line.
 func railMenu(c *ui.Context, open float32, expanded bool) ui.Element {
 	sc := Of(c).Scheme
 	label := pick(expanded, "Collapse navigation", "Expand navigation")
@@ -129,10 +103,6 @@ func railMenu(c *ui.Context, open float32, expanded bool) ui.Element {
 	return b
 }
 
-// navItem is one destination. Its icon and pill keep their identities as the
-// rail changes width: the pill is the collapsed indicator at one end and the
-// expanded row at the other. The label switches between its stacked and
-// inline positions while faded out, rather than travelling between them.
 func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWidth float32) bool {
 	sc := Of(c).Scheme
 	open := min(max((railWidth-RailCollapsed)/(RailExpanded-RailCollapsed), 0), 1)
@@ -146,9 +116,7 @@ func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWid
 		iconColor, labelColor = sc.OnSecondaryContainer, sc.OnSecondaryContainer
 	}
 
-	// Keep each destination's row anchored while the icon shifts down inside
-	// the taller expanded pill; shrinking the rows would pull later icons up.
-	b.Column().Width(railWidth).Height(64).Justify(ui.Start).AlignItems(ui.Start).Cursor(ui.CursorPointer).Label(item.Label)
+	b.Column().Width(railWidth).Height(navRowHeight).Justify(ui.Start).AlignItems(ui.Start).Cursor(ui.CursorPointer).Label(item.Label)
 	b.Children(func() {
 		pill := ui.Row(c).Radius(Full).AlignItems(ui.Center)
 		target := float32(0)
@@ -156,9 +124,7 @@ func navItem(c *ui.Context, item NavItem, selected, expanded bool, fade, railWid
 			target = 1
 		}
 		sel := min(max(Animate(pill, "sel", target, SpatialDefault), 0), 1)
-		// In the expanded rail, the selected indicator grows down from its
-		// anchor to give the icon and label more vertical padding.
-		height := 32 + 24*open
+		height := collapsedIndicatorHeight + (expandedIndicatorHeight-collapsedIndicatorHeight)*open
 		marginTop := 22 + 6*open - height/2
 		fill := ui.Transparent
 		if selected {

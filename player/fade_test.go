@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-// captureDevice plays like the null device but keeps the PCM the player
-// handed to the speaker.
 type captureDevice struct {
 	mu  *sync.Mutex
 	pcm *[]byte
@@ -48,7 +46,6 @@ func tone(t *testing.T, hz, seconds int) string {
 	return path
 }
 
-// level is how loud hz is in the stereo PCM window, by the Goertzel filter.
 func level(window []byte, hz float64) float64 {
 	var s1, s2 float64
 	k := 2 * math.Cos(2*math.Pi*hz/sampleRate)
@@ -79,7 +76,6 @@ func TestCrossfadeMixesTheEndOfATrackWithTheStartOfTheNext(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	// The two tracks overlap by the fade.
 	if got, want := time.Duration(len(pcm))*time.Second/bytesPerSecond, (2*length-fade)*time.Second; got < want-50*time.Millisecond || got > want+50*time.Millisecond {
 		t.Errorf("played %v of sound, want %v", got, want)
 	}
@@ -103,13 +99,11 @@ func TestCrossfadeMixesTheEndOfATrackWithTheStartOfTheNext(t *testing.T) {
 			t.Errorf("%s: 440 Hz at %.2f, 1000 Hz at %.2f; want the first %t and the second %t", c.name, l, h, c.lowW, c.highW)
 		}
 	}
-	// Equal-power fade: halfway, each track is at about 0.7 of its full level.
 	full := level(at(10), 440)
 	mid := at(length - fade/2)
 	if l, h := level(mid, 440), level(mid, 1000); math.Abs(l-0.707*full) > 0.1*full || math.Abs(h-0.707*full) > 0.1*full {
 		t.Errorf("mid fade 440 Hz %.3f and 1000 Hz %.3f, want both about %.3f", l, h, 0.707*full)
 	}
-	// The player reports the second track's own position.
 	if got := p.Position(); got < (length-1)*time.Second || got > (length+1)*time.Second {
 		t.Errorf("position after the fade = %v, want about %ds", got, length)
 	}

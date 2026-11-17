@@ -7,9 +7,6 @@ import (
 	"github.com/go-macos/objc"
 )
 
-// readNotchCutout runs on the UI thread. AppKit describes the two usable
-// rectangles beside the camera in points, so Retina scaling needs no guess.
-// MyGo's display bounds supply its top-left coordinate convention.
 func readNotchCutout() (cutout mygo.Rectangle) {
 	displays := mygo.Screen.Displays()
 	objc.AutoreleasePool(func() {
@@ -44,20 +41,28 @@ func readNotchCutout() (cutout mygo.Rectangle) {
 	return cutout
 }
 
+const (
+	nsWindowStyleMaskNonactivatingPanel = uint(1 << 7)
+	nsStatusWindowLevel                 = 25
+	nsWindowAnimationBehaviorNone       = 2
+
+	nsEventMaskLeftMouseDown  = uint64(1 << 1)
+	nsEventMaskLeftMouseUp    = uint64(1 << 2)
+	nsEventMaskRightMouseDown = uint64(1 << 3)
+	nsEventMaskRightMouseUp   = uint64(1 << 4)
+	nsEventMaskOtherMouseDown = uint64(1 << 25)
+	nsEventMaskOtherMouseUp   = uint64(1 << 26)
+	mousePressEvents          = nsEventMaskLeftMouseDown | nsEventMaskRightMouseDown | nsEventMaskOtherMouseDown
+	mouseReleaseEvents        = nsEventMaskLeftMouseUp | nsEventMaskRightMouseUp | nsEventMaskOtherMouseUp
+)
+
 func prepareNotchWindow(w *mygo.Window) {
 	window := objc.ID(w.NativeHandle())
-	// MyGo's Frameless hides the title but retains a titled window style.
-	// Remove that title-bar geometry for the screen edge while preserving
-	// NSWindowStyleMaskNonactivatingPanel from the panel's creation.
-	window.Send(objc.Sel("setStyleMask:"), uint(1<<7))
-	// NSStatusWindowLevel is above the menu bar; a floating panel's default
-	// level is below it. Keep the footprint limited to the notch and its wings.
-	window.Send(objc.Sel("setLevel:"), 25)
+	window.Send(objc.Sel("setStyleMask:"), nsWindowStyleMaskNonactivatingPanel)
+	window.Send(objc.Sel("setLevel:"), nsStatusWindowLevel)
 	window.Send(objc.Sel("setCanHide:"), false)
-	// Compact playback needs clicks, not keyboard ownership. Expanded controls
-	// opt in explicitly so Tab, seeking and Escape still work.
 	setNotchFocusable(w, false)
-	window.Send(objc.Sel("setAnimationBehavior:"), 2) // NSWindowAnimationBehaviorNone; the UI animates.
+	window.Send(objc.Sel("setAnimationBehavior:"), nsWindowAnimationBehaviorNone)
 	watchNotchOutsideClicks(w)
 }
 
@@ -74,10 +79,6 @@ func releaseNotchFocus(w *mygo.Window) {
 	if window == 0 || !objc.Send[bool](window, objc.Sel("isKeyWindow")) {
 		return
 	}
-	// resignKeyWindow is an AppKit notification, not a request to release the
-	// nonactivating panel's keyboard ownership. Order out and back in during
-	// the same event turn, without becoming key or activating the application.
-	// This leaves the UI's collapse animation and native bounds intact.
 	visible := objc.Send[bool](window, objc.Sel("isVisible"))
 	window.Send(objc.Sel("orderOut:"), objc.ID(0))
 	if visible {
@@ -86,14 +87,8 @@ func releaseNotchFocus(w *mygo.Window) {
 }
 
 func watchNotchOutsideClicks(w *mygo.Window) {
-	// Nonactivating panels need not receive a blur when another application's
-	// menu bar is clicked. Observe pointer events; never consume or replay them.
-	// Both AppKit monitor handlers run on the main thread.
-	const presses = uint64(1<<1 | 1<<3 | 1<<25) // left, right, other mouse down
-	const releases = uint64(1<<2 | 1<<4 | 1<<26)
+	presses, releases := mousePressEvents, mouseReleaseEvents
 	events := objc.ClassID("NSEvent")
-	// Track delivered presses, including accessibility-generated events. The
-	// hardware button snapshot need not reflect events queued by those tools.
 	var held uint64
 	releaseCompact := func() {
 		window := objc.ID(w.NativeHandle())
@@ -102,8 +97,6 @@ func watchNotchOutsideClicks(w *mygo.Window) {
 		}
 	}
 	w.OnFocus(func() {
-		// Activation can make even the compact panel key. Update can run
-		// between down and up; ordering out then would cancel MyGo's click.
 		w.Update(releaseCompact)
 	})
 	w.OnBlur(func() { held = 0 })
@@ -116,8 +109,6 @@ func watchNotchOutsideClicks(w *mygo.Window) {
 		switch {
 		case releases&(uint64(1)<<kind) != 0:
 			held &^= button
-			// Let MyGo finish the press before releasing focus. If its view
-			// has already expanded, leave the keyboard with the controls.
 			w.Update(releaseCompact)
 		case event.Send(objc.Sel("window")) == objc.ID(w.NativeHandle()):
 			held |= button

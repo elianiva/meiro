@@ -10,8 +10,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// subscriptionWrite is the last write the fake YouTube was asked for to a
-// subscription: its endpoint, and the channels it names.
 func subscriptionWrite() (endpoint string, channels []any) {
 	write := written()
 	channels, _ = write.body["channelIds"].([]any)
@@ -39,7 +37,6 @@ func TestSubscribingToAnArtistAndUnsubscribing(t *testing.T) {
 		t.Fatalf("the page did not show the artist followed: %q", tt.Texts())
 	}
 
-	// The library is read again, and lists the artist.
 	libraryLoads.Store(0)
 	a.router.Push("/library")
 	tt.Frame()
@@ -47,7 +44,6 @@ func TestSubscribingToAnArtistAndUnsubscribing(t *testing.T) {
 		t.Fatalf("the library was read %d times, and shows: %q", libraryLoads.Load(), tt.Texts())
 	}
 
-	// The artist page says what YouTube now says, and unsubscribes.
 	a.router.Push("/artist/UCartist")
 	tt.Frame()
 	if a.page.subscription != (youtube.Subscription{ChannelID: "UCartist", Subscribed: true}) || !slices.Contains(tt.Texts(), "Subscribed") {
@@ -117,7 +113,7 @@ func TestSignedOutHasNoSubscribeButton(t *testing.T) {
 		t.Fatalf("a signed-out artist page offers to subscribe, or did not load: %q", tt.Texts())
 	}
 	a.page.subscription = youtube.Subscription{ChannelID: "UCartist"}
-	a.toggleSubscription() // nothing may reach YouTube
+	a.toggleSubscription()
 	if subscribeWrites.Load() != 0 {
 		t.Fatalf("a signed-out subscribe wrote %d times", subscribeWrites.Load())
 	}

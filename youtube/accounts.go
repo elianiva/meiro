@@ -10,7 +10,6 @@ import (
 	"strconv"
 )
 
-// AccountDetails contains the active account response.
 type AccountDetails struct {
 	Name      string `json:"name,omitempty"`
 	Email     string `json:"email,omitempty"`
@@ -18,10 +17,7 @@ type AccountDetails struct {
 	Thumbnail string `json:"thumbnail,omitempty"`
 }
 
-// AccountChannel describes a channel in the account switcher.
 type AccountChannel struct {
-	// AccountIndex is the Google authuser index, or -1 for a malformed signin
-	// token (which also disables the item). Missing tokens use the client index.
 	AccountIndex int    `json:"accountIndex"`
 	Name         string `json:"name,omitempty"`
 	Email        string `json:"email,omitempty"`
@@ -34,13 +30,10 @@ type AccountChannel struct {
 	HasChannel   bool   `json:"hasChannel,omitempty"`
 }
 
-// AccountList contains channels available to a cookie-authenticated account.
 type AccountList struct {
 	Items []AccountChannel `json:"items"`
 }
 
-// GetAccountDetails returns the active signed-in account. It requires cookie
-// authentication.
 func (c *Client) GetAccountDetails(ctx context.Context) (*AccountDetails, error) {
 	if c.cookieAuth == nil {
 		return nil, errors.New("youtube: GetAccountDetails requires cookie authentication")
@@ -51,14 +44,11 @@ func (c *Client) GetAccountDetails(ctx context.Context) (*AccountDetails, error)
 	}
 	details := &AccountDetails{}
 	root := decodeResponse(raw)
-	// The account menu names the active account, its email, and its photo in
-	// one header renderer.
 	if header := findRenderer(root, "activeAccountHeaderRenderer"); header != nil {
 		details.Name = rendererText(header.get("accountName"))
 		details.Email = rendererText(header.get("email"))
 		details.Thumbnail = rendererThumbnail(header.get("accountPhoto"))
 	}
-	// The header carries no channel ID; the menu's account list does.
 	for _, channel := range extractAccountChannels(root, c.cookieAuth.accountIndex) {
 		if !channel.Selected || channel.AccountIndex != c.cookieAuth.accountIndex {
 			continue
@@ -69,9 +59,6 @@ func (c *Client) GetAccountDetails(ctx context.Context) (*AccountDetails, error)
 		}
 		break
 	}
-	// Music can omit the email in an otherwise valid account menu. Resolve
-	// it from the web switcher's Google-account section, never from a name
-	// or a row's position (multiple accounts can have the same name).
 	if details.Email == "" && (details.Name != "" || details.ChannelID != "") {
 		accounts, err := c.GetSignInAccounts(ctx)
 		if err != nil {
@@ -87,7 +74,6 @@ func (c *Client) GetAccountDetails(ctx context.Context) (*AccountDetails, error)
 	return details, nil
 }
 
-// GetAccounts lists all channels available to a cookie-authenticated account.
 func (c *Client) GetAccounts(ctx context.Context) (*AccountList, error) {
 	if c.cookieAuth == nil {
 		return nil, errors.New("youtube: GetAccounts requires cookie authentication")
@@ -102,8 +88,6 @@ func (c *Client) GetAccounts(ctx context.Context) (*AccountList, error) {
 	return &AccountList{Items: extractAccountChannels(decodeResponse(raw), c.cookieAuth.accountIndex)}, nil
 }
 
-// GetSignInAccounts reads the web account switcher, which includes other Google
-// accounts sharing these cookies, not just the current account's channels.
 func (c *Client) GetSignInAccounts(ctx context.Context) (*AccountList, error) {
 	if c.cookieAuth == nil {
 		return nil, errors.New("youtube: GetSignInAccounts requires cookie authentication")
@@ -141,8 +125,7 @@ func (c *Client) GetSignInAccounts(ctx context.Context) (*AccountList, error) {
 	if err != nil {
 		return nil, err
 	}
-	// This web endpoint prefixes its JSON with an XSSI guard.
-	body = bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(body), []byte(")]}'")))
+	body = bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(body), []byte(xssiGuardPrefix)))
 	if !json.Valid(body) {
 		return nil, errors.New("youtube: account switcher returned invalid JSON")
 	}
@@ -247,10 +230,10 @@ func parseAccountChannel(renderer *jsonObject, defaultIndex int) AccountChannel 
 	return channel
 }
 
-// accountChannelIndex reads authuser from the server-issued signin URL, not
-// the position of the item in the list (brand channels share an account index).
-// Responses without signin tokens describe the client's current Google account.
-// An explicitly supplied but invalid token must not select account zero.
+const xssiGuardPrefix = ")]}'"
+
+const malformedSigninIndex = -1
+
 func accountChannelIndex(serviceEndpoint any, defaultIndex int) int {
 	identity, ok := nestedObject(serviceEndpoint, "selectActiveIdentityEndpoint")
 	if !ok {
@@ -265,34 +248,30 @@ func accountChannelIndex(serviceEndpoint any, defaultIndex int) int {
 		signinURL := nestedString(token.get("accountSigninToken"), "signinUrl")
 		parsed, err := url.Parse(signinURL)
 		if err != nil || signinURL == "" {
-			return -1
+			return malformedSigninIndex
 		}
 		query, err := url.ParseQuery(parsed.RawQuery)
 		if err != nil || len(query["authuser"]) != 1 {
-			return -1
+			return malformedSigninIndex
 		}
 		value := query.Get("authuser")
-		// Accept decimal indices only, not signs, spaces, or email addresses.
 		if value == "" {
-			return -1
+			return malformedSigninIndex
 		}
 		for _, digit := range value {
 			if digit < '0' || digit > '9' {
-				return -1
+				return malformedSigninIndex
 			}
 		}
 		index, err := strconv.Atoi(value)
 		if err != nil {
-			return -1
+			return malformedSigninIndex
 		}
 		return index
 	}
 	return defaultIndex
 }
 
-// accountChannelPageID reads the brand channel ID from the identity token the
-// account switcher returns. The primary account has no pageIdToken and uses
-// the empty channel ID.
 func accountChannelPageID(serviceEndpoint any) string {
 	identity, ok := nestedObject(serviceEndpoint, "selectActiveIdentityEndpoint")
 	if !ok {

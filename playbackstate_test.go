@@ -80,7 +80,6 @@ func TestTheQueueComesBackPausedAfterARestart(t *testing.T) {
 		t.Error("restoring started playing")
 	}
 
-	// Pressing play plays the restored track.
 	second.togglePlay()
 	if !r.asked("v0") || second.current.VideoID != "v0" {
 		t.Errorf("play did not start the restored track: %v", r.ids)
@@ -133,11 +132,11 @@ func TestExitKeepsTheLastChangeWithoutWaitingOutTheDebounce(t *testing.T) {
 	a.playSave.writer.Path = path
 	q := tracks("a", "b", "c")
 	a.play(q[0], q)
-	a.persistPlayback() // handed to the debounced writer, not yet on disk
+	a.persistPlayback()
 	a.queue.insert(youtube.MusicItem{VideoID: "late"}, false, false)
 
 	start := time.Now()
-	a.savePlayback(0) // what shutdown does
+	a.savePlayback(0)
 	a.playSave.writer.Wait()
 	if took := time.Since(start); took > time.Second {
 		t.Errorf("flushing at exit took %v; it waited out the debounce", took)

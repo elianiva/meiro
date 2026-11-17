@@ -8,23 +8,15 @@ import (
 	"strings"
 )
 
-// LikeStatus is whether the signed-in account has liked a track, as YouTube's
-// like buttons name it. It is a byte, since every item of every page carries
-// one.
 type LikeStatus uint8
 
 const (
-	// LikeUnknown is a track whose page did not say.
 	LikeUnknown LikeStatus = iota
-	// Liked is a track the account has given a thumbs-up.
 	Liked
-	// Indifferent is a track the account has rated neither way.
 	Indifferent
-	// Disliked is a track the account has given a thumbs-down.
 	Disliked
 )
 
-// parseLikeStatus reads the name YouTube's like button gives a status.
 func parseLikeStatus(name string) LikeStatus {
 	switch name {
 	case "LIKE":
@@ -37,7 +29,6 @@ func parseLikeStatus(name string) LikeStatus {
 	return LikeUnknown
 }
 
-// RateTrack sets or removes the signed-in account's rating for a track.
 func (c *Client) RateTrack(ctx context.Context, videoID string, status LikeStatus) error {
 	if c.cookieAuth == nil {
 		return errors.New("youtube: RateTrack requires cookie authentication")
@@ -62,8 +53,6 @@ func (c *Client) RateTrack(ctx context.Context, videoID string, status LikeStatu
 	return c.rateEndpoint(ctx, map[string]any{"videoId": videoID}, endpoint)
 }
 
-// rate likes or un-likes whatever target names: a video, or a playlist or an
-// album to put in the library, which YouTube keeps as a like as well.
 func (c *Client) rate(ctx context.Context, target map[string]any, like bool) error {
 	endpoint := "like/removelike"
 	if like {
@@ -72,7 +61,6 @@ func (c *Client) rate(ctx context.Context, target map[string]any, like bool) err
 	return c.rateEndpoint(ctx, target, endpoint)
 }
 
-// rateEndpoint sends a like write and reports refusals from YouTube's body.
 func (c *Client) rateEndpoint(ctx context.Context, target map[string]any, endpoint string) error {
 	raw, err := c.execute(ctx, endpoint, map[string]any{"target": target})
 	if err != nil {
@@ -81,10 +69,6 @@ func (c *Client) rateEndpoint(ctx context.Context, target map[string]any, endpoi
 	return writeFailure(endpoint, raw)
 }
 
-// writeFailure reports an answer that says the write failed in its body.
-// YouTube answers a write it accepted with an ordinary response and one it
-// refused, in some cases, with a 200 and an "error" object in place of the
-// result.
 func writeFailure(endpoint string, raw json.RawMessage) error {
 	var response struct {
 		Error *struct {
@@ -108,10 +92,6 @@ func writeFailure(endpoint string, raw json.RawMessage) error {
 	return fmt.Errorf("youtube: %s was refused: %s", endpoint, reason)
 }
 
-// likeStatus reads the like a row or a panel item carries in its menu: the
-// like button of the menu's top-level buttons names it. The result is "" for an
-// item whose menu has none, which is every item of a page that is not about
-// what plays.
 func likeStatus(renderer *jsonObject) LikeStatus {
 	menu, _ := renderer.get("menu").(*jsonObject)
 	menuRenderer, _ := menu.get("menuRenderer").(*jsonObject)

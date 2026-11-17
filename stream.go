@@ -12,17 +12,11 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// resolveAudio finds a track's audio by asking YouTube's player directly,
-// and falls back to yt-dlp, which knows more ways to ask, when that fails.
-// Asking directly takes a request, where yt-dlp starts a Python process of
-// about 70 MB and takes a couple of seconds.
 func resolveAudio(client *youtube.Client, auth *audioAuth, traces *resolveTraces) audio.Resolver {
 	return func(ctx context.Context, videoID string) (string, time.Duration, error) {
 		trace := resolveTrace{VideoID: videoID, Signed: false}
 		started := time.Now()
 		defer func() { trace.Elapsed = time.Since(started); traces.put(trace) }()
-		// A signed-in resolve goes to yt-dlp alone: the direct request is
-		// anonymous, so it would never return the account's own formats.
 		if cookie := auth.get(); cookie != "" {
 			trace.Source, trace.Signed = "yt-dlp", true
 			url, total, run, err := ytdlp.Resolve(ctx, videoID, cookie)
@@ -47,9 +41,6 @@ func resolveAudio(client *youtube.Client, auth *audioAuth, traces *resolveTraces
 	}
 }
 
-// audioAuth holds the cookie that audio is resolved with, or "" to resolve
-// anonymously. Resolving runs off the main thread, so it reads this instead
-// of the account.
 type audioAuth struct {
 	mu     sync.Mutex
 	cookie string
@@ -61,7 +52,6 @@ func (s *audioAuth) get() string {
 	return s.cookie
 }
 
-// set replaces the cookie and reports whether it changed.
 func (s *audioAuth) set(cookie string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,9 +60,6 @@ func (s *audioAuth) set(cookie string) bool {
 	return changed
 }
 
-// syncAudioAuth makes audio resolve with the signed-in account when the user
-// asked for it, and anonymously otherwise. URLs resolved the other way are
-// dropped, so the next play asks again.
 func (a *app) syncAudioAuth() {
 	cookie := ""
 	if a.settings.AccountAudio && a.account.session != nil {
@@ -83,25 +70,18 @@ func (a *app) syncAudioAuth() {
 	}
 }
 
-// resolvedAudio is where a track's audio is, and how long it plays.
 type resolvedAudio struct {
-	url       string
-	total     time.Duration
-	fromCache bool
-	// playErr is why the player could not open the audio, once found.
-	playErr error
-	// loudness is the track's loudness when it was looked up on the way.
+	url        string
+	total      time.Duration
+	fromCache  bool
+	playErr    error
 	loudness   youtube.Loudness
 	loudnessOK bool
 }
 
-// streamAudio finds a track's audio off the main thread, in the cache or
-// with yt-dlp, and plays it.
 func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed bool) {
 	cache := a.currentAudioCache()
 	accountProgress := a.signedIn()
-	// The work below runs off the main thread, so it takes what it needs of
-	// the app's state now.
 	loudnessClient := a.loudnessClient(item.VideoID)
 	known, knownOK := a.loudnessMap.Get(item.VideoID)
 	volume, normalize, logarithmic := a.volume, a.settings.NormalizeLoudness, a.settings.LogVolume
@@ -114,10 +94,6 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 		if err := a.player.SetSpeed(ctx, speed); err != nil {
 			return resolvedAudio{}, err
 		}
-		// The gain is in place before the device starts, so a track that is
-		// louder or quieter than the last one does not begin at the wrong
-		// volume for a moment. A lookup that fails, or that runs past
-		// loudnessWait, plays the track unnormalized rather than not at all.
 		var fresh youtube.Loudness
 		var freshOK bool
 		if loudnessClient != nil {
@@ -140,8 +116,6 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 		if accountProgress && item.IsEpisode() {
 			startAt = max(startAt, episodeProgressPosition(item, found.total))
 		}
-		// Opening the audio device and starting ffmpeg take long enough to
-		// be felt, so they happen here and not on the main thread.
 		found.playErr = a.player.PlayAtContext(ctx, found.url, startAt, false)
 		return found, nil
 	}, func(found resolvedAudio, err error) {
@@ -164,16 +138,12 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 			return
 		}
 		log.Printf("playback: audio started video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
-		a.applySpeed() // a speed chosen while the audio was on its way
+		a.applySpeed()
 		a.audioStarted(item, found, a.player.Position(), changed, cache)
 		a.syncSystemMedia()
 	})
 }
 
-// audioStarted takes note of a track whose audio has begun to play from
-// position: the run of skips ends, the play is recorded and reported, its
-// audio is cached for the next time, and the track after it is readied.
-// cache is the audio cache the track was looked for in.
 func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position time.Duration, changed bool, cache *audio.Cache) {
 	a.skipped = 0
 	a.aiRefills = 0
@@ -187,26 +157,20 @@ func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position
 	}
 	a.playing = playingAudio{videoID: item.VideoID, url: found.url, file: found.fromCache}
 	if !found.fromCache {
-		// The direct URL is already in hand, so the cache downloads it as it
-		// is instead of resolving the same track again.
 		cache.Add(item.VideoID, found.url)
 	}
 	a.warmNext()
 }
 
-// preloadLead is how long before the end of a track the next one is opened:
-// long enough for ffmpeg to have it decoding when the sound runs out, short
-// enough not to hold a connection to the server open through the whole song.
 const preloadLead = 20 * time.Second
 
-// preloadedAudio is the audio of the track the player holds ready.
+const probeTimeout = 15 * time.Second
+
 type preloadedAudio struct {
 	id string
 	resolvedAudio
 }
 
-// following is the place in the queue of the track that plays after this
-// one, and the track. A repeated track follows itself, at place -1.
 func (a *app) following() (int, youtube.MusicItem, bool) {
 	if a.repeat == repeatTrack {
 		return -1, a.current, a.current.VideoID != ""
@@ -218,14 +182,9 @@ func (a *app) following() (int, youtube.MusicItem, bool) {
 	return i, a.queue.at(i), true
 }
 
-// syncPreload keeps the player's preloaded stream the one for the track that
-// follows, and starts it once the current track is near its end. It runs on
-// every poll and after anything that can change what follows.
 func (a *app) syncPreload() {
 	_, next, ok := a.following()
 	if ok && a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone {
-		// Nothing is eligible to preload yet. Still run the cleanup below:
-		// the held audio may belong to a track the filter just removed.
 		ok = false
 	}
 	if held := a.player.Preloaded(); held != "" && (!ok || held != next.VideoID) {
@@ -235,9 +194,8 @@ func (a *app) syncPreload() {
 	if !ok || a.preload.busy() && a.preloadFor != next.VideoID {
 		a.preload.stop()
 	}
-	// A track that plays at another speed starts on its own: the player
-	// follows on at the speed of the track before.
-	if !ok || a.starting() || a.preload.busy() || a.preloadFailed == next.VideoID || a.speedFor(next) != a.speedFor(a.current) ||
+	speedChangesAtNext := ok && a.speedFor(next) != a.speedFor(a.current)
+	if !ok || a.starting() || a.preload.busy() || a.preloadFailed == next.VideoID || speedChangesAtNext ||
 		a.player.Preloaded() == next.VideoID || a.total <= 0 || !a.player.Playing() ||
 		a.total-a.player.Position() > preloadLead {
 		return
@@ -266,9 +224,6 @@ func (a *app) syncPreload() {
 	})
 }
 
-// followed moves on to the track the player took over with, as the track
-// before it ended. The queue may have changed since the player took it:
-// then what it plays is not what follows, and the right track is started.
 func (a *app) followed(tag string) {
 	i, next, ok := a.following()
 	if !ok || next.VideoID != tag || a.preloaded.id != tag {
@@ -299,8 +254,6 @@ func (a *app) followed(tag string) {
 	a.syncSystemMedia()
 }
 
-// failPlayback records why item did not play: the raw error goes to the log
-// and the listener sees a short reason.
 func (a *app) failPlayback(item youtube.MusicItem, what, raw string) {
 	log.Printf("playback: %s video_id=%s: %s", what, item.VideoID, raw)
 	a.rawPlayErr, a.playErr = raw, playErrorMessage(raw)
@@ -308,27 +261,12 @@ func (a *app) failPlayback(item youtube.MusicItem, what, raw string) {
 }
 
 const (
-	// maxRecoveries is how many times in a row a stream that broke off is
-	// found again before the track is given up on.
-	maxRecoveries = 3
-	// recoveryHealthy is how far a recovered stream plays before it counts as
-	// working again.
+	maxRecoveries   = 3
 	recoveryHealthy = 10 * time.Second
-	// recoveryBackoff is the wait before the first retry; each one waits
-	// longer, which gives a network that just came back a moment to settle.
 	recoveryBackoff = 500 * time.Millisecond
-	// endOfTrackLead is how much of a track may be left when its stream
-	// breaks off and the track still counts as over. YouTube's server stops
-	// at the end of a track's data, which breaks the stream off in the last
-	// moment of it: what is left is shorter than the wait before the stream
-	// is found again, and playing that moment again is what the listener
-	// hears as the ending twice.
-	endOfTrackLead = 3 * time.Second
+	endOfTrackLead  = 3 * time.Second
 )
 
-// atTrackEnd reports whether the track playing has reached the last moment of
-// its length, where a stream that breaks off is over rather than broken. A
-// paused stream is not at its end: it holds where the listener left it.
 func (a *app) atTrackEnd() bool {
 	if a.total <= 0 || a.player.Paused() {
 		return false
@@ -336,12 +274,6 @@ func (a *app) atTrackEnd() bool {
 	return a.total-a.player.Position() <= endOfTrackLead
 }
 
-// recoverStream picks the current track up where its stream broke off, as it
-// does when the network drops mid-song, or the machine wakes with an audio
-// URL that has expired: it resolves the track again, which the URL cache
-// must not answer from memory, and plays from the position reached. It
-// reports false when the tries are used up, and a failure that ends one try
-// starts the next from the apply.
 func (a *app) recoverStream(failure string) bool {
 	item := a.current
 	if item.VideoID == "" || a.recoveries >= maxRecoveries {
@@ -384,15 +316,13 @@ func (a *app) recoverStream(failure string) bool {
 		a.applyLoudness()
 		a.applySpeed()
 		if paused && bySleep && !a.suspendedWhilePlaying {
-			a.player.Resume() // the wake came while the stream was on its way
+			a.player.Resume()
 		}
 		a.syncSystemMedia()
 	})
 	return true
 }
 
-// findAudio is where a track's audio is: in local, the file it was downloaded
-// to, if that is still there, in the cache, or from yt-dlp.
 func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem, local string, cache *audio.Cache) (resolvedAudio, error) {
 	found := resolvedAudio{total: parseDuration(item.Duration)}
 	if local != "" {
@@ -410,9 +340,7 @@ func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem,
 	if ok {
 		found.url, found.fromCache = path, true
 		if found.total <= 0 {
-			// A track cached ahead of time was never resolved, so its
-			// length is written nowhere but the file itself.
-			probe, cancel := context.WithTimeout(ctx, 15*time.Second)
+			probe, cancel := context.WithTimeout(ctx, probeTimeout)
 			defer cancel()
 			found.total = audio.Probe(probe, path)
 		}
@@ -426,10 +354,6 @@ func findAudio(ctx context.Context, streams *audio.URLs, item youtube.MusicItem,
 	return found, err
 }
 
-// warmNext resolves the next track's audio URL while the current one plays,
-// so a play that follows skips yt-dlp. That costs a few kilobytes. When the
-// cache is big enough for a warmed track to survive until it plays, the
-// track is also downloaded from that URL.
 func (a *app) warmNext() {
 	_, next, ok := a.following()
 	if !ok {
@@ -438,8 +362,6 @@ func (a *app) warmNext() {
 	if a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone {
 		return
 	}
-	// In repeat-track mode following is the current track, whose audio is
-	// already playing; do not resolve it again.
 	if next.VideoID == "" || next.VideoID == a.current.VideoID || a.isDownloaded(next.VideoID) {
 		return
 	}
@@ -458,10 +380,6 @@ func (a *app) warmNext() {
 	})
 }
 
-// offerPremium tells a signed-in Premium account, once, that it can play
-// audio as itself. yt-dlp is the one that knows whether the account has
-// Premium, so it is asked in the background; the answer is dropped if the
-// account changed meanwhile.
 func (a *app) offerPremium() {
 	s := a.account.session
 	if s == nil || a.settings.AccountAudio || a.settings.PremiumOffered {

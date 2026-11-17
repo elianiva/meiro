@@ -6,9 +6,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// A dialog taller than its window scrolls, so what it holds stays reachable.
-// The panel is what the window draws; the text past it has no box until the
-// panel scrolls it into view.
 func TestDialogScrollsPastTheWindow(t *testing.T) {
 	open := true
 	const window = 300
@@ -26,8 +23,6 @@ func TestDialogScrollsPastTheWindow(t *testing.T) {
 	if !ok || panel.Y < 0 || panel.Y+panel.H > window {
 		t.Fatalf("the dialog is not inside the window: %+v", panel)
 	}
-	// A text the panel clips keeps its label and loses its box, so a zero
-	// height says it is not on screen.
 	if last, ok := tt.Find("last"); ok && last.H > 0 {
 		t.Fatalf("the end of the dialog is already in view, at %+v, so nothing scrolls", last)
 	}
@@ -44,7 +39,6 @@ func TestDialogScrollsPastTheWindow(t *testing.T) {
 	}
 }
 
-// A dialog shorter than its window shows whole, with nothing to scroll to.
 func TestDialogFitsATallWindow(t *testing.T) {
 	open := true
 	tt := ui.NewTester(func(c *ui.Context) {
@@ -65,8 +59,6 @@ func TestDialogFitsATallWindow(t *testing.T) {
 	}
 }
 
-// Escape and a press on the scrim close the dialog; a press on the panel
-// does not.
 func TestDialogClosesFromTheScrimAndEscape(t *testing.T) {
 	for _, close := range []func(*ui.Tester){
 		func(tt *ui.Tester) { tt.Key(0, ui.KeyEscape) },

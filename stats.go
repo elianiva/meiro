@@ -12,8 +12,6 @@ import (
 	"github.com/elianiva/meiro/youtube"
 )
 
-// recordHistory remembers a track once playback starts. It runs on the main
-// thread; the write goes off it.
 func (a *app) recordHistory(item youtube.MusicItem) {
 	if item.VideoID == "" {
 		return
@@ -28,9 +26,6 @@ func (a *app) recordHistory(item youtube.MusicItem) {
 	a.saveHistory()
 }
 
-// loadHistory starts reading the history once, off the main thread: the file
-// holds thousands of entries. Plays recorded before the read finishes are
-// kept behind what it brings, and written with it.
 func (a *app) loadHistory() {
 	if a.historyLoaded || a.historyLoading {
 		return
@@ -50,8 +45,6 @@ func (a *app) loadHistory() {
 	})
 }
 
-// saveHistory hands the history to the writer, which writes it off the main
-// thread, in order, and keeps its own copy.
 func (a *app) saveHistory() {
 	if a.historyPath == "" || !a.historyLoaded {
 		return
@@ -59,12 +52,9 @@ func (a *app) saveHistory() {
 	a.historyWriter.Save(a.historyPath, a.history)
 }
 
-// clearHistory forgets every play, on disk too.
 func (a *app) clearHistory() {
 	a.history = nil
 	if !a.historyLoaded {
-		// The read that is on its way would bring the old plays back: it
-		// drops them and writes the empty history instead.
 		a.historyDiscard = true
 		a.loadHistory()
 		return
@@ -72,9 +62,6 @@ func (a *app) clearHistory() {
 	a.saveHistory()
 }
 
-// statsMemo holds the summary the stats page last built, and what it was built
-// from. The page rebuilds on every frame of an animation, but the history only
-// changes when a track starts.
 type statsMemo struct {
 	summary history.Summary
 	entries int
@@ -84,8 +71,6 @@ type statsMemo struct {
 	valid   bool
 }
 
-// statsSummary returns the summary of the history over days days ending
-// today, folding the history again only when it has changed.
 func (a *app) statsSummary(now time.Time, days int) history.Summary {
 	var last time.Time
 	if n := len(a.history); n > 0 {
@@ -103,13 +88,10 @@ func (a *app) statsSummary(now time.Time, days int) history.Summary {
 	return memo.summary
 }
 
-// statsRanges are the day counts the stats page offers.
 var statsRanges = []int{7, 14, 30}
 
-// statsPage shows listening totals, a chart of plays per day, and the most
-// played tracks and artists, all from the local history.
 func (a *app) statsPage(c *ui.Context) {
-	summary := a.statsSummary(c.Now(), a.statsRange)
+	summary := a.statsSummary(c.Now(), a.statsRangeDays)
 	ui.Scroll(c).Grow(1).Padding(0, pageGutter, a.clearance()).Children(func() {
 		ui.Column(c).MaxWidth(780).Gap(16).Children(func() {
 			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
@@ -117,18 +99,16 @@ func (a *app) statsPage(c *ui.Context) {
 				labels := []string{"7 days", "14 days", "30 days"}
 				picked := 1
 				for i, days := range statsRanges {
-					if a.statsRange == days {
+					if a.statsRangeDays == days {
 						picked = i
 					}
 				}
 				if m3.ButtonGroup(c, "stats-range", &picked, labels, nil) {
-					a.statsRange = statsRanges[picked]
+					a.statsRangeDays = statsRanges[picked]
 				}
 			})
 			if summary.Plays == 0 && a.historyLoaded {
-				// Nothing to retry: the history is read from this device, and
-				// only listening fills it.
-				a.message(c, m3.IconTrending, "No plays yet", "Songs you listen to in Meiro are counted here, for the last "+strconv.Itoa(a.statsRange)+" days.", "", nil)
+				a.message(c, m3.IconTrending, "No plays yet", "Songs you listen to in Meiro are counted here, for the last "+strconv.Itoa(a.statsRangeDays)+" days.", "", nil)
 				return
 			}
 			a.statsTotals(c, summary)
@@ -139,7 +119,6 @@ func (a *app) statsPage(c *ui.Context) {
 	})
 }
 
-// statsTotals shows the headline numbers.
 func (a *app) statsTotals(c *ui.Context, summary history.Summary) {
 	sc := m3.Of(c).Scheme
 	ui.Row(c).Gap(16).Children(func() {
@@ -156,7 +135,6 @@ func (a *app) statsTotals(c *ui.Context, summary history.Summary) {
 	})
 }
 
-// playsChart draws the plays of each day as bars, using ui/chart scales.
 func (a *app) playsChart(c *ui.Context, summary history.Summary) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Plays per day", m3.IconTrending, func() {
@@ -184,7 +162,6 @@ func (a *app) playsChart(c *ui.Context, summary history.Summary) {
 	})
 }
 
-// topList names the most played tracks or artists with their counts.
 func (a *app) topList(c *ui.Context, title string, counts []history.Count, showArtist bool) {
 	if len(counts) == 0 {
 		return
@@ -211,7 +188,6 @@ func (a *app) topList(c *ui.Context, title string, counts []history.Count, showA
 	})
 }
 
-// pluralPlays names a play count.
 func pluralPlays(n int) string {
 	if n == 1 {
 		return "1 play"

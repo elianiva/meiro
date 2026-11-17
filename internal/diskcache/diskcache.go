@@ -1,7 +1,3 @@
-// Package diskcache keeps downloaded files on disk under a size limit, so a
-// picture fetched once is not fetched again after it leaves memory or after
-// the app restarts. It drops the file used longest ago when it is over the
-// limit.
 package diskcache
 
 import (
@@ -24,8 +20,6 @@ type entry struct {
 	used time.Time
 }
 
-// Cache is a directory of files named by the hash of their key. It is safe
-// for concurrent use.
 type Cache struct {
 	dir   string
 	limit int64
@@ -35,8 +29,6 @@ type Cache struct {
 	size  int64
 }
 
-// Open uses dir, creating it when missing, and counts what it already holds
-// by file size and modification time. limit is in bytes.
 func Open(dir string, limit int64) (*Cache, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -68,7 +60,6 @@ func name(key string) string {
 	return hex.EncodeToString(sum[:16]) + extension
 }
 
-// Has reports whether key is held, without reading it.
 func (c *Cache) Has(key string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -76,7 +67,6 @@ func (c *Cache) Has(key string) bool {
 	return ok
 }
 
-// Get returns the file kept under key and marks it used.
 func (c *Cache) Get(key string) ([]byte, bool) {
 	file := name(key)
 	c.mu.Lock()
@@ -96,13 +86,10 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 		c.mu.Unlock()
 		return nil, false
 	}
-	// The time on disk orders files after a restart.
 	_ = os.Chtimes(filepath.Join(c.dir, file), e.used, e.used)
 	return data, true
 }
 
-// Put keeps data under key, then drops the files used longest ago while the
-// cache is over its limit. A file larger than the limit is not kept.
 func (c *Cache) Put(key string, data []byte) {
 	if int64(len(data)) > c.limit {
 		return
@@ -126,15 +113,12 @@ func (c *Cache) forgetLocked(file string) {
 	}
 }
 
-// trimLocked removes least recently used files, other than keep, once the
-// cache is over its limit. It makes room for a tenth of the limit more than
-// it needs, so a full cache sorts its files once per run of writes rather
-// than on every one.
 func (c *Cache) trimLocked(keep string) {
 	if c.size <= c.limit {
 		return
 	}
-	target := c.limit - c.limit/10
+	headroom := c.limit / 10
+	target := c.limit - headroom
 	names := make([]string, 0, len(c.files))
 	for file := range c.files {
 		if file != keep {

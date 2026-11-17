@@ -10,11 +10,9 @@ func TestPagesSayWhetherTheyAreInTheLibrary(t *testing.T) {
 		return `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"T"}]},"buttons":[` + rest + `]}}}`
 	}
 	const (
-		song     = `{"toggleButtonRenderer":{"isToggled":true,"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"videoId":"v"}}}}}`
-		notSaved = `{"toggleButtonRenderer":{"isToggled":false,"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"playlistId":"OLAK5uy_a"}}}}}`
-		saved    = `{"toggleButtonRenderer":{"isToggled":true,"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"playlistId":"OLAK5uy_a"}}}}}`
-		// No isToggled: the default endpoint is the write on offer, so a
-		// removal on offer is a playlist already in the library.
+		song           = `{"toggleButtonRenderer":{"isToggled":true,"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"videoId":"v"}}}}}`
+		notSaved       = `{"toggleButtonRenderer":{"isToggled":false,"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"playlistId":"OLAK5uy_a"}}}}}`
+		saved          = `{"toggleButtonRenderer":{"isToggled":true,"defaultServiceEndpoint":{"likeEndpoint":{"status":"LIKE","target":{"playlistId":"OLAK5uy_a"}}}}}`
 		offeredRemoval = `{"toggleButtonRenderer":{"defaultServiceEndpoint":{"likeEndpoint":{"status":"INDIFFERENT","target":{"playlistId":"VLPL1"}}}}}`
 	)
 	for _, test := range []struct {

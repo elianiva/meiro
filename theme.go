@@ -7,38 +7,25 @@ import (
 	"github.com/elianiva/meiro/m3"
 )
 
-// themeState is the theme being shown. A change of colours glides from one
-// scheme to the next rather than cutting.
 type themeState struct {
-	shown *m3.Theme
-	to    *m3.Theme
-	from  m3.Scheme
-	at    time.Time
-	// cached is the last theme resolved, reused while the configuration and
-	// appearance that make it are unchanged.
-	cached     *m3.Theme
-	cachedCfg  m3.Config
-	cachedDark bool
-	// dynamic is the seed taken from the artwork playing, and dynamicFor the
-	// artwork it was taken from.
-	dynamic    ui.Color
-	dynamicOK  bool
-	dynamicFor string
-	// previews caches the palette-style preview schemes the settings show,
-	// until the seed or appearance they are drawn from changes.
-	previews    map[m3.Style]m3.Scheme
-	previewSeed ui.Color
-	previewDark bool
-	// buttonsDark is the appearance the window buttons were last drawn for,
-	// once buttonsSet.
+	shown                   *m3.Theme
+	to                      *m3.Theme
+	from                    m3.Scheme
+	at                      time.Time
+	cached                  *m3.Theme
+	cachedCfg               m3.Config
+	cachedDark              bool
+	dynamic                 ui.Color
+	dynamicOK               bool
+	dynamicFor              string
+	previews                map[m3.Style]m3.Scheme
+	previewSeed             ui.Color
+	previewDark             bool
 	buttonsDark, buttonsSet bool
 }
 
-// themeGlide is how long a change of colours takes.
 const themeGlide = 420 * time.Millisecond
 
-// resolveTheme returns the theme to draw this frame with: the one the
-// settings describe, glided to from the one before when it changed.
 func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 	t := &a.theme
 	cfg := a.settings.Theme(uiFont)
@@ -61,7 +48,7 @@ func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 		t.from = t.shown.Scheme
 		t.to, t.at = target, c.Now()
 		if c.Preferences().ReduceMotion {
-			t.at = time.Time{} // no glide: cut to the new colours
+			t.at = time.Time{}
 		}
 	}
 	k := float32(c.Now().Sub(t.at)) / float32(themeGlide)
@@ -76,8 +63,6 @@ func (a *app) resolveTheme(c *ui.Context) *m3.Theme {
 	return t.shown
 }
 
-// followArtwork takes the theme's seed from the artwork of the track playing,
-// when the user asked for it.
 func (a *app) followArtwork() {
 	t := &a.theme
 	art := a.current.Thumbnail
@@ -86,7 +71,7 @@ func (a *app) followArtwork() {
 	}
 	colour, has, ready := a.thumbs.Colour(art)
 	if !ready {
-		return // the picture or its colour is still on the way; the cache wakes the view
+		return
 	}
 	t.dynamicFor = art
 	if has {

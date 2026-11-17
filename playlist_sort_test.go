@@ -29,8 +29,6 @@ func TestSortPlaylistSections(t *testing.T) {
 		{"artist ascending", playlistSort{field: playlistSortArtist}, []string{"short", "duplicate", "long"}},
 		{"duration ascending", playlistSort{field: playlistSortDuration}, []string{"long", "short", "duplicate"}},
 		{"duration descending", playlistSort{field: playlistSortDuration, desc: true}, []string{"short", "duplicate", "long"}},
-		// The original order has nothing to compare, so descending reads the
-		// playlist backwards.
 		{"original descending", playlistSort{desc: true}, []string{"later", "duplicate", "short"}},
 	}
 	for _, tt := range tests {
@@ -58,9 +56,6 @@ func TestSortPlaylistSections(t *testing.T) {
 	if got[1].Items[0].VideoID != "later" {
 		t.Fatalf("tracks crossed section boundary: %#v", got[1].Items)
 	}
-	// The reversed original order keeps the headings and the non-track items
-	// where they were; TestSortPlaylistSectionsReversesTheWholePlaylist covers
-	// the order the tracks end up in.
 	if got := sortPlaylistSections(sections, playlistSort{desc: true}); got[0].Items[1] != items[1] || got[0].Title != sections[0].Title || got[1].Title != sections[1].Title {
 		t.Fatalf("the reversed original order moved a heading or a non-track item: %#v", got)
 	}

@@ -1,4 +1,3 @@
-// Package discordrpc publishes playback to Discord's local Rich Presence RPC.
 package discordrpc
 
 import (
@@ -33,10 +32,8 @@ const (
 
 var nextNonce atomic.Uint64
 
-// ApplicationID is a Discord application ID accepted by the RPC handshake.
 type ApplicationID string
 
-// ParseApplicationID validates the decimal snowflake stored in Settings.
 func ParseApplicationID(raw string) (ApplicationID, error) {
 	if raw == "" {
 		return "", errors.New("discord application ID is empty")
@@ -53,9 +50,6 @@ func ParseApplicationID(raw string) (ApplicationID, error) {
 	return ApplicationID(raw), nil
 }
 
-// State describes the track Discord should show. A state without Playing
-// clears the activity; paused playback is intentionally not shared. A zero
-// Duration means the length is unknown, so Discord shows only elapsed time.
 type State struct {
 	VideoID     string
 	Title       string
@@ -67,8 +61,6 @@ type State struct {
 	Playing     bool
 }
 
-// Session keeps Discord's activity in step with the latest playback state.
-// Updates are coalesced so slow IPC never blocks the app's main thread.
 type Session struct {
 	updates       chan State
 	stop          chan struct{}
@@ -79,7 +71,6 @@ type Session struct {
 
 type dialFunc func(context.Context) (net.Conn, error)
 
-// New opens a background session for a valid Discord application ID.
 func New(id ApplicationID) *Session {
 	return newSession(id, dialDiscord)
 }
@@ -88,8 +79,6 @@ func newSession(id ApplicationID, dial dialFunc) *Session {
 	return newSessionWithRetryInterval(id, dial, retryInterval)
 }
 
-// newSessionWithRetryInterval lets tests exercise reconnects without waiting
-// for the production retry interval.
 func newSessionWithRetryInterval(id ApplicationID, dial dialFunc, interval time.Duration) *Session {
 	if interval <= 0 {
 		interval = retryInterval
@@ -102,7 +91,6 @@ func newSessionWithRetryInterval(id ApplicationID, dial dialFunc, interval time.
 	return s
 }
 
-// Update replaces any pending state with the latest snapshot.
 func (s *Session) Update(state State) {
 	select {
 	case <-s.stop:
@@ -123,7 +111,6 @@ func (s *Session) Update(state State) {
 	}
 }
 
-// Close clears the current activity and waits for the IPC worker to stop.
 func (s *Session) Close() {
 	s.stopOnce.Do(func() { close(s.stop) })
 	<-s.done
@@ -240,8 +227,6 @@ type activityKey struct {
 	SeekVersion uint64
 }
 
-// keyFor compares the length in the whole seconds Discord receives, so a more
-// precise length for the same track does not resend the activity.
 func keyFor(state State) activityKey {
 	return activityKey{
 		VideoID: state.VideoID, Title: state.Title, Artist: state.Artist,
@@ -258,8 +243,6 @@ type activity struct {
 	Assets            *assets     `json:"assets,omitempty"`
 }
 
-// statusDisplayState makes the member list show the activity's state, the
-// artist, instead of the application's name.
 const statusDisplayState = 1
 
 type timestamps struct {
@@ -282,7 +265,6 @@ func makeActivity(state State, startedAt int64) *activity {
 		a.StatusDisplayType = statusDisplayState
 	}
 	if state.Duration > 0 {
-		// Whole seconds, as the player's clock shows the length.
 		a.Timestamps.End = startedAt + int64(state.Duration/time.Second)
 	}
 	if artworkURL := validArtworkURL(state.ArtworkURL); artworkURL != "" {
