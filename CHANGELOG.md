@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-17
+
 ### Changed
 
 - **A queue row keeps its actions beside its length.** The cross that takes a song out of the queue sits just left of the length, and the three-dot menu shows under the pointer as the cross does, with the download mark gone from queue rows.
