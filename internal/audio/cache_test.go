@@ -137,3 +137,32 @@ func TestURLsShareOneResolve(t *testing.T) {
 		t.Errorf("a failed resolve was remembered: %d resolves", calls.Load())
 	}
 }
+
+// A resolve stops when the last request waiting on it gives up, so a skipped
+// track does not leave yt-dlp running; one that someone still waits on goes on.
+func TestURLsCancelAbandonedResolve(t *testing.T) {
+	stopped := make(chan string, 2)
+	urls := NewURLs(func(ctx context.Context, videoID string) (string, time.Duration, error) {
+		<-ctx.Done()
+		stopped <- videoID
+		return "", 0, ctx.Err()
+	})
+	first, cancelFirst := context.WithCancel(context.Background())
+	second, cancelSecond := context.WithCancel(context.Background())
+	for _, ctx := range []context.Context{first, second} {
+		go func() { _, _, _ = urls.Get(ctx, "a") }()
+	}
+	time.Sleep(20 * time.Millisecond)
+	cancelFirst()
+	select {
+	case <-stopped:
+		t.Fatal("a resolve with a request still waiting was stopped")
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancelSecond()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("an abandoned resolve was not stopped")
+	}
+}
