@@ -17,6 +17,7 @@ import (
 
 	"github.com/elianiva/meiro/internal/applog"
 	"github.com/elianiva/meiro/internal/audio"
+	"github.com/elianiva/meiro/internal/danklyrics"
 	"github.com/elianiva/meiro/internal/diskcache"
 	"github.com/elianiva/meiro/internal/memprof"
 	"github.com/elianiva/meiro/internal/proc"
@@ -46,6 +47,13 @@ func main() {
 	a.logsDir = logsDir
 	mygo.App.WhenReady(func() {
 		a.setup()
+		cacheDir := ""
+		if dir, err := mygo.App.Path(mygo.PathCache); err == nil {
+			cacheDir = filepath.Join(dir, "lyrics")
+		} else {
+			log.Printf("finding the lyrics cache directory: %v", err)
+		}
+		a.lyricsSource = danklyrics.Source(cacheDir)
 		a.displayScale = displayScale()
 		mygo.Screen.OnDisplaysChanged(func() { a.update(func() { a.displayScale = displayScale() }) })
 		a.desktop = &desktop{win: mygo.NewWindow(mygo.WindowOptions{

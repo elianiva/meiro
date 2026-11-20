@@ -13,11 +13,9 @@ import (
 
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/audio"
-	"github.com/elianiva/meiro/internal/betterlyrics"
 	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/discordrpc"
 	"github.com/elianiva/meiro/internal/history"
-	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lru"
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/internal/posthog"
@@ -150,9 +148,9 @@ type app struct {
 	eqApplied  [player.EQBandCount]float64
 	eqDebounce task
 
-	betterLyrics func(ctx context.Context, q betterlyrics.Query) ([]lyrics.Line, error)
-	lyricsSource lyricsSource
-	collectInfo  func(ctx context.Context, app string) report.Info
+	lyricsSource   lyrics.Source
+	lyricsPrefetch task
+	collectInfo    func(ctx context.Context, app string) report.Info
 
 	stop         chan struct{}
 	stopOnce     sync.Once
@@ -209,8 +207,6 @@ func newApp() *app {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
 	}, cookies.Sources)
 	a.thumbs = artwork.New(&http.Client{Timeout: 30 * time.Second}, a.refresh)
-	a.betterLyrics = new(betterlyrics.Client).Get
-	a.lyricsSource = new(lrclib.Client).Get
 	a.collectInfo = report.Collect
 	return a
 }

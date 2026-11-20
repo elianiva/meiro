@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/elianiva/meiro/internal/betterlyrics"
-	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
@@ -53,9 +51,8 @@ func (a *app) loadLyrics() {
 		item = a.withKnownCredits(item)
 	}
 	l.videoID, l.total = id, total
-	sources := lyricSources{betterLyrics: a.betterLyrics, lrclib: a.lyricsSource}
 	startTask(a, &l.load, panelTimeout, func(ctx context.Context) (loadedLyrics, error) {
-		return findLyrics(ctx, sources, client, item, total)
+		return findLyrics(ctx, a.lyricsSource, client, item, total)
 	}, func(found loadedLyrics, err error) {
 		l.text, l.footer, l.synced = found.text, found.footer, found.synced
 		switch {
@@ -78,53 +75,85 @@ func (a *app) refreshLyrics() {
 	a.loadLyrics()
 }
 
-type lyricSources struct {
-	betterLyrics func(ctx context.Context, q betterlyrics.Query) ([]lyrics.Line, error)
-	lrclib       lyricsSource
+// prefetchNextLyrics warms the engine's cache for the track that will play
+// next, so its lyrics open from the cache instead of the network.
+func (a *app) prefetchNextLyrics() {
+	if a.lyricsSource == nil {
+		return
+	}
+	index, ok := a.queue.next(a.settings.AutoPlay, a.repeat)
+	if !ok {
+		return
+	}
+	item := a.queue.at(index)
+	if item.VideoID == "" || item.VideoID == a.current.VideoID || item.IsEpisode() {
+		return
+	}
+	a.prefetchLyrics(item)
 }
 
-func findLyrics(ctx context.Context, sources lyricSources, client *youtube.Client, item youtube.MusicItem, total time.Duration) (loadedLyrics, error) {
+func (a *app) prefetchLyrics(item youtube.MusicItem) {
+	if a.lyricsSource == nil || item.VideoID == "" || item.IsEpisode() {
+		return
+	}
+	if item.Artist == "" {
+		item = a.withKnownCredits(item)
+	}
+	startTask(a, &a.lyricsPrefetch, panelTimeout, func(ctx context.Context) (lyrics.Result, error) {
+		return a.lyricsSource(ctx, lyrics.Query{Title: item.Title, Artist: item.Artist, Album: item.Album, Duration: parseDuration(item.Duration)})
+	}, func(lyrics.Result, error) {})
+}
+
+func findLyrics(ctx context.Context, lookup lyrics.Source, client *youtube.Client, item youtube.MusicItem, total time.Duration) (loadedLyrics, error) {
 	var found, plain loadedLyrics
 	var lookupErr error
 	if total <= 0 {
 		total = parseDuration(item.Duration)
 	}
-	if sources.betterLyrics != nil {
-		lines, err := sources.betterLyrics(ctx, betterlyrics.Query{Title: item.Title, Artist: item.Artist, Album: item.Album, Duration: total})
+	if lookup != nil {
+		got, err := lookup(ctx, lyrics.Query{Title: item.Title, Artist: item.Artist, Album: item.Album, Duration: total})
+		source := "Source: " + cmp.Or(got.Source, "Better Lyrics")
 		switch {
 		case err != nil:
-			log.Printf("lyrics: betterlyrics lookup failed: %v", err)
+			log.Printf("lyrics: lookup failed: %v", err)
 			lookupErr = err
-		case len(lines) > 0:
-			found.synced, found.footer = lines, "Source: Better Lyrics"
+		case len(got.Synced) > 0:
+			found.synced, found.footer = got.Synced, source
+			if got.Plain != "" {
+				plain = loadedLyrics{text: strings.TrimSpace(got.Plain), footer: source}
+			}
+		case got.Plain != "":
+			plain = loadedLyrics{text: strings.TrimSpace(got.Plain), footer: source}
 		}
 	}
 	if ctx.Err() != nil {
 		return found, ctx.Err()
 	}
 	if len(found.synced) == 0 {
-		if tab, err := client.GetLyrics(ctx, item.VideoID); err == nil {
-			plain = loadedLyrics{text: strings.TrimSpace(tab.Description), footer: tab.Footer}
+		footer := "Source: YouTube Music"
+		tab, err := client.GetLyrics(ctx, item.VideoID)
+		switch {
+		case err == nil:
+			footer = cmp.Or(tab.Footer, footer)
+			text := strings.TrimSpace(tab.Description)
+			var synced []lyrics.Line
 			for _, line := range tab.Timed {
-				found.synced = append(found.synced, lyrics.Line{At: line.Start, Text: line.Text})
+				synced = append(synced, lyrics.Line{At: line.Start, Text: line.Text})
 			}
-		} else if ctx.Err() != nil {
+			switch {
+			case len(synced) > 0:
+				found.synced, found.footer = synced, footer
+				plain = loadedLyrics{text: text, footer: footer}
+			case text != "" && plain.text == "":
+				plain = loadedLyrics{text: text, footer: footer}
+				found.footer = footer
+			case plain.text == "":
+				found.footer = footer
+			}
+		case ctx.Err() != nil:
 			return found, ctx.Err()
-		}
-		found.footer = cmp.Or(plain.footer, "Source: YouTube Music")
-	}
-	if len(found.synced) == 0 && sources.lrclib != nil {
-		got, err := sources.lrclib(ctx, lrclib.Query{Title: item.Title, Artist: item.Artist, Album: item.Album, Duration: total})
-		if err != nil {
-			log.Printf("lyrics: lrclib lookup failed: %v", err)
-			lookupErr = cmp.Or(lookupErr, err)
-		}
-		if got != nil && len(got.Synced) > 0 {
-			found.synced, found.footer = got.Synced, "Source: LRCLIB"
-		}
-		if plain.text == "" && got != nil && got.Plain != "" && len(found.synced) == 0 {
-			plain = loadedLyrics{text: got.Plain, footer: "Source: LRCLIB"}
-			found.footer = plain.footer
+		case plain.text == "":
+			found.footer = footer
 		}
 	}
 	found.text = plain.text
@@ -140,8 +169,6 @@ func findLyrics(ctx context.Context, sources lyricSources, client *youtube.Clien
 	}
 	return found, nil
 }
-
-type lyricsSource func(ctx context.Context, q lrclib.Query) (*lrclib.Lyrics, error)
 
 func (a *app) lyricsView(c *ui.Context) {
 	sc := m3.Of(c).Scheme
@@ -207,7 +234,7 @@ func (a *app) lyricsSourceDialog(c *ui.Context) {
 		if source := strings.TrimPrefix(l.footer, "Source: "); source != "" {
 			m3.Text(c, m3.BodyLarge, source).TextColor(sc.OnSurface)
 		}
-		m3.Text(c, m3.BodyMedium, "Meiro shows the lyrics of the first source that has them: Better Lyrics first, then YouTube Music, then LRCLIB.").
+		m3.Text(c, m3.BodyMedium, "Meiro prefers word-synced lyrics from Better Lyrics, Unison, LyricsPlus, KuGou and LRCLIB, then falls back to YouTube Music.").
 			TextColor(sc.OnSurfaceVariant)
 		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 			if m3.Button(c, m3.ButtonSpec{Label: "Close", Key: "close-lyrics-source"}).Clicked() {
