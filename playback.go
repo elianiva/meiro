@@ -177,6 +177,7 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 	a.preload.stop()
 	a.preloaded, a.preloadFailed = preloadedAudio{}, ""
 	a.beginListen(item, automatic)
+	a.prefetchNextLyrics()
 	return startAt, changed
 }
 

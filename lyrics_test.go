@@ -62,6 +62,20 @@ func TestTheNextTracksLyricsArePrefetched(t *testing.T) {
 	}
 }
 
+func TestStartingATrackPrefetchesTheNext(t *testing.T) {
+	a := newTestApp(t)
+	var asked []string
+	a.lyricsSource = func(_ context.Context, q lyrics.Query) (lyrics.Result, error) {
+		asked = append(asked, q.Title)
+		return lyrics.Result{}, nil
+	}
+	q := tracks("a", "b")
+	a.play(q[0], q)
+	if len(asked) != 1 || asked[0] != "Track b" {
+		t.Fatalf("prefetched %v", asked)
+	}
+}
+
 func TestPrefetchSkipsTheLastTrackAndEpisodes(t *testing.T) {
 	for _, items := range [][]youtube.MusicItem{
 		tracks("a"),
