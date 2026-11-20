@@ -21,7 +21,6 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/artwork"
-	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/internal/settings"
@@ -242,8 +241,8 @@ func TestRelatedPlaylistOpensItsPage(t *testing.T) {
 
 func TestLyricsSwitchBetweenSyncedAndStatic(t *testing.T) {
 	a := newTestApp(t)
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-		return &lrclib.Lyrics{
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
+		return lyrics.Result{
 			Plain:  "first words\nsecond words",
 			Synced: []lyrics.Line{{At: 0, Text: "first words"}, {At: 30 * time.Second, Text: "second words"}},
 		}, nil
@@ -299,12 +298,12 @@ func TestPlayingFromRelatedQueuesOnlySongs(t *testing.T) {
 func TestFailedLyricsLookupIsTriedAgain(t *testing.T) {
 	a := newTestApp(t)
 	calls := 0
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
 		calls++
 		if calls == 1 {
-			return nil, errors.New("lrclib: 503 Service Unavailable")
+			return lyrics.Result{}, errors.New("lyrics: 503 Service Unavailable")
 		}
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "first words"}}}, nil
+		return lyrics.Result{Synced: []lyrics.Line{{At: 0, Text: "first words"}}}, nil
 	}
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
 	a.current = a.queue.current()
@@ -625,9 +624,9 @@ func TestNotchArtworkIgnoresLatePreviousCover(t *testing.T) {
 func TestNotchLyricsFollowSeekingAndTrackChanges(t *testing.T) {
 	a := notchTestApp(t)
 	calls := 0
-	a.lyricsSource = func(_ context.Context, q lrclib.Query) (*lrclib.Lyrics, error) {
+	a.lyricsSource = func(_ context.Context, q lyrics.Query) (lyrics.Result, error) {
 		calls++
-		return &lrclib.Lyrics{Synced: []lyrics.Line{
+		return lyrics.Result{Synced: []lyrics.Line{
 			{At: 0, Text: q.Title + " first"},
 			{At: 10 * time.Second, Text: q.Title + " second"},
 			{At: 20 * time.Second, Text: q.Title + " third"},
@@ -721,18 +720,18 @@ func TestNotchLyricsHaveStaticEmptyAndRetryStates(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			a := notchTestApp(t)
 			calls := 0
-			a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
+			a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
 				calls++
 				switch scenario {
 				case "static":
-					return &lrclib.Lyrics{Plain: "Words without timestamps"}, nil
+					return lyrics.Result{Plain: "Words without timestamps"}, nil
 				case "empty":
-					return nil, nil
+					return lyrics.Result{}, nil
 				default:
 					if calls == 1 {
-						return nil, errors.New("offline")
+						return lyrics.Result{}, errors.New("offline")
 					}
-					return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "Recovered lyrics"}}}, nil
+					return lyrics.Result{Synced: []lyrics.Line{{At: 0, Text: "Recovered lyrics"}}}, nil
 				}
 			}
 			tt := ui.NewTester(a.notchView, 284, 38)
@@ -771,8 +770,8 @@ func TestNotchLyricsHaveStaticEmptyAndRetryStates(t *testing.T) {
 
 func TestNotchWaitsForCurrentLyricsWhenTrackChanges(t *testing.T) {
 	a := notchTestApp(t)
-	a.lyricsSource = func(_ context.Context, q lrclib.Query) (*lrclib.Lyrics, error) {
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: q.Title + " lyrics"}}}, nil
+	a.lyricsSource = func(_ context.Context, q lyrics.Query) (lyrics.Result, error) {
+		return lyrics.Result{Synced: []lyrics.Line{{At: 0, Text: q.Title + " lyrics"}}}, nil
 	}
 	drain := deferredRunner(a)
 	tt := ui.NewTester(a.notchView, 284, 38)
@@ -952,8 +951,8 @@ func TestNotchFallbackKeepsAudioAndMiniPlayerControls(t *testing.T) {
 
 func TestNotchProgressSeeksWithoutInterferenceFromTheMainPlayer(t *testing.T) {
 	a := notchTestApp(t)
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-		return &lrclib.Lyrics{Synced: []lyrics.Line{
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
+		return lyrics.Result{Synced: []lyrics.Line{
 			{At: 0, Text: "Opening line"},
 			{At: 10 * time.Second, Text: "Middle line"},
 			{At: 40 * time.Second, Text: "Last line"},
@@ -1315,9 +1314,9 @@ func TestNotchOpenMeiroCollapsesWithoutChangingPlayback(t *testing.T) {
 	a.router.Push("/home")
 	a.notch.cutout.Width = cutoutWidth
 	calls := 0
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
 		calls++
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "Keep these lyrics"}}}, nil
+		return lyrics.Result{Synced: []lyrics.Line{{At: 0, Text: "Keep these lyrics"}}}, nil
 	}
 	bounds := a.notch.bounds()
 	tt := ui.NewTester(a.notchView, bounds.Width, bounds.Height)

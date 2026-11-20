@@ -8,27 +8,23 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/elianiva/meiro/internal/betterlyrics"
 	"github.com/elianiva/meiro/internal/credits"
-	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
 
-func TestBetterLyricsComesBeforeYouTubeMusicAndLRCLIB(t *testing.T) {
+func TestDankLyricsComeBeforeYouTubeMusic(t *testing.T) {
 	a := newTestApp(t)
-	a.betterLyrics = func(context.Context, betterlyrics.Query) ([]lyrics.Line, error) {
-		return []lyrics.Line{
-			{At: 0, Text: "first words", Words: []lyrics.Word{{At: 0, Text: "first "}, {At: time.Second, Text: "words"}}},
-			{At: 30 * time.Second, Text: "second words", Words: []lyrics.Word{{At: 30 * time.Second, Text: "second "}, {At: 31 * time.Second, Text: "words"}}},
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
+		return lyrics.Result{
+			Source: "Better Lyrics",
+			Synced: []lyrics.Line{
+				{At: 0, Text: "first words", Words: []lyrics.Word{{At: 0, Text: "first "}, {At: time.Second, Text: "words"}}},
+				{At: 30 * time.Second, Text: "second words", Words: []lyrics.Word{{At: 30 * time.Second, Text: "second "}, {At: 31 * time.Second, Text: "words"}}},
+			},
 		}, nil
-	}
-	asked := 0
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-		asked++
-		return &lrclib.Lyrics{Synced: []lyrics.Line{{At: 0, Text: "from LRCLIB"}}}, nil
 	}
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
 	a.current = a.queue.current()
@@ -39,11 +35,8 @@ func TestBetterLyricsComesBeforeYouTubeMusicAndLRCLIB(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !tt.HasText("first words") || tt.HasText("from LRCLIB") {
+	if !tt.HasText("first words") {
 		t.Fatalf("the lyrics are %q", tt.Texts())
-	}
-	if asked != 0 {
-		t.Fatalf("LRCLIB was asked %d times with lyrics already found", asked)
 	}
 	if err := tt.Click("Where these lyrics come from"); err != nil {
 		t.Fatal(err)
@@ -54,15 +47,50 @@ func TestBetterLyricsComesBeforeYouTubeMusicAndLRCLIB(t *testing.T) {
 	}
 }
 
+func TestTheNextTracksLyricsArePrefetched(t *testing.T) {
+	a := newTestApp(t)
+	var asked []lyrics.Query
+	a.lyricsSource = func(_ context.Context, q lyrics.Query) (lyrics.Result, error) {
+		asked = append(asked, q)
+		return lyrics.Result{}, nil
+	}
+	a.queue.restore(playstate.State{Items: tracks("a", "b"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.prefetchNextLyrics()
+	if len(asked) != 1 || asked[0].Title != "Track b" {
+		t.Fatalf("prefetched %#v", asked)
+	}
+}
+
+func TestPrefetchSkipsTheLastTrackAndEpisodes(t *testing.T) {
+	for _, items := range [][]youtube.MusicItem{
+		tracks("a"),
+		{{VideoID: "a", Title: "Track a", Kind: youtube.KindTrack}, {VideoID: "b", Title: "Episode b", Kind: youtube.KindEpisode}},
+	} {
+		a := newTestApp(t)
+		asked := 0
+		a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
+			asked++
+			return lyrics.Result{}, nil
+		}
+		a.queue.restore(playstate.State{Items: items, Index: 0, RecStart: -1})
+		a.current = a.queue.current()
+		a.prefetchNextLyrics()
+		if asked != 0 {
+			t.Fatalf("%v prefetched %d times", items, asked)
+		}
+	}
+}
+
 func TestLyricsAreLookedUpAgainOnceTheLengthIsKnown(t *testing.T) {
 	a := newTestApp(t)
 	var asked []time.Duration
-	a.betterLyrics = func(_ context.Context, q betterlyrics.Query) ([]lyrics.Line, error) {
+	a.lyricsSource = func(_ context.Context, q lyrics.Query) (lyrics.Result, error) {
 		asked = append(asked, q.Duration)
 		if q.Duration == 0 {
-			return nil, nil
+			return lyrics.Result{}, nil
 		}
-		return []lyrics.Line{{At: 0, Text: "word timed", Words: []lyrics.Word{{At: 0, Text: "word timed"}}}}, nil
+		return lyrics.Result{Source: "Better Lyrics", Synced: []lyrics.Line{{At: 0, Text: "word timed", Words: []lyrics.Word{{At: 0, Text: "word timed"}}}}}, nil
 	}
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
 	a.current = a.queue.current()
@@ -88,10 +116,10 @@ func TestLyricsAreLookedUpAgainOnceTheLengthIsKnown(t *testing.T) {
 
 func TestLyricsUseTheArtistKnownForTheTrack(t *testing.T) {
 	a := newTestApp(t)
-	var asked betterlyrics.Query
-	a.betterLyrics = func(_ context.Context, q betterlyrics.Query) ([]lyrics.Line, error) {
+	var asked lyrics.Query
+	a.lyricsSource = func(_ context.Context, q lyrics.Query) (lyrics.Result, error) {
 		asked = q
-		return nil, nil
+		return lyrics.Result{}, nil
 	}
 	a.queue.restore(playstate.State{Items: []youtube.MusicItem{{VideoID: "song", Title: "E85", Kind: youtube.KindTrack, Duration: "2:34"}}, Index: 0, RecStart: -1})
 	a.current = a.queue.current()
@@ -109,8 +137,8 @@ func TestTheSungLineSitsInTheMiddleOfTheLyrics(t *testing.T) {
 	for i := range lines {
 		lines[i] = lyrics.Line{At: time.Duration(i) * 6 * time.Second, Text: fmt.Sprintf("line %d", i)}
 	}
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) {
-		return &lrclib.Lyrics{Synced: lines}, nil
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
+		return lyrics.Result{Synced: lines}, nil
 	}
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
 	a.current = a.queue.current()

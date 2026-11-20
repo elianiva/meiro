@@ -17,8 +17,6 @@ import (
 
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/audio"
-	"github.com/elianiva/meiro/internal/betterlyrics"
-	"github.com/elianiva/meiro/internal/lrclib"
 	"github.com/elianiva/meiro/internal/lyrics"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
@@ -323,8 +321,7 @@ func newTestApp(t testing.TB) *app {
 		return report.Info{App: version, OS: runtime.GOOS, Arch: runtime.GOARCH, YtDlp: "2026.01.01", FFmpeg: "7.1"}
 	}
 	a.notifications = func() bool { return true }
-	a.lyricsSource = func(context.Context, lrclib.Query) (*lrclib.Lyrics, error) { return nil, nil }
-	a.betterLyrics = func(context.Context, betterlyrics.Query) ([]lyrics.Line, error) { return nil, nil }
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) { return lyrics.Result{}, nil }
 	a.account.newClient = newFakeClient
 	a.account.public = newFakeClient(nil)
 	return a
