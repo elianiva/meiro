@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +16,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/mcpcontrol"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -168,7 +173,7 @@ func TestMCPControlStateAndSearch(t *testing.T) {
 	if _, err := a.mcpCall(t.Context(), "seek", json.RawMessage(`{"seconds":0}`)); err == nil || !strings.Contains(err.Error(), "start playback") {
 		t.Fatalf("stopped seek: %v", err)
 	}
-	if got := mcpTrackFromItem(youtube.MusicItem{Artist: "Fallback"}); got.Artists != "Fallback" {
+	if got := mcpTrackFromItem(youtube.MusicItem{Artist: "Fallback"}, false); got.Artists != "Fallback" {
 		t.Fatalf("artist fallback: %+v", got)
 	}
 }
@@ -192,6 +197,13 @@ func TestMCPSetupPreservesLaunchArguments(t *testing.T) {
 	bundle := "/Applications/Meiro.app/Contents/MacOS/Meiro"
 	if launch := mcpLaunchFor(bundle, "darwin", "", ""); launch.Command != bundle {
 		t.Fatalf("macOS launch: %+v", launch)
+	}
+	appImage := t.TempDir()
+	if launch := mcpLaunchFor("/usr/bin/meiro", "linux", "", appImage); launch.Command != appImage {
+		t.Fatalf("AppImage: %+v", launch)
+	}
+	if launch := mcpLaunchFor("/usr/bin/meiro", "linux", "", "relative.AppImage"); launch.Command != "/usr/bin/meiro" {
+		t.Fatalf("relative AppImage: %+v", launch)
 	}
 }
 
@@ -269,7 +281,7 @@ func TestMCPCollectionPlayback(t *testing.T) {
 		id      string
 		shuffle bool
 	}{
-		{"MPREb_test", false}, {"PL_paginated", true},
+		{"MPREb_test", false}, {"PL_paginated", true}, {fakeArtist, false},
 	} {
 		t.Run(test.id, func(t *testing.T) {
 			a, _ := playbackApp(t)
@@ -313,11 +325,33 @@ func TestMCPLikeAndRadio(t *testing.T) {
 	signed := signedInApp(t)
 	signed.settings.MCPControl = true
 	signed.current = youtube.MusicItem{VideoID: "9cHbvRUALrc", Title: "Seed"}
+	signed.queue.items = []youtube.MusicItem{signed.current}
+	checkRating := func(want string) {
+		t.Helper()
+		state, err := signed.mcpCall(t.Context(), "now_playing", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := state.(mcpState).Track.Rating; got != want {
+			t.Fatalf("now_playing rating = %q, want %q", got, want)
+		}
+		page, err := signed.mcpCall(t.Context(), "queue_list", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := page.(mcpPage).Items[0].Rating; got != want {
+			t.Fatalf("queue_list rating = %q, want %q", got, want)
+		}
+	}
+	checkRating("unknown")
+	signed.learnLikes([]youtube.MusicItem{{VideoID: signed.current.VideoID, Like: youtube.Liked}})
+	checkRating("like")
 	for _, rating := range []string{"like", "like", "dislike", "none"} {
 		result, err := signed.mcpCall(t.Context(), "like", fmt.Appendf(nil, `{"rating":%q}`, rating))
 		if err != nil || result != (mcpRating{"9cHbvRUALrc", rating}) {
 			t.Fatalf("rating %s: %v %v", rating, result, err)
 		}
+		checkRating(rating)
 	}
 	if likeWrites.Load() != 4 || signed.current.Like != youtube.Indifferent {
 		t.Fatalf("rating writes: %d, status %v", likeWrites.Load(), signed.current.Like)
@@ -335,5 +369,246 @@ func TestMCPThreadDoesNotRunAfterCancelOrClose(t *testing.T) {
 	a.stopTicking()
 	if _, err := onMCPThread(t.Context(), a, execute); !errors.Is(err, errMCPClosing) {
 		t.Fatal(err)
+	}
+}
+
+func TestMCPSuccessResultsMatchSchemas(t *testing.T) {
+	catalog := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	var output bytes.Buffer
+	if err := mcpcontrol.Bridge(catalog, &output, "test"); err != nil {
+		t.Fatal(err)
+	}
+	decoder := json.NewDecoder(&output)
+	var listed struct {
+		Result struct {
+			Tools []struct {
+				Name         string
+				OutputSchema mcpTestSchema
+			}
+		}
+	}
+	if err := decoder.Decode(new(json.RawMessage)); err != nil {
+		t.Fatal(err)
+	}
+	if err := decoder.Decode(&listed); err != nil {
+		t.Fatal(err)
+	}
+	resetFakes()
+	tests := map[string]string{
+		"now_playing": `{}`, "queue_list": `{"offset":1,"limit":2}`, "search": `{"query":"song","kind":"all"}`,
+		"playback": `{"action":"toggle"}`, "play_now": `{"video_id":"9cHbvRUALrc"}`, "queue_add": `{"position":"end","video_ids":["9cHbvRUALrc"]}`,
+		"queue_move": `{"index":0,"to":1}`, "queue_remove": `{"index":0}`, "queue_clear": `{"confirm":true}`,
+		"seek": `{"seconds":1}`, "set_repeat": `{"mode":1}`, "set_shuffle": `{"enabled":true}`, "set_volume": `{"volume":0}`,
+		"like": `{"rating":"like"}`, "start_radio": `{}`,
+	}
+	if len(tests) != len(listed.Result.Tools) {
+		t.Fatal("tool catalog and result cases differ")
+	}
+	for _, tool := range listed.Result.Tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			a, _ := playbackApp(t)
+			signed := signedInApp(t)
+			a.account.session = signed.account.session
+			a.settings.MCPControl = true
+			queue := tracks("aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc")
+			if tool.Name == "queue_add" {
+				if result, err := a.mcpCall(t.Context(), tool.Name, json.RawMessage(tests[tool.Name])); err != nil ||
+					result.(mcpState).Track.VideoID != "9cHbvRUALrc" {
+					t.Fatalf("empty-queue add: %v %v", result, err)
+				}
+			} else {
+				a.playFrom(queue[1], queue, 1, youtube.UpNextOptions{}, "test")
+			}
+			value, err := a.mcpCall(t.Context(), tool.Name, json.RawMessage(tests[tool.Name]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var actual any
+			if err := json.Unmarshal(raw, &actual); err != nil {
+				t.Fatal(err)
+			}
+			tool.OutputSchema.check(t, tool.Name, actual)
+		})
+	}
+}
+
+type mcpTestSchema struct {
+	Type       string
+	Required   []string
+	Properties map[string]mcpTestSchema
+	Items      *mcpTestSchema
+}
+
+func (schema mcpTestSchema) check(t *testing.T, path string, value any) {
+	t.Helper()
+	switch data := value.(type) {
+	case map[string]any:
+		if schema.Type == "object" {
+			for _, key := range schema.Required {
+				if _, ok := data[key]; !ok {
+					t.Fatalf("%s missing %s", path, key)
+				}
+			}
+			for key, field := range data {
+				child, ok := schema.Properties[key]
+				if !ok {
+					t.Fatalf("%s unexpected field %s", path, key)
+				}
+				child.check(t, path+"."+key, field)
+			}
+			return
+		}
+	case []any:
+		if schema.Type == "array" && schema.Items != nil {
+			for _, field := range data {
+				schema.Items.check(t, path+"[]", field)
+			}
+			return
+		}
+	case string:
+		if schema.Type == "string" {
+			return
+		}
+	case bool:
+		if schema.Type == "boolean" {
+			return
+		}
+	case float64:
+		if schema.Type == "number" || schema.Type == "integer" && data == math.Trunc(data) {
+			return
+		}
+	}
+	t.Fatalf("%s: expected %s, got %#v", path, schema.Type, value)
+}
+
+type mcpTestTransport func(*http.Request) (*http.Response, error)
+
+func (transport mcpTestTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+func TestMCPSearchFiltersAndAccess(t *testing.T) {
+	for _, test := range []struct {
+		kind, params, id, renderer string
+	}{
+		{"videos", youtube.SearchVideosParams, "", ""},
+		{"all", "", "", ""},
+		{"albums", youtube.SearchAlbumsParams, "MPREb_example", "ALBUM"},
+		{"playlists", youtube.SearchPlaylistsParams, "VLPL_example", "PLAYLIST"},
+		{"artists", youtube.SearchArtistsParams, "UCexample", "ARTIST"},
+	} {
+		t.Run(test.kind, func(t *testing.T) {
+			a := newTestApp(t)
+			a.settings.MCPControl = true
+			a.account.public = youtube.NewClient(youtube.Options{APIKey: "test", HTTPClient: &http.Client{Transport: mcpTestTransport(func(r *http.Request) (*http.Response, error) {
+				var payload struct{ Params string }
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.Params != test.params {
+					t.Fatalf("search params: %+v %v", payload, err)
+				}
+				body := searchFilteredResponse
+				if test.id != "" {
+					body = fmt.Sprintf(`{"contents":{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"navigationEndpoint":{"browseEndpoint":{"browseId":%q,"browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":%q}}}},"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Result"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Description"}]}}}]}}]}}}`, test.id, "MUSIC_PAGE_TYPE_"+test.renderer)
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			})}})
+			result, err := a.mcpCall(t.Context(), "search", fmt.Appendf(nil, `{"kind":%q,"query":"test"}`, test.kind))
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := result.(mcpItems).Items
+			if len(items) == 0 || items[0].CollectionID != test.id {
+				t.Fatalf("search results: %+v", items)
+			}
+			if test.id != "" {
+				if items[0].VideoID != "" || items[0].Subtitle == "" {
+					t.Fatalf("collection result: %+v", items[0])
+				}
+				if _, ok := a.mcpSearchCache.Get(test.id); !ok {
+					t.Fatal("collection missing from search cache")
+				}
+			}
+		})
+	}
+	for _, off := range []bool{false, true} {
+		a := newTestApp(t)
+		a.settings.MCPControl = true
+		a.account.public = youtube.NewClient(youtube.Options{APIKey: "test", HTTPClient: &http.Client{Transport: mcpTestTransport(func(*http.Request) (*http.Response, error) {
+			if off {
+				a.settings.MCPControl = false
+			}
+			return nil, errors.New("test network failure")
+		})}})
+		_, err := a.mcpCall(t.Context(), "search", json.RawMessage(`{"query":"test"}`))
+		if err == nil || (off && !errors.Is(err, errMCPDisabled)) || (!off && !strings.Contains(err.Error(), "search failed")) {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestMCPPlaybackActions(t *testing.T) {
+	for _, test := range []struct {
+		action   string
+		position time.Duration
+		index    int
+	}{
+		{"play", 0, 1},
+		{"toggle", 0, 1},
+		{"next", 0, 2},
+		{"previous", 2 * time.Second, 0},
+		{"previous", 4 * time.Second, 1},
+	} {
+		t.Run(fmt.Sprintf("%s/%s", test.action, test.position), func(t *testing.T) {
+			a, _ := playbackApp(t)
+			a.settings.MCPControl = true
+			queue := tracks("earlier", "current", "next")
+			a.playFrom(queue[1], queue, 1, youtube.UpNextOptions{}, "test")
+			a.player.Pause()
+			a.player.Seek(test.position)
+			value, err := a.mcpCall(t.Context(), "playback", fmt.Appendf(nil, `{"action":%q}`, test.action))
+			if err != nil {
+				t.Fatal(err)
+			}
+			state := value.(mcpState)
+			if state.Index != test.index {
+				t.Fatalf("queue index: %+v", state)
+			}
+			if test.action == "previous" && test.index == 1 && state.Position > 1 {
+				t.Fatalf("did not restart: %+v", state)
+			}
+		})
+	}
+}
+
+func TestMCPExcludedQueueAddKeepsBudget(t *testing.T) {
+	a, _ := playbackApp(t)
+	a.settings.MCPControl = true
+	a.settings.ExcludeAIGenerated = true
+	a.cacheMCPSearchResults([]youtube.MusicItem{{VideoID: "9cHbvRUALrc", AIDisclosure: youtube.AIAlteredOrGenerated}})
+	raw := json.RawMessage(`{"position":"end","video_ids":["9cHbvRUALrc"]}`)
+	if _, err := a.mcpCall(t.Context(), "queue_add", raw); err == nil || !strings.Contains(err.Error(), "excluded") {
+		t.Fatal(err)
+	}
+	if wait := a.mcpAdd.AllowAfter(time.Now(), 30, 0, 30); wait != 0 {
+		t.Fatalf("rejected track charged the budget: %v", wait)
+	}
+}
+
+func TestMCPSnapshotSettlesOrReportsLoading(t *testing.T) {
+	a := newTestApp(t)
+	snapshot, err := a.waitForMCPSnapshot(t.Context())
+	if err != nil || snapshot.Status != "stopped" {
+		t.Fatalf("settled snapshot: %+v %v", snapshot, err)
+	}
+	_, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	a.stream.cancel = cancel
+	snapshot, err = a.waitForMCPSnapshot(t.Context())
+	if err != nil || snapshot.Status != "loading" {
+		t.Fatalf("waiting snapshot: %+v %v", snapshot, err)
 	}
 }

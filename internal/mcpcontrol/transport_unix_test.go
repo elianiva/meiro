@@ -47,6 +47,16 @@ func TestUnixSocketLifecycle(t *testing.T) {
 		_ = second.Close()
 		t.Fatal("second listener acquired an active socket")
 	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if conn, err := dial(t.Context()); err == nil {
+		_ = conn.Close()
+		t.Fatal("dial accepted a permissive socket")
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	conn, err := dial(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -68,6 +78,9 @@ func TestUnixSocketPath(t *testing.T) {
 		t.Fatalf("fallback path %q: %v", path, err)
 	}
 	t.Setenv("FLATPAK_ID", "com.elianiva.meiro")
+	if _, err := endpoint(); err == nil {
+		t.Fatal("accepted Flatpak without XDG_RUNTIME_DIR")
+	}
 	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1000")
 	if path, err := endpoint(); err != nil || !strings.HasPrefix(path, "/run/user/1000/app/com.elianiva.meiro/") {
 		t.Fatalf("Flatpak path %q: %v", path, err)
