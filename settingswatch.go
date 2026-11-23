@@ -168,6 +168,9 @@ func (a *app) reloadSettings(data []byte) {
 
 func (a *app) applyReloadedSettings(previous settings.Settings) {
 	s := &a.settings
+	if s.MCPControl != previous.MCPControl {
+		a.syncMCP()
+	}
 	if s.Volume != previous.Volume || s.LogVolume != previous.LogVolume {
 		a.volume = s.Volume
 		if a.volume > 0 {

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/danklyrics"
 	"github.com/elianiva/meiro/internal/diskcache"
+	"github.com/elianiva/meiro/internal/mcpcontrol"
 	"github.com/elianiva/meiro/internal/memprof"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
@@ -33,7 +35,35 @@ const (
 	freeOSMemoryInterval         = 30 * time.Second
 )
 
+func mcpVersion() string {
+	if version := mygo.App.Version(); version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			return info.Main.Version
+		}
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" {
+				return "development+" + setting.Value
+			}
+		}
+	}
+	return "development"
+}
+
 func main() {
+	if slices.Contains(os.Args[1:], "--mcp") {
+		if len(os.Args) != 2 {
+			fmt.Fprintln(os.Stderr, "--mcp must be used by itself")
+			os.Exit(2)
+		}
+		if err := mcpcontrol.Bridge(os.Stdin, os.Stdout, mcpVersion()); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	debug.SetGCPercent(gcPercentForArtworkHeavyHeap)
 	stopMemprof := memprof.Start(15 * time.Second)
 	proc.ExtendPath()
@@ -86,6 +116,7 @@ func main() {
 		a.every(persistInterval, func() { a.update(a.persistPlayback) })
 		a.every(freeOSMemoryInterval, debug.FreeOSMemory)
 		a.watchSettings()
+		a.syncMCP()
 		a.watchSession()
 		a.every(flushInterval, func() { a.update(a.flushScrobbles) })
 		a.desktop.win.OnClosed(a.stopTicking)
@@ -229,6 +260,8 @@ func (a *app) openAudioCache() {
 
 func (a *app) shutdown() {
 	a.shutdownOnce.Do(func() {
+		a.stopTicking()
+		a.closeMCP()
 		a.aiCheck.stop()
 		a.notificationArtwork.stop()
 		a.finishEpisodeProgress(true)
@@ -254,7 +287,11 @@ func (a *app) shutdown() {
 	})
 }
 
-func (a *app) stopTicking() { a.stopOnce.Do(func() { close(a.stop) }) }
+func (a *app) stopTicking() {
+	a.stopOnce.Do(func() {
+		close(a.stop)
+	})
+}
 
 func (a *app) every(interval time.Duration, fn func()) {
 	go func() {

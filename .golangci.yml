@@ -52,6 +52,7 @@ linters:
             - "**/player/**"
             - "**/systemmedia/**"
             - "**/internal/lru/**"
+            - "**/internal/mcpcontrol/**"
             - "**/internal/fsutil/**"
             - "**/internal/history/**"
             - "**/internal/cookies/**"

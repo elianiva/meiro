@@ -22,6 +22,7 @@ import (
 )
 
 type Settings struct {
+	MCPControl         bool              `json:"mcpControl,omitempty"`
 	Seed               string            `json:"seed"`
 	Mode               string            `json:"mode"`
 	Style              int               `json:"style"`

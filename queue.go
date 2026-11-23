@@ -139,7 +139,7 @@ func (q *queue) find(videoID string) int {
 	return slices.IndexFunc(q.items, func(t youtube.MusicItem) bool { return t.VideoID == videoID })
 }
 
-func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
+func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) int {
 	position := len(q.items)
 	if q.hasRecommendations() {
 		if q.index < q.recStart {
@@ -164,6 +164,7 @@ func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 			q.recStart = position + 1
 		}
 	}
+	return position
 }
 
 func (q *queue) appendPlaylist(items []youtube.MusicItem, shuffle bool) {

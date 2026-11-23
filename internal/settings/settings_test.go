@@ -127,3 +127,19 @@ func TestParseColorsReadsMatugenOutputAndRefusesTypos(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPControlParsing(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		want  bool
+	}{
+		{`{}`, false},
+		{`{"mcpControl":false}`, false},
+		{`{"mcpControl":true}`, true},
+	} {
+		got, err := Parse([]byte(test.input))
+		if err != nil || got.MCPControl != test.want {
+			t.Fatalf("parse %s = %t, %v", test.input, got.MCPControl, err)
+		}
+	}
+}

@@ -12,6 +12,14 @@ type SearchFilter struct {
 	Params string `json:"params,omitempty"`
 }
 
+const (
+	SearchSongsParams     = "EgWKAQIIAWoSEAUQAxAJ"
+	SearchVideosParams    = "EgWKAQIQAWoSEAUQAxAJ"
+	SearchAlbumsParams    = "EgWKAQIYAWoSEAUQAxAJ"
+	SearchPlaylistsParams = "EgWKAQIoAWoSEAUQAxAJ"
+	SearchArtistsParams   = "EgWKAQIgAWoSEAUQAxAJ"
+)
+
 type SearchOptions struct {
 	Params string
 }

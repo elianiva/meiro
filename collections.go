@@ -98,12 +98,29 @@ func (a *app) playCollection(item youtube.MusicItem, key string, shuffle bool) {
 	if shuffle {
 		a.shuffle = true
 	}
+	a.playCollectionResult(nil, item, key, shuffle, nil)
+}
+
+func (a *app) playCollectionResult(active func() bool, item youtube.MusicItem, key string, shuffle bool, done func(error)) {
 	target := item.Target()
 	if target.Kind == youtube.TargetTrack {
 		a.play(item, []youtube.MusicItem{item})
 		return
 	}
-	a.withCollectionTracks(item, key, false, func(songs []youtube.MusicItem, token string) {
+	a.withCollectionTracksResult(item, key, false, func(songs []youtube.MusicItem, token string, err error) {
+		if done != nil {
+			if !active() {
+				return
+			}
+			done(err)
+			if err == nil {
+				a.shuffle = shuffle
+			}
+		}
+		if err != nil {
+			return
+		}
+
 		start := 0
 		if shuffle && len(songs) > 1 {
 			start, songs = drawFirst(songs)
@@ -129,11 +146,20 @@ func (a *app) startRadio(item youtube.MusicItem, key string) {
 }
 
 func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool, then func([]youtube.MusicItem, string)) {
+	a.withCollectionTracksResult(item, key, all, func(songs []youtube.MusicItem, token string, err error) {
+		if err == nil {
+			then(songs, token)
+		}
+	})
+}
+
+func (a *app) withCollectionTracksResult(item youtube.MusicItem, key string, all bool, then func([]youtube.MusicItem, string, error)) {
 	target := item.Target()
 	if target.Kind != youtube.TargetAlbum && target.Kind != youtube.TargetPlaylist && target.Kind != youtube.TargetArtist {
 		return
 	}
 	if a.isOpening(key) {
+		then(nil, "", errors.New("wait for Meiro to finish opening this collection"))
 		return
 	}
 	a.openingKey = key
@@ -183,17 +209,19 @@ func (a *app) withCollectionTracks(item youtube.MusicItem, key string, all bool,
 		}
 		if err != nil {
 			a.notice = "Could not open “" + item.Title + "”: " + firstLine(err.Error())
+			then(nil, "", errors.New("could not open the collection; check that it opens in Meiro"))
 			return
 		}
 		songs := tracksOf(result, item.Thumbnail)
 		if len(songs) == 0 {
+			then(nil, "", errors.New("the collection has no playable tracks"))
 			return
 		}
 		token := ""
 		if (target.Kind == youtube.TargetPlaylist || artistList != "") && !all {
 			token, _ = playlistContinuations(result.Sections, result.ContinuationToken)
 		}
-		then(songs, token)
+		then(songs, token, nil)
 	})
 }
 

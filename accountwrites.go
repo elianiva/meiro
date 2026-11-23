@@ -50,14 +50,10 @@ func (a *app) toggleRating(item youtube.MusicItem, rating youtube.LikeStatus) {
 	if before == rating {
 		after = youtube.Indifferent
 	}
-	a.setLike(id, after, false)
-	a.writeBehind("like:"+id, func(ctx context.Context, client *youtube.Client) error {
-		return client.RateTrack(ctx, id, after)
-	}, func(err error) {
+	a.rateTrack(item, after, func(err error) {
 		if err == nil {
 			return
 		}
-		a.setLike(id, before, false)
 		var verb string
 		switch [2]youtube.LikeStatus{rating, after} {
 		case [2]youtube.LikeStatus{youtube.Liked, youtube.Indifferent}:
@@ -70,6 +66,19 @@ func (a *app) toggleRating(item youtube.MusicItem, rating youtube.LikeStatus) {
 			verb = "dislike"
 		}
 		a.notice = "Could not " + verb + " “" + item.Title + "”: " + firstLine(err.Error())
+	})
+}
+
+func (a *app) rateTrack(item youtube.MusicItem, rating youtube.LikeStatus, done func(error)) {
+	id := item.VideoID
+	a.setLike(id, rating, false)
+	a.writeBehind("like:"+id, func(ctx context.Context, client *youtube.Client) error {
+		return client.RateTrack(ctx, id, rating)
+	}, func(err error) {
+		if err != nil {
+			a.setLike(id, item.Like, false)
+		}
+		done(err)
 	})
 }
 
