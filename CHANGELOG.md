@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Lyrics come from more sources.** Meiro now looks for lyrics in Unison, LyricsPlus and KuGou as well as Better Lyrics and LRCLIB, prefers word-synced results, and keeps YouTube Music as the fallback. A repeat listen reads them from a cache, and the next track's lyrics are fetched while the current one plays.
+
+### Fixed
+
+- **More songs get their lyrics from Better Lyrics.** Better Lyrics keeps some songs under the track's length and others under its artist and title, so a lookup that found nothing one way is now asked the other way too. Songs Meiro used to pass over can show timed lyrics, word by word where Better Lyrics has them.
+
 ## [0.7.2] - 2026-11-17
 
 ### Changed

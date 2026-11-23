@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "danklyrics",
+    srcs = ["danklyrics.go"],
+    importpath = "github.com/elianiva/meiro/internal/danklyrics",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/lyrics",
+        "@com_github_duxlabs_dev_dux_go//lyrics",
+    ],
+)
+
+go_test(
+    name = "danklyrics_test",
+    srcs = ["danklyrics_test.go"],
+    embed = [":danklyrics"],
+    deps = [
+        "//internal/lyrics",
+        "@com_github_duxlabs_dev_dux_go//lyrics",
+    ],
+)
