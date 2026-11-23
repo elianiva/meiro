@@ -1,0 +1,65 @@
+diff -ruN a/lyrics/BUILD.bazel b/lyrics/BUILD.bazel
+--- a/lyrics/BUILD.bazel
++++ b/lyrics/BUILD.bazel
+@@ -8,6 +8,8 @@
+         "cache.go",
+         "choice.go",
+         "command.go",
++        "command_other.go",
++        "command_unix.go",
+         "doc.go",
+         "kugou.go",
+         "lrc.go",
+diff -ruN a/lyrics/command.go b/lyrics/command.go
+--- a/lyrics/command.go
++++ b/lyrics/command.go
+@@ -7,7 +7,6 @@
+ 	"errors"
+ 	"fmt"
+ 	"os/exec"
+-	"syscall"
+ 	"time"
+ )
+ 
+@@ -48,8 +47,7 @@
+ 		cmd := exec.CommandContext(ctx, name, args...)
+ 		cmd.Stdin = bytes.NewReader(query)
+ 		cmd.Stdout = &stdout
+-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+-		cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
++		killProcessGroupOnCancel(cmd)
+ 		cmd.WaitDelay = time.Second
+ 		err = cmd.Run()
+ 		deadline, _ := ctx.Deadline()
+diff -ruN a/lyrics/command_other.go b/lyrics/command_other.go
+--- a/lyrics/command_other.go
++++ b/lyrics/command_other.go
+@@ -0,0 +1,9 @@
++//go:build !unix
++
++package lyrics
++
++import "os/exec"
++
++// killProcessGroupOnCancel keeps exec's default cancel, which kills only cmd:
++// process groups are a Unix feature.
++func killProcessGroupOnCancel(*exec.Cmd) {}
+diff -ruN a/lyrics/command_unix.go b/lyrics/command_unix.go
+--- a/lyrics/command_unix.go
++++ b/lyrics/command_unix.go
+@@ -0,0 +1,15 @@
++//go:build unix
++
++package lyrics
++
++import (
++	"os/exec"
++	"syscall"
++)
++
++// killProcessGroupOnCancel runs cmd in its own process group and kills the
++// whole group on cancel, so a script's children do not outlive the timeout.
++func killProcessGroupOnCancel(cmd *exec.Cmd) {
++	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
++	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
++}
