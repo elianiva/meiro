@@ -42,3 +42,4 @@ This directory is the maintained source for verifying what a Meiro user can do. 
 - [Discord Rich Presence](./discord-presence.md) covers the settings, track activity, elapsed time, and clearing presence.
 - [Page states](./page-states.md) covers loading, empty, failed and offline pages, and Retry.
 - [Native-only behavior](./native-only.md) lists what no headless proof can show.
+- [AI control](mcp.md) covers setup, local IPC and tool limits.

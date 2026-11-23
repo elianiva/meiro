@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Connect local AI assistants to Meiro.** Turn on AI control in Desktop settings and copy the setup prompt to connect a local MCP client for search, track and collection playback, radio, queue editing, and ratings. MCP clients can read the ratings Meiro knows.
 - **Lyrics come from more sources.** Meiro now looks for lyrics in Unison, LyricsPlus and KuGou as well as Better Lyrics and LRCLIB, prefers word-synced results, and keeps YouTube Music as the fallback. A repeat listen reads them from a cache, and the next track's lyrics are fetched while the current one plays.
 
 ### Fixed

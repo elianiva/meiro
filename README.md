@@ -72,6 +72,7 @@ scrobble your listening to Last.fm.
   clears the activity when playback pauses or stops.
 - **Keyboard shortcuts.** Control music from the keyboard, and change the keys
   to what suits you.
+- **Control with MCP.** Connect a local agent to [control Meiro](#control-meiro-with-mcp).
 
 ### Your account and library
 
@@ -297,6 +298,40 @@ the file is not encrypted. A locked or failing credential store does not make
 Meiro write the session unencrypted. Choose **Sign out** to remove Meiro's saved session.
 
 Public browsing and playback do not need an account.
+
+## Control Meiro with MCP
+
+1. Turn on **Settings → Desktop → AI control** to let local agents read
+   playback, search YouTube Music, edit the queue, and rate tracks. It starts off.
+2. Select **Copy setup prompt** and paste it into the local agent you want to
+   connect. For manual setup, expand **Advanced** to copy the JSON config.
+3. Keep Meiro open. Approve the server in your MCP client if it asks. Check
+   the active request count and the last agent action in Desktop settings.
+
+Try “What's playing?”, “Play the next track”, or “Find songs by Yorushika and
+queue two before autoplay.” Queue indexes start at zero. Shuffle keeps the
+recommendation section in place. Clearing the upcoming queue requires
+confirmation and keeps the current and played tracks. Autoplay can add
+recommendations after a clear.
+
+Search for songs, videos, albums, playlists, or artists. Playing a track inserts
+it after the current track. Playing a collection or starting a radio replaces
+the queue. Rating tracks requires a YouTube Music sign-in. Requests are
+rate-limited. Queue reads return up to 50 entries per page.
+
+Track results include a `rating` of `like`, `dislike`, `none`, or `unknown`.
+`unknown` means Meiro has no rating information. Check `now_playing` or
+`queue_list` before calling `like`.
+
+If your client cannot connect, check that Meiro shows **Listening**. Copy the
+setup prompt again if Meiro moved. The stdio server runs the copied executable
+with `--mcp`. On macOS this is the executable inside `.app/Contents/MacOS/`. For
+Flatpak use `flatpak run --command=meiro com.elianiva.meiro --mcp` so the bridge
+runs inside the same app sandbox. Turn off **AI control** to disconnect clients.
+
+AI control uses a pipe or socket restricted to your operating system user.
+It exposes playback and queue data. Account credentials and stream URLs stay
+inside Meiro.
 
 ## Match your desktop with matugen
 
