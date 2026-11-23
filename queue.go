@@ -460,18 +460,15 @@ func (q *queue) moveRows(rows []int, to int) bool {
 	if q.hasDivider() && to > q.recStart {
 		toIndex--
 	}
-	current := q.current()
-	moved := reorder(q.items, indices, toIndex)
-	index := slices.IndexFunc(moved, func(item youtube.MusicItem) bool { return item.VideoID == current.VideoID })
-	if index < 0 {
+	if q.index < 0 || q.index >= len(q.items) {
 		return false
 	}
-	q.items, q.index = moved, index
+	q.items, q.index = reorder(q.items, indices, toIndex, q.index)
 	q.recStart = q.firstGeneratedFrom(q.index + 1)
 	return true
 }
 
-func reorder(items []youtube.MusicItem, indices []int, to int) []youtube.MusicItem {
+func reorder(items []youtube.MusicItem, indices []int, to, current int) ([]youtube.MusicItem, int) {
 	at := make(map[int]struct{}, len(indices))
 	for _, index := range indices {
 		if index >= 0 && index < len(items) {
@@ -480,10 +477,17 @@ func reorder(items []youtube.MusicItem, indices []int, to int) []youtube.MusicIt
 	}
 	moving := make([]youtube.MusicItem, 0, len(at))
 	rest := make([]youtube.MusicItem, 0, len(items))
+	var currentOffset int
 	for i, item := range items {
 		if _, ok := at[i]; ok {
+			if i == current {
+				currentOffset = len(moving)
+			}
 			moving = append(moving, item)
 		} else {
+			if i == current {
+				currentOffset = len(rest)
+			}
 			rest = append(rest, item)
 		}
 	}
@@ -494,7 +498,12 @@ func reorder(items []youtube.MusicItem, indices []int, to int) []youtube.MusicIt
 		}
 	}
 	insert = min(max(insert, 0), len(rest))
-	return slices.Concat(rest[:insert], moving, rest[insert:])
+	if _, ok := at[current]; ok {
+		currentOffset += insert
+	} else if currentOffset >= insert {
+		currentOffset += len(moving)
+	}
+	return slices.Concat(rest[:insert], moving, rest[insert:]), currentOffset
 }
 
 type repeatMode uint8

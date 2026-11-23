@@ -457,3 +457,19 @@ func TestQueueNextEligible(t *testing.T) {
 		})
 	}
 }
+
+func TestMovingQueueRowsKeepsTheCurrentCopyOfADuplicate(t *testing.T) {
+	q := newQueue()
+	q.items = []youtube.MusicItem{
+		{VideoID: "duplicate", Title: "first copy"},
+		{VideoID: "duplicate", Title: "current copy"},
+		{VideoID: "tail"},
+	}
+	q.index = 1
+	if !q.moveRows([]int{2}, 0) || q.index != 2 || q.current().Title != "current copy" {
+		t.Fatalf("moving another row selected the wrong copy: %d, %q", q.index, q.current().Title)
+	}
+	if !q.moveRows([]int{0, 2}, 1) || q.index != 1 || q.current().Title != "current copy" {
+		t.Fatalf("moving the current row selected the wrong copy: %d, %q", q.index, q.current().Title)
+	}
+}
