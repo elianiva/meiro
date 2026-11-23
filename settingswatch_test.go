@@ -294,6 +294,35 @@ func TestAutoSkipDislikedSettingPersists(t *testing.T) {
 	}
 }
 
+func TestWavyProgressSettingCanBeTurnedOff(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if !a.settings.WavyProgress {
+		t.Fatal("the wave should be on by default")
+	}
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("wavy progress")
+	tt.Frame()
+	if !tt.HasText("Wavy progress bar") {
+		t.Fatalf("settings do not offer the progress bar preference: %q", tt.Texts())
+	}
+	if err := tt.Click("Use wavy progress bar"); err != nil {
+		t.Fatal(err)
+	}
+	a.saver.Wait()
+	if a.settings.WavyProgress {
+		t.Fatal("the switch did not turn the wave off")
+	}
+	if settings.Load(a.saver.Path).WavyProgress {
+		t.Fatal("the flat progress bar was not saved")
+	}
+}
+
 func TestSettingsFileChangesApplyTheAIFilterToTheQueue(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := newTestApp(t)

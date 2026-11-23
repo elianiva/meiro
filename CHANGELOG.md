@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **The progress bar can be flat again.** Appearance has a Wavy progress bar switch. Turn it off and the position bar stays a flat line instead of a travelling wave. The wave is still on by default, and the choice is saved between runs.
+
 ## [0.7.2] - 2026-11-17
 
 ### Changed
