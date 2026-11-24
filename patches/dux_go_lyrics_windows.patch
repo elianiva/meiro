@@ -1,15 +1,3 @@
-diff -ruN a/lyrics/BUILD.bazel b/lyrics/BUILD.bazel
---- a/lyrics/BUILD.bazel
-+++ b/lyrics/BUILD.bazel
-@@ -8,6 +8,8 @@
-         "cache.go",
-         "choice.go",
-         "command.go",
-+        "command_other.go",
-+        "command_unix.go",
-         "doc.go",
-         "kugou.go",
-         "lrc.go",
 diff -ruN a/lyrics/command.go b/lyrics/command.go
 --- a/lyrics/command.go
 +++ b/lyrics/command.go

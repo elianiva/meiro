@@ -22,10 +22,14 @@ go_deps.from_file(go_mod = "//:go.mod")
 
 # dux-go's lyrics.Command uses Unix process groups with no build tag, so the
 # package does not compile for Windows. The patch moves that into a _unix file
-# until upstream does the same.
+# until upstream does the same. `mygo build` reads the module cache instead,
+# so scripts/dux-go-modfile.sh builds it from a patched copy of the module.
 go_deps.module_override(
     patch_strip = 1,
-    patches = ["//patches:dux_go_lyrics_windows.patch"],
+    patches = [
+        "//patches:dux_go_lyrics_windows.patch",
+        "//patches:dux_go_lyrics_windows_bazel.patch",
+    ],
     path = "github.com/duxlabs-dev/dux-go",
 )
 use_repo(
