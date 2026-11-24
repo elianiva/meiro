@@ -178,3 +178,19 @@ func TestARestartContinuesAnUnfinishedPlaylist(t *testing.T) {
 		t.Fatal("completed playlist still has a pending continuation")
 	}
 }
+
+func TestPlaybackRestoreKeepsPositionWhenDurationIsUnknown(t *testing.T) {
+	a, _ := playbackApp(t)
+	path := filepath.Join(t.TempDir(), "playback.json")
+	item := youtube.MusicItem{VideoID: "a", Title: "Track A"}
+	writer := playstate.Writer{Path: path}
+	writer.Save(playstate.State{Items: []youtube.MusicItem{item}, RecStart: -1, Position: 12 * time.Second})
+	writer.Wait()
+	a.restorePlayback(path)
+
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if got := a.playbackPosition(); got != 12*time.Second {
+		t.Fatalf("playback position after drawing the restored track = %v, want 12s", got)
+	}
+}

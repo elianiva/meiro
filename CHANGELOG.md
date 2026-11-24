@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Keep the saved playback position.** Meiro restores it even when the track duration is still unknown.
 - **The first lyric starts below its controls.** A song's opening line no longer sits halfway down the lyrics panel with a large blank gap above it.
 - **More songs get their lyrics from Better Lyrics.** Better Lyrics keeps some songs under the track's length and others under its artist and title, so a lookup that found nothing one way is now asked the other way too. Songs Meiro used to pass over can show timed lyrics, word by word where Better Lyrics has them.
 
