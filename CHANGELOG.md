@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-24
+
 ### Fixed
 
 - **A late artist lookup no longer shifts a Last.fm scrobble.** When Meiro finds the artist after a track starts, the scrobble keeps the real start time, and the listening before the lookup finishes counts.
