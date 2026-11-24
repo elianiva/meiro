@@ -18,6 +18,7 @@ import (
 	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/lru"
 	"github.com/elianiva/meiro/internal/lyrics"
+	"github.com/elianiva/meiro/internal/mcpcontrol"
 	"github.com/elianiva/meiro/internal/posthog"
 	"github.com/elianiva/meiro/internal/proc"
 	"github.com/elianiva/meiro/internal/report"
@@ -31,6 +32,16 @@ import (
 )
 
 type app struct {
+	mcp                                  *mcpcontrol.Server
+	mcpSearch, mcpAdd, mcpPlayback       mcpcontrol.Limiter
+	mcpLocal, mcpRatings, mcpCollections mcpcontrol.Limiter
+	mcpSearchCache                       *lru.Cache[string, youtube.MusicItem]
+	mcpError                             string
+	mcpAdvanced                          bool
+	mcpLastTool                          string
+	mcpLastAt                            time.Time
+	mcpLastFailed                        bool
+
 	desktop      *desktop
 	router       *ui.Router
 	player       *player.Player

@@ -1,0 +1,46 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "mcpcontrol",
+    srcs = [
+        "control.go",
+        "peer_darwin.go",
+        "peer_linux.go",
+        "protocol.go",
+        "tools.go",
+        "transport_other.go",
+        "transport_unix.go",
+        "transport_windows.go",
+    ],
+    importpath = "github.com/elianiva/meiro/internal/mcpcontrol",
+    visibility = ["//:__subpackages__"],
+    deps = select({
+        "@rules_go//go/platform:android": [
+            "@org_golang_x_sys//unix",
+        ],
+        "@rules_go//go/platform:darwin": [
+            "@org_golang_x_sys//unix",
+        ],
+        "@rules_go//go/platform:ios": [
+            "@org_golang_x_sys//unix",
+        ],
+        "@rules_go//go/platform:linux": [
+            "@org_golang_x_sys//unix",
+        ],
+        "@rules_go//go/platform:windows": [
+            "@com_github_microsoft_go_winio//:go-winio",
+            "@org_golang_x_sys//windows",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "mcpcontrol_test",
+    srcs = [
+        "control_test.go",
+        "transport_unix_test.go",
+        "transport_windows_test.go",
+    ],
+    embed = [":mcpcontrol"],
+)

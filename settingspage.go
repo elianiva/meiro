@@ -61,7 +61,7 @@ var settingsRows = []settingsRow{
 	{key: "ai", search: "ai artificial intelligence generated exclude skip filter songs", card: (*app).aiFilterCard},
 
 	{key: "h-system", heading: "System"},
-	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle notch macbook lyrics", card: (*app).desktopCard},
+	{key: "desktop", search: "desktop linux notifications mcp ai agent control discord rich presence activity status tray icon wordmark o mark low key subtle notch macbook lyrics", card: (*app).desktopCard},
 	{key: "keyboard", search: "keyboard shortcuts keys", card: (*app).keyboardCard},
 
 	{key: "h-data", heading: "Storage and privacy"},
@@ -701,6 +701,7 @@ func (a *app) desktopCard(c *ui.Context) {
 					a.settings.GlobalShortcut = on
 					a.syncShortcut()
 				})
+			a.mcpSetting(c)
 			a.desktopSwitch(c, "Discord Rich Presence", "Share the track, artist, cover and elapsed time while music plays. The status clears when playback pauses or stops.",
 				a.settings.DiscordPresence, func(on bool) {
 					a.settings.DiscordPresence = on

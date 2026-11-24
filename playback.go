@@ -243,20 +243,20 @@ func (a *app) starting() bool { return a.aiCheck.busy() || a.stream.busy() }
 
 func (a *app) loading() bool { return a.starting() || a.player.Buffering() }
 
-func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
+func (a *app) enqueue(item youtube.MusicItem, playNext bool) int {
 	if item.VideoID == "" {
-		return
+		return -1
 	}
 	if a.excludesItem(item) {
 		a.notice = "Skipped " + item.Title + ": YouTube marks it as made with AI"
-		return
+		return -1
 	}
 	if a.current.VideoID == "" || a.queue.len() == 0 {
 		a.playFrom(item, nil, 0, youtube.UpNextOptions{}, "Queue")
 		a.notice = "Playing " + item.Title
-		return
+		return a.queue.index
 	}
-	a.queue.insert(item, playNext, a.settings.AutoPlay)
+	index := a.queue.insert(item, playNext, a.settings.AutoPlay)
 	a.clearQueueSelection()
 	a.rememberQueued(item.VideoID)
 	a.learnCredits(item)
@@ -267,6 +267,7 @@ func (a *app) enqueue(item youtube.MusicItem, playNext bool) {
 	}
 	a.syncPreload()
 	a.syncSystemMedia()
+	return index
 }
 
 func (a *app) moveQueue(rows []int, to int) {
