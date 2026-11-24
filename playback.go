@@ -148,7 +148,7 @@ func (a *app) startTrack(item youtube.MusicItem, automatic bool) {
 }
 
 func (a *app) startTrackNow(item youtube.MusicItem, startAt time.Duration, changed bool) {
-	a.streamAudio(item, startAt, changed)
+	a.streamAudio(item, startAt, changed, true)
 	a.afterEnter(item, changed)
 }
 

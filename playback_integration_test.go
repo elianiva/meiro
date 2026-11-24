@@ -247,6 +247,25 @@ func TestRepeatModes(t *testing.T) {
 	}
 }
 
+func TestARepeatedTrackIsRecordedAgain(t *testing.T) {
+	a, _ := tonesApp(t, 5)
+	a.historyPath = filepath.Join(t.TempDir(), "history.json")
+	t.Cleanup(a.historyWriter.Wait)
+	a.repeat = repeatTrack
+	q := []youtube.MusicItem{song("a")}
+	a.play(q[0], q)
+	pollUntil(t, a, "the first play", func() bool { return len(a.history) == 1 })
+	a.trackEnded()
+	pollUntil(t, a, "the repeat", func() bool { return len(a.history) == 2 })
+	if a.history[0].VideoID != "a" || a.history[1].VideoID != "a" {
+		t.Fatalf("history = %+v, want two plays of the same track", a.history)
+	}
+	a.historyWriter.Wait()
+	if saved := history.Read(a.historyPath); len(saved) != 2 {
+		t.Errorf("saved history has %d plays, want 2", len(saved))
+	}
+}
+
 func TestTurningShuffleOffPutsTheQueueBack(t *testing.T) {
 	a, _ := playbackApp(t)
 	q := tracks("a", "b", "c", "d")

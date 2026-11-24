@@ -79,7 +79,7 @@ type resolvedAudio struct {
 	loudnessOK bool
 }
 
-func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed bool) {
+func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed, newPlay bool) {
 	cache := a.currentAudioCache()
 	accountProgress := a.signedIn()
 	loudnessClient := a.loudnessClient(item.VideoID)
@@ -139,15 +139,15 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 		}
 		log.Printf("playback: audio started video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
 		a.applySpeed()
-		a.audioStarted(item, found, a.player.Position(), changed, cache)
+		a.audioStarted(item, found, a.player.Position(), changed, newPlay, cache)
 		a.syncSystemMedia()
 	})
 }
 
-func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position time.Duration, changed bool, cache *audio.Cache) {
+func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position time.Duration, changed, newPlay bool, cache *audio.Cache) {
 	a.skipped = 0
 	a.aiRefills = 0
-	if changed {
+	if newPlay {
 		a.recordHistory(item)
 	}
 	if item.IsEpisode() {
@@ -249,7 +249,7 @@ func (a *app) followed(tag string) {
 		}
 	}
 	log.Printf("playback: audio followed on video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
-	a.audioStarted(item, found.resolvedAudio, startAt, changed, a.currentAudioCache())
+	a.audioStarted(item, found.resolvedAudio, startAt, changed, true, a.currentAudioCache())
 	a.afterEnter(item, changed)
 	a.syncSystemMedia()
 }
