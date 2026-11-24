@@ -259,11 +259,18 @@ func (a *app) syncedLyrics(c *ui.Context) {
 	if l.followed != now {
 		l.followed, l.centerPending = now, true
 	}
+	if now <= 0 && l.centerPending {
+		l.centerPending, l.settled = false, false
+		scroll.Y = 0
+	}
 	viewport := ui.Rect{}
 	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
 		view := ui.Scroll(c.Key("lyrics")).TrackScroll(scroll).Grow(1)
 		viewport = view.LayoutBounds()
 		pad := max(viewport.H/2-40, 40)
+		if now <= 0 {
+			pad = 16
+		}
 		view.Padding(pad, 16, pad).Children(func() {
 			ui.Column(c).FillWidth().MaxWidth(lyricMeasure).AlignSelf(ui.Center).Children(func() {
 				for i, line := range l.synced {
@@ -271,10 +278,6 @@ func (a *app) syncedLyrics(c *ui.Context) {
 				}
 			})
 		})
-		if now < 0 && l.centerPending && viewport.H > 0 {
-			l.centerPending = false
-			scroll.ScrollTo(0, 0, lyricScroll)
-		}
 		surface := panelSurface(sc)
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(lyricFade).PassThrough().
 			Gradient(surface, ui.Transparent, 180)

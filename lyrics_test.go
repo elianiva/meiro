@@ -181,6 +181,37 @@ func TestTheSungLineSitsInTheMiddleOfTheLyrics(t *testing.T) {
 	}
 }
 
+func TestTheOpeningLyricStartsNearTheLyricsControls(t *testing.T) {
+	a := newTestApp(t)
+	a.lyricsSource = func(context.Context, lyrics.Query) (lyrics.Result, error) {
+		return lyrics.Result{Synced: []lyrics.Line{
+			{At: 0, Text: "opening line"},
+			{At: 5 * time.Second, Text: "next line"},
+		}}, nil
+	}
+	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.total = 3 * time.Minute
+	a.nowPlaying.tab = tabLyrics
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	a.setMiniShown(true)
+	for range 4 {
+		tt.Frame()
+	}
+	opening, ok := tt.Find("opening line")
+	if !ok {
+		t.Fatalf("the opening lyric is missing: %q", tt.Texts())
+	}
+	mode, ok := tt.Find("Synced lyrics")
+	if !ok {
+		t.Fatalf("the lyrics mode controls are missing: %q", tt.Texts())
+	}
+	gap := opening.Y - (mode.Y + mode.H)
+	if gap < 0 || gap > 40 {
+		t.Fatalf("the opening lyric is %.0f DIPs below the lyrics controls, want at most 40", gap)
+	}
+}
+
 func TestLyricWordsLightAsTheyAreSung(t *testing.T) {
 	sc := m3.New(m3.Config{}, true).Scheme
 	line := lyrics.Line{At: 0, Text: "one two three", Words: []lyrics.Word{
