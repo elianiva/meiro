@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-24
+
 ### Added
 
 - **Connect local AI assistants to Meiro.** Turn on AI control in Desktop settings and copy the setup prompt to connect a local MCP client for search, track and collection playback, radio, queue editing, and ratings. MCP clients can read the ratings Meiro knows.
