@@ -79,7 +79,7 @@ func (a *app) scrubber(c *ui.Context) {
 		m3.Text(c, m3.LabelMedium, clock(time.Duration(*position*float64(time.Second)))).
 			MinWidth(40).NoWrap().TextAlign(ui.End).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 		slider := m3.Slider(c, position, 0, total, m3.SliderSpec{
-			Label: "Position", Key: "scrubber", Wavy: true, Waving: a.player.Playing(), Disabled: !known,
+			Label: "Position", Key: "scrubber", Wavy: a.settings.WavyProgress, Waving: a.player.Playing(), Disabled: !known,
 		})
 		if slider.Pressed() {
 			a.scrubbing = true

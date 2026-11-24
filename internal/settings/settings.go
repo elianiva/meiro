@@ -54,6 +54,7 @@ type Settings struct {
 	DiscordPresence    bool              `json:"discordPresence,omitempty"`
 	CloseToTray        *bool             `json:"closeToTray,omitempty"`
 	OpenAtLogin        bool              `json:"openAtLogin"`
+	WavyProgress       bool              `json:"wavyProgress"` // off draws a flat progress bar
 	LastFMUser         string            `json:"lastfmUser,omitempty"`
 	LastFMPaused       bool              `json:"lastfmPaused,omitempty"`
 	Shortcuts          map[string]string `json:"shortcuts,omitempty"`
@@ -79,7 +80,7 @@ const (
 func Defaults() Settings {
 	return Settings{
 		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: runtime.GOOS != "darwin", ShowTray: runtime.GOOS != "darwin", TrayMark: TrayMarkWordmark,
-		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade,
+		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade, WavyProgress: true,
 	}
 }
 

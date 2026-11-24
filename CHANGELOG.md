@@ -9,11 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **Connect local AI assistants to Meiro.** Turn on AI control in Desktop settings and copy the setup prompt to connect a local MCP client for search, track and collection playback, radio, queue editing, and ratings. MCP clients can read the ratings Meiro knows.
+- **The progress bar can be flat again.** Appearance has a Wavy progress bar switch. Turn it off and the position bar stays a flat line instead of a travelling wave. The wave is still on by default, and the choice is saved between runs.
 - **Lyrics come from more sources.** Meiro now looks for lyrics in Unison, LyricsPlus and KuGou as well as Better Lyrics and LRCLIB, prefers word-synced results, and keeps YouTube Music as the fallback. A repeat listen reads them from a cache, and the next track's lyrics are fetched while the current one plays.
 
 ### Fixed
 
 - **Keep the saved playback position.** Meiro restores it even when the track duration is still unknown.
+- **The first lyric starts below its controls.** A song's opening line no longer sits halfway down the lyrics panel with a large blank gap above it.
 - **More songs get their lyrics from Better Lyrics.** Better Lyrics keeps some songs under the track's length and others under its artist and title, so a lookup that found nothing one way is now asked the other way too. Songs Meiro used to pass over can show timed lyrics, word by word where Better Lyrics has them.
 
 ## [0.7.2] - 2026-11-17
