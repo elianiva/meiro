@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **The progress bar can be flat again.** Appearance has a Wavy progress bar switch. Turn it off and the position bar stays a flat line instead of a travelling wave. The wave is still on by default, and the choice is saved between runs.
 - **Lyrics come from more sources.** Meiro now looks for lyrics in Unison, LyricsPlus and KuGou as well as Better Lyrics and LRCLIB, prefers word-synced results, and keeps YouTube Music as the fallback. A repeat listen reads them from a cache, and the next track's lyrics are fetched while the current one plays.
 
 ### Fixed

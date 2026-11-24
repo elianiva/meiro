@@ -15,7 +15,7 @@ A user changes the theme and equaliser, rebinds shortcuts, clears history, opens
 - `settings-support` opens `Open logs folder` and `Report a problem` with a prefilled issue.
 - `settings-lastfm` connects, pauses and disconnects Last.fm, and scrobbles qualifying plays.
 - `settings-top-bar` keeps global music search and the account out of the app-owned top bar; Settings has a playlist-style search button that filters settings in place, while Stats has no search entry point.
-- `settings-progress` keeps the wavy progress bar on by default and no longer offers a preference or performance warning in Settings.
+- `settings-progress` switches the wavy position bar off for a flat bar in Appearance, and keeps the choice across restarts.
 - `settings-zoom` changes the interface zoom with the Appearance card's `Zoom in` and `Zoom out`, the `Cmd`/`Ctrl` shortcuts, and back to 100% with `Cmd`/`Ctrl+0`.
 - `settings-tray` selects the wordmark or the low-key O mark on macOS and Linux, and keeps that choice after restart.
 
@@ -38,7 +38,7 @@ Preconditions:
 - **Shortcut.** Mirror `TestRecordingANewShortcut`. Press the key with `tt.Key(mods, key)`, never by calling the action.
 - **Keyboard-only navigation.** Mirror `TestKeyboardMenusKeepFocusAndRunActions`, `TestKeyboardPlayerTabsAndQueue`, `TestKeyboardOpensTheCoverMenu` and `TestKeyboardVolumeIsSaved` in `shortcuts_test.go`. The `tabTo` helper only sends Tab; verify the next action's focus explicitly. Test volume at 920 and 1280 pixels: the narrow popup must survive focus moving from Mute to Volume. `TestSeekingMovesThePlayerOffTheMainThread` checks Home and Right against the real decoder position, not only the scrubber value.
 - **Top bar.** Verified by `TestSettingsSearchFiltersSettingsInPlace`. `/settings` has a `Search settings` icon button that expands into a local filter; searching `Discord` shows Discord Rich Presence without unrelated cards, an unmatched query shows an empty state, and clearing restores the full list. `/stats` has no search entry point. Global music search remains on `/home`.
-- **Progress bar.** `TestSettingsDoNotOfferWavyProgressPreference` confirms Settings no longer offers the wave toggle or its warning. All player scrubbers use the shared `a.scrubber` with the wave enabled.
+- **Progress bar.** Mirror `TestWavyProgressSettingCanBeTurnedOff`. Search `wavy progress` in Settings, click `Use wavy progress bar`, wait for `a.saver`, and read `wavyProgress` from the file. The wave is on by default; the player, Now Playing and mini player all use the shared `a.scrubber`, which reads the preference.
 - **Zoom.** `TestZoomShortcutsScaleTheWindow` and `TestSettingsZoomButtonsChangeTheInterface` press `Cmd+=`, `Cmd+-` and `Cmd+0` and click `Zoom in`/`Zoom out`, and read the size the view gets: the window's DIPs over the zoom, so 1000x700 becomes 909x636 at 110%. Settings values are clamped by `settings.ClampZoom`, which `TestClampZoomKeepsTheInterfaceReadable` covers. The screenshots show the same page at 100% and 150%; what a real display makes of the sharpness is native-only.
 - **Tray icon.** `TestTrayIconStyleCanBeChangedAndSavedInSettings` checks the Wordmark default, changes to `O mark`, reads the saved setting, then restores Wordmark. The two resources are optically centered vector exports; native tray rendering still needs macOS and Linux panel checks.
 - **History.** `p.click("Clear history", "confirm")`, `p.click("Delete all plays", "cleared")`. `a.history` is empty and the file on disk is too.
