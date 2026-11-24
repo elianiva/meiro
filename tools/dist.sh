@@ -122,10 +122,13 @@ if [[ -n "${MEIRO_SENTRY_DSN:-}" ]]; then
 	fi
 	printf '\nfunc init() { sentryProjectDSN = "%s" }\n' "$MEIRO_SENTRY_DSN" >>"$privacy_keys"
 fi
-# mygo build compiles from the module cache, which Bazel's dux-go patch does
-# not reach. See scripts/dux-go-modfile.sh.
-GOFLAGS="${GOFLAGS:+$GOFLAGS }-modfile=$(scripts/dux-go-modfile.sh)"
-export GOFLAGS
+# dux-go's lyrics package only fails to compile for Windows, and mygo build
+# reads the module cache, which Bazel's patch does not reach. Other platforms
+# build it as it ships. See scripts/dux-go-modfile.sh.
+if [[ "$platform" == windows-* ]]; then
+	GOFLAGS="${GOFLAGS:+$GOFLAGS }-modfile=$(scripts/dux-go-modfile.sh)"
+	export GOFLAGS
+fi
 build=(build -platform "${platform/-//}")
 if [[ -n "$out" ]]; then
 	build+=(-o "$out")

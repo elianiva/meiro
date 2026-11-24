@@ -21,8 +21,8 @@ if [[ "$root" == *" "* ]]; then
 fi
 # Read the module from the real go.mod, even when GOFLAGS already names a copy.
 # A fresh module cache, as on a release runner, does not have it yet.
-GOFLAGS= go mod download github.com/duxlabs-dev/dux-go
-module="$(GOFLAGS= go list -m -f '{{.Dir}}' github.com/duxlabs-dev/dux-go)"
+GOFLAGS='' go mod download github.com/duxlabs-dev/dux-go
+module="$(GOFLAGS='' go list -m -f '{{.Dir}}' github.com/duxlabs-dev/dux-go)"
 if [[ -z "$module" ]]; then
 	echo "dux-go-modfile.sh: cannot find github.com/duxlabs-dev/dux-go in the module cache" >&2
 	exit 1
@@ -34,9 +34,10 @@ cp -R "$module" "$out/module"
 chmod -R u+w "$out/module"
 # A dux-go update that already has the fix, or that moved this code, makes
 # the patch fail here rather than build a stale copy.
-patch --quiet --batch --forward -p1 -d "$out/module" <patches/dux_go_lyrics_windows.patch
+# Short flags only: the BSD patch on macOS has no long ones.
+patch -s -t -N -p1 -d "$out/module" <patches/dux_go_lyrics_windows.patch
 
 cp go.mod "$out/go.mod"
 cp go.sum "$out/go.sum"
-GOFLAGS= go mod edit -modfile="$out/go.mod" -replace="github.com/duxlabs-dev/dux-go=$out/module"
+GOFLAGS='' go mod edit -modfile="$out/go.mod" -replace="github.com/duxlabs-dev/dux-go=$out/module"
 echo "$out/go.mod"
