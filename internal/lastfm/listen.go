@@ -29,6 +29,7 @@ type Listen struct {
 	Track  Track
 	Chosen bool
 
+	begun     bool
 	confirmed bool
 	started   time.Time
 	listened  time.Duration
@@ -52,21 +53,28 @@ func (l *Listen) Break() {
 func (l *Listen) Listened() time.Duration { return l.listened }
 
 func (l *Listen) Observe(at time.Time, position, total time.Duration) Event {
-	if l == nil || !l.Track.Valid() {
+	if l == nil {
+		return Nothing
+	}
+	if !l.begun {
+		l.begun, l.started = true, at
+		l.setLast(at, position)
+	} else {
+		if l.haveLast {
+			wait, moved := at.Sub(l.lastAt), position-l.lastPos
+			if wait > 0 && wait <= maxGap && moved >= 0 && moved <= wait+slack {
+				l.listened += moved
+			}
+		}
+		l.setLast(at, position)
+	}
+	if !l.Track.Valid() {
 		return Nothing
 	}
 	if !l.confirmed {
-		l.confirmed, l.started = true, at
-		l.setLast(at, position)
+		l.confirmed = true
 		return Started
 	}
-	if l.haveLast {
-		wait, moved := at.Sub(l.lastAt), position-l.lastPos
-		if wait > 0 && wait <= maxGap && moved >= 0 && moved <= wait+slack {
-			l.listened += moved
-		}
-	}
-	l.setLast(at, position)
 	if l.scrobbled {
 		return Nothing
 	}
