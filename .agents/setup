@@ -108,10 +108,10 @@ log "Go toolchain ready: $(go version)"
 log "Bazel toolchain ready: bazelisk ${BAZELISK_VERSION} for Bazel $(cat .bazelversion)"
 
 # Running the real app on the orb Desktop and driving it (see
-# .agents/skills/verify-meiro). The orb already has ffmpeg, Node.js and Bun.
+# .agents/skills/verify-meiro). The orb already has ffmpeg and Node.js.
 # The app needs yt-dlp, a screenshot tool (grim), a keyboard injector (wtype)
 # and a pointer injector (wlrctl, which no Debian 12 package ships).
-YTDLP_VERSION="2026.08.19"
+YTDLP_VERSION="2026.11.23"
 WLRCTL_COMMIT="c6bc60820bb8786c7509e651bcae9393a738f180"
 
 apt_install() {
@@ -135,8 +135,8 @@ if [[ ${#missing[@]} -gt 0 ]]; then
 fi
 
 case "$(uname -m)" in
-	x86_64) YTDLP_ASSET="yt-dlp_linux" YTDLP_SHA256="58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a" ;;
-	aarch64 | arm64) YTDLP_ASSET="yt-dlp_linux_aarch64" YTDLP_SHA256="b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc" ;;
+	x86_64) YTDLP_ASSET="yt-dlp_linux" YTDLP_SHA256="249ddb058234276bc449b9cd9492aad9f133bda5923c61a9e39983ae114ef17d" ;;
+	aarch64 | arm64) YTDLP_ASSET="yt-dlp_linux_aarch64" YTDLP_SHA256="fb847a2e4a9ddc8cf5fcfb4bb7f42ba8969ecf72068def0278074f9d300bd13c" ;;
 esac
 if [[ "$("$HOME/.local/bin/yt-dlp" --version 2>/dev/null || true)" != "$YTDLP_VERSION" ]]; then
 	log "Installing yt-dlp ${YTDLP_VERSION}"
