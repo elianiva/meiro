@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "ytdlp",
@@ -10,4 +10,10 @@ go_library(
         "//internal/proc",
         "//youtube",
     ],
+)
+
+go_test(
+    name = "ytdlp_test",
+    srcs = ["ytdlp_test.go"],
+    embed = [":ytdlp"],
 )
