@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-25
+
 ### Changed
 
 - **Disliking the song that is playing skips to the next one.** This matches YouTube Music. Disliking any other song does not change playback.
