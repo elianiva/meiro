@@ -133,6 +133,7 @@ go_library(
         "accountwrites.go",
         "ai_filter.go",
         "app.go",
+        "blocked_artists.go",
         "browse.go",
         "collections.go",
         "crash.go",
@@ -247,6 +248,7 @@ go_test(
     srcs = [
         "accountview_test.go",
         "ai_filter_test.go",
+        "blocked_artists_test.go",
         "crash_test.go",
         "downloads_test.go",
         "eq_test.go",

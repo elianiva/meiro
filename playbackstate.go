@@ -70,7 +70,7 @@ func (a *app) restorePlayback(path string) {
 		return
 	}
 	a.queue.restore(s)
-	if a.settings.ExcludeAIGenerated {
+	if a.filtering() {
 		a.queue.dropMarkedAI(a.excludesItem)
 	}
 	item := a.queue.current()

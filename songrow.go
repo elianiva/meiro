@@ -97,6 +97,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	sc := m3.Of(c).Scheme
 	isSong := item.IsTrack()
 	playing := a.playingRow(item, o)
+	blocked := o.list != queueList && a.artistBlocks(item)
 	selected := false
 	queueCursor := false
 	if o.list == queueList {
@@ -153,10 +154,13 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 		}
 		main.Children(func() {
 			titleColour, subColour := sc.OnSurface, sc.OnSurfaceVariant
-			if playing {
+			switch {
+			case playing:
 				titleColour, subColour = sc.OnSecondaryContainer, sc.OnSecondaryContainer.Alpha(0.8)
-			} else if selected {
+			case selected:
 				titleColour, subColour = sc.OnPrimary, sc.OnPrimary.Alpha(0.8)
+			case blocked:
+				titleColour, subColour = sc.OnSurface.Alpha(0.38), sc.OnSurfaceVariant.Alpha(0.38)
 			}
 			if o.number > 0 {
 				ui.Row(c).Size(artSize, artSize).Shrink(0).Center().Children(func() {

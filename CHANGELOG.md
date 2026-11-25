@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Block artists you never want to hear.** Choose Block artist in a song's menu, or Block on an artist's page, and Meiro skips their songs, removes them from your queue, and hides them from search, recommendations and autoplay. On albums, playlists and artist pages their songs stay in the list, greyed out. A song that only features a blocked artist still plays. Unblock them from the same places or from Settings, where Blocked artists lists everyone you blocked.
+
 ## [0.8.1] - 2026-11-24
 
 ### Fixed

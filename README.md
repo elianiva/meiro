@@ -57,6 +57,10 @@ scrobble your listening to Last.fm.
   YouTube Music as the fallback. You can switch to plain text.
 - **Music that keeps going.** When your queue ends, Meiro adds similar songs so
   the music does not stop.
+- **Block artists.** Block an artist from a song's menu or their page and
+  Meiro skips their songs and keeps them out of your queue and
+  recommendations. Songs that only feature them still play, and you can
+  unblock them in Settings.
 - **Pick up where you left off.** Open Meiro again and your queue and song are
   waiting for you.
 - **Keeps playing when you close the window.** On macOS and Windows, open the

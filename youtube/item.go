@@ -81,6 +81,24 @@ func (item MusicItem) ArtistID() string {
 	return ""
 }
 
+// PrimaryArtist returns the first artist credited on a track: the one the
+// song is by, not an artist it features. It is empty when the row names no
+// linked artist.
+func (item MusicItem) PrimaryArtist() (id, name string) {
+	if id := item.ArtistID(); id != "" {
+		return id, item.Artist
+	}
+	if item.VideoID == "" || item.Byline == nil {
+		return "", ""
+	}
+	for _, part := range item.Byline.Parts {
+		if target := part.Target(); target.Kind == TargetArtist {
+			return target.ID, strings.TrimSpace(part.Text)
+		}
+	}
+	return "", ""
+}
+
 func WatchURL(videoID string) string {
 	return "https://music.youtube.com/watch?v=" + url.QueryEscape(videoID)
 }

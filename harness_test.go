@@ -163,6 +163,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = songRelatedNextResponse
 	case strings.Contains(asked, "MPTRsong-related"):
 		reply = songRelatedResponse
+	case strings.Contains(asked, "MPREb_blocked"):
+		reply = blockedAlbumPage()
 	case strings.Contains(asked, "MPREb_ai_run"):
 		reply = aiRunAlbumPage()
 	case strings.Contains(asked, "MPREb_ai"):
@@ -1024,4 +1026,26 @@ func appendedPlaylistResponse(start, end int, next string) string {
 		return fmt.Sprintf(`{"contents":{"twoColumnBrowseResultsRenderer":{"secondaryContents":{"sectionListRenderer":{"contents":[{"musicPlaylistShelfRenderer":{"contents":[%s]}}]}}}}}`, strings.Join(items, ","))
 	}
 	return fmt.Sprintf(`{"onResponseReceivedActions":[{"appendContinuationItemsAction":{"continuationItems":[%s]}}]}`, strings.Join(items, ","))
+}
+
+// blockedAlbumPage lists a song by UCbad, a song by UCgood that features
+// UCbad, and a song by UCgood alone.
+func blockedAlbumPage() string {
+	song := func(id, title string, artists ...[2]string) string {
+		var runs []string
+		for i, artist := range artists {
+			if i > 0 {
+				runs = append(runs, `{"text":" & "}`)
+			}
+			runs = append(runs, fmt.Sprintf(`{"text":%q,"navigationEndpoint":{"browseEndpoint":{"browseId":%q}}}`, artist[0], artist[1]))
+		}
+		return fmt.Sprintf(`{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":%q},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":%q}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[%s,{"text":" • "},{"text":"3:00"}]}}}
+		]}}`, id, title, strings.Join(runs, ","))
+	}
+	return `{"header":{"musicResponsiveHeaderRenderer":{"title":{"runs":[{"text":"Mixed Credits"}]}}},"contents":{"musicShelfRenderer":{"contents":[` +
+		song("bad-song", "Blocked Song", [2]string{"Bad Artist", "UCbad"}) + "," +
+		song("feature-song", "Feature Song", [2]string{"Good Artist", "UCgood"}, [2]string{"Bad Artist", "UCbad"}) + "," +
+		song("good-song", "Good Song", [2]string{"Good Artist", "UCgood"}) + `]}}}`
 }
