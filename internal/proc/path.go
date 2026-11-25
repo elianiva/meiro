@@ -27,8 +27,7 @@ func ExtendPath() {
 	if home != "" {
 		extra = append(extra,
 			filepath.Join(home, ".nix-profile/bin"),
-			filepath.Join(home, ".local/bin"),
-			filepath.Join(home, ".bun/bin"))
+			filepath.Join(home, ".local/bin"))
 	}
 	os.Setenv("PATH", extendedPath(os.Getenv("PATH"), extra))
 }

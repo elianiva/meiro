@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Block artists you never want to hear.** Choose Block artist in a song's menu, or Block on an artist's page, and Meiro skips their songs, removes them from your queue, and hides them from search, recommendations and autoplay. On albums, playlists and artist pages their songs stay in the list, greyed out. A song that only features a blocked artist still plays. Unblock them from the same places or from Settings, where Blocked artists lists everyone you blocked.
 
+## [0.8.2] - 2026-11-25
+
+### Fixed
+
+- **Songs no longer fail when Bun is installed.** yt-dlp cannot use newer Bun versions to solve YouTube's challenges, so every song failed with “The page needs to be reloaded”. Meiro now uses Node.js, or the QuickJS in the full build. Minimal builds need Node.js on `PATH`.
+
 ## [0.8.1] - 2026-11-24
 
 ### Fixed

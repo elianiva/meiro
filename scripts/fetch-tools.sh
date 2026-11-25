@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Gets the programs a release ships inside the app into resources/<platform>/,
 # where `mygo build` picks them up. The default build gets ffmpeg, yt-dlp and
-# QuickJS; --minimal gets no tools and expects ffmpeg, yt-dlp, and Node.js or
-# Bun on PATH.
+# QuickJS; --minimal gets no tools and expects ffmpeg, yt-dlp, and Node.js on
+# PATH.
 #
 #   scripts/fetch-tools.sh darwin-arm64
 #   scripts/fetch-tools.sh --minimal darwin-arm64

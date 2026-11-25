@@ -96,7 +96,7 @@ func (a *app) toolsCard(c *ui.Context) {
 		if a.toolsLoaded {
 			yt, ff = a.tools.YtDlp, a.tools.FFmpeg
 		}
-		settingLabel(c, "yt-dlp "+yt, "Finds the audio of each track. The full build includes it; the minimal build uses PATH and needs Node.js or Bun.")
+		settingLabel(c, "yt-dlp "+yt, "Finds the audio of each track. The full build includes it; the minimal build uses PATH and needs Node.js.")
 		settingLabel(c, "ffmpeg "+ff, "Decodes audio for playback. The full build includes it; the minimal build uses the version on PATH.")
 	})
 }

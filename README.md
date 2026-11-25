@@ -186,7 +186,7 @@ Intel. Windows downloads are for `amd64`.
 
 **Step 3. Choose a full or minimal build.** The full build is the easiest
 option. Files with `-minimal` in the name are for people who already have
-`ffmpeg`, `yt-dlp`, and Node.js or Bun installed. Without those tools, playback
+`ffmpeg`, `yt-dlp`, and Node.js installed. Without those tools, playback
 will not work. Choose a file without `-minimal` unless you specifically want
 the minimal build.
 
@@ -402,7 +402,7 @@ log before you post it.
 - Look for the error in the log (see above).
 
 **ffmpeg or yt-dlp problems.** The full build bundles both. The minimal build
-needs `ffmpeg`, `yt-dlp`, and Node.js or Bun on `PATH`; if one is missing or
+needs `ffmpeg`, `yt-dlp`, and Node.js on `PATH`; if one is missing or
 too old, playback fails. Run `ffmpeg -version` and `yt-dlp --version` in a
 terminal to check them. The log header shows which versions Meiro found.
 
@@ -549,14 +549,14 @@ version from `.bazelversion`.
 ```sh
 bazel run //:dev                          # live reload; ffmpeg and yt-dlp must be on PATH
 bazel run //:dist -- --run linux-amd64    # build the production app with bundled tools, then open it
-bazel run //:dist -- --run --minimal linux-amd64   # build and open with system ffmpeg, yt-dlp, and Node.js/Bun
+bazel run //:dist -- --run --minimal linux-amd64   # build and open with system ffmpeg, yt-dlp, and Node.js
 ```
 
 `bazel run //:dist -- <platform>` builds into `build/<platform>/`. The
 platforms are `darwin-universal`, `darwin-arm64`, `darwin-amd64`,
 `linux-amd64` and `linux-arm64`.
 
-The minimal build expects `ffmpeg`, `yt-dlp`, and either Node.js or Bun on
+The minimal build expects `ffmpeg`, `yt-dlp`, and Node.js on
 `PATH`. It does not bundle any of these tools or a JavaScript runtime.
 
 Releases include full and minimal builds: a universal DMG for macOS, a Windows
@@ -609,8 +609,9 @@ half of the title.
 - [ffmpeg](https://ffmpeg.org) decodes the audio,
   [yt-dlp](https://github.com/yt-dlp/yt-dlp) finds the streams, and
   [QuickJS](https://github.com/quickjs-ng/quickjs) runs the JavaScript yt-dlp
-  needs to solve YouTube's challenges when Node or Bun is not installed. The
-  full build ships all three; the minimal build leaves them all to the system.
+  needs to solve YouTube's challenges when Node.js is not installed. The
+  full build ships all three; the minimal build uses the ffmpeg, yt-dlp, and
+  Node.js on your `PATH`.
   See
   [`resources/THIRD-PARTY-NOTICES.md`](resources/THIRD-PARTY-NOTICES.md).
 - [Google Sans](https://github.com/googlefonts/googlesans) sets the text,
