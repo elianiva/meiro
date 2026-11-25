@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-25
+
 ### Fixed
 
 - **Songs no longer fail when Bun is installed.** yt-dlp cannot use newer Bun versions to solve YouTube's challenges, so every song failed with “The page needs to be reloaded”. Meiro now uses Node.js, or the QuickJS in the full build. Minimal builds need Node.js on `PATH`.
