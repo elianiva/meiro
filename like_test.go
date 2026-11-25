@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -252,5 +254,75 @@ func TestARejectedLikeIsTakenBack(t *testing.T) {
 	}
 	if !tt.HasText("Could not like “Album Track One”") {
 		t.Fatalf("the failure was not announced: %q", tt.Texts())
+	}
+}
+
+func TestDislikingTheCurrentSongSkipsToTheNext(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a, _ := playbackApp(t)
+	a.account.session = signedInApp(t).account.session
+	q := tracks("a", "b", "c")
+	a.play(q[0], q)
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+
+	a.toggleRating(q[2], youtube.Disliked)
+	if a.current.VideoID != "a" {
+		t.Fatalf("disliking another song moved playback to %q", a.current.VideoID)
+	}
+	a.toggleRating(a.current, youtube.Disliked)
+	tt.Frame()
+	if a.current.VideoID != "b" {
+		t.Fatalf("disliking the playing song left %q playing", a.current.VideoID)
+	}
+	if got := a.queue.at(0).Like; got != youtube.Disliked {
+		t.Fatalf("the skipped song reads %v, want Disliked", got)
+	}
+}
+
+func TestDislikesSurviveARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "playback.json")
+	first, _ := playbackApp(t)
+	first.playSave.writer.Path = path
+	q := tracks("a", "b", "c")
+	first.play(q[0], q)
+	first.persistPlayback()
+	first.playSave.writer.Wait()
+
+	first.setLike("a", youtube.Disliked, false)
+	first.setLike("c", youtube.Disliked, false)
+	first.persistPlayback()
+	first.playSave.writer.Wait()
+
+	second, _ := playbackApp(t)
+	second.restorePlayback(path)
+	if got := second.current.Like; got != youtube.Disliked {
+		t.Errorf("the restored current song reads %v, want Disliked", got)
+	}
+	likes := []youtube.LikeStatus{second.queue.at(0).Like, second.queue.at(1).Like, second.queue.at(2).Like}
+	if !slices.Equal(likes, []youtube.LikeStatus{youtube.Disliked, youtube.LikeUnknown, youtube.Disliked}) {
+		t.Errorf("restored ratings = %v", likes)
+	}
+}
+
+func TestSigningInAgainAfterARestartKeepsRestoredDislikes(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a, _ := playbackApp(t)
+	q := tracks("a", "b")
+	a.play(q[0], q)
+	a.setLike("b", youtube.Disliked, false)
+
+	first := signedInApp(t).account.session
+	a.useSession(first, sessionSource{})
+	if got := a.queue.at(1).Like; got != youtube.Disliked {
+		t.Fatalf("restoring the session forgot the dislike: %v", got)
+	}
+
+	second := signedInApp(t).account.session
+	a.useSession(second, sessionSource{})
+	if got := a.queue.at(1).Like; got != youtube.LikeUnknown {
+		t.Fatalf("switching to another session kept the dislike: %v", got)
 	}
 }

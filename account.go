@@ -215,6 +215,7 @@ func (s *accountState) renewSession(ctx context.Context, cookie string, from ses
 
 func (a *app) useSession(s *session, from sessionSource) {
 	a.stopAccountWork()
+	first := a.account.session == nil
 	if a.account.session != s {
 		a.finishEpisodeProgress(false)
 	}
@@ -228,7 +229,7 @@ func (a *app) useSession(s *session, from sessionSource) {
 		a.settings.AccountIndex, a.settings.AccountEmail = s.accountIndex, s.details.Email
 		a.saveSettings()
 	}
-	a.accountChanged()
+	a.accountChanged(!first)
 	a.offerPremium()
 	spawn(a, func() []youtube.AccountChannel {
 		ctx, cancel := context.WithTimeout(context.Background(), credentialTimeout)
@@ -253,7 +254,7 @@ func (a *app) endSession(reason string) {
 		a.notice = reason
 	}
 	if had {
-		a.accountChanged()
+		a.accountChanged(true)
 	}
 }
 
@@ -270,10 +271,15 @@ func (a *app) stopAccountWork() {
 	a.account.switching.stop()
 }
 
-func (a *app) accountChanged() {
+// accountChanged resets what the app learned from the previous account. The
+// first session after a start keeps the ratings restored with the queue, since
+// signing in again is not a change of account.
+func (a *app) accountChanged(forgetRatings bool) {
 	a.cancelSuggestions()
 	a.pages.Clear()
-	a.forgetAccountState()
+	if forgetRatings {
+		a.forgetAccountState()
+	}
 	if r, _ := a.route(); r.load != nil {
 		a.reloadPage()
 	}

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Disliking the song that is playing skips to the next one.** This matches YouTube Music. Disliking any other song does not change playback.
+
+### Fixed
+
+- **Dislikes in the queue survive a restart.** After reopening Meiro, songs you disliked still show as disliked and Auto-skip disliked songs keeps skipping them. Before, the queue came back without knowing which songs were disliked.
+
 ### Added
 
 - **Block artists you never want to hear.** Choose Block artist in a song's menu, or Block on an artist's page, and Meiro skips their songs, removes them from your queue, and hides them from search, recommendations and autoplay. On albums, playlists and artist pages their songs stay in the list, greyed out. A song that only features a blocked artist still plays. Unblock them from the same places or from Settings, where Blocked artists lists everyone you blocked.
