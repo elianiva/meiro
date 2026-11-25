@@ -60,6 +60,7 @@ func (a *app) hero(c *ui.Context) {
 				a.libraryButton(c)
 				a.downloadButton(c)
 				a.subscribeButton(c)
+				a.blockArtistButton(c, r, id)
 			})
 		})
 	})

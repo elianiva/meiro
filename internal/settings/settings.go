@@ -37,6 +37,7 @@ type Settings struct {
 	AccountAudio       bool              `json:"accountAudio,omitempty"`
 	PremiumOffered     bool              `json:"premiumOffered,omitempty"`
 	ExcludeAIGenerated bool              `json:"excludeAIGenerated,omitempty"`
+	BlockedArtists     []BlockedArtist   `json:"blockedArtists,omitempty"`
 	NormalizeLoudness  bool              `json:"normalizeLoudness"`
 	CacheSongs         int               `json:"cacheSongs"`
 	CacheDirectory     string            `json:"cacheDirectory,omitempty"`
@@ -68,6 +69,18 @@ type Settings struct {
 	UsagePingDetails   bool              `json:"usagePingDetails,omitempty"`
 	UsagePingSent      bool              `json:"usagePingSent,omitempty"`
 	CrashReports       bool              `json:"crashReports,omitempty"`
+}
+
+// BlockedArtist is an artist whose songs Meiro does not play. The name is only
+// for showing the list; the ID is what a song is matched against.
+type BlockedArtist struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
+// ArtistBlocked reports whether the artist with this channel ID is blocked.
+func (s *Settings) ArtistBlocked(id string) bool {
+	return id != "" && slices.ContainsFunc(s.BlockedArtists, func(b BlockedArtist) bool { return b.ID == id })
 }
 
 type TrayMark string
@@ -115,6 +128,7 @@ func (s *Settings) clone() Settings {
 	c := *s
 	c.Recent = slices.Clone(s.Recent)
 	c.Shortcuts = maps.Clone(s.Shortcuts)
+	c.BlockedArtists = slices.Clone(s.BlockedArtists)
 	return c
 }
 
@@ -222,6 +236,7 @@ func Parse(data []byte) (Settings, error) {
 		read.NotifyTrack, read.ShowTray = false, false
 	}
 	read.CrossfadeSeconds = ClampCrossfade(read.CrossfadeSeconds)
+	read.BlockedArtists = slices.DeleteFunc(read.BlockedArtists, func(b BlockedArtist) bool { return b.ID == "" })
 	return read, nil
 }
 

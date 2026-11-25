@@ -2,7 +2,7 @@
 
 The full release of Meiro ships three programs next to the app. The minimal
 release does not bundle these programs; it uses the system's ffmpeg, yt-dlp,
-and Node.js or Bun.
+and Node.js.
 
 ## ffmpeg
 

@@ -215,7 +215,10 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 			a.run(func() { cache.SetLimit(s.CacheSongs) })
 		}
 	}
-	if s.ExcludeAIGenerated != previous.ExcludeAIGenerated {
+	switch {
+	case !slices.Equal(s.BlockedArtists, previous.BlockedArtists):
+		a.blockedArtistsChanged()
+	case s.ExcludeAIGenerated != previous.ExcludeAIGenerated:
 		a.applyAIFilterChange()
 	}
 }

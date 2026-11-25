@@ -198,6 +198,13 @@ func (r *route) path(id string) string {
 
 func (r *route) isDetail() bool { return r.target != youtube.TargetNone }
 
+// keepsBlockedSongs reports whether the page lists a blocked artist's songs
+// greyed out, so a whole album or playlist still reads as it is, instead of
+// leaving them out as the other lists do.
+func (r *route) keepsBlockedSongs() bool {
+	return r.id == routeAlbum || r.id == routePlaylist || r.id == routeArtist
+}
+
 func detailRoute(kind youtube.TargetKind) (*route, bool) {
 	for i := range routes {
 		if routes[i].target == kind && kind != youtube.TargetNone {

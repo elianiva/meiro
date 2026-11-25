@@ -184,7 +184,7 @@ func (a *app) following() (int, youtube.MusicItem, bool) {
 
 func (a *app) syncPreload() {
 	_, next, ok := a.following()
-	if ok && a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone {
+	if ok && (a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone || a.artistBlocks(next)) {
 		ok = false
 	}
 	if held := a.player.Preloaded(); held != "" && (!ok || held != next.VideoID) {
@@ -359,7 +359,7 @@ func (a *app) warmNext() {
 	if !ok {
 		return
 	}
-	if a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone {
+	if a.settings.ExcludeAIGenerated && isMusicTrack(next) && a.aiDisclosure(next) != youtube.AINone || a.artistBlocks(next) {
 		return
 	}
 	if next.VideoID == "" || next.VideoID == a.current.VideoID || a.isDownloaded(next.VideoID) {

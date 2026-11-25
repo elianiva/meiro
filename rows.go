@@ -112,6 +112,7 @@ type rowsKey struct {
 	top          youtube.MusicItem
 	aiVersion    uint64
 	excludeAI    bool
+	blocked      uint64
 	filter       string
 	sort         playlistSort
 }
@@ -130,7 +131,7 @@ func (a *app) syncRows() {
 		loading: s.loading, partial: s.partial, err: s.err, offline: s.offline, more: s.more, moreErr: s.moreErr,
 		moreBusy: a.pageMore.busy(), similar: len(s.similar), similarShown: s.similarShown,
 		shelves: s.shelfShape(), loose: len(s.items),
-		columns: a.gridColumns(r), aiVersion: a.aiFilter.generation(), excludeAI: a.settings.ExcludeAIGenerated,
+		columns: a.gridColumns(r), aiVersion: a.aiFilter.generation(), excludeAI: a.settings.ExcludeAIGenerated, blocked: a.blockedVersion,
 	}
 	if r.id == routeSearch {
 		key.submitted, key.top = a.search.submitted, a.search.top
@@ -141,7 +142,11 @@ func (a *app) syncRows() {
 	}
 	if a.page.rows == nil || a.page.rowsDirty || key != a.page.rowsKey {
 		a.page.rowsKey, a.page.rowsDirty = key, false
-		a.page.rows, a.page.playable = buildRows(a.page.rows[:0], a.page.playable[:0], r, s, a.page.detail, key.top, key, a.excludesItem)
+		exclude := a.excludesItem
+		if r.keepsBlockedSongs() {
+			exclude = a.aiExcludes
+		}
+		a.page.rows, a.page.playable = buildRows(a.page.rows[:0], a.page.playable[:0], r, s, a.page.detail, key.top, key, exclude)
 	}
 }
 

@@ -128,6 +128,7 @@ type app struct {
 	notch      notchState
 
 	historyPath         string
+	blockedVersion      uint64 // counts blocked-artist changes, so the rows are built again
 	history             []history.Entry
 	historyLoaded       bool
 	historyLoading      bool

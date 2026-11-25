@@ -224,10 +224,8 @@ var jsRuntime struct {
 }
 
 func lookupJSRuntime() (string, []string) {
-	for _, name := range []string{"node", "bun"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return name, []string{"--js-runtimes", name + ":" + path}
-		}
+	if path, err := exec.LookPath("node"); err == nil {
+		return "node", []string{"--js-runtimes", "node:" + path}
 	}
 	if path, err := proc.Tool("qjs"); err == nil {
 		return "quickjs", []string{"--js-runtimes", "quickjs:" + path}
