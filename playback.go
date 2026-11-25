@@ -90,7 +90,7 @@ func (a *app) playFromWithContinuation(item youtube.MusicItem, tracks []youtube.
 	a.queueRest.stop()
 	a.clearQueueSelection()
 	a.queue.replace(item, tracks, index, source)
-	if a.settings.ExcludeAIGenerated {
+	if a.filtering() {
 		a.queue.dropMarkedAI(a.excludesItem)
 	}
 	clear(a.scrobble.queued)
@@ -248,7 +248,8 @@ func (a *app) enqueue(item youtube.MusicItem, playNext bool) int {
 		return -1
 	}
 	if a.excludesItem(item) {
-		a.notice = "Skipped " + item.Title + ": YouTube marks it as made with AI"
+		_, why := a.excludedReason(item)
+		a.notice = "Skipped " + item.Title + ": " + why
 		return -1
 	}
 	if a.current.VideoID == "" || a.queue.len() == 0 {

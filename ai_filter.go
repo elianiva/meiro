@@ -73,13 +73,24 @@ func (a *app) aiDisclosure(item youtube.MusicItem) youtube.AIDisclosure {
 	return youtube.AIUnknown
 }
 
-func (a *app) excludesItem(item youtube.MusicItem) bool {
+func (a *app) aiExcludes(item youtube.MusicItem) bool {
 	return a.settings.ExcludeAIGenerated && isMusicTrack(item) &&
 		a.aiDisclosure(item) == youtube.AIAlteredOrGenerated
 }
 
+// excludesItem reports whether playback skips the item: a song YouTube marks
+// as made with AI, or a song by a blocked artist.
+func (a *app) excludesItem(item youtube.MusicItem) bool {
+	return a.aiExcludes(item) || a.artistBlocks(item)
+}
+
+// filtering reports whether any setting can exclude a song.
+func (a *app) filtering() bool {
+	return a.settings.ExcludeAIGenerated || len(a.settings.BlockedArtists) > 0
+}
+
 func (a *app) visibleItems(items []youtube.MusicItem) []youtube.MusicItem {
-	if !a.settings.ExcludeAIGenerated {
+	if !a.filtering() {
 		return items
 	}
 	kept := make([]youtube.MusicItem, 0, len(items))
@@ -118,9 +129,9 @@ func (a *app) setExcludeAIGenerated(enabled bool) {
 }
 
 func (a *app) applyAIFilterChange() {
-	if a.settings.ExcludeAIGenerated {
+	if a.filtering() {
 		a.queue.dropMarkedAI(a.excludesItem)
-	} else if a.playErr == aiExcludedReason {
+	} else if a.playErr == aiExcludedReason || a.playErr == blockedReason {
 		a.playErr, a.rawPlayErr = "", ""
 	}
 	a.page.rowsDirty = true
@@ -161,18 +172,28 @@ func (a *app) checkAIBeforePlay(item youtube.MusicItem, startAt time.Duration, c
 
 const aiExcludedReason = "YouTube marks this song as made with AI."
 
+// excludedReason says why the item is skipped: the playback error, and the
+// end of the notice that follows "Skipped <title>: ".
+func (a *app) excludedReason(item youtube.MusicItem) (reason, notice string) {
+	if a.artistBlocks(item) {
+		return blockedReason, "you blocked this artist"
+	}
+	return aiExcludedReason, "YouTube marks it as made with AI"
+}
+
 func (a *app) skipExcluded(item youtube.MusicItem) {
 	title := strings.TrimSpace(item.Title)
 	if title == "" {
 		title = "This song"
 	}
-	a.notice = "Skipped " + title + ": YouTube marks it as made with AI"
+	reason, why := a.excludedReason(item)
+	a.notice = "Skipped " + title + ": " + why
 	for range a.queue.len() {
 		next, ok := a.queue.next(a.settings.AutoPlay, a.repeat)
 		if !ok {
 			if a.settings.AutoPlay && a.aiRefills < maxAIRefills {
 				a.aiRefills++
-				a.playErr, a.rawPlayErr = aiExcludedReason, aiExcludedReason
+				a.playErr, a.rawPlayErr = reason, reason
 				a.upNext.waiting = true
 				a.finishEpisodeProgress(false)
 				a.player.Stop()
@@ -191,6 +212,6 @@ func (a *app) skipExcluded(item youtube.MusicItem) {
 	a.current = a.queue.current()
 	a.total = parseDuration(a.current.Duration)
 	a.scrub = 0
-	a.playErr, a.rawPlayErr = aiExcludedReason, aiExcludedReason
+	a.playErr, a.rawPlayErr = reason, reason
 	a.stopAtQueueEnd()
 }

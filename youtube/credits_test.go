@@ -172,3 +172,24 @@ func TestTwoRowSubtitleCreditsArtist(t *testing.T) {
 		t.Errorf("an album is not a track to scrobble: artist %q artists %q", item.Artist, item.Artists)
 	}
 }
+
+func TestPrimaryArtistIsTheFirstLinkedArtist(t *testing.T) {
+	linked := MusicItem{VideoID: "v", Artist: "First", BrowseID: "UCfirst"}
+	if id, name := linked.PrimaryArtist(); id != "UCfirst" || name != "First" {
+		t.Errorf("a track that opens its artist: %q %q", id, name)
+	}
+	byline := MusicItem{VideoID: "v", Byline: &TrackByline{Parts: []BylinePart{
+		{Text: "Single"}, {Text: " • "}, {Text: "Lead", BrowseID: "UClead"}, {Text: " & "}, {Text: "Guest", BrowseID: "UCguest"},
+	}}}
+	if id, name := byline.PrimaryArtist(); id != "UClead" || name != "Lead" {
+		t.Errorf("a featured artist came first: %q %q", id, name)
+	}
+	for name, item := range map[string]MusicItem{
+		"a text-only artist": {VideoID: "v", Artist: "Someone", Subtitle: "Someone"},
+		"an artist page":     {BrowseID: "UCfirst", Artist: "First"},
+	} {
+		if id, _ := item.PrimaryArtist(); id != "" {
+			t.Errorf("%s has an artist ID %q", name, id)
+		}
+	}
+}

@@ -58,6 +58,7 @@ var settingsRows = []settingsRow{
 	{key: "h-playback", heading: "Playback"},
 	{key: "playback", search: "auto skip disliked songs thumbs down premium account bitrate quality cookies yt-dlp authenticated", card: (*app).playbackCard},
 	{key: "crossfade", search: "crossfade fade transition gap between tracks songs seconds", card: (*app).crossfadeCard},
+	{key: "blocked", search: "block blocked artists hide skip mute unblock songs", card: (*app).blockedArtistsCard},
 	{key: "ai", search: "ai artificial intelligence generated exclude skip filter songs", card: (*app).aiFilterCard},
 
 	{key: "h-system", heading: "System"},
