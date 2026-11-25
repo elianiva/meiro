@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -301,7 +301,28 @@ func TestDislikesSurviveARestart(t *testing.T) {
 		t.Errorf("the restored current song reads %v, want Disliked", got)
 	}
 	likes := []youtube.LikeStatus{second.queue.at(0).Like, second.queue.at(1).Like, second.queue.at(2).Like}
-	if fmt.Sprint(likes) != fmt.Sprint([]youtube.LikeStatus{youtube.Disliked, youtube.LikeUnknown, youtube.Disliked}) {
+	if !slices.Equal(likes, []youtube.LikeStatus{youtube.Disliked, youtube.LikeUnknown, youtube.Disliked}) {
 		t.Errorf("restored ratings = %v", likes)
+	}
+}
+
+func TestSigningInAgainAfterARestartKeepsRestoredDislikes(t *testing.T) {
+	resetFakes()
+	t.Cleanup(resetFakes)
+	a, _ := playbackApp(t)
+	q := tracks("a", "b")
+	a.play(q[0], q)
+	a.setLike("b", youtube.Disliked, false)
+
+	first := signedInApp(t).account.session
+	a.useSession(first, sessionSource{})
+	if got := a.queue.at(1).Like; got != youtube.Disliked {
+		t.Fatalf("restoring the session forgot the dislike: %v", got)
+	}
+
+	second := signedInApp(t).account.session
+	a.useSession(second, sessionSource{})
+	if got := a.queue.at(1).Like; got != youtube.LikeUnknown {
+		t.Fatalf("switching to another session kept the dislike: %v", got)
 	}
 }
