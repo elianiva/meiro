@@ -25,6 +25,7 @@ type State struct {
 	Source       string              `json:"source,omitempty"`
 	PlaylistMore string              `json:"playlistMore,omitempty"`
 	Position     time.Duration       `json:"position,omitempty"`
+	Dislikes     []string            `json:"dislikes,omitempty"`
 	Episodes     []Episode           `json:"episodes,omitempty"`
 }
 
@@ -79,6 +80,11 @@ func (s State) sanitize() State {
 		out.PlayNext = s.PlayNext
 	}
 	out.Source, out.PlaylistMore = s.Source, s.PlaylistMore
+	for _, id := range s.Dislikes {
+		if slices.ContainsFunc(out.Items, func(t youtube.MusicItem) bool { return t.VideoID == id }) {
+			out.Dislikes = append(out.Dislikes, id)
+		}
+	}
 	if s.Position > 0 {
 		out.Position = s.Position
 	}

@@ -29,27 +29,48 @@ type queueMark struct {
 	playNext     string
 	source       string
 	playlistMore string
+	dislikes     uint64
 }
 
 func (q *queue) mark() queueMark {
-	h := fnv.New64a()
+	h, d := fnv.New64a(), fnv.New64a()
 	for _, item := range q.items {
 		_, _ = h.Write([]byte(item.VideoID))
 		_, _ = h.Write([]byte{0})
+		if item.Like == youtube.Disliked {
+			_, _ = d.Write([]byte(item.VideoID))
+			_, _ = d.Write([]byte{0})
+		}
 	}
-	return queueMark{h.Sum64(), q.index, q.recStart, q.playNext, q.source, q.playlistMore}
+	return queueMark{h.Sum64(), q.index, q.recStart, q.playNext, q.source, q.playlistMore, d.Sum64()}
+}
+
+func (q *queue) dislikes() []string {
+	var ids []string
+	for _, item := range q.items {
+		if item.Like == youtube.Disliked && !slices.Contains(ids, item.VideoID) {
+			ids = append(ids, item.VideoID)
+		}
+	}
+	return ids
 }
 
 func (q *queue) state(position time.Duration) playstate.State {
 	return playstate.State{
 		Items: q.items, Index: q.index, RecStart: q.recStart,
 		PlayNext: q.playNext, Source: q.source, Position: position, PlaylistMore: q.playlistMore,
+		Dislikes: q.dislikes(),
 	}.Window()
 }
 
 func (q *queue) restore(s playstate.State) {
 	*q = newQueue()
 	q.items = slices.Clone(s.Items)
+	for i := range q.items {
+		if slices.Contains(s.Dislikes, q.items[i].VideoID) {
+			q.items[i].Like = youtube.Disliked
+		}
+	}
 	q.index, q.recStart, q.playNext, q.source = s.Index, s.RecStart, s.PlayNext, s.Source
 	q.playlistMore = s.PlaylistMore
 	q.regenerate()

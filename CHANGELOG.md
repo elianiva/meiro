@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Disliking the song that is playing skips to the next one.** This matches YouTube Music. Disliking any other song does not change playback.
+
+### Fixed
+
+- **Dislikes in the queue survive a restart.** After reopening Meiro, songs you disliked still show as disliked and Auto-skip disliked songs keeps skipping them. Before, the queue came back without knowing which songs were disliked.
+
 ## [0.8.1] - 2026-11-24
 
 ### Fixed

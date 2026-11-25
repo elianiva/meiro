@@ -67,6 +67,9 @@ func (a *app) toggleRating(item youtube.MusicItem, rating youtube.LikeStatus) {
 		}
 		a.notice = "Could not " + verb + " “" + item.Title + "”: " + firstLine(err.Error())
 	})
+	if after == youtube.Disliked && id == a.current.VideoID && a.player.Active() {
+		a.advance()
+	}
 }
 
 func (a *app) rateTrack(item youtube.MusicItem, rating youtube.LikeStatus, done func(error)) {
