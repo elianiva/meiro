@@ -36,6 +36,7 @@ This directory is the maintained source for verifying what a Meiro user can do. 
 - [Lyrics](./lyrics.md) covers the sources in the order they are tried, word-synced and line-synced lyrics, the source and static modes, and seeking from a line.
 - [macOS notch player](./notch.md) covers the compact camera-side player, synced lyrics, fallback states and desktop setting.
 - [Downloads](./downloads.md) covers downloading songs, albums and playlists, the Downloads page, and playing offline.
+- [Listening history](./history.md) covers the History page, local plays when signed out, and the merge with the YouTube Music account history.
 - [Account and library](./account-library.md) covers sign-in, like, subscribe, saving, and playlists.
 - [Settings and shortcuts](./settings-shortcuts.md) covers theme, equaliser, shortcuts, history, and Last.fm.
 - [Privacy and telemetry](./privacy.md) covers the first-run notice, the Settings card, the install ping, and crash reports.

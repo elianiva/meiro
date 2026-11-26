@@ -1589,6 +1589,223 @@ func TestClearHistoryWhileItLoads(t *testing.T) {
 	}
 }
 
+func TestHistoryPageMergesAccountAndLocalPlays(t *testing.T) {
+	resetFakes()
+	a := signedInApp(t)
+	a.settings.AutoPlay = false
+	now := time.Now()
+	a.historyLoaded = true
+	a.history = []history.Entry{
+		{VideoID: "shared-today", Title: "Shared Today", Artist: "Local Artist", PlayedAt: now.Add(-time.Minute)},
+		{VideoID: "local-yesterday", Title: "Local Yesterday", Artist: "Local Artist", PlayedAt: now.AddDate(0, 0, -1)},
+		{VideoID: "local-week", Title: "Local Week", Artist: "Local Artist", PlayedAt: now.AddDate(0, 0, -3)},
+	}
+	a.router.Push("/history")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+
+	if historyLoads.Load() != 1 {
+		t.Fatalf("the account history was read %d times, want 1", historyLoads.Load())
+	}
+	mustShow(t, tt, "Phone Today", "Shared Today", "Phone Yesterday", "Phone Week", "Phone Old", "Local Yesterday", "Local Week")
+	texts := tt.Texts()
+	shared := 0
+	for _, item := range a.page.playable {
+		if item.VideoID == "shared-today" {
+			shared++
+		}
+	}
+	if shared != 1 {
+		t.Errorf("the local and account plays of Shared Today queued %d times, want once", shared)
+	}
+	if !inOrder(texts, "Today", "Shared Today", "Phone Today") {
+		t.Errorf("Today does not hold the local play before the account play: %q", texts)
+	}
+	if !inOrder(texts, "Yesterday", "Local Yesterday", "Phone Yesterday") {
+		t.Errorf("Yesterday does not hold the local play before the account play: %q", texts)
+	}
+	if !inOrder(texts, "This week", "Local Week", "Phone Week") {
+		t.Errorf("the local play from this week was not folded into YouTube's shelf: %q", texts)
+	}
+
+	if err := tt.Click("Phone Old"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.current.VideoID != "phone-old" {
+		t.Errorf("clicking the account play started %q, want phone-old", a.current.VideoID)
+	}
+}
+
+func TestHistoryPageStaysLocalWhenSignedOut(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	a.historyLoaded = true
+	a.history = []history.Entry{
+		{VideoID: "local-today", Title: "Local Today", Artist: "Local Artist", PlayedAt: time.Now()},
+	}
+	tt := open(a, "/history")
+
+	if historyLoads.Load() != 0 {
+		t.Errorf("a signed-out app asked YouTube for history %d times", historyLoads.Load())
+	}
+	mustShow(t, tt, "History", "Today", "Local Today")
+	mustNotShow(t, tt, "Phone Today", "This week")
+}
+
+func TestHistoryPageWithoutPlays(t *testing.T) {
+	resetFakes()
+	a := newTestApp(t)
+	a.historyLoaded = true
+	tt := open(a, "/history")
+
+	mustShow(t, tt, "History", "No listening history yet", "Songs you play in Meiro show up here.")
+	mustNotShow(t, tt, "Today", "Phone Today")
+}
+
+func TestHistoryPageKeepsLocalPlaysWhenYouTubeFails(t *testing.T) {
+	resetFakes()
+	historyFails.Store(true)
+	t.Cleanup(resetFakes)
+	a := signedInApp(t)
+	a.historyLoaded = true
+	a.history = []history.Entry{
+		{VideoID: "local-today", Title: "Local Today", Artist: "Local Artist", PlayedAt: time.Now()},
+	}
+	tt := open(a, "/history")
+
+	if historyLoads.Load() != 1 {
+		t.Fatalf("the account history was read %d times, want 1", historyLoads.Load())
+	}
+	mustShow(t, tt, "Today", "Local Today")
+	mustNotShow(t, tt, "Retry", "Could not load this page", "Phone Today")
+}
+
+func TestHistoryPageOffersRetryWhenOnlyYouTubeFails(t *testing.T) {
+	resetFakes()
+	historyFails.Store(true)
+	a := signedInApp(t)
+	a.historyLoaded = true
+	tt := open(a, "/history")
+
+	mustShow(t, tt, "Could not load this page", "Could not load your YouTube Music history.", "Retry")
+	historyFails.Store(false)
+	if err := tt.Click("Retry"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	mustShow(t, tt, "Phone Today")
+	mustNotShow(t, tt, "Retry", "Could not load this page")
+	if historyLoads.Load() != 2 {
+		t.Errorf("the account history was read %d times, want 2", historyLoads.Load())
+	}
+}
+
+func TestMergeHistoryFoldsKnownShelvesAndKeepsTheRest(t *testing.T) {
+	loc := time.FixedZone("UTC+7", 7*60*60)
+	now := time.Date(2026, 3, 10, 15, 0, 0, 0, loc)
+	local := []history.Entry{
+		{VideoID: "dup", Title: "Dup Local", PlayedAt: now.Add(-3 * time.Hour)},
+		{VideoID: "local-today", Title: "Local Today", PlayedAt: now.Add(-time.Hour)},
+		{VideoID: "local-yesterday", Title: "Local Yesterday", PlayedAt: now.AddDate(0, 0, -1)},
+		{VideoID: "local-week", Title: "Local Week", PlayedAt: now.AddDate(0, 0, -3)},
+		{VideoID: "local-old", Title: "Local Old", PlayedAt: now.AddDate(0, 0, -40)},
+	}
+	remote := []remoteShelf{
+		{title: "Today", items: []youtube.MusicItem{
+			{VideoID: "remote-today", Title: "Remote Today"},
+			{VideoID: "dup", Title: "Remote Dup"},
+		}},
+		{title: "This week", items: []youtube.MusicItem{{VideoID: "remote-week", Title: "Remote Week"}}},
+		{title: "Something new", items: []youtube.MusicItem{{VideoID: "remote-unknown", Title: "Remote Unknown"}}},
+		{title: "Last month", items: []youtube.MusicItem{{VideoID: "remote-last", Title: "Remote Last"}}},
+	}
+	sections := mergeHistory(local, remote, now)
+	var titles []string
+	for _, section := range sections {
+		titles = append(titles, section.title)
+	}
+	wantTitles := []string{"Today", "Yesterday", "This week", "Something new", "Last month", "Thursday, 29 January"}
+	if !slices.Equal(titles, wantTitles) {
+		t.Fatalf("sections = %q, want %q", titles, wantTitles)
+	}
+	wantItems := [][]string{
+		{"Local Today", "Dup Local", "Remote Today"},
+		{"Local Yesterday"},
+		{"Local Week", "Remote Week"},
+		{"Remote Unknown"},
+		{"Remote Last"},
+		{"Local Old"},
+	}
+	for i, section := range sections {
+		if got := itemTitles(section.items); !slices.Equal(got, wantItems[i]) {
+			t.Errorf("%s holds %q, want %q", section.title, got, wantItems[i])
+		}
+	}
+}
+
+func TestHistoryBucketReadsYouTubesShelfTitles(t *testing.T) {
+	loc := time.FixedZone("UTC+7", 7*60*60)
+	now := time.Date(2026, 3, 10, 15, 0, 0, 0, loc)
+	day := func(month time.Month, date int) time.Time {
+		return time.Date(2026, month, date, 0, 0, 0, 0, loc)
+	}
+	lastYear := func(month time.Month, date int) time.Time {
+		return time.Date(2025, month, date, 0, 0, 0, 0, loc)
+	}
+	cases := []struct {
+		label      string
+		start, end time.Time
+		ok         bool
+	}{
+		{"Today", day(3, 10), day(3, 10), true},
+		{"Yesterday", day(3, 9), day(3, 9), true},
+		{"This week", day(3, 4), day(3, 8), true},
+		{"Last week", day(2, 25), day(3, 3), true},
+		{"This month", day(3, 1), day(3, 8), true},
+		{"Last month", day(2, 1), day(2, 28), true},
+		{"September 2025", lastYear(9, 1), lastYear(9, 30), true},
+		{"Sep 2025", lastYear(9, 1), lastYear(9, 30), true},
+		{"April", lastYear(4, 1), lastYear(4, 30), true},
+		{"Recently", time.Time{}, time.Time{}, false},
+	}
+	for _, tc := range cases {
+		start, end, ok := historyBucket(tc.label, now)
+		if ok != tc.ok || !start.Equal(tc.start) || !end.Equal(tc.end) {
+			t.Errorf("%q = %v to %v, %t; want %v to %v, %t", tc.label, start, end, ok, tc.start, tc.end, tc.ok)
+		}
+	}
+}
+
+func textIndex(texts []string, want string) int {
+	for i, text := range texts {
+		if text == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func inOrder(texts []string, wants ...string) bool {
+	at := -1
+	for _, want := range wants {
+		next := textIndex(texts, want)
+		if next <= at {
+			return false
+		}
+		at = next
+	}
+	return true
+}
+
+func itemTitles(items []youtube.MusicItem) []string {
+	titles := make([]string, len(items))
+	for i, item := range items {
+		titles[i] = item.Title
+	}
+	return titles
+}
+
 func TestReportProblemOpensPrefilledIssue(t *testing.T) {
 	a := signedInApp(t)
 	var opened []string

@@ -47,6 +47,55 @@ func TestBrowseHeadingUsesTheAlbumsOwnCover(t *testing.T) {
 	}
 }
 
+func TestGetHistoryReadsTheShelvesYouTubeGroupsPlaysInto(t *testing.T) {
+	const response = `{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
+		{"musicShelfRenderer":{"title":{"runs":[{"text":"Today"}]},"contents":[
+			{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"today-1"},"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Today Song"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Today Artist"},{"text":" • "},{"text":"Today Album"}]}}}],
+				"thumbnail":{"thumbnails":[{"url":"today.png"}]},
+				"fixedColumns":[{"musicResponsiveListItemFixedColumnRenderer":{"text":{"runs":[{"text":"3:10"}]}}}]}}
+		]}},
+		{"musicShelfRenderer":{"title":{"runs":[{"text":"This week"}]},"contents":[
+			{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"week-1"},"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Week Song"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Week Artist"}]}}}]}}
+		]}}
+	]}}}}]}}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			BrowseID string `json:"browseId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		if body.BrowseID != "FEmusic_history" {
+			t.Errorf("browseId = %q, want FEmusic_history", body.BrowseID)
+		}
+		_, _ = w.Write([]byte(response))
+	}))
+	defer server.Close()
+
+	result, err := NewClient(Options{BaseURL: server.URL}).GetHistory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Sections) != 2 || result.Sections[0].Title != "Today" || result.Sections[1].Title != "This week" {
+		t.Fatalf("sections = %+v, want Today and This week", result.Sections)
+	}
+	today := result.Sections[0].Items
+	if len(today) != 1 {
+		t.Fatalf("today holds %d plays, want 1", len(today))
+	}
+	if item := today[0]; item.VideoID != "today-1" || item.Title != "Today Song" || item.Subtitle != "Today Artist • Today Album" ||
+		item.Duration != "3:10" || item.Thumbnail != "today.png" {
+		t.Errorf("today play = %+v", item)
+	}
+	if week := result.Sections[1].Items; len(week) != 1 || week[0].VideoID != "week-1" {
+		t.Errorf("this week = %+v", week)
+	}
+}
+
 func TestContinueBrowseReusesIssuedVisitorData(t *testing.T) {
 	const visitorData = "visitor-issued-by-server"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

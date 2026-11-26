@@ -130,11 +130,13 @@ type app struct {
 	historyPath         string
 	blockedVersion      uint64 // counts blocked-artist changes, so the rows are built again
 	history             []history.Entry
+	historyRev          int // changes whenever the plays or the account history do
 	historyLoaded       bool
 	historyLoading      bool
 	historyDiscard      bool
 	confirmClearHistory bool
 	historyWriter       history.Writer
+	historyRemote       remoteHistoryState
 	statsRangeDays      int
 	stats               statsMemo
 

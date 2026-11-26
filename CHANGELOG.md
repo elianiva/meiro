@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Browse your listening history.** History in the navigation rail lists the songs you played, grouped by day. When you are signed in, it also shows your YouTube Music account history and merges it into the same list, so plays from your phone show up next to plays on this computer.
+
 ### Changed
 
 - **A song row keeps its length at the right edge.** In playlists, albums, search results, Up next and the mini player, the length sits against the row's edge, and the three-dot menu takes its place under the pointer.

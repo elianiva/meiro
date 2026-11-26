@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -26,6 +27,45 @@ func TestSummarizeCountsTheRangeOnly(t *testing.T) {
 	if s.TopTracks[0].Title != "A" || s.TopTracks[0].Plays != 2 {
 		t.Errorf("top tracks = %+v", s.TopTracks)
 	}
+}
+
+func TestGroupByDayUsesTheLocationAndKeepsTheNewestFirst(t *testing.T) {
+	jakarta := time.FixedZone("UTC+7", 7*60*60)
+	entries := []Entry{
+		{VideoID: "old", PlayedAt: time.Date(2026, 3, 8, 23, 30, 0, 0, jakarta)},
+		{VideoID: "first", PlayedAt: time.Date(2026, 3, 9, 0, 30, 0, 0, jakarta)},
+		{VideoID: "second", PlayedAt: time.Date(2026, 3, 9, 23, 0, 0, 0, jakarta)},
+	}
+	groups := GroupByDay(entries, jakarta)
+	if len(groups) != 2 {
+		t.Fatalf("groups = %+v, want two days", groups)
+	}
+	if want := time.Date(2026, 3, 9, 0, 0, 0, 0, jakarta); !groups[0].Day.Equal(want) {
+		t.Errorf("newest day = %v, want %v", groups[0].Day, want)
+	}
+	if got := ids(groups[0].Entries); !slices.Equal(got, []string{"second", "first"}) {
+		t.Errorf("newest day holds %v, want second then first", got)
+	}
+	if got := ids(groups[1].Entries); !slices.Equal(got, []string{"old"}) {
+		t.Errorf("older day holds %v, want old", got)
+	}
+
+	// In UTC the first play still belongs to 8 March, so it joins the older day.
+	utc := GroupByDay(entries, time.UTC)
+	if len(utc) != 2 || !utc[0].Day.Equal(time.Date(2026, 3, 9, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("UTC groups = %+v", utc)
+	}
+	if got := ids(utc[1].Entries); !slices.Equal(got, []string{"first", "old"}) {
+		t.Errorf("UTC older day holds %v, want first then old", got)
+	}
+}
+
+func ids(entries []Entry) []string {
+	out := make([]string, len(entries))
+	for i, entry := range entries {
+		out[i] = entry.VideoID
+	}
+	return out
 }
 
 func TestAppendCapsAndWriteReadsBack(t *testing.T) {

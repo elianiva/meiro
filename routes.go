@@ -20,6 +20,7 @@ const (
 	routeHome
 	routeExplore
 	routeLibrary
+	routeHistory
 	routeDownloads
 	routeSearch
 	routeSettings
@@ -100,6 +101,10 @@ func appRoutes() []route {
 				return c.StreamLibrary(ctx, nil)
 			},
 			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists.", "your songs, albums and playlists"},
+		},
+		{
+			id: routeHistory, empty: emptyMessage{"No listening history yet", "Songs you play in Meiro show up here."}, pattern: "/history", title: "History", rail: &railEntry{label: "History", icon: m3.IconHistory, filled: m3.IconHistory}, heading: heading("History"), nav: routeHistory, source: "History", appOwned: true,
+			open: (*app).openHistory,
 		},
 		{
 			id: routeDownloads, empty: emptyMessage{"No downloads yet", "Download songs, albums and playlists to play them offline."}, pattern: "/downloads", title: "Downloads", rail: &railEntry{label: "Downloads", icon: m3.IconDownload, filled: m3.IconDownloadFilled}, heading: heading("Downloads"), nav: routeDownloads, source: "Downloads", appOwned: true,

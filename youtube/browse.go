@@ -76,6 +76,13 @@ func (c *Client) GetLibrary(ctx context.Context) (*BrowseResult, error) {
 	return c.browse(ctx, "FEmusic_library_landing")
 }
 
+// GetHistory reads the account's listening history. YouTube groups the plays
+// into shelves such as Today, Yesterday and This week and gives no time within
+// a shelf, so a section's title is the only clue to when its plays happened.
+func (c *Client) GetHistory(ctx context.Context) (*BrowseResult, error) {
+	return c.browse(ctx, "FEmusic_history")
+}
+
 func (c *Client) StreamLibrary(ctx context.Context, progress func(*BrowseResult)) (*BrowseResult, error) {
 	result, err := c.GetLibrary(ctx)
 	if err != nil {

@@ -16,10 +16,13 @@ import (
 const MaxEntries = 5000
 
 type Entry struct {
-	VideoID  string    `json:"videoId"`
-	Title    string    `json:"title,omitempty"`
-	Artist   string    `json:"artist,omitempty"`
-	PlayedAt time.Time `json:"playedAt"`
+	VideoID   string    `json:"videoId"`
+	Title     string    `json:"title,omitempty"`
+	Artist    string    `json:"artist,omitempty"`
+	Thumbnail string    `json:"thumbnail,omitempty"`
+	Duration  string    `json:"duration,omitempty"`
+	Kind      string    `json:"kind,omitempty"`
+	PlayedAt  time.Time `json:"playedAt"`
 }
 
 func Append(history []Entry, entries ...Entry) []Entry {
@@ -28,6 +31,33 @@ func Append(history []Entry, entries ...Entry) []Entry {
 		history = slices.Delete(history, 0, len(history)-MaxEntries)
 	}
 	return history
+}
+
+// DayGroup holds the plays of one calendar day, newest first.
+type DayGroup struct {
+	Day     time.Time
+	Entries []Entry
+}
+
+// GroupByDay splits plays into calendar days in loc, newest day first. A play
+// stays on the day loc had when it happened, so a late night does not move a
+// play to the next day. Entries are the order they were recorded in, newest
+// first within each day.
+func GroupByDay(entries []Entry, loc *time.Location) []DayGroup {
+	if loc == nil {
+		loc = time.Local
+	}
+	var groups []DayGroup
+	for i := len(entries) - 1; i >= 0; i-- {
+		playedAt := entries[i].PlayedAt.In(loc)
+		day := CalendarDay(playedAt)
+		if len(groups) == 0 || CalendarDay(groups[len(groups)-1].Day) != day {
+			groups = append(groups, DayGroup{Day: startOfDay(playedAt)})
+		}
+		last := &groups[len(groups)-1]
+		last.Entries = append(last.Entries, entries[i])
+	}
+	return groups
 }
 
 func Read(path string) []Entry {

@@ -277,11 +277,15 @@ func (a *app) stopAccountWork() {
 func (a *app) accountChanged(forgetRatings bool) {
 	a.cancelSuggestions()
 	a.pages.Clear()
+	a.historyRemote.reset()
+	a.historyRev++
 	if forgetRatings {
 		a.forgetAccountState()
 	}
 	if r, _ := a.route(); r.load != nil {
 		a.reloadPage()
+	} else if r.id == routeHistory {
+		a.loadRemoteHistory()
 	}
 }
 

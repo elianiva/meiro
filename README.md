@@ -103,6 +103,9 @@ scrobble your listening to Last.fm.
 
 - **Last.fm scrobbling.** Connect your Last.fm account and Meiro scrobbles the
   tracks you play to your profile. Pause scrobbling any time.
+- **Listening history.** History in the sidebar lists what you played, grouped
+  by day. When you are signed in, it also shows your YouTube Music account
+  history in the same list.
 - **Listening stats.** See your listening time by day. The history stays on
   your computer, and you can delete it whenever you like.
 
@@ -493,9 +496,9 @@ Sentry sees the address a request comes from, as any server does. The project
 is set not to store it.
 
 What Meiro keeps on your device:
-- **Settings**, **listening history** (the latest plays, used for the stats),
-  and the **playback state**, in the app's user data folder. Settings has a
-  button to clear the history.
+- **Settings**, **listening history** (the latest plays, used for History and
+  the stats), and the **playback state**, in the app's user data folder.
+  Settings has a button to clear the history.
 - **Your session**, if you sign in, in a file readable only by your user,
   encrypted with a key in the system credential store when there is one.
   **Sign out** removes it.

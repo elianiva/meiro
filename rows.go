@@ -119,8 +119,13 @@ type rowsKey struct {
 
 func (a *app) syncRows() {
 	r, _ := a.route()
-	if r.id == routeDownloads && a.location == a.router.Location() {
-		a.syncDownloadsPage()
+	if a.location == a.router.Location() {
+		if r.id == routeDownloads {
+			a.syncDownloadsPage()
+		}
+		if r.id == routeHistory {
+			a.syncHistoryPage()
+		}
 	}
 	s := a.pageState()
 	if a.page.rowsDirty {
@@ -143,8 +148,12 @@ func (a *app) syncRows() {
 	if a.page.rows == nil || a.page.rowsDirty || key != a.page.rowsKey {
 		a.page.rowsKey, a.page.rowsDirty = key, false
 		exclude := a.excludesItem
-		if r.keepsBlockedSongs() {
+		switch {
+		case r.keepsBlockedSongs():
 			exclude = a.aiExcludes
+		case r.id == routeHistory:
+			// History is the record of what played, not a recommendation.
+			exclude = nil
 		}
 		a.page.rows, a.page.playable = buildRows(a.page.rows[:0], a.page.playable[:0], r, s, a.page.detail, key.top, key, exclude)
 	}
@@ -230,7 +239,7 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			rows = append(rows, row{kind: rowHeading, title: "Songs", shelf: "playlist-sort-header", track: noTrack})
 		}
 	}
-	vertical := collection || r.id == routeSearch || r.id == routeDownloads
+	vertical := collection || r.id == routeSearch || r.id == routeDownloads || r.id == routeHistory
 	searching := r.id == routePlaylist && key.filter != ""
 	needle := strings.ToLower(strings.TrimSpace(key.filter))
 	placed := false

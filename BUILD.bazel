@@ -143,6 +143,7 @@ go_library(
         "eq.go",
         "fonts.go",
         "hero.go",
+        "historypage.go",
         "historysettings.go",
         "itemmenu.go",
         "lastfm.go",

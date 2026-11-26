@@ -18,11 +18,15 @@ func (a *app) recordHistory(item youtube.MusicItem) {
 	}
 	a.loadHistory()
 	a.history = history.Append(a.history, history.Entry{
-		VideoID:  item.VideoID,
-		Title:    item.Title,
-		Artist:   shownArtist(item),
-		PlayedAt: time.Now(),
+		VideoID:   item.VideoID,
+		Title:     item.Title,
+		Artist:    shownArtist(item),
+		Thumbnail: item.Thumbnail,
+		Duration:  item.Duration,
+		Kind:      string(item.Kind),
+		PlayedAt:  time.Now(),
 	})
+	a.historyRev++
 	a.saveHistory()
 }
 
@@ -39,6 +43,7 @@ func (a *app) loadHistory() {
 		}
 		a.history = history.Append(entries, a.history...)
 		a.historyLoaded, a.historyLoading = true, false
+		a.historyRev++
 		if pending {
 			a.saveHistory()
 		}
@@ -54,6 +59,7 @@ func (a *app) saveHistory() {
 
 func (a *app) clearHistory() {
 	a.history = nil
+	a.historyRev++
 	if !a.historyLoaded {
 		a.historyDiscard = true
 		a.loadHistory()

@@ -52,6 +52,8 @@ type pageData struct {
 	rowsDirty    bool
 	rowsKey      rowsKey
 	downloads    int
+	historyRev   int
+	historyDay   int
 	list         *ui.ListState
 	scroll       *ui.ScrollState
 }

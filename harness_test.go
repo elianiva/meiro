@@ -40,6 +40,8 @@ var (
 	playlistDeletes   atomic.Int32
 	likeWrites        atomic.Int32
 	subscribeWrites   atomic.Int32
+	historyLoads      atomic.Int32
+	historyFails      atomic.Bool
 	refuseWrites      atomic.Bool
 	aiChecks          atomic.Int32
 	duplicateWrites   atomic.Bool
@@ -180,6 +182,12 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 	case strings.Contains(asked, "FEmusic_library_landing"):
 		libraryLoads.Add(1)
 		reply = libraryPage()
+	case strings.Contains(asked, "FEmusic_history"):
+		historyLoads.Add(1)
+		reply = historyResponse
+		if historyFails.Load() {
+			reply, status = rejectedResponse, http.StatusInternalServerError
+		}
 	case strings.HasSuffix(request.URL.Path, "/playlist/create"):
 		playlistCreates.Add(1)
 		recordWrite(request.URL.Path, asked)
@@ -244,6 +252,40 @@ const likeResponse = `{"responseContext":{},"actions":[{"addToToastAction":{"ite
 const subscribeResponse = `{"responseContext":{},"actions":[{"updateSubscribeButtonAction":{"subscribed":true}}]}`
 
 const rejectedResponse = `{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}`
+
+const historyResponse = `{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
+	{"musicShelfRenderer":{"title":{"runs":[{"text":"Today"}]},"contents":[
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"phone-today"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Today"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Artist"}]}}}],
+			"thumbnail":{"thumbnails":[{"url":"phone-today.png"}]},
+			"fixedColumns":[{"musicResponsiveListItemFixedColumnRenderer":{"text":{"runs":[{"text":"3:00"}]}}}]}},
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"shared-today"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Shared Today"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Shared Artist"}]}}}]}}
+	]}},
+	{"musicShelfRenderer":{"title":{"runs":[{"text":"Yesterday"}]},"contents":[
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"phone-yesterday"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Yesterday"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Artist"}]}}}],
+			"thumbnail":{"thumbnails":[{"url":"phone-yesterday.png"}]},
+			"fixedColumns":[{"musicResponsiveListItemFixedColumnRenderer":{"text":{"runs":[{"text":"2:40"}]}}}]}}
+	]}},
+	{"musicShelfRenderer":{"title":{"runs":[{"text":"This week"}]},"contents":[
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"phone-week"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Week"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Artist"}]}}}],
+			"thumbnail":{"thumbnails":[{"url":"phone-week.png"}]},
+			"fixedColumns":[{"musicResponsiveListItemFixedColumnRenderer":{"text":{"runs":[{"text":"2:20"}]}}}]}}
+	]}},
+	{"musicShelfRenderer":{"title":{"runs":[{"text":"Last month"}]},"contents":[
+		{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"phone-old"},"flexColumns":[
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Old"}]}}},
+			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Phone Artist"}]}}}],
+			"thumbnail":{"thumbnails":[{"url":"phone-old.png"}]},
+			"fixedColumns":[{"musicResponsiveListItemFixedColumnRenderer":{"text":{"runs":[{"text":"2:00"}]}}}]}}
+	]}}
+]}}}}]}}}`
 
 func nextResponse(like string) string {
 	return `{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"playlistId":"RDAMVM","contents":[
@@ -588,6 +630,8 @@ func resetFakes() {
 	subscribeWrites.Store(0)
 	homeMoreRequests.Store(0)
 	homeLoads.Store(0)
+	historyLoads.Store(0)
+	historyFails.Store(false)
 	aiChecks.Store(0)
 	refuseWrites.Store(false)
 	duplicateWrites.Store(false)
