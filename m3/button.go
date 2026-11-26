@@ -18,6 +18,7 @@ type ButtonSize int
 
 const (
 	ExtraSmall32 ButtonSize = iota
+	Compact32
 	Small40
 	Medium56
 	Large96
@@ -34,6 +35,8 @@ func (s ButtonSize) dims() buttonDims {
 	switch s {
 	case ExtraSmall32:
 		return buttonDims{32, 12, 20, 4, LabelLarge, Medium, Small}
+	case Compact32:
+		return buttonDims{32, 12, 18, 4, LabelMedium, Medium, Small}
 	case Medium56:
 		return buttonDims{56, 24, 24, 8, TitleMedium, Large, Medium}
 	case Large96:

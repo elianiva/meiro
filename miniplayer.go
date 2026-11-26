@@ -61,11 +61,11 @@ func (a *app) miniPlayer(c *ui.Context) {
 			a.sidePanel(c, false, true)
 		})
 		ui.Row(c).Gap(8).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-			if m3.Button(c, m3.ButtonSpec{Label: "Open Meiro", Kind: m3.Tonal, Key: "mini-open"}).Clicked() {
+			if m3.Button(c, m3.ButtonSpec{Label: "Open Meiro", Kind: m3.Tonal, Size: m3.Compact32, Key: "mini-open"}).Clicked() {
 				a.desktop.closeMini()
 				a.desktop.bringToFront()
 			}
-			if m3.Button(c, m3.ButtonSpec{Label: "Quit", Kind: m3.TextOnly, Key: "mini-quit"}).Clicked() {
+			if m3.Button(c, m3.ButtonSpec{Label: "Quit", Kind: m3.TextOnly, Size: m3.Compact32, Key: "mini-quit"}).Clicked() {
 				mygo.App.Quit()
 			}
 		})

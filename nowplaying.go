@@ -422,7 +422,7 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 			on := &a.nowPlaying.autoPlayDraft
 			switchControl := m3.Switch
 			if compact {
-				switchControl = m3.CompactSwitch
+				switchControl = m3.MiniSwitch
 			}
 			if switchControl(c, on, "Toggle auto-play").Changed() {
 				a.setAutoPlay(*on)
@@ -434,7 +434,11 @@ func (a *app) queueView(c *ui.Context, compact bool) {
 		ui.Row(c).Margin(-pull, 0).Padding(0, 0, pad).AlignItems(ui.Center).Children(func() {
 			m3.Text(c, m3.BodySmall, strconv.Itoa(q.remaining())+" up next").Grow(1).TextColor(sc.OnSurfaceVariant)
 			clear := func() {
-				m3.Button(c, m3.ButtonSpec{Label: "Clear queue", Kind: m3.TextOnly, Size: m3.ExtraSmall32, Disabled: q.remaining() < 1, Key: "queue-clear"}).OnClick(a.clearUpcoming)
+				size := m3.ExtraSmall32
+				if compact {
+					size = m3.Compact32
+				}
+				m3.Button(c, m3.ButtonSpec{Label: "Clear queue", Kind: m3.TextOnly, Size: size, Disabled: q.remaining() < 1, Key: "queue-clear"}).OnClick(a.clearUpcoming)
 			}
 			if compact {
 				ui.Row(c).Shrink(0).Margin(0, -16, 0, 0).Children(clear)

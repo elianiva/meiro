@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **A song row keeps its length at the right edge.** In playlists, albums, search results, Up next and the mini player, the length sits against the row's edge, and the three-dot menu takes its place under the pointer.
+- **The mini player uses smaller controls.** The Auto-play switch, Clear queue, Open Meiro and Quit are sized for the narrow window.
+
 ## [0.8.3] - 2026-11-25
 
 ### Changed

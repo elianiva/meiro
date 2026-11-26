@@ -1408,8 +1408,14 @@ func TestAQueueRowShowsItsActionsUnderThePointer(t *testing.T) {
 	if !ok {
 		t.Fatalf("no menu button: %q", tt.Texts())
 	}
-	if !(cross.X < length.X && length.X < menu.X) {
+	if !(cross.X < length.X && menu.X < length.X) {
 		t.Errorf("the row reads cross at %.0f, length at %.0f, menu at %.0f", cross.X, length.X, menu.X)
+	}
+	if gap := row.X + row.W - (length.X + length.W); gap < 0 || gap > 12 {
+		t.Errorf("the length ends %.0f DIPs from the row's edge, want it against the edge", gap)
+	}
+	if menu.X+menu.W < length.X+length.W {
+		t.Errorf("the menu ends at %.0f before the length's edge at %.0f, want it in the length's place", menu.X+menu.W, length.X+length.W)
 	}
 	if err := tt.Click("More options for Track b"); err != nil {
 		t.Fatal(err)

@@ -135,7 +135,7 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 	if playing {
 		container = sc.SecondaryContainer
 	}
-	var main, menuButton, menuAnchor, queueButton, playNextButton, actions ui.Element
+	var main, menuButton, menuAnchor, duration, queueButton, playNextButton, actions ui.Element
 	hasAnchor := false
 	row.Children(func() {
 		main = ui.ButtonBase(c.Key(key)).FocusRing(false)
@@ -152,16 +152,17 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 				p.Stroke(ui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}, focusColor, radius, 2)
 			})
 		}
+		titleColour, subColour := sc.OnSurface, sc.OnSurfaceVariant
+		switch {
+		case playing:
+			titleColour, subColour = sc.OnSecondaryContainer, sc.OnSecondaryContainer.Alpha(0.8)
+		case selected:
+			titleColour, subColour = sc.OnPrimary, sc.OnPrimary.Alpha(0.8)
+		case blocked:
+			titleColour, subColour = sc.OnSurface.Alpha(0.38), sc.OnSurfaceVariant.Alpha(0.38)
+		}
+		rightAlignedLength := item.Duration != ""
 		main.Children(func() {
-			titleColour, subColour := sc.OnSurface, sc.OnSurfaceVariant
-			switch {
-			case playing:
-				titleColour, subColour = sc.OnSecondaryContainer, sc.OnSecondaryContainer.Alpha(0.8)
-			case selected:
-				titleColour, subColour = sc.OnPrimary, sc.OnPrimary.Alpha(0.8)
-			case blocked:
-				titleColour, subColour = sc.OnSurface.Alpha(0.38), sc.OnSurfaceVariant.Alpha(0.38)
-			}
 			if o.number > 0 {
 				ui.Row(c).Size(artSize, artSize).Shrink(0).Center().Children(func() {
 					switch {
@@ -211,27 +212,38 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 				ui.Icon(c, m3.IconDownloadDone).FontSize(18).TextColor(subColour).Label("Downloaded")
 			}
 			buttons := isSong && !o.compact && !playingQueueRow
-			switch {
-			case item.Duration != "" || buttons:
-				ui.Row(c).Shrink(0).Gap(rowActionGap).AlignItems(ui.Center).Children(func() {
-					if buttons {
-						actions = ui.Row(c).Shrink(0).Gap(-5).Children(func() {
-							if o.list != queueList {
-								ui.Row(c).Width(40).Shrink(0).Children(func() {
-									if hovered {
-										playNextButton = a.playNextRowButton(c, calls, item)
-									}
-								})
-							}
+			rowActions := func() {
+				if buttons {
+					actions = ui.Row(c).Shrink(0).Gap(-5).Children(func() {
+						if o.list != queueList {
 							ui.Row(c).Width(40).Shrink(0).Children(func() {
 								if hovered {
-									queueButton = a.queueRowButton(c, calls, o.list == queueList, item)
+									playNextButton = a.playNextRowButton(c, calls, item)
 								}
 							})
+						}
+						ui.Row(c).Width(40).Shrink(0).Children(func() {
+							if hovered {
+								queueButton = a.queueRowButton(c, calls, o.list == queueList, item)
+							}
 						})
-					}
+					})
+				}
+			}
+			switch {
+			case rightAlignedLength:
+				ui.Row(c).Shrink(0).Gap(rowActionGap).AlignItems(ui.Center).Children(func() {
+					rowActions()
+					ui.Row(c).Shrink(0).MinWidth(40).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+						duration = m3.Text(c, m3.BodyMedium, item.Duration).SingleLine().
+							TextColor(subColour).Shrink(0).FontFeatures("tnum")
+					})
+				})
+			case item.Duration != "" || buttons:
+				ui.Row(c).Shrink(0).Gap(rowActionGap).AlignItems(ui.Center).Children(func() {
+					rowActions()
 					if item.Duration != "" {
-						m3.Text(c, m3.BodyMedium, item.Duration).SingleLine().
+						duration = m3.Text(c, m3.BodyMedium, item.Duration).SingleLine().
 							TextColor(subColour).Shrink(0).FontFeatures("tnum")
 					}
 				})
@@ -248,7 +260,15 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			Icon: m3.IconMore, Label: calls.menuLabel, Key: calls.menu,
 			Container: menuContainer, Size: m3.Small40,
 		})
-		if !main.FocusVisible() && !menuButton.FocusVisible() && !a.menu.opened(key) && !hovered {
+		menuShown := hovered || main.FocusVisible() || a.menu.opened(key)
+		if rightAlignedLength {
+			menuButton.Attach(ui.AnchorRight, ui.AnchorRight).Right(4)
+		}
+		menuShown = menuShown || menuButton.FocusVisible()
+		if menuShown && rightAlignedLength {
+			duration.Opacity(0)
+		}
+		if !menuShown {
 			menuButton.Opacity(0).PassThrough()
 		}
 	})

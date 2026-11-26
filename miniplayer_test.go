@@ -118,6 +118,40 @@ func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	}
 }
 
+func TestMiniPlayerKeepsQueueLengthsAtTheRightEdge(t *testing.T) {
+	a := newTestApp(t)
+	items := []youtube.MusicItem{
+		{VideoID: "a", Title: "Track a", Duration: "3:12"},
+		{VideoID: "b", Title: "Track b", Duration: "4:17"},
+	}
+	a.queue.restore(playstate.State{Items: items, Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.setMiniShown(true)
+	tt := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	tt.Frame()
+
+	row, ok := tt.Find("Track b")
+	if !ok {
+		t.Fatalf("the queue row is missing: %q", tt.Texts())
+	}
+	length, ok := tt.Find("4:17")
+	if !ok {
+		t.Fatalf("the queue row has no length: %q", tt.Texts())
+	}
+	if gap := row.X + row.W - (length.X + length.W); gap > 10 {
+		t.Fatalf("the length ends %.0f DIPs before the row's edge, want it against the edge", gap)
+	}
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	menu, ok := tt.Find("More options for Track b")
+	if !ok {
+		t.Fatalf("hovering the row shows no menu button: %q", tt.Texts())
+	}
+	if gap := row.X + row.W - (menu.X + menu.W); gap > 10 {
+		t.Fatalf("the menu button ends %.0f DIPs before the row's edge, want it in the length's place", gap)
+	}
+}
+
 func TestMiniPlayerPicksThePlaybackSpeedFromItsOverflowMenu(t *testing.T) {
 	a := newTestApp(t)
 	a.queue.restore(playstate.State{Items: tracks("a"), Index: 0, RecStart: -1})
@@ -163,6 +197,12 @@ func TestGoToArtistFromMiniPlayerOpensTheArtistPage(t *testing.T) {
 	main := ui.NewTester(a.view, 1000, 700)
 	main.Frame()
 	mini := ui.NewTester(a.miniPlayer, miniWidth, miniHeight)
+	mini.Frame()
+	more, ok := mini.Find("More options for Album Track One")
+	if !ok {
+		t.Fatalf("the queue row has no menu: %q", mini.Texts())
+	}
+	mini.Move(more.X+more.W/2, more.Y+more.H/2)
 	mini.Frame()
 	if err := mini.Click("More options for Album Track One"); err != nil {
 		t.Fatal(err)

@@ -128,10 +128,7 @@ func TestBlockArtistFromASongMenu(t *testing.T) {
 	a.router.Push("/album/MPREb_blocked")
 	tt := ui.NewTester(a.view, 1000, 900)
 	tt.Frame()
-	if err := tt.Click("More options for Good Song"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
+	openTrackMenu(t, tt, "Good Song")
 	if err := tt.Click("Block artist"); err != nil {
 		t.Fatal(err)
 	}
@@ -139,9 +136,7 @@ func TestBlockArtistFromASongMenu(t *testing.T) {
 	if !a.settings.ArtistBlocked("UCgood") {
 		t.Fatalf("the menu did not block the song's artist: %v", a.settings.BlockedArtists)
 	}
-	if err := tt.Click("More options for Good Song"); err != nil {
-		t.Fatal(err)
-	}
+	openTrackMenu(t, tt, "Good Song")
 	tt.Frame()
 	if !tt.HasText("Unblock artist") {
 		t.Errorf("a blocked artist's song menu does not offer to unblock: %q", tt.Texts())
